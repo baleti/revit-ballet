@@ -17,6 +17,7 @@ public partial class CustomGUIs
         form.Text = $"Total Entries: {entries.Count}";
         form.BackColor = Color.White;
 
+
         var dataGridView = new DataGridView();
         dataGridView.Dock = DockStyle.Fill;
         dataGridView.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
