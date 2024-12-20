@@ -156,7 +156,7 @@
   <ShortcutItem CommandName="External Tools:SwitchView" CommandId="e19b084b-4a63-84af-a876-ec308252335e" Shortcuts="WW" Paths="Add-Ins&gt;External" />
   <ShortcutItem CommandName="External Tools:CloseCurrentView" CommandId="e19b494b-4a63-44af-a876-ec308252335e" Shortcuts="WQ" Paths="Add-Ins&gt;External" />
   <ShortcutItem CommandName="External Tools:CloseViews" CommandId="e19b494b-4a63-47af-a876-ec308252335e" Shortcuts="WC" Paths="Add-Ins&gt;External" />
-  <ShortcutItem CommandName="External Tools:FamilyReferences" CommandId="e19b494b-4a63-45af-a876-ec308252335e" Shortcuts="FV" Paths="Add-Ins&gt;External" />
+  <ShortcutItem CommandName="External Tools:FamilyReferences" CommandId="e19b494b-4a63-45af-a876-ec308252335e" Paths="Add-Ins&gt;External" />
   <ShortcutItem CommandName="External Tools:CopyStructuralFoundationsFromLinkedModel" CommandId="e39b494b-4a63-45af-a876-ec308252335e" Paths="Add-Ins&gt;External" />
   <ShortcutItem CommandName="External Tools:CutGeometryWithGroup" CommandId="e39b494b-4a63-45af-a876-ec308252535e" Paths="Add-Ins&gt;External" />
   <ShortcutItem CommandName="External Tools:SynchronizeViews" CommandId="e39b494b-4a63-45af-b876-ec308252535e" Shortcuts="AA" Paths="Add-Ins&gt;External" />

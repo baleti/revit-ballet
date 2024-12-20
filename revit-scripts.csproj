@@ -49,6 +49,10 @@
     <ErrorReport>prompt</ErrorReport>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="Newtonsoft.Json, Version=13.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
+      <HintPath>packages\Newtonsoft.Json.13.0.3\lib\net45\Newtonsoft.Json.dll</HintPath>
+    </Reference>
     <Reference Include="PresentationCore" />
     <Reference Include="RevitAPI">
       <HintPath>..\..\..\..\..\..\Program Files\Autodesk\Revit 2024\RevitAPI.dll</HintPath>
@@ -59,21 +63,39 @@
       <Private>False</Private>
     </Reference>
     <Reference Include="System" />
+    <Reference Include="System.Buffers, Version=4.0.4.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
+      <HintPath>packages\System.Buffers.4.6.0\lib\net462\System.Buffers.dll</HintPath>
+    </Reference>
     <Reference Include="System.Drawing" />
+    <Reference Include="System.Memory, Version=4.0.2.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
+      <HintPath>packages\System.Memory.4.6.0\lib\net462\System.Memory.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Numerics" />
+    <Reference Include="System.Numerics.Vectors, Version=4.1.5.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL">
+      <HintPath>packages\System.Numerics.Vectors.4.6.0\lib\net462\System.Numerics.Vectors.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Runtime.CompilerServices.Unsafe, Version=6.0.1.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL">
+      <HintPath>packages\System.Runtime.CompilerServices.Unsafe.6.1.0\lib\net462\System.Runtime.CompilerServices.Unsafe.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Text.Json, Version=8.0.0.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL" />
     <Reference Include="System.Windows.Forms" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="revit-scripts\3DSectionBoxFromView.cs" />
     <Compile Include="revit-scripts\CloseCurrentView.cs" />
     <Compile Include="revit-scripts\CloseViews.cs" />
+    <Compile Include="revit-scripts\CopyCrossSession.cs" />
     <Compile Include="revit-scripts\CopyStructuralFoundationsFromLinkedModel.cs" />
     <Compile Include="revit-scripts\CreateDraftingViewsFromSheetNames.cs" />
     <Compile Include="revit-scripts\DataGrid1.cs" />
     <Compile Include="revit-scripts\CutGeometryWithGroup.cs" />
     <Compile Include="revit-scripts\DataGrid2.cs" />
     <Compile Include="revit-scripts\DeleteRevisionCloudsFromSheets.cs" />
+    <Compile Include="revit-scripts\DeselectRandomly.cs" />
     <Compile Include="revit-scripts\DrawCircleAtOrigin.cs" />
     <Compile Include="revit-scripts\DrawCropRegion.cs" />
+    <Compile Include="revit-scripts\PasteCrossSession.cs" />
+    <Compile Include="revit-scripts\PlaceMaterialKeynote.cs" />
     <Compile Include="revit-scripts\SelectFamilyTypesInCurrentView.cs" />
     <Compile Include="revit-scripts\SelectFamilyTypesInProject.cs" />
     <Compile Include="revit-scripts\SelectFamilyTypeInstancesInCurrentView.cs" />
@@ -90,6 +112,9 @@
     <Compile Include="revit-scripts\SelectAssociatedDimensions.cs" />
     <Compile Include="revit-scripts\SelectDoubleSwitchedSocketOutletInLink.cs" />
     <Compile Include="revit-scripts\SelectModelGroup.cs" />
+    <Compile Include="revit-scripts\SelectModelGroupsWithParameters.cs" />
+    <Compile Include="revit-scripts\SetParametersOfFamilyTypes.cs" />
+    <Compile Include="revit-scripts\SetParametersOfSelectedInstances.cs" />
     <Compile Include="revit-scripts\SetParameterValueToSelectedFamilyTypesInCurrentFamily.cs" />
     <Compile Include="revit-scripts\SetRevisionsToCurrentSheet.cs" />
     <Compile Include="revit-scripts\SetRevisionsToSheetsWhereRevisionIsByCloud.cs" />
@@ -107,7 +132,7 @@
     <Compile Include="revit-scripts\ExportSchedule.cs" />
     <Compile Include="revit-scripts\ExportViewTemplatesToRvt.cs" />
     <Compile Include="revit-scripts\ListSheetsByDetailItemSelected.cs" />
-    <Compile Include="revit-scripts\IncrementSelectedSheetNumbers.cs" />
+    <Compile Include="revit-scripts\IncrementSheetNumbers.cs" />
     <Compile Include="revit-scripts\InvokeAddinCommand.cs" />
     <Compile Include="revit-scripts\InvokeRevitCommand.cs" />
     <Compile Include="revit-scripts\ListChildViews.cs" />
@@ -153,6 +178,10 @@
   </ItemGroup>
   <ItemGroup>
     <WCFMetadata Include="Connected Services\" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="app.config" />
+    <None Include="packages.config" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <PropertyGroup>

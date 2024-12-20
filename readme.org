@@ -1,6 +1,6 @@
 #+title: revit-scripts
 
-** Productivity tools for revit architecture.
+** Productivity tools for revit architecture
 *** Switch/close/open views and sheets
 [[https://github.com/baleti/revit-scripts-demos/blob/8142cd312030378ed0b2543ad563b8514dbf9d5a/OpenViews.gif]]
 *** Invoke commands

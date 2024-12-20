@@ -802,3 +802,56 @@ customgui.datagrid1 works fine
 **** =00:00= setup git repo, initial commit
 **** =15:57= fixed || OR and whitespace AND operators in DataGrid2
 likely will move detailed changes to git log from now on
+** November
+*** 11
+**** =13:28= tried adding Folder Sheet column to OpenViews command, but nothing worked
+need to revisit it later
+*** 12
+**** =22:38= tried adding SwithProject (or SwitchDocument) command, but it looks like it doesn't work for documents loaded from Autodesk Cloud (bim360)
+I don't expect this to be solved any time soon
+[[https://chatgpt.com/share/6733d7e4-2090-800c-b48b-8553d1578bae][chatgpt]]
+likely will end up holding revit models in two separate revit processes and find another way to share data between them other than clipboard
+** December
+*** 12
+**** =23:09= couldn't edit position of a callout head
+couldn't find any way to access it via revit api
+it would be useful, because its position resets each time it's copied and has to be manually repositioned
+there may be many hundreas of callouts on a project
+=23:22= confirmed that it's unavailable in revit 2024 api now 
+[[revit idea][https://forums.autodesk.com/t5/revit-ideas/allow-setting-of-callout-head-location-in-api/idi-p/10665304]]
+*** 13
+**** =10:48= added "SelectModelGroupsWithParameters" command
+forgot that "SelectModelGroups" already existed and behaves largely the same with exception that the new command also displays all parameters
+*** 16
+**** =19:44= tried writing a command to autoplace MaterialKeynotes, but failed
+[[chatgpt][https://chatgpt.com/share/67608357-c920-800c-b889-d62f09f1d50a]] suggested only placing IndependentTags, but these don't pick up needed parameters
+[[revit idea][https://forums.autodesk.com/t5/revit-ideas/revit-api-material-keynotes/idi-p/13214525]]
+*** 17
+**** =11:35= added "SetParametersOfFamilyTypes" and "SetParametersOfSelectedInstances" commands
+they should prove universally useful for a number of tasks
+I was hoping to use them specifically to set parameters to material elements to avoid waiting for them to reload individually, but each parameter would have a different value and this command can only set the same value to multiple family types or family instances at the moment
+***** future improvement idea potentially would be to make entries in table individually editable to be able to input multiple different values in a single transaction
+or I might just use ideate
+this pretty much replicates ideate functionality
+***** =11:52= improved "SetParametersOfFamilyTypes" command by letting previous windows make multiple selections and these selections to them be combined in subsequent lists
+for example some parameters are shared by family types in multiple categories, e.g. we've had material for louvres in both doors and window family types
+*** 18
+**** =18:00= looking into "copy/pasting" action between different revit sessions
+using InsideClipboard from NirSoft I confirmed that Revit doesn't use system clipboard at all
+need to find a way to replicate this behavior cross-process
+1. export/import elements associated family types, line styles etc.
+2. place them at specific positions
+I will start with view-dependent elements first
+***** [2024-12-19 Thu 01:35] was able to automate export and import of families of selected elements between sessions, but basic placement wasn't right, elements kept showing up in wrong positions and wrong orientations
+***** =15:27= losing hope this will work due to complex nature of revit elements
+[[revit forum thread][https://forums.autodesk.com/t5/revit-api-forum/recreate-elements-between-revit-projects/td-p/13220620]]
+***** =20:58= lost access to gpt o1 and don't know how to continue on my own, leaving it for later
+[[chatgpt][https://chatgpt.com/c/67642cda-3ef0-800c-b89e-aa1d7283bc31]]
+***** =22:51= realized that there are builtin commands in revit already to save as "library" group or view and corresponding command to load/insert them
+they may have some limitations that I haven't discovered yet, like placing them in the same location as in the original file
+in these situations my Copy/PasteCrossSession commands may still prove useful
+while they are not perfect, they correctly place most of detail items in same locations
+they are fairly convenient, invoking any one of them automatically select currently selected group or currently active window
+it may still worth though to write separarate commands to perform bulk exports to avoid having to open entire project in the future when certain detail items are needed
+*** 19
+**** =13:58= minor fix to "SelectAllElementsInView" command to prevent it from selecting views

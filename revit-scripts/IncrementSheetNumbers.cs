@@ -52,8 +52,8 @@ public class IncrementSheetNumbers : IExternalCommand
 
         // Sort selected sheets based on increment value
         var sortedSelectedSheets = incrementValue < 0
-            ? selectedSheets.OrderBy(sheet => int.Parse(sheet["Sheet Number"].ToString())).ToList()
-            : selectedSheets.OrderByDescending(sheet => int.Parse(sheet["Sheet Number"].ToString())).ToList();
+            ? selectedSheets.OrderBy(sheet => ExtractNumericPart(sheet["Sheet Number"].ToString())).ToList()
+            : selectedSheets.OrderByDescending(sheet => ExtractNumericPart(sheet["Sheet Number"].ToString())).ToList();
 
         using (Transaction trans = new Transaction(doc, "Increment Sheet Numbers"))
         {
@@ -107,21 +107,28 @@ public class IncrementSheetNumbers : IExternalCommand
 
     private string IncrementSheetNumber(string sheetNumber, int incrementValue)
     {
-        // Try to parse the sheet number as an integer
-        if (int.TryParse(sheetNumber, out int number))
-        {
-            return (number + incrementValue).ToString();
-        }
+        // Extract alphabetic prefix and numeric suffix
+        string prefix = new string(sheetNumber.TakeWhile(char.IsLetter).ToArray());
+        string numericPart = new string(sheetNumber.SkipWhile(char.IsLetter).ToArray());
 
-        // If parsing fails, try incrementing by detecting numeric suffix
-        string numericPart = new string(sheetNumber.Where(char.IsDigit).ToArray());
         if (int.TryParse(numericPart, out int numericValue))
         {
-            string nonNumericPart = new string(sheetNumber.Where(char.IsLetter).ToArray());
-            return $"{nonNumericPart}{numericValue + incrementValue}";
+            int incrementedValue = numericValue + incrementValue;
+
+            // Format the incremented numeric part to maintain leading zeros
+            string incrementedNumericPart = incrementedValue.ToString(new string('0', numericPart.Length));
+
+            return $"{prefix}{incrementedNumericPart}";
         }
 
-        // If no numeric part, return the same string (or handle as needed)
+        // If no numeric part is found, return the sheet number as-is
         return sheetNumber;
+    }
+
+    private int ExtractNumericPart(string sheetNumber)
+    {
+        // Extract the numeric part from the sheet number
+        string numericPart = new string(sheetNumber.Where(char.IsDigit).ToArray());
+        return int.TryParse(numericPart, out int result) ? result : 0;
     }
 }
