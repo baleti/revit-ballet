@@ -75,7 +75,6 @@ public class IncrementSheetNumbers : IExternalCommand
             trans.Commit();
         }
 
-        TaskDialog.Show("Info", "Sheet numbers incremented successfully.");
         return Result.Succeeded;
     }
 
@@ -107,21 +106,42 @@ public class IncrementSheetNumbers : IExternalCommand
 
     private string IncrementSheetNumber(string sheetNumber, int incrementValue)
     {
-        // Extract alphabetic prefix and numeric suffix
-        string prefix = new string(sheetNumber.TakeWhile(char.IsLetter).ToArray());
-        string numericPart = new string(sheetNumber.SkipWhile(char.IsLetter).ToArray());
-
-        if (int.TryParse(numericPart, out int numericValue))
+        // If the string is at least 4 characters, and the third character is a non-alphanumeric
+        // (e.g., '.' or '-'), treat the first three characters as the prefix, and everything
+        // after that as the numeric portion to be incremented.
+        if (sheetNumber.Length > 3 && !char.IsLetterOrDigit(sheetNumber[2]))
         {
-            int incrementedValue = numericValue + incrementValue;
+            // Example: "35.100" -> prefix = "35.", numericPart = "100"
+            //          "35-100" -> prefix = "35-", numericPart = "100"
+            string prefix = sheetNumber.Substring(0, 3);
+            string numericPart = sheetNumber.Substring(3);
 
-            // Format the incremented numeric part to maintain leading zeros
-            string incrementedNumericPart = incrementedValue.ToString(new string('0', numericPart.Length));
-
-            return $"{prefix}{incrementedNumericPart}";
+            if (int.TryParse(numericPart, out int numericValue))
+            {
+                int incrementedValue = numericValue + incrementValue;
+                // Keep the same number of digits by using the length of the original numericPart
+                string incrementedNumericPart = incrementedValue.ToString(
+                    new string('0', numericPart.Length));
+                return prefix + incrementedNumericPart;
+            }
         }
 
-        // If no numeric part is found, return the sheet number as-is
+        // Fallback to your original approach of:
+        // 1) Extract everything up to the first digit as prefix
+        // 2) The remainder is the numeric part
+        // 3) Increment, then reassemble
+        string oldPrefix = new string(sheetNumber.TakeWhile(ch => !char.IsDigit(ch)).ToArray());
+        string oldNumericPart = sheetNumber.Substring(oldPrefix.Length);
+
+        if (int.TryParse(oldNumericPart, out int oldNumericValue))
+        {
+            int incrementedOldValue = oldNumericValue + incrementValue;
+            string incrementedOldNumericPart = incrementedOldValue.ToString(
+                new string('0', oldNumericPart.Length));
+            return oldPrefix + incrementedOldNumericPart;
+        }
+
+        // If we cannot parse, return the original value
         return sheetNumber;
     }
 

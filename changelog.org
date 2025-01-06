@@ -855,3 +855,13 @@ they are fairly convenient, invoking any one of them automatically select curren
 it may still worth though to write separarate commands to perform bulk exports to avoid having to open entire project in the future when certain detail items are needed
 *** 19
 **** =13:58= minor fix to "SelectAllElementsInView" command to prevent it from selecting views
+*** 20
+**** =01:41= tried adding "ExportSelectedViews" command to automate export process of revit sheets to separate files, but it was confirmed that it isn't available in API
+only possible via PostableCommand
+[[Jeremy Tammik on autodesk forum][https://forums.autodesk.com/t5/revit-api-forum/api-version-of-quot-save-as-gt-library-quot/m-p/12452936/highlight/true#M75998]]
+* 2025
+** January
+*** 06
+**** =12:18= updated IncrementSheetNumbers command to handle different numbering format
+needed to update sheets numbered with a hyphen in third place, e.g. 35-501, 35-502
+hopefully it won't get more complex than that, wish we just all followed the iso standard
