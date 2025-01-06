@@ -865,3 +865,6 @@ only possible via PostableCommand
 **** =12:18= updated IncrementSheetNumbers command to handle different numbering format
 needed to update sheets numbered with a hyphen in third place, e.g. 35-501, 35-502
 hopefully it won't get more complex than that, wish we just all followed the iso standard
+[[https://chatgpt.com/share/677bcb3b-d8f8-800c-adc4-769b651e9791][chatgpt]]
+**** =16:32= updated OpenViews command, added "Sheet Folder" column, remove redundant "View Type"
+[[https://chatgpt.com/share/677c0771-806c-800c-833b-40733346649a][chatgpt]]
