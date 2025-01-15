@@ -98,6 +98,7 @@
     <Compile Include="revit-scripts\FilterSelectedByCategory.cs" />
     <Compile Include="revit-scripts\PasteCrossSession.cs" />
     <Compile Include="revit-scripts\PlaceMaterialKeynote.cs" />
+    <Compile Include="revit-scripts\SelectElementsHostedByTags.cs" />
     <Compile Include="revit-scripts\SelectFamilyTypesInCurrentView.cs" />
     <Compile Include="revit-scripts\SelectFamilyTypesInProject.cs" />
     <Compile Include="revit-scripts\SelectFamilyTypeInstancesInCurrentView.cs" />
@@ -115,6 +116,7 @@
     <Compile Include="revit-scripts\SelectDoubleSwitchedSocketOutletInLink.cs" />
     <Compile Include="revit-scripts\SelectModelGroup.cs" />
     <Compile Include="revit-scripts\SelectModelGroupsWithParameters.cs" />
+    <Compile Include="revit-scripts\SelectTagsForSelectedElements.cs" />
     <Compile Include="revit-scripts\SetParametersOfFamilyTypes.cs" />
     <Compile Include="revit-scripts\SetParametersOfSelectedInstances.cs" />
     <Compile Include="revit-scripts\SetParameterValueToSelectedFamilyTypesInCurrentFamily.cs" />
