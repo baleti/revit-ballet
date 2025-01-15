@@ -95,7 +95,7 @@
     <Compile Include="revit-scripts\DrawCircleAtOrigin.cs" />
     <Compile Include="revit-scripts\DrawCropRegion.cs" />
     <Compile Include="revit-scripts\ExportSelectedViews.cs" />
-    <Compile Include="revit-scripts\FilterSelectedCategories.cs" />
+    <Compile Include="revit-scripts\FilterSelectedByCategory.cs" />
     <Compile Include="revit-scripts\PasteCrossSession.cs" />
     <Compile Include="revit-scripts\PlaceMaterialKeynote.cs" />
     <Compile Include="revit-scripts\SelectFamilyTypesInCurrentView.cs" />

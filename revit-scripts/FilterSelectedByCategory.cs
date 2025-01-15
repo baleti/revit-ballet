@@ -7,7 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 [Transaction(TransactionMode.Manual)]
-public class FilterSelectedCategories : IExternalCommand
+public class FilterSelectedByCategory : IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
     {
@@ -24,25 +24,30 @@ public class FilterSelectedCategories : IExternalCommand
 
         // Get unique categories from selected elements
         var selectedElements = selectedElementIds.Select(id => doc.GetElement(id)).ToList();
-        var categories = selectedElements
-            .Select(el => el.Category)
-            .Where(cat => cat != null) // Exclude null categories
-            .Distinct()
+        var categoryGroups = selectedElements
+            .Where(el => el.Category != null) // Exclude elements with no category
+            .GroupBy(el => el.Category.Id)
+            .Select(group => new
+            {
+                Category = group.First().Category,
+                Elements = group.ToList()
+            })
             .ToList();
 
-        if (!categories.Any())
+        if (!categoryGroups.Any())
         {
             TaskDialog.Show("Filter Categories", "No valid categories found in the selection.");
             return Result.Cancelled;
         }
 
         // Prepare data for the DataGrid
-        List<Dictionary<string, object>> dataGridEntries = categories.Select(cat => new Dictionary<string, object>
+        List<Dictionary<string, object>> dataGridEntries = categoryGroups.Select(catGroup => new Dictionary<string, object>
         {
-            { "Category Name", cat.Name }
+            { "Category Name", catGroup.Category.Name },
+            { "Element Count", catGroup.Elements.Count }
         }).ToList();
 
-        List<string> propertyNames = new List<string> { "Category Name" };
+        List<string> propertyNames = new List<string> { "Category Name", "Element Count" };
 
         // Show DataGrid to let user select categories
         var selectedEntries = CustomGUIs.DataGrid(dataGridEntries, propertyNames, false);
@@ -58,14 +63,15 @@ public class FilterSelectedCategories : IExternalCommand
             .Select(entry => entry["Category Name"].ToString())
             .ToHashSet();
 
-        // Filter elements by selected categories
-        var filteredElements = selectedElements
-            .Where(el => selectedCategoryNames.Contains(el.Category.Name))
+        // Collect all elements belonging to the selected categories
+        var filteredElementIds = categoryGroups
+            .Where(catGroup => selectedCategoryNames.Contains(catGroup.Category.Name))
+            .SelectMany(catGroup => catGroup.Elements)
             .Select(el => el.Id)
             .ToList();
 
         // Update selection in Revit
-        uidoc.Selection.SetElementIds(filteredElements);
+        uidoc.Selection.SetElementIds(filteredElementIds);
 
         return Result.Succeeded;
     }
