@@ -95,12 +95,13 @@
     <Compile Include="revit-scripts\DrawCircleAtOrigin.cs" />
     <Compile Include="revit-scripts\DrawCropRegion.cs" />
     <Compile Include="revit-scripts\ExportSelectedViews.cs" />
+    <Compile Include="revit-scripts\FilterSelectedCategories.cs" />
     <Compile Include="revit-scripts\PasteCrossSession.cs" />
     <Compile Include="revit-scripts\PlaceMaterialKeynote.cs" />
     <Compile Include="revit-scripts\SelectFamilyTypesInCurrentView.cs" />
     <Compile Include="revit-scripts\SelectFamilyTypesInProject.cs" />
     <Compile Include="revit-scripts\SelectFamilyTypeInstancesInCurrentView.cs" />
-    <Compile Include="revit-scripts\ListSheets.cs" />
+    <Compile Include="revit-scripts\OpenSheets.cs" />
     <Compile Include="revit-scripts\ListSheetsWithAllParameters.cs" />
     <Compile Include="revit-scripts\ListSheetsByRevisions.cs" />
     <Compile Include="revit-scripts\ListSheetsByRevisionsWhereRevisionIsByCloud.cs" />

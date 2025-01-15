@@ -5,7 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 [Transaction(TransactionMode.Manual)]
-public class ListSheets : IExternalCommand
+public class OpenSheets : IExternalCommand
 {
     public Result Execute(
         ExternalCommandData commandData,
