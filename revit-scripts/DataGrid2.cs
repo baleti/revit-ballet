@@ -169,6 +169,30 @@ public partial class CustomGUIs
             }
         };
 
+        dataGridView.CellDoubleClick += (sender, e) =>
+        {
+            if (e.RowIndex >= 0)
+            {
+                // Clear previously filtered entries if any
+                filteredEntries.Clear();
+
+                foreach (DataGridViewRow selectedRow in dataGridView.SelectedRows)
+                {
+                    Dictionary<string, object> selectedEntry = new Dictionary<string, object>();
+                    for (int i = 0; i < propertyNames.Count; i++)
+                    {
+                        selectedEntry[propertyNames[i]] = selectedRow.Cells[i].Value;
+                    }
+                    filteredEntries.Add(selectedEntry);
+                }
+
+                // Indicate we've accepted a selection
+                escapePressed = true;
+                form.Close();
+            }
+        };
+
+
         // KeyDown event handling for DataGridView
         dataGridView.KeyDown += (sender, e) =>
         {
