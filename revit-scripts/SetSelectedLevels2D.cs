@@ -4,7 +4,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 
 [Transaction(TransactionMode.Manual)]
-public class ToggleLevels2D : IExternalCommand
+public class SetSelectedLevels2D : IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData, ref string message,ElementSet elements)
     {

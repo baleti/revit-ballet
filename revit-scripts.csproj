@@ -176,7 +176,8 @@
     <Compile Include="revit-scripts\test3.cs" />
     <Compile Include="revit-scripts\test4.cs" />
     <Compile Include="revit-scripts\test5.cs" />
-    <Compile Include="revit-scripts\ToggleLevels2D.cs" />
+    <Compile Include="revit-scripts\SetSelectedGrids2D.cs" />
+    <Compile Include="revit-scripts\SetSelectedLevels2D.cs" />
     <Compile Include="revit-scripts\ToggleWallLocationLine.cs" />
     <Compile Include="revit-scripts\TraceAllLines.cs" />
     <Compile Include="revit-scripts\TraceRooms.cs" />
