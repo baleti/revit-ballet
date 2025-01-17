@@ -87,6 +87,7 @@
     <Compile Include="revit-scripts\CopyCrossSession.cs" />
     <Compile Include="revit-scripts\CopyStructuralFoundationsFromLinkedModel.cs" />
     <Compile Include="revit-scripts\CreateDraftingViewsFromSheetNames.cs" />
+    <Compile Include="revit-scripts\CutWithIntersectingElements.cs" />
     <Compile Include="revit-scripts\DataGrid1.cs" />
     <Compile Include="revit-scripts\CutGeometryWithGroup.cs" />
     <Compile Include="revit-scripts\DataGrid2.cs" />
@@ -96,6 +97,7 @@
     <Compile Include="revit-scripts\DrawCropRegion.cs" />
     <Compile Include="revit-scripts\ExportSelectedViews.cs" />
     <Compile Include="revit-scripts\FilterSelectedByCategory.cs" />
+    <Compile Include="revit-scripts\OffsetWorkplane.cs" />
     <Compile Include="revit-scripts\PasteCrossSession.cs" />
     <Compile Include="revit-scripts\PlaceMaterialKeynote.cs" />
     <Compile Include="revit-scripts\SelectElementsHostedByTags.cs" />
