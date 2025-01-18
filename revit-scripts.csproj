@@ -91,12 +91,14 @@
     <Compile Include="revit-scripts\DataGrid1.cs" />
     <Compile Include="revit-scripts\CutGeometryWithGroup.cs" />
     <Compile Include="revit-scripts\DataGrid2.cs" />
+    <Compile Include="revit-scripts\DeleteFilters.cs" />
     <Compile Include="revit-scripts\DeleteRevisionCloudsFromSheets.cs" />
     <Compile Include="revit-scripts\DeselectRandomly.cs" />
     <Compile Include="revit-scripts\DrawCircleAtOrigin.cs" />
     <Compile Include="revit-scripts\DrawCropRegion.cs" />
     <Compile Include="revit-scripts\ExportSelectedViews.cs" />
     <Compile Include="revit-scripts\FilterSelectedByCategory.cs" />
+    <Compile Include="revit-scripts\ListViewsByFilters.cs" />
     <Compile Include="revit-scripts\OffsetWorkplane.cs" />
     <Compile Include="revit-scripts\PasteCrossSession.cs" />
     <Compile Include="revit-scripts\PlaceMaterialKeynote.cs" />
