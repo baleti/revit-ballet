@@ -98,6 +98,7 @@
     <Compile Include="revit-scripts\DrawCropRegion.cs" />
     <Compile Include="revit-scripts\ExportSelectedViews.cs" />
     <Compile Include="revit-scripts\FilterSelectedByCategory.cs" />
+    <Compile Include="revit-scripts\FilterTags.cs" />
     <Compile Include="revit-scripts\ListViewsByFilters.cs" />
     <Compile Include="revit-scripts\OffsetWorkplane.cs" />
     <Compile Include="revit-scripts\PasteCrossSession.cs" />
