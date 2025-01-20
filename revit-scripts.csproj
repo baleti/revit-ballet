@@ -104,6 +104,7 @@
     <Compile Include="revit-scripts\OffsetWorkplane.cs" />
     <Compile Include="revit-scripts\PasteCrossSession.cs" />
     <Compile Include="revit-scripts\PlaceMaterialKeynote.cs" />
+    <Compile Include="revit-scripts\RenameViews.cs" />
     <Compile Include="revit-scripts\SelectElementsHostedByTags.cs" />
     <Compile Include="revit-scripts\SelectFamilyTypesInCurrentView.cs" />
     <Compile Include="revit-scripts\SelectFamilyTypesInProject.cs" />
