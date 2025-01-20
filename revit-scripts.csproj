@@ -85,7 +85,8 @@
     <Compile Include="revit-scripts\CloseCurrentView.cs" />
     <Compile Include="revit-scripts\CloseViews.cs" />
     <Compile Include="revit-scripts\CopyCrossSession.cs" />
-    <Compile Include="revit-scripts\CopyStructuralFoundationsFromLinkedModel.cs" />
+    <Compile Include="revit-scripts\ImportElementsFromLinkedModel.cs" />
+    <Compile Include="revit-scripts\CopyToClipboardSelectedElementTypeName.cs" />
     <Compile Include="revit-scripts\CreateDraftingViewsFromSheetNames.cs" />
     <Compile Include="revit-scripts\CutWithIntersectingElements.cs" />
     <Compile Include="revit-scripts\DataGrid1.cs" />
