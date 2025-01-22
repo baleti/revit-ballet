@@ -25,41 +25,118 @@ public class FilterTags : IExternalCommand
             return Result.Cancelled;
         }
 
-        // Filter for IndependentTag elements
-        List<IndependentTag> selectedTags = new List<IndependentTag>();
+        // Filter for both IndependentTag and SpatialElementTag elements
+        List<Element> selectedTags = new List<Element>();
         foreach (ElementId id in selectedIds)
         {
             Element elem = doc.GetElement(id);
-            if (elem is IndependentTag tag)
+            if (elem is IndependentTag || elem is SpatialElementTag)
             {
-                selectedTags.Add(tag);
+                selectedTags.Add(elem);
             }
             else
             {
-                // If any element is not a tag, show dialog and exit
                 TaskDialog.Show("Filter Tags",
-                    "Please select only tag elements (IndependentTag). Command will now exit.");
+                    "Please select only tag elements (IndependentTag or Area Tags). Command will now exit.");
                 return Result.Cancelled;
             }
         }
 
+        // First pass: determine the maximum number of tag text parameters
+        int maxTagTextParams = 0;
+        foreach (var tag in selectedTags)
+        {
+            string tagText = "";
+            if (tag is IndependentTag independentTag)
+            {
+                tagText = independentTag.TagText;
+            }
+            else if (tag is SpatialElementTag spatialTag)
+            {
+                tagText = spatialTag.TagText;
+            }
+
+            // Clean and split the tag text
+            if (!string.IsNullOrEmpty(tagText))
+            {
+                var cleanText = tagText
+                    .Replace("\r\n", "\n")
+                    .Replace("\r", "\n")
+                    .Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                    .Select(s => s.Trim())
+                    .Where(s => !string.IsNullOrWhiteSpace(s))
+                    .ToList();
+
+                maxTagTextParams = Math.Max(maxTagTextParams, cleanText.Count);
+            }
+        }
+
+        // Build property names list with the determined number of TagText columns
+        List<string> propertyNames = new List<string>();
+        for (int i = 1; i <= maxTagTextParams; i++)
+        {
+            propertyNames.Add($"TagText{i}");
+        }
+        propertyNames.AddRange(new[]
+        {
+            "OwnerView",
+            "SheetNumber",
+            "SheetName",
+            "ElementId"
+        });
+
         // Build data to display
-        // Columns required: TagText, OwnerView, SheetNumber, SheetName, ElementId
         List<Dictionary<string, object>> entries = new List<Dictionary<string, object>>();
 
-        // Cache for view -> (sheetNumber, sheetName) lookups (optional for performance)
+        // Cache for view -> (sheetNumber, sheetName) lookups
         Dictionary<ElementId, (string viewName, string sheetNumber, string sheetName)> viewSheetInfoCache
-            = new Dictionary<ElementId, (string, string, string)>();
+            = new Dictionary<ElementId, (string viewName, string sheetNumber, string sheetName)>();
 
         foreach (var tag in selectedTags)
         {
             var dict = new Dictionary<string, object>();
 
-            // Tag text
-            dict["TagText"] = tag.TagText;
+            // Process tag text into separate columns
+            string tagText = "";
+            if (tag is IndependentTag independentTag)
+            {
+                tagText = independentTag.TagText;
+            }
+            else if (tag is SpatialElementTag spatialTag)
+            {
+                tagText = spatialTag.TagText;
+            }
 
-            // Retrieve the owner view, and from that the sheet info (if placed)
-            ElementId ownerViewId = tag.OwnerViewId;
+            // Clean and split the tag text
+            var tagTextParams = new List<string>();
+            if (!string.IsNullOrEmpty(tagText))
+            {
+                tagTextParams = tagText
+                    .Replace("\r\n", "\n")
+                    .Replace("\r", "\n")
+                    .Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                    .Select(s => s.Trim())
+                    .Where(s => !string.IsNullOrWhiteSpace(s))
+                    .ToList();
+            }
+
+            // Add tag text parameters to separate columns
+            for (int i = 1; i <= maxTagTextParams; i++)
+            {
+                dict[$"TagText{i}"] = i <= tagTextParams.Count ? tagTextParams[i - 1] : "";
+            }
+
+            // Get the owner view ID based on tag type
+            ElementId ownerViewId;
+            if (tag is IndependentTag independentTag2)
+            {
+                ownerViewId = independentTag2.OwnerViewId;
+            }
+            else // SpatialElementTag
+            {
+                ownerViewId = tag.OwnerViewId;
+            }
+
             string viewName = "";
             string sheetNumber = "";
             string sheetName = "";
@@ -97,24 +174,13 @@ public class FilterTags : IExternalCommand
             dict["SheetNumber"] = cached.sheetNumber;
             dict["SheetName"] = cached.sheetName;
 
-            // Finally, ElementId (at the end)
+            // ElementId
             dict["ElementId"] = tag.Id.IntegerValue;
 
             entries.Add(dict);
         }
 
-        // Define the property names (columns) to display in the desired order
-        // per request: "TagText", "OwnerView", "SheetNumber", "SheetName", "ElementId" (at the end)
-        List<string> propertyNames = new List<string>
-        {
-            "TagText",
-            "OwnerView",
-            "SheetNumber",
-            "SheetName",
-            "ElementId"
-        };
-
-        // Call the provided DataGrid method (from your CustomGUIs class)
+        // Call the provided DataGrid method
         var filteredEntries = CustomGUIs.DataGrid(
             entries,
             propertyNames,
@@ -125,11 +191,10 @@ public class FilterTags : IExternalCommand
         // If user pressed ESC or closed the form, filteredEntries may be empty
         if (filteredEntries == null || !filteredEntries.Any())
         {
-            // No change to selection
             return Result.Cancelled;
         }
 
-        // Otherwise, let's update the Revit selection with only the chosen elements
+        // Update the Revit selection with only the chosen elements
         List<ElementId> chosenIds = new List<ElementId>();
         foreach (var row in filteredEntries)
         {

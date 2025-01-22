@@ -6,6 +6,14 @@ using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 
+// Helper class to hold view information for the DataGrid
+public class ViewInfo
+{
+    public string Name { get; set; }
+    public string Title { get; set; }
+    public Autodesk.Revit.DB.View RevitView { get; set; }
+}
+
 [Transaction(TransactionMode.Manual)]
 public class RenameViews : IExternalCommand
 {
@@ -22,19 +30,32 @@ public class RenameViews : IExternalCommand
             .OrderBy(v => v.Name)
             .ToList();
 
+        // Convert views to ViewInfo objects for the DataGrid
+        List<ViewInfo> viewInfoList = allViews.Select(v => new ViewInfo
+        {
+            Name = v.Name,
+            Title = v.Title,
+            RevitView = v
+        }).ToList();
+
         // 2) Let user pick which views to rename (via your existing CustomGUIs.DataGrid)
-        List<Autodesk.Revit.DB.View> selectedViews = CustomGUIs.DataGrid(
-            allViews, 
-            new List<string> { "Name" }, 
-            null, 
+        List<ViewInfo> selectedViewInfos = CustomGUIs.DataGrid(
+            viewInfoList,
+            new List<string> { "Title" },
+            null,
             "Select Views to Rename"
         );
 
-        if (selectedViews == null || selectedViews.Count == 0)
+        if (selectedViewInfos == null || selectedViewInfos.Count == 0)
         {
             // user didn't pick anything
             return Result.Succeeded;
         }
+
+        // Convert back to View objects for the rename process
+        List<Autodesk.Revit.DB.View> selectedViews = selectedViewInfos
+            .Select(vi => vi.RevitView)
+            .ToList();
 
         // 3) Show the second dialog that displays "before" & "after" lines
         using (var renameForm = new InteractiveFindReplaceForm(selectedViews))
@@ -42,7 +63,7 @@ public class RenameViews : IExternalCommand
             // If user hits Esc or closes the dialog, we treat as canceled
             if (renameForm.ShowDialog() != System.Windows.Forms.DialogResult.OK)
             {
-                return Result.Succeeded; 
+                return Result.Succeeded;
             }
 
             // Retrieve final "Find" / "Replace" strings
@@ -65,7 +86,7 @@ public class RenameViews : IExternalCommand
                     }
                     catch (Exception ex)
                     {
-                        TaskDialog.Show("Error", 
+                        TaskDialog.Show("Error",
                             $"Could not rename view \"{v.Name}\".\n{ex.Message}");
                     }
                 }
@@ -146,7 +167,7 @@ public class InteractiveFindReplaceForm : System.Windows.Forms.Form
         _lblAfter = new System.Windows.Forms.Label { Text = "After (Preview):" };
 
         // Two RichTextBoxes for multi-line display
-        _rtbBefore = new System.Windows.Forms.RichTextBox 
+        _rtbBefore = new System.Windows.Forms.RichTextBox
         {
             ReadOnly = true,
             BackColor = System.Drawing.SystemColors.Window,  // so it looks normal
@@ -256,11 +277,6 @@ public class InteractiveFindReplaceForm : System.Windows.Forms.Form
 
     private void UpdatePreview()
     {
-        // We'll rebuild the "Before" and "After" text from scratch each time the user types.
-        // If you wanted partial substring highlighting in "Before", you could do so by
-        // searching for matches and coloring them (as we've shown previously).
-        // For now, we'll keep it simpler.
-
         string findStr = _txtFind.Text ?? string.Empty;
         string replaceStr = _txtReplace.Text ?? string.Empty;
 
@@ -268,9 +284,6 @@ public class InteractiveFindReplaceForm : System.Windows.Forms.Form
         _rtbBefore.Clear();
         foreach (var view in _selectedViews)
         {
-            // If you want to highlight "findStr" in "Before", you could call
-            // AppendTextWithHighlight(_rtbBefore, view.Name, findStr);
-            // For simplicity, we'll just re-display the original name:
             _rtbBefore.AppendText(view.Name + Environment.NewLine);
         }
 
@@ -282,37 +295,4 @@ public class InteractiveFindReplaceForm : System.Windows.Forms.Form
             _rtbAfter.AppendText(newName + Environment.NewLine);
         }
     }
-
-    // Example helper if you want partial highlight in "Before" box:
-    // private void AppendTextWithHighlight(System.Windows.Forms.RichTextBox rtb, string text, string findText)
-    // {
-    //     if (string.IsNullOrEmpty(findText))
-    //     {
-    //         // no highlight, just append
-    //         rtb.AppendText(text + Environment.NewLine);
-    //         return;
-    //     }
-    //
-    //     int startIdx = 0;
-    //     while (true)
-    //     {
-    //         int matchPos = text.IndexOf(findText, startIdx, StringComparison.OrdinalIgnoreCase);
-    //         if (matchPos < 0)
-    //         {
-    //             // append the remainder normally
-    //             rtb.SelectionColor = Color.Black;
-    //             rtb.AppendText(text.Substring(startIdx) + Environment.NewLine);
-    //             break;
-    //         }
-    //         // append text before match
-    //         rtb.SelectionColor = Color.Black;
-    //         rtb.AppendText(text.Substring(startIdx, matchPos - startIdx));
-    //
-    //         // highlight the match
-    //         rtb.SelectionColor = Color.Red; // pick your highlight color
-    //         rtb.AppendText(text.Substring(matchPos, findText.Length));
-    //
-    //         startIdx = matchPos + findText.Length;
-    //     }
-    // }
 }
