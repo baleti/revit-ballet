@@ -85,6 +85,8 @@
     <Compile Include="revit-scripts\CloseCurrentView.cs" />
     <Compile Include="revit-scripts\CloseViews.cs" />
     <Compile Include="revit-scripts\CopyCrossSession.cs" />
+    <Compile Include="revit-scripts\ExportScheduleToKeynoteFile.cs" />
+    <Compile Include="revit-scripts\FilterText.cs" />
     <Compile Include="revit-scripts\ImportElementsFromLinkedModel.cs" />
     <Compile Include="revit-scripts\CopyToClipboardSelectedElementTypeName.cs" />
     <Compile Include="revit-scripts\CreateDraftingViewsFromSheetNames.cs" />
@@ -124,6 +126,7 @@
     <Compile Include="revit-scripts\SelectModelGroup.cs" />
     <Compile Include="revit-scripts\SelectModelGroupsWithParameters.cs" />
     <Compile Include="revit-scripts\SelectTagsForSelectedElements.cs" />
+    <Compile Include="revit-scripts\SelectViews.cs" />
     <Compile Include="revit-scripts\SetParametersOfFamilyTypes.cs" />
     <Compile Include="revit-scripts\SetParametersOfSelectedInstances.cs" />
     <Compile Include="revit-scripts\SetParameterValueToSelectedFamilyTypesInCurrentFamily.cs" />

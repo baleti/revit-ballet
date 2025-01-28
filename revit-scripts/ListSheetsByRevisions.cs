@@ -69,17 +69,33 @@ public class ListSheetsByRevisions : IExternalCommand
             return Result.Cancelled;
         }
 
-        // Create data entries for the sheets
+        // Create data entries for the sheets including latest revision info
         List<Dictionary<string, object>> sheetEntries = sheetsWithRevisions
-            .Select(sheet => new Dictionary<string, object>
+            .Select(sheet =>
             {
-                { "Sheet Title", sheet.Title },
-                { "Sheet Number", sheet.SheetNumber }
+                // Get all revisions for this sheet and find the latest one
+                var sheetRevisionIds = sheet.GetAllRevisionIds();
+                var sheetRevisions = sheetRevisionIds
+                    .Select(revId => doc.GetElement(revId) as Revision)
+                    .Where(rev => rev != null)
+                    .OrderByDescending(rev => rev.SequenceNumber)
+                    .ToList();
+
+                var latestRevision = sheetRevisions.FirstOrDefault();
+                
+                return new Dictionary<string, object>
+                {
+                    { "Sheet Title", sheet.Title },
+                    { "Sheet Number", sheet.SheetNumber },
+                    { "Latest Rev Num", latestRevision?.SequenceNumber ?? 0 },
+                    { "Latest Rev Date", latestRevision?.RevisionDate ?? "N/A" },
+                    { "Latest Rev Description", latestRevision?.Description ?? "N/A" }
+                };
             })
             .ToList();
 
         // Display the sheets and let the user select one or more sheets
-        List<string> sheetProperties = new List<string> { "Sheet Title", "Sheet Number" };
+        List<string> sheetProperties = new List<string> { "Sheet Title", "Sheet Number", "Latest Rev Num", "Latest Rev Date", "Latest Rev Description" };
         List<Dictionary<string, object>> selectedSheets = CustomGUIs.DataGrid(sheetEntries, sheetProperties, false);
 
         if (selectedSheets.Count == 0)

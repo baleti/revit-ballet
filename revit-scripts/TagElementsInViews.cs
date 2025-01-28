@@ -118,7 +118,7 @@ public class TagElementsInViews : IExternalCommand
                             int viewScale = activeView.Scale;
 
                             // Calculate the offset based on the view scale
-                            double offsetY = 0.009 * viewScale; // Arbitrary scaling factor
+                            double offsetY = 0.003 * viewScale; // Arbitrary scaling factor
 
                             // Calculate the tag position with offset
                             XYZ minPoint = boundingBox.Min;
