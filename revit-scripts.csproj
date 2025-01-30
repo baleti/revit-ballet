@@ -102,10 +102,12 @@
     <Compile Include="revit-scripts\ExportSelectedViews.cs" />
     <Compile Include="revit-scripts\FilterSelectedByCategory.cs" />
     <Compile Include="revit-scripts\FilterTags.cs" />
+    <Compile Include="revit-scripts\ListSheetsWithRevisions.cs" />
     <Compile Include="revit-scripts\ListViewsByFilters.cs" />
     <Compile Include="revit-scripts\OffsetWorkplane.cs" />
     <Compile Include="revit-scripts\PasteCrossSession.cs" />
     <Compile Include="revit-scripts\PlaceMaterialKeynote.cs" />
+    <Compile Include="revit-scripts\RenamesInstanceParameters.cs" />
     <Compile Include="revit-scripts\RenameViews.cs" />
     <Compile Include="revit-scripts\SelectElementsHostedByTags.cs" />
     <Compile Include="revit-scripts\SelectFamilyTypesInCurrentView.cs" />
@@ -127,6 +129,8 @@
     <Compile Include="revit-scripts\SelectModelGroupsWithParameters.cs" />
     <Compile Include="revit-scripts\SelectTagsForSelectedElements.cs" />
     <Compile Include="revit-scripts\SelectViews.cs" />
+    <Compile Include="revit-scripts\SetMarkParameterToNumberSequenceAlongX.cs" />
+    <Compile Include="revit-scripts\SetMarkParameterToNumberSequenceAlongXWithPadding.cs" />
     <Compile Include="revit-scripts\SetParametersOfFamilyTypes.cs" />
     <Compile Include="revit-scripts\SetParametersOfSelectedInstances.cs" />
     <Compile Include="revit-scripts\SetParameterValueToSelectedFamilyTypesInCurrentFamily.cs" />
@@ -180,6 +184,7 @@
     <Compile Include="revit-scripts\TagSelectedElements.cs" />
     <Compile Include="revit-scripts\TagElementsInSelectedViews.cs" />
     <Compile Include="revit-scripts\test.cs" />
+    <Compile Include="revit-scripts\test10.cs" />
     <Compile Include="revit-scripts\test2.cs" />
     <Compile Include="revit-scripts\test3.cs" />
     <Compile Include="revit-scripts\test4.cs" />
