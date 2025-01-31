@@ -111,7 +111,9 @@
     <Compile Include="revit-scripts\RenamesInstanceParameters.cs" />
     <Compile Include="revit-scripts\RenameViews.cs" />
     <Compile Include="revit-scripts\SelectDetailGroups.cs" />
+    <Compile Include="revit-scripts\SelectDetailGroupsInCurrentView.cs" />
     <Compile Include="revit-scripts\SelectElementsHostedByTags.cs" />
+    <Compile Include="revit-scripts\SelectElementsInSelectedGroups.cs" />
     <Compile Include="revit-scripts\SelectFamilyTypesInCurrentView.cs" />
     <Compile Include="revit-scripts\SelectFamilyTypesInProject.cs" />
     <Compile Include="revit-scripts\SelectFamilyTypeInstancesInCurrentView.cs" />
@@ -170,13 +172,13 @@
     <Compile Include="revit-scripts\Resize3DSectionBoxVertically.cs" />
     <Compile Include="revit-scripts\SaveOpenedViews.cs" />
     <Compile Include="revit-scripts\SectionBox3DFromCurrentView.cs" />
-    <Compile Include="revit-scripts\SelectDetailGroupsBySheets.cs" />
     <Compile Include="revit-scripts\SelectAllElementsInView.cs" />
     <Compile Include="revit-scripts\SelectCategories.cs" />
     <Compile Include="revit-scripts\SelectAllElementsInViewAndInGroups.cs" />
     <Compile Include="revit-scripts\SelectDetailItemsWithKeynote.cs" />
     <Compile Include="revit-scripts\SelectLinkedModel.cs" />
     <Compile Include="revit-scripts\SetCustomScaleParameterForSheets.cs" />
+    <Compile Include="revit-scripts\SplitFilledRegions.cs" />
     <Compile Include="revit-scripts\SwitchToLastView.cs" />
     <Compile Include="revit-scripts\SwitchViewByHistory.cs" />
     <Compile Include="revit-scripts\SwitchView.cs" />
