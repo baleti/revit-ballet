@@ -8,7 +8,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 
 [Transaction(TransactionMode.Manual)]
-public class RenameGroupsCommand : IExternalCommand
+public class RenameGroups : IExternalCommand
 {
     private class GroupTypeInfo
     {
@@ -113,6 +113,7 @@ public class RenameGroupsCommand : IExternalCommand
         private WinForms.TextBox _txtPattern;
         private WinForms.RichTextBox _rtbBefore;
         private WinForms.RichTextBox _rtbAfter;
+        private WinForms.Button _btnCancel;
 
         public string FindText => _txtFind.Text;
         public string ReplaceText => _txtReplace.Text;
@@ -194,17 +195,41 @@ public class RenameGroupsCommand : IExternalCommand
                 Size = new Draw.Size(80, 30),
                 DialogResult = WinForms.DialogResult.OK
             };
+
+            _btnCancel = new WinForms.Button
+            {
+                Text = "Cancel",
+                Size = new Draw.Size(80, 30),
+                DialogResult = WinForms.DialogResult.Cancel
+            };
+
             var buttonPanel = new WinForms.Panel { Dock = WinForms.DockStyle.Bottom, Height = 40 };
             buttonPanel.Controls.Add(btnOk);
+            buttonPanel.Controls.Add(_btnCancel);
             btnOk.Anchor = WinForms.AnchorStyles.Bottom | WinForms.AnchorStyles.Right;
+            _btnCancel.Anchor = WinForms.AnchorStyles.Bottom | WinForms.AnchorStyles.Right;
+            
             btnOk.Location = new Draw.Point(buttonPanel.Width - btnOk.Width - 10, 5);
+            _btnCancel.Location = new Draw.Point(buttonPanel.Width - btnOk.Width - _btnCancel.Width - 20, 5);
 
             _txtFind.TextChanged += UpdatePreview;
             _txtReplace.TextChanged += UpdatePreview;
             _txtPattern.TextChanged += UpdatePreview;
             this.AcceptButton = btnOk;
+            this.CancelButton = _btnCancel;
             this.Controls.Add(mainLayout);
             this.Controls.Add(buttonPanel);
+        }
+
+        protected override bool ProcessDialogKey(WinForms.Keys keyData)
+        {
+            if (keyData == WinForms.Keys.Escape)
+            {
+                this.DialogResult = WinForms.DialogResult.Cancel;
+                this.Close();
+                return true;
+            }
+            return base.ProcessDialogKey(keyData);
         }
 
         private void InitializeData()

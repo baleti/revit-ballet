@@ -48,10 +48,9 @@ public class RenamesInstanceParameters : IExternalCommand
             {
                 foreach (Parameter param in elem.Parameters)
                 {
-                    // Corrected parameter check
                     if (!param.IsReadOnly &&
                         param.StorageType == StorageType.String &&
-                        !param.IsShared) // Use IsShared instead of non-existent IsInstance
+                        !param.IsShared)
                     {
                         paramNames.Add(param.Definition.Name);
                     }
@@ -83,7 +82,7 @@ public class RenamesInstanceParameters : IExternalCommand
                     var param = elem.LookupParameter(paramName);
                     if (param?.StorageType == StorageType.String && 
                         !param.IsReadOnly &&
-                        !param.IsShared) // Corrected check here
+                        !param.IsShared)
                     {
                         paramValues.Add(new ParameterValueInfo
                         {
@@ -168,6 +167,16 @@ public class RenamesInstanceParameters : IExternalCommand
             _paramValues = paramValues;
             InitializeComponent();
             InitializeData();
+            
+            // Add handler for Escape key
+            this.KeyDown += (s, e) => 
+            {
+                if (e.KeyCode == Keys.Escape)
+                {
+                    this.DialogResult = DialogResult.Cancel;
+                    this.Close();
+                }
+            };
         }
 
         private void InitializeComponent()
@@ -264,6 +273,22 @@ public class RenamesInstanceParameters : IExternalCommand
             mainLayout.Controls.Add(groupAfter, 0, 5);
             mainLayout.SetColumnSpan(groupAfter, 2);
 
+            // Button Panel
+            var buttonPanel = new System.Windows.Forms.Panel { 
+                Dock = System.Windows.Forms.DockStyle.Bottom, 
+                Height = 40 
+            };
+
+            // Cancel Button
+            var btnCancel = new System.Windows.Forms.Button 
+            { 
+                Text = "Cancel",
+                Size = new System.Drawing.Size(80, 30),
+                DialogResult = System.Windows.Forms.DialogResult.Cancel
+            };
+            buttonPanel.Controls.Add(btnCancel);
+            btnCancel.Anchor = System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Right;
+            
             // OK Button
             var btnOk = new System.Windows.Forms.Button 
             { 
@@ -271,15 +296,20 @@ public class RenamesInstanceParameters : IExternalCommand
                 Size = new System.Drawing.Size(80, 30),
                 DialogResult = System.Windows.Forms.DialogResult.OK
             };
-            var buttonPanel = new System.Windows.Forms.Panel { 
-                Dock = System.Windows.Forms.DockStyle.Bottom, 
-                Height = 40 
-            };
             buttonPanel.Controls.Add(btnOk);
-            btnOk.Anchor = System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Right;
+            
+            // Adjust buttons to be anchored to bottom right
+            btnOk.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
+            btnCancel.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
+            
+            // Position buttons
             btnOk.Location = new System.Drawing.Point(
                 buttonPanel.Width - btnOk.Width - 10, 
-                5
+                buttonPanel.Height - btnOk.Height - 5
+            );
+            btnCancel.Location = new System.Drawing.Point(
+                btnOk.Left - btnCancel.Width - 10,
+                btnOk.Top
             );
 
             // Event Handlers
@@ -287,6 +317,8 @@ public class RenamesInstanceParameters : IExternalCommand
             _txtReplace.TextChanged += UpdatePreview;
             _txtPattern.TextChanged += UpdatePreview;
             this.AcceptButton = btnOk;
+            this.CancelButton = btnCancel;
+            
             this.Controls.Add(mainLayout);
             this.Controls.Add(buttonPanel);
         }
