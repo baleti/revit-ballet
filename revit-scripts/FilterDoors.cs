@@ -35,6 +35,7 @@ public class FilterDoors : IExternalCommand
         List<Dictionary<string, object>> doorData = new List<Dictionary<string, object>>();
         List<string> propertyNames = new List<string>
         {
+            "Element Id",
             "Family Name",
             "Instance Name",
             "Level",
@@ -59,6 +60,7 @@ public class FilterDoors : IExternalCommand
 
             ElementType doorType = doc.GetElement(door.GetTypeId()) as ElementType;
 
+            doorProperties["Element Id"] = door.Id.IntegerValue.ToString();
             doorProperties["Family Name"] = doorType?.FamilyName ?? "";
             doorProperties["Instance Name"] = door.Name;
             doorProperties["Level"] = doc.GetElement(door.LevelId)?.Name ?? "";
@@ -78,13 +80,28 @@ public class FilterDoors : IExternalCommand
             if (doorInst.ToRoom != null)
                 doorProperties["Room To"] = doorInst.ToRoom?.Name ?? "";
 
-            foreach (Parameter param in door.Parameters)
+            // First collect all shared parameters from all doors
+            var allSharedParams = selectedDoors
+                .SelectMany(d => d.Parameters.Cast<Parameter>())
+                .Where(p => p.IsShared)
+                .Select(p => p.Definition.Name)
+                .Distinct()
+                .ToList();
+
+            // Add them to propertyNames if not already present
+            foreach (var paramName in allSharedParams)
             {
-                if (param.IsShared && !propertyNames.Contains(param.Definition.Name))
+                if (!propertyNames.Contains(paramName))
                 {
-                    propertyNames.Add(param.Definition.Name);
-                    doorProperties[param.Definition.Name] = param.AsString() ?? "";
+                    propertyNames.Add(paramName);
                 }
+            }
+
+            // Now add values for all shared parameters
+            foreach (var paramName in allSharedParams)
+            {
+                var param = door.LookupParameter(paramName);
+                doorProperties[paramName] = param?.AsString() ?? "";
             }
 
             doorData.Add(doorProperties);
@@ -96,8 +113,7 @@ public class FilterDoors : IExternalCommand
         {
             List<ElementId> finalSelection = selectedDoors
                 .Where(d => selectedFromGrid.Any(s => 
-                    d.Name == s["Instance Name"].ToString() && 
-                    (d as FamilyInstance)?.Symbol.FamilyName == s["Family Name"].ToString()))
+                    s["Element Id"].ToString() == d.Id.IntegerValue.ToString()))
                 .Select(d => d.Id)
                 .ToList();
             
