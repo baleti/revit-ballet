@@ -91,7 +91,7 @@ public partial class CustomGUIs
                 column.Visible = shouldShow;
             }
 
-            // Existing row filtering logic with exclusion terms and OR groups
+            // Extract exclusion terms and OR groups from row filter text
             var exclusionTerms = rowFilterTextLower.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries)
                 .Where(term => term.StartsWith("!"))
                 .Select(term => term.Substring(1))
@@ -103,12 +103,22 @@ public partial class CustomGUIs
 
             var filtered = entries.Where(entry =>
             {
-                if (exclusionTerms.Any(exclTerm =>
-                    entry.Values.Any(value => value != null && value.ToString().ToLower().Contains(exclTerm))))
+                // Handle exclusion terms first
+                if (exclusionTerms.Any(exclTerm => 
+                    entry.Values.Any(value => 
+                        value != null && 
+                        value.ToString().ToLower().Contains(exclTerm))))
                 {
                     return false;
                 }
 
+                // Show all entries if no search terms (except excluded ones)
+                if (searchTerms.Count == 0)
+                {
+                    return true;
+                }
+
+                // Process OR groups
                 foreach (var orQuery in searchTerms)
                 {
                     bool orQueryMatched = true;
@@ -116,8 +126,9 @@ public partial class CustomGUIs
                     {
                         bool isNegation = term.StartsWith("!");
                         string actualTerm = isNegation ? term.Substring(1) : term;
-                        bool termFound = entry.Values.Any(value =>
-                            value != null && value.ToString().ToLower().Contains(actualTerm));
+                        bool termFound = entry.Values.Any(value => 
+                            value != null && 
+                            value.ToString().ToLower().Contains(actualTerm));
 
                         if (isNegation ? termFound : !termFound)
                         {
@@ -135,6 +146,7 @@ public partial class CustomGUIs
                 return false;
             }).ToList();
 
+            // Update DataGridView with filtered results
             dataGridView.Rows.Clear();
             foreach (var item in filtered)
             {
