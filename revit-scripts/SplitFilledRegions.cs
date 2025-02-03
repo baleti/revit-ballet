@@ -71,7 +71,7 @@ namespace RevitCommands
                     }
 
                     // Delete the original filled region
-                    doc.Delete(region.Id);
+                    //doc.Delete(region.Id);
                 }
 
                 trans.Commit();

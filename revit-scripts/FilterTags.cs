@@ -82,6 +82,9 @@ public class FilterTags : IExternalCommand
             "OwnerView",
             "SheetNumber",
             "SheetName",
+            "X",           // X coordinate
+            "Y",           // Y coordinate
+            "Z",           // Z coordinate
             "ElementId"
         });
 
@@ -126,11 +129,41 @@ public class FilterTags : IExternalCommand
                 dict[$"TagText{i}"] = i <= tagTextParams.Count ? tagTextParams[i - 1] : "";
             }
 
-            // Get the owner view ID based on tag type
-            ElementId ownerViewId;
+            // Get tag location point and add coordinates
+            XYZ location = null;
             if (tag is IndependentTag independentTag2)
             {
-                ownerViewId = independentTag2.OwnerViewId;
+                location = independentTag2.TagHeadPosition;
+            }
+            else if (tag is SpatialElementTag spatialTag2)
+            {
+                // For spatial tags, get the location point
+                LocationPoint locPoint = tag.Location as LocationPoint;
+                if (locPoint != null)
+                {
+                    location = locPoint.Point;
+                }
+            }
+
+            // Add coordinates to dictionary
+            if (location != null)
+            {
+                dict["X"] = Math.Round(location.X, 2);
+                dict["Y"] = Math.Round(location.Y, 2);
+                dict["Z"] = Math.Round(location.Z, 2);
+            }
+            else
+            {
+                dict["X"] = "N/A";
+                dict["Y"] = "N/A";
+                dict["Z"] = "N/A";
+            }
+
+            // Get the owner view ID based on tag type
+            ElementId ownerViewId;
+            if (tag is IndependentTag independentTag3)
+            {
+                ownerViewId = independentTag3.OwnerViewId;
             }
             else // SpatialElementTag
             {

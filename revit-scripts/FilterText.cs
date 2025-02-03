@@ -75,7 +75,10 @@ public class FilterText : IExternalCommand
             "OwnerView",
             "SheetNumber",
             "SheetName",
-            "ElementId"
+            "X",           // X coordinate
+            "Y",           // Y coordinate
+            // "Z"            // Z coordinate
+            "ElementId",
         });
 
         // Build data to display
@@ -110,6 +113,33 @@ public class FilterText : IExternalCommand
             for (int i = 1; i <= maxTextLines; i++)
             {
                 dict[$"Text{i}"] = i <= textLines.Count ? textLines[i - 1] : "";
+            }
+
+            // Get text location point and add coordinates
+            XYZ location = null;
+            LocationPoint locPoint = text.Location as LocationPoint;
+            if (locPoint != null)
+            {
+                location = locPoint.Point;
+            }
+            else
+            {
+                // Fallback to using the text's coordinate system origin
+                location = textNote.Coord;
+            }
+
+            // Add coordinates to dictionary
+            if (location != null)
+            {
+                dict["X"] = Math.Round(location.X, 2);
+                dict["Y"] = Math.Round(location.Y, 2);
+                dict["Z"] = Math.Round(location.Z, 2);
+            }
+            else
+            {
+                dict["X"] = "N/A";
+                dict["Y"] = "N/A";
+                dict["Z"] = "N/A";
             }
 
             // Get the owner view ID

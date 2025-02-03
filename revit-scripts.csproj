@@ -133,8 +133,9 @@
     <Compile Include="revit-scripts\SelectModelGroupsWithParameters.cs" />
     <Compile Include="revit-scripts\SelectTagsForSelectedElements.cs" />
     <Compile Include="revit-scripts\SelectViews.cs" />
-    <Compile Include="revit-scripts\SetMarkParameterToNumberSequenceAlongX.cs" />
-    <Compile Include="revit-scripts\SetMarkParameterToNumberSequenceAlongXWithPadding.cs" />
+    <Compile Include="revit-scripts\SetInstanceParameterToNumberSequenceAlongX.cs" />
+    <Compile Include="revit-scripts\SetInstanceParameterToNumberSequenceAlongXWithPadding.cs" />
+    <Compile Include="revit-scripts\SetInstanceParameterToNumberSequenceClockwise.cs" />
     <Compile Include="revit-scripts\SetParametersOfFamilyTypes.cs" />
     <Compile Include="revit-scripts\SetParametersOfSelectedInstances.cs" />
     <Compile Include="revit-scripts\SetParameterValueToSelectedFamilyTypesInCurrentFamily.cs" />
