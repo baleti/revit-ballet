@@ -12,7 +12,7 @@ public class FilterDoors : IExternalCommand
         UIDocument uidoc = commandData.Application.ActiveUIDocument;
         Document doc = uidoc.Document;
 
-        // Get selected elements
+        // Get and filter selected elements
         ICollection<ElementId> selectedIds = uidoc.Selection.GetElementIds();
         if (!selectedIds.Any())
         {
@@ -20,10 +20,9 @@ public class FilterDoors : IExternalCommand
             return Result.Failed;
         }
 
-        // Filter for doors only
         List<Element> selectedDoors = selectedIds
             .Select(id => doc.GetElement(id))
-            .Where(e => e.Category.Id.IntegerValue == (int)BuiltInCategory.OST_Doors)
+            .Where(e => e?.Category?.Id.IntegerValue == (int)BuiltInCategory.OST_Doors)
             .ToList();
 
         if (!selectedDoors.Any())
@@ -32,35 +31,35 @@ public class FilterDoors : IExternalCommand
             return Result.Failed;
         }
 
-        List<Dictionary<string, object>> doorData = new List<Dictionary<string, object>>();
+        // Collect shared parameters once before processing
+        var sharedParams = selectedDoors
+            .SelectMany(d => d.Parameters.OfType<Parameter>())
+            .Where(p => p.IsShared)
+            .Select(p => p.Definition.Name)
+            .Distinct()
+            .OrderBy(n => n)
+            .ToList();
+
+        // Prepare data structures
         List<string> propertyNames = new List<string>
         {
-            "Element Id",
-            "Family Name",
-            "Instance Name",
-            "Level",
-            "Mark",
-            "Head Height",
-            "Comments",
-            "Group",
-            "FacingFlipped",
-            "HandFlipped",
-            "Width",
-            "Height",
-            "Room From",
-            "Room To"
+            "Element Id", "Family Name", "Instance Name", "Level", "Mark",
+            "Head Height", "Comments", "Group", "FacingFlipped", "HandFlipped",
+            "Width", "Height", "Room From", "Room To"
         };
+        propertyNames.AddRange(sharedParams);
+
+        List<Dictionary<string, object>> doorData = new List<Dictionary<string, object>>();
 
         foreach (Element door in selectedDoors)
         {
-            FamilyInstance doorInst = door as FamilyInstance;
-            if (doorInst == null) continue;
+            if (!(door is FamilyInstance doorInst)) continue;
 
             Dictionary<string, object> doorProperties = new Dictionary<string, object>();
-
             ElementType doorType = doc.GetElement(door.GetTypeId()) as ElementType;
 
-            doorProperties["Element Id"] = door.Id.IntegerValue.ToString();
+            // Built-in parameters
+            doorProperties["Element Id"] = door.Id.IntegerValue;
             doorProperties["Family Name"] = doorType?.FamilyName ?? "";
             doorProperties["Instance Name"] = door.Name;
             doorProperties["Level"] = doc.GetElement(door.LevelId)?.Name ?? "";
@@ -68,52 +67,31 @@ public class FilterDoors : IExternalCommand
             doorProperties["Head Height"] = door.get_Parameter(BuiltInParameter.INSTANCE_HEAD_HEIGHT_PARAM)?.AsDouble() ?? 0.0;
             doorProperties["Comments"] = door.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS)?.AsString() ?? "";
             doorProperties["Group"] = door.GroupId != ElementId.InvalidElementId ? doc.GetElement(door.GroupId)?.Name : "";
-
             doorProperties["FacingFlipped"] = doorInst.FacingFlipped;
             doorProperties["HandFlipped"] = doorInst.HandFlipped;
-
             doorProperties["Width"] = doorType?.get_Parameter(BuiltInParameter.DOOR_WIDTH)?.AsDouble() ?? 0.0;
             doorProperties["Height"] = doorType?.get_Parameter(BuiltInParameter.DOOR_HEIGHT)?.AsDouble() ?? 0.0;
+            doorProperties["Room From"] = doorInst.FromRoom?.Name ?? "";
+            doorProperties["Room To"] = doorInst.ToRoom?.Name ?? "";
 
-            if (doorInst.FromRoom != null)
-                doorProperties["Room From"] = doorInst.FromRoom?.Name ?? "";
-            if (doorInst.ToRoom != null)
-                doorProperties["Room To"] = doorInst.ToRoom?.Name ?? "";
-
-            // First collect all shared parameters from all doors
-            var allSharedParams = selectedDoors
-                .SelectMany(d => d.Parameters.Cast<Parameter>())
-                .Where(p => p.IsShared)
-                .Select(p => p.Definition.Name)
-                .Distinct()
-                .ToList();
-
-            // Add them to propertyNames if not already present
-            foreach (var paramName in allSharedParams)
-            {
-                if (!propertyNames.Contains(paramName))
-                {
-                    propertyNames.Add(paramName);
-                }
-            }
-
-            // Now add values for all shared parameters
-            foreach (var paramName in allSharedParams)
+            // Shared parameters
+            foreach (var paramName in sharedParams)
             {
                 var param = door.LookupParameter(paramName);
-                doorProperties[paramName] = param?.AsString() ?? "";
+                doorProperties[paramName] = param?.AsValueString() ?? param?.AsString() ?? "";
             }
 
             doorData.Add(doorProperties);
         }
 
+        // DataGrid handling
         List<Dictionary<string, object>> selectedFromGrid = CustomGUIs.DataGrid(doorData, propertyNames, false);
         
-        if (selectedFromGrid != null && selectedFromGrid.Any())
+        if (selectedFromGrid?.Any() == true)
         {
-            List<ElementId> finalSelection = selectedDoors
+            var finalSelection = selectedDoors
                 .Where(d => selectedFromGrid.Any(s => 
-                    s["Element Id"].ToString() == d.Id.IntegerValue.ToString()))
+                    (int)s["Element Id"] == d.Id.IntegerValue))
                 .Select(d => d.Id)
                 .ToList();
             
