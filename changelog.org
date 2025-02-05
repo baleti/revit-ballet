@@ -868,3 +868,8 @@ hopefully it won't get more complex than that, wish we just all followed the iso
 [[https://chatgpt.com/share/677bcb3b-d8f8-800c-adc4-769b651e9791][chatgpt]]
 **** =16:32= updated OpenViews command, added "Sheet Folder" column, remove redundant "View Type"
 [[https://chatgpt.com/share/677c0771-806c-800c-833b-40733346649a][chatgpt]]
+** February
+*** 04
+**** =22:53= tried writing DeleteSelectedSelections command, but it looks like "saved selections" aren't available to revit api 
+the problem is that default EditSelection command in Revit won't let you delete multiple saved selections in one go making deletions of multiple saved selections a cumbersome process
+may have to store Element Ids/GUIDs in a separate file instead to avoid this overhead in the future and manage it with custom commands
