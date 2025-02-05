@@ -13,6 +13,7 @@ public class RenamesInstanceParameters : IExternalCommand
     private class ParameterInfo
     {
         public string Name { get; set; }
+        public bool IsShared { get; set; }
     }
 
     private class ParameterValueInfo
@@ -21,6 +22,7 @@ public class RenamesInstanceParameters : IExternalCommand
         public Parameter Parameter { get; set; }
         public string ParameterName { get; set; }
         public string CurrentValue { get; set; }
+        public bool IsShared { get; set; }
     }
 
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
@@ -43,27 +45,24 @@ public class RenamesInstanceParameters : IExternalCommand
                 .Where(e => e != null)
                 .ToList();
 
-            var paramNames = new HashSet<string>();
-            foreach (var elem in selectedElements)
-            {
-                foreach (Parameter param in elem.Parameters)
-                {
-                    if (!param.IsReadOnly &&
-                        param.StorageType == StorageType.String &&
-                        !param.IsShared)
-                    {
-                        paramNames.Add(param.Definition.Name);
-                    }
-                }
-            }
+            var paramNames = selectedElements
+                .SelectMany(elem => elem.Parameters.Cast<Parameter>())
+                .Where(p => !p.IsReadOnly && p.StorageType == StorageType.String)
+                .GroupBy(p => p.Definition.Name)
+                .Select(g => new ParameterInfo 
+                { 
+                    Name = g.Key,
+                    IsShared = g.First().IsShared
+                })
+                .ToHashSet();
 
             if (paramNames.Count == 0)
             {
-                TaskDialog.Show("Error", "No writable string instance parameters found.");
+                TaskDialog.Show("Error", "No writable string parameters found.");
                 return Result.Cancelled;
             }
 
-            var paramList = paramNames.Select(n => new ParameterInfo { Name = n }).ToList();
+            var paramList = paramNames.ToList();
             var selectedParams = CustomGUIs.DataGrid(
                 paramList,
                 new List<string> { "Name" },
@@ -77,19 +76,18 @@ public class RenamesInstanceParameters : IExternalCommand
             var paramValues = new List<ParameterValueInfo>();
             foreach (var elem in selectedElements)
             {
-                foreach (var paramName in selectedParams.Select(p => p.Name))
+                foreach (var paramInfo in selectedParams)
                 {
-                    var param = elem.LookupParameter(paramName);
-                    if (param?.StorageType == StorageType.String && 
-                        !param.IsReadOnly &&
-                        !param.IsShared)
+                    var param = elem.LookupParameter(paramInfo.Name);
+                    if (param?.StorageType == StorageType.String && !param.IsReadOnly)
                     {
                         paramValues.Add(new ParameterValueInfo
                         {
                             Element = elem,
                             Parameter = param,
-                            ParameterName = paramName,
-                            CurrentValue = param.AsString() ?? ""
+                            ParameterName = paramInfo.Name,
+                            CurrentValue = param.AsString() ?? "",
+                            IsShared = param.IsShared
                         });
                     }
                 }
@@ -168,7 +166,6 @@ public class RenamesInstanceParameters : IExternalCommand
             InitializeComponent();
             InitializeData();
             
-            // Add handler for Escape key
             this.KeyDown += (s, e) => 
             {
                 if (e.KeyCode == Keys.Escape)
@@ -181,14 +178,12 @@ public class RenamesInstanceParameters : IExternalCommand
 
         private void InitializeComponent()
         {
-            // Form Settings
             this.Text = "Modify Parameters";
             this.Size = new System.Drawing.Size(600, 500);
             this.MinimumSize = new System.Drawing.Size(500, 400);
             this.Font = new System.Drawing.Font("Segoe UI", 9);
             this.KeyPreview = true;
 
-            // Main Layout
             var mainLayout = new System.Windows.Forms.TableLayoutPanel
             {
                 Dock = System.Windows.Forms.DockStyle.Fill,
@@ -211,7 +206,6 @@ public class RenamesInstanceParameters : IExternalCommand
                 }
             };
 
-            // Find
             mainLayout.Controls.Add(new System.Windows.Forms.Label { 
                 Text = "Find:", 
                 TextAlign = System.Drawing.ContentAlignment.MiddleRight 
@@ -219,7 +213,6 @@ public class RenamesInstanceParameters : IExternalCommand
             _txtFind = new System.Windows.Forms.TextBox { Dock = System.Windows.Forms.DockStyle.Fill };
             mainLayout.Controls.Add(_txtFind, 1, 0);
 
-            // Replace
             mainLayout.Controls.Add(new System.Windows.Forms.Label { 
                 Text = "Replace:", 
                 TextAlign = System.Drawing.ContentAlignment.MiddleRight 
@@ -227,7 +220,6 @@ public class RenamesInstanceParameters : IExternalCommand
             _txtReplace = new System.Windows.Forms.TextBox { Dock = System.Windows.Forms.DockStyle.Fill };
             mainLayout.Controls.Add(_txtReplace, 1, 1);
 
-            // Pattern
             mainLayout.Controls.Add(new System.Windows.Forms.Label { 
                 Text = "Pattern:", 
                 TextAlign = System.Drawing.ContentAlignment.MiddleRight 
@@ -238,7 +230,6 @@ public class RenamesInstanceParameters : IExternalCommand
             };
             mainLayout.Controls.Add(_txtPattern, 1, 2);
 
-            // Hint
             var lblHint = new System.Windows.Forms.Label 
             { 
                 Text = "Use {} to represent current value",
@@ -248,7 +239,6 @@ public class RenamesInstanceParameters : IExternalCommand
             };
             mainLayout.Controls.Add(lblHint, 1, 3);
 
-            // Preview Areas
             _rtbBefore = new System.Windows.Forms.RichTextBox { 
                 ReadOnly = true, 
                 Dock = System.Windows.Forms.DockStyle.Fill 
@@ -273,13 +263,11 @@ public class RenamesInstanceParameters : IExternalCommand
             mainLayout.Controls.Add(groupAfter, 0, 5);
             mainLayout.SetColumnSpan(groupAfter, 2);
 
-            // Button Panel
             var buttonPanel = new System.Windows.Forms.Panel { 
                 Dock = System.Windows.Forms.DockStyle.Bottom, 
                 Height = 40 
             };
 
-            // Cancel Button
             var btnCancel = new System.Windows.Forms.Button 
             { 
                 Text = "Cancel",
@@ -289,7 +277,6 @@ public class RenamesInstanceParameters : IExternalCommand
             buttonPanel.Controls.Add(btnCancel);
             btnCancel.Anchor = System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Right;
             
-            // OK Button
             var btnOk = new System.Windows.Forms.Button 
             { 
                 Text = "OK",
@@ -298,11 +285,9 @@ public class RenamesInstanceParameters : IExternalCommand
             };
             buttonPanel.Controls.Add(btnOk);
             
-            // Adjust buttons to be anchored to bottom right
             btnOk.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
             btnCancel.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
             
-            // Position buttons
             btnOk.Location = new System.Drawing.Point(
                 buttonPanel.Width - btnOk.Width - 10, 
                 buttonPanel.Height - btnOk.Height - 5
@@ -312,7 +297,6 @@ public class RenamesInstanceParameters : IExternalCommand
                 btnOk.Top
             );
 
-            // Event Handlers
             _txtFind.TextChanged += UpdatePreview;
             _txtReplace.TextChanged += UpdatePreview;
             _txtPattern.TextChanged += UpdatePreview;

@@ -85,6 +85,7 @@
     <Compile Include="revit-scripts\CloseCurrentView.cs" />
     <Compile Include="revit-scripts\CloseViews.cs" />
     <Compile Include="revit-scripts\CopyCrossSession.cs" />
+    <Compile Include="revit-scripts\CreateAreaExtrusions.cs" />
     <Compile Include="revit-scripts\ExportScheduleToKeynoteFile.cs" />
     <Compile Include="revit-scripts\FilterText.cs" />
     <Compile Include="revit-scripts\ImportElementsFromLinkedModel.cs" />
@@ -191,7 +192,7 @@
     <Compile Include="revit-scripts\test.cs" />
     <Compile Include="revit-scripts\test10.cs" />
     <Compile Include="revit-scripts\FilterDoors.cs" />
-    <Compile Include="revit-scripts\test16.cs" />
+    <Compile Include="revit-scripts\DeleteSavedSelections.cs" />
     <Compile Include="revit-scripts\test2.cs" />
     <Compile Include="revit-scripts\test3.cs" />
     <Compile Include="revit-scripts\test4.cs" />
