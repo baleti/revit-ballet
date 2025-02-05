@@ -85,7 +85,7 @@
     <Compile Include="revit-scripts\CloseCurrentView.cs" />
     <Compile Include="revit-scripts\CloseViews.cs" />
     <Compile Include="revit-scripts\CopyCrossSession.cs" />
-    <Compile Include="revit-scripts\CreateAreaExtrusions.cs" />
+    <Compile Include="revit-scripts\ExtrudeAreas.cs" />
     <Compile Include="revit-scripts\ExportScheduleToKeynoteFile.cs" />
     <Compile Include="revit-scripts\FilterText.cs" />
     <Compile Include="revit-scripts\ImportElementsFromLinkedModel.cs" />
