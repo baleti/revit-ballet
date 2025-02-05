@@ -34,7 +34,7 @@ public partial class CustomGUIs
         bool spanAllScreens,
         List<int> initialSelectionIndices = null)
     {
-        // List to hold the final (user–selected) entries.
+        // Final list of user-selected rows.
         List<Dictionary<string, object>> filteredEntries = new List<Dictionary<string, object>>();
         bool escapePressed = false;
         List<SortCriteria> sortCriteria = new List<SortCriteria>();
@@ -43,14 +43,19 @@ public partial class CustomGUIs
         var allDataEntries = entries.Select(e => new DataEntry
         {
             Entry = e,
-            SearchText = string.Join(" ", propertyNames.Select(p => e.ContainsKey(p) && e[p] != null ? e[p].ToString() : "")).ToLower()
+            SearchText = string.Join(" ", propertyNames.Select(p =>
+                e.ContainsKey(p) && e[p] != null ? e[p].ToString() : "")).ToLower()
         }).ToList();
 
-        // Initially, the filtered (and sorted) data is the full set.
+        // Initially, filtered (and sorted) data is the full set.
         List<DataEntry> sortedEntries = new List<DataEntry>(allDataEntries);
 
+        // Variables to store initial column widths.
+        Dictionary<int, int> initialColumnWidths = null;
+        int totalInitialWidth = 0;
+
         // ---------------------------
-        // Set up a light–themed form with standard window decoration.
+        // Set up a light-themed form.
         Form form = new Form();
         form.StartPosition = FormStartPosition.CenterScreen;
         form.Text = $"Total Entries: {entries.Count}";
@@ -59,7 +64,7 @@ public partial class CustomGUIs
         form.FormBorderStyle = FormBorderStyle.Sizable;
 
         // ---------------------------
-        // Create a search box at the top.
+        // Create a search box.
         TextBox searchBox = new TextBox
         {
             Dock = DockStyle.Top,
@@ -79,10 +84,9 @@ public partial class CustomGUIs
         dataGridView.ReadOnly = true;
         dataGridView.AutoGenerateColumns = false;
         dataGridView.AllowUserToAddRows = false;
-        // Prevent accidental row resizing.
         dataGridView.AllowUserToResizeRows = false;
 
-        // Set light–theme appearance.
+        // Light theme appearance.
         dataGridView.BackgroundColor = Color.White;
         dataGridView.RowHeadersVisible = false;
         dataGridView.EnableHeadersVisualStyles = true;
@@ -128,7 +132,7 @@ public partial class CustomGUIs
             return visibleColumn?.Index ?? -1;
         }
 
-        // Restore any initial selection.
+        // Restore initial selection.
         if (initialSelectionIndices != null && initialSelectionIndices.Any())
         {
             int firstVisibleCol = GetFirstVisibleColumnIndex();
@@ -142,8 +146,8 @@ public partial class CustomGUIs
             }
         }
 
-        // -------------
-        // Multi–column sorting.
+        // ---------------------------
+        // Multi-column sorting.
         dataGridView.ColumnHeaderMouseClick += (sender, e) =>
         {
             string columnName = dataGridView.Columns[e.ColumnIndex].HeaderText;
@@ -151,13 +155,11 @@ public partial class CustomGUIs
 
             if (Control.ModifierKeys == Keys.Shift)
             {
-                // If shift is held, remove this column from sort criteria.
                 if (existing != null)
                     sortCriteria.Remove(existing);
             }
             else
             {
-                // Toggle sort order.
                 if (existing != null)
                 {
                     existing.Direction = existing.Direction == ListSortDirection.Ascending
@@ -169,7 +171,6 @@ public partial class CustomGUIs
                 {
                     existing = new SortCriteria { ColumnName = columnName, Direction = ListSortDirection.Ascending };
                 }
-                // Make it primary sort key.
                 sortCriteria.Insert(0, existing);
                 if (sortCriteria.Count > 3)
                     sortCriteria = sortCriteria.Take(3).ToList();
@@ -178,26 +179,36 @@ public partial class CustomGUIs
             IOrderedEnumerable<DataEntry> ordered = null;
             foreach (var criteria in sortCriteria)
             {
-                // For simplicity, sort on the string value of the property.
                 if (ordered == null)
                 {
                     ordered = criteria.Direction == ListSortDirection.Ascending
-                        ? sortedEntries.OrderBy(x => x.Entry.ContainsKey(criteria.ColumnName) && x.Entry[criteria.ColumnName] != null ? x.Entry[criteria.ColumnName].ToString() : "")
-                        : sortedEntries.OrderByDescending(x => x.Entry.ContainsKey(criteria.ColumnName) && x.Entry[criteria.ColumnName] != null ? x.Entry[criteria.ColumnName].ToString() : "");
+                        ? sortedEntries.OrderBy(x =>
+                             x.Entry.ContainsKey(criteria.ColumnName) && x.Entry[criteria.ColumnName] != null
+                               ? x.Entry[criteria.ColumnName].ToString() : "")
+                        : sortedEntries.OrderByDescending(x =>
+                             x.Entry.ContainsKey(criteria.ColumnName) && x.Entry[criteria.ColumnName] != null
+                               ? x.Entry[criteria.ColumnName].ToString() : "");
                 }
                 else
                 {
                     ordered = criteria.Direction == ListSortDirection.Ascending
-                        ? ordered.ThenBy(x => x.Entry.ContainsKey(criteria.ColumnName) && x.Entry[criteria.ColumnName] != null ? x.Entry[criteria.ColumnName].ToString() : "")
-                        : ordered.ThenByDescending(x => x.Entry.ContainsKey(criteria.ColumnName) && x.Entry[criteria.ColumnName] != null ? x.Entry[criteria.ColumnName].ToString() : "");
+                        ? ordered.ThenBy(x =>
+                             x.Entry.ContainsKey(criteria.ColumnName) && x.Entry[criteria.ColumnName] != null
+                               ? x.Entry[criteria.ColumnName].ToString() : "")
+                        : ordered.ThenByDescending(x =>
+                             x.Entry.ContainsKey(criteria.ColumnName) && x.Entry[criteria.ColumnName] != null
+                               ? x.Entry[criteria.ColumnName].ToString() : "");
                 }
             }
             sortedEntries = ordered?.ToList() ?? sortedEntries;
             RefreshGrid(sortedEntries);
         };
 
-        // -------------
-        // Filtering logic: precomputed searchable text is used.
+        // ---------------------------
+        // Filtering logic.
+        // Tokens that start with '$' and contain a colon are treated as column-value filters.
+        // Tokens that start with '$' without a colon are treated as column-visibility filters.
+        // All other tokens are general filters.
         List<DataEntry> FilterEntries(string query)
         {
             var tokens = SearchTokenRegex.Matches(query).Cast<Match>()
@@ -216,6 +227,7 @@ public partial class CustomGUIs
                     int colonIndex = token.IndexOf(':');
                     if (colonIndex > 0)
                     {
+                        // e.g. $column1:value
                         string colPart = token.Substring(1, colonIndex - 1);
                         string valPart = token.Substring(colonIndex + 1);
                         bool wasQuoted = colPart.StartsWith("\"") && colPart.EndsWith("\"");
@@ -229,6 +241,7 @@ public partial class CustomGUIs
                     }
                     else
                     {
+                        // e.g. $column1 or $"column 1"
                         string content = token.Substring(1);
                         bool wasQuoted = content.StartsWith("\"") && content.EndsWith("\"");
                         string cleanContent = StripQuotes(content).ToLower();
@@ -241,38 +254,63 @@ public partial class CustomGUIs
                 }
                 else
                 {
+                    // General filter token.
                     string filter = StripQuotes(token).ToLower();
                     if (!string.IsNullOrWhiteSpace(filter))
                         generalFilters.Add(filter);
                 }
             }
 
-            // Filter using precomputed search text.
             return allDataEntries.Where(de =>
-                   // For each column-specific filter, require at least one property contains the text.
+                   // For each column-value filter, restrict to properties whose name (lowercase) contains all tokens
+                   // and require that at least one such property's value (as a string) contains the filter value.
                    columnValueFilters.All(cvf =>
-                       propertyNames.Any(p =>
-                           de.Entry.ContainsKey(p) && de.Entry[p] != null &&
-                           de.Entry[p].ToString().ToLower().Contains(cvf.valFilter)))
-                   // And for general tokens, the precomputed search text must contain the token.
+                      propertyNames
+                        .Where(p => cvf.colParts.All(cp => p.ToLower().Contains(cp)))
+                        .Any(p => de.Entry.ContainsKey(p) && de.Entry[p] != null &&
+                                  de.Entry[p].ToString().ToLower().Contains(cvf.valFilter)))
                    && generalFilters.All(gf => de.SearchText.Contains(gf))
             ).ToList();
         }
 
-        // -------------
-        // Asynchronous filtering: use a 200ms timer and background task.
+        // ---------------------------
+        // Asynchronous filtering.
         Timer searchTimer = new Timer();
-        searchTimer.Interval = 200;
+        searchTimer.Interval = 150;
         searchTimer.Tick += (s, args) =>
         {
             searchTimer.Stop();
+            // Save the currently selected DataEntry objects so that selection is maintained.
+            var previouslySelected = dataGridView.SelectedRows
+                                       .Cast<DataGridViewRow>()
+                                       .Select(r => sortedEntries[r.Index])
+                                       .ToList();
             Task.Run(() =>
             {
                 var filtered = FilterEntries(searchBox.Text);
                 form.Invoke(new Action(() =>
                 {
                     RefreshGrid(filtered);
-                    dataGridView.AutoResizeColumns();
+                    // If the initial total width fits on screen, restore the initial column widths.
+                    if (initialColumnWidths != null && totalInitialWidth <= (Screen.PrimaryScreen.WorkingArea.Width - 20))
+                    {
+                        foreach (var kvp in initialColumnWidths)
+                        {
+                            dataGridView.Columns[kvp.Key].Width = kvp.Value;
+                        }
+                    }
+                    else
+                    {
+                        dataGridView.AutoResizeColumns();
+                    }
+                    // Restore previous selection.
+                    for (int i = 0; i < sortedEntries.Count; i++)
+                    {
+                        if (previouslySelected.Contains(sortedEntries[i]))
+                        {
+                            dataGridView.Rows[i].Selected = true;
+                        }
+                    }
                     // Recenter the form.
                     form.Location = new Point(
                         (Screen.PrimaryScreen.WorkingArea.Width - form.Width) / 2,
@@ -287,21 +325,18 @@ public partial class CustomGUIs
             searchTimer.Start();
         };
 
-        // -------------
-        // --- Multi-range selection hack ---
-        // We want to allow the user to select an additional range without clearing previous selection.
+        // ---------------------------
+        // Multi-range selection hack.
         int lastClickedRow = -1;
         dataGridView.CellMouseDown += (sender, e) =>
         {
             if (e.RowIndex < 0) return;
-            // Check if both Ctrl and Shift are pressed.
             if ((Control.ModifierKeys & (Keys.Control | Keys.Shift)) == (Keys.Control | Keys.Shift))
             {
-                // Get current selected row indices.
                 var currentSelection = dataGridView.SelectedRows.Cast<DataGridViewRow>()
                                          .Select(r => r.Index).ToList();
-                // If no previous row stored, use the clicked row.
-                if (lastClickedRow == -1) lastClickedRow = e.RowIndex;
+                if (lastClickedRow == -1)
+                    lastClickedRow = e.RowIndex;
                 int start = Math.Min(lastClickedRow, e.RowIndex);
                 int end = Math.Max(lastClickedRow, e.RowIndex);
                 for (int i = start; i <= end; i++)
@@ -309,7 +344,6 @@ public partial class CustomGUIs
                     if (!currentSelection.Contains(i))
                         currentSelection.Add(i);
                 }
-                // Apply the union of the previous selection and new range.
                 foreach (DataGridViewRow row in dataGridView.Rows)
                 {
                     row.Selected = currentSelection.Contains(row.Index);
@@ -317,12 +351,11 @@ public partial class CustomGUIs
             }
             else
             {
-                // Otherwise, update the lastClickedRow normally.
                 lastClickedRow = e.RowIndex;
             }
         };
 
-        // -------------
+        // ---------------------------
         // Key handling for navigation and selection.
         dataGridView.KeyDown += (sender, e) =>
         {
@@ -428,23 +461,34 @@ public partial class CustomGUIs
             }
         };
 
-        // -------------
+        // ---------------------------
         // On form load, adjust window size and center it.
         form.Load += (sender, e) =>
         {
             if (sortedEntries.Count > 0)
             {
-                // Default sort on first column.
-                sortedEntries = sortedEntries.OrderBy(x => x.Entry.ContainsKey(propertyNames[0]) && x.Entry[propertyNames[0]] != null ? x.Entry[propertyNames[0]].ToString() : "").ToList();
+                sortedEntries = sortedEntries.OrderBy(x =>
+                    x.Entry.ContainsKey(propertyNames[0]) && x.Entry[propertyNames[0]] != null
+                        ? x.Entry[propertyNames[0]].ToString() : "").ToList();
                 RefreshGrid(sortedEntries);
             }
             dataGridView.AutoResizeColumns();
+            // Store initial column widths.
+            initialColumnWidths = new Dictionary<int, int>();
+            totalInitialWidth = 0;
+            for (int i = 0; i < dataGridView.Columns.Count; i++)
+            {
+                int w = dataGridView.Columns[i].Width;
+                initialColumnWidths[i] = w;
+                totalInitialWidth += w;
+            }
             int padding = 20;
             int headerHeight = dataGridView.ColumnHeadersHeight;
             int rowHeight = sortedEntries.Count > 0 ? dataGridView.Rows[0].Height : dataGridView.RowTemplate.Height;
-            int maxRowsToShow = 25;
+            int maxRowsToShow = 40;
             int rowCountToShow = Math.Min(sortedEntries.Count, maxRowsToShow);
-            int requiredHeight = headerHeight + (rowCountToShow * rowHeight) + SystemInformation.HorizontalScrollBarHeight;
+            int scrollBarHeight = sortedEntries.Count > maxRowsToShow ? SystemInformation.HorizontalScrollBarHeight : 0;
+            int requiredHeight = headerHeight + (rowCountToShow * rowHeight) + scrollBarHeight;
             int availableHeight = Screen.PrimaryScreen.WorkingArea.Height - padding * 2;
             form.Height = Math.Min(requiredHeight, availableHeight);
 
@@ -466,8 +510,22 @@ public partial class CustomGUIs
             }
         };
 
-        // -------------
-        // Add controls (search box at top, then grid).
+        // ---------------------------
+        // **New:** Scroll to the currently focused entry when the form is shown.
+        form.Shown += (s, e) =>
+        {
+            if (dataGridView.CurrentCell != null)
+            {
+                int rowIndex = dataGridView.CurrentCell.RowIndex;
+                if (rowIndex >= 0 && rowIndex < dataGridView.RowCount)
+                {
+                    dataGridView.FirstDisplayedScrollingRowIndex = rowIndex;
+                }
+            }
+        };
+
+        // ---------------------------
+        // Add controls to the form.
         form.Controls.Add(dataGridView);
         form.Controls.Add(searchBox);
 
@@ -477,7 +535,7 @@ public partial class CustomGUIs
         return filteredEntries;
     }
 
-    // Helper method to remove enclosing quotes.
+    // Helper method to strip enclosing quotes.
     private static string StripQuotes(string input)
     {
         return input.StartsWith("\"") && input.EndsWith("\"") && input.Length > 1
