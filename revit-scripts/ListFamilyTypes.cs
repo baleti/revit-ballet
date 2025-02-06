@@ -5,12 +5,13 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-public static class FamilyTypeDataHelper
+public static class FamilyTypeParameterHelper
 {
-    public static List<Dictionary<string, object>> GetFamilyTypeData(UIDocument uiDoc, bool selectedOnly = false)
+    public static (List<Dictionary<string, object>> data, List<string> properties) GetFamilyTypeParameterData(UIDocument uiDoc, bool selectedOnly = false)
     {
         Document doc = uiDoc.Document;
         IEnumerable<ElementId> elementIds;
+        
         if (selectedOnly)
         {
             elementIds = uiDoc.Selection.GetElementIds();
@@ -25,7 +26,15 @@ public static class FamilyTypeDataHelper
             elementIds = collector.ToElementIds();
         }
 
-        List<Dictionary<string, object>> familyTypeData = new List<Dictionary<string, object>>();
+        List<Dictionary<string, object>> elementData = new List<Dictionary<string, object>>();
+        HashSet<string> propertyNames = new HashSet<string>
+        {
+            "Element Id",
+            "Family Name",
+            "Type Name",
+            "Category",
+            "Type Id"
+        };
 
         foreach (var id in elementIds)
         {
@@ -34,32 +43,48 @@ public static class FamilyTypeDataHelper
 
             if (familySymbol != null)
             {
-                var familyTypeDict = new Dictionary<string, object>
+                var parameterDict = new Dictionary<string, object>
                 {
-                    ["FamilyName"] = familySymbol.FamilyName,
-                    ["TypeName"] = familySymbol.Name,
+                    ["Element Id"] = element.Id.IntegerValue,
+                    ["Family Name"] = familySymbol.FamilyName,
+                    ["Type Name"] = familySymbol.Name,
                     ["Category"] = familySymbol.Category?.Name ?? "",
-                    ["Id"] = familySymbol.Id.IntegerValue,
+                    ["Type Id"] = familySymbol.Id.IntegerValue
                 };
 
+                // Add all family type parameters
                 foreach (Parameter param in familySymbol.Parameters)
                 {
                     string paramName = param.Definition.Name;
                     string paramValue = param.AsValueString() ?? param.AsString() ?? "None";
-                    familyTypeDict[paramName] = paramValue;
+                    parameterDict[paramName] = paramValue;
+                    propertyNames.Add(paramName);
                 }
 
-                familyTypeData.Add(familyTypeDict);
+                // Add all instance parameters
+                if (element is FamilyInstance instance)
+                {
+                    foreach (Parameter param in instance.Parameters)
+                    {
+                        string paramName = $"Instance: {param.Definition.Name}";
+                        string paramValue = param.AsValueString() ?? param.AsString() ?? "None";
+                        parameterDict[paramName] = paramValue;
+                        propertyNames.Add(paramName);
+                    }
+                }
+
+                elementData.Add(parameterDict);
             }
         }
-        return familyTypeData;
+        
+        return (elementData, propertyNames.OrderBy(p => p).ToList());
     }
 }
 
-public abstract class ListFamilyTypesBase : IExternalCommand
+public abstract class ListElementsFamilyTypeParametersBase : IExternalCommand
 {
-    public abstract bool spanAllScreens { get; }
-    public abstract bool useSelectedElements { get; }
+    public abstract bool SpanAllScreens { get; }
+    public abstract bool UseSelectedElements { get; }
 
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
     {
@@ -68,36 +93,43 @@ public abstract class ListFamilyTypesBase : IExternalCommand
             UIApplication uiApp = commandData.Application;
             UIDocument uiDoc = uiApp.ActiveUIDocument;
 
-            List<Dictionary<string, object>> familyTypeData = FamilyTypeDataHelper.GetFamilyTypeData(uiDoc, useSelectedElements);
-            var propertyNames = new HashSet<string>();
+            // Get the family type data and property names
+            var (elementData, propertyNames) = 
+                FamilyTypeParameterHelper.GetFamilyTypeParameterData(uiDoc, UseSelectedElements);
 
-            if (familyTypeData.Any())
+            if (!elementData.Any())
             {
-                foreach (var key in familyTypeData.First().Keys)
-                {
-                    propertyNames.Add(key);
-                }
+                message = UseSelectedElements ? 
+                    "No family instances found in selection." : 
+                    "No family instances found in active view.";
+                return Result.Failed;
             }
 
-            var selectedCustomElements = CustomGUIs.DataGrid(familyTypeData, propertyNames.ToList(), spanAllScreens);
+            // Use the CustomGUIs.DataGrid implementation
+            var selectedElements = CustomGUIs.DataGrid(
+                entries: elementData,
+                propertyNames: propertyNames,
+                spanAllScreens: SpanAllScreens,
+                initialSelectionIndices: null
+            );
 
-            if (selectedCustomElements.Count == 0)
+            if (selectedElements?.Count == 0)
                 return Result.Cancelled;
 
+            // Select the elements in Revit
             List<ElementId> elementIdsToSelect = new List<ElementId>();
-            foreach (var elementDict in selectedCustomElements)
+            foreach (var elementDict in selectedElements)
             {
-                if (elementDict.TryGetValue("Id", out object idValue) && idValue is int id)
+                if (elementDict.TryGetValue("Element Id", out object idValue) && idValue is int id)
                 {
                     elementIdsToSelect.Add(new ElementId(id));
                 }
             }
 
             uiDoc.Selection.SetElementIds(elementIdsToSelect);
-
             return Result.Succeeded;
         }
-        catch (InvalidOperationException ex)
+        catch (Exception ex)
         {
             message = ex.Message;
             return Result.Failed;
@@ -106,21 +138,22 @@ public abstract class ListFamilyTypesBase : IExternalCommand
 }
 
 [Transaction(TransactionMode.Manual)]
-public class ListSelectedFamilyTypes : ListFamilyTypesBase
+public class ListSelectedElementsFamilyTypeParameters : ListElementsFamilyTypeParametersBase
 {
-    public override bool spanAllScreens => false;
-    public override bool useSelectedElements => true;
+    public override bool SpanAllScreens => false;
+    public override bool UseSelectedElements => true;
 }
 
 [Transaction(TransactionMode.Manual)]
-public class ListAllFamilyTypesInView : ListFamilyTypesBase
+public class ListAllElementsFamilyTypeParameters : ListElementsFamilyTypeParametersBase
 {
-    public override bool spanAllScreens => false;
-    public override bool useSelectedElements => false;
+    public override bool SpanAllScreens => false;
+    public override bool UseSelectedElements => false;
 }
+
 [Transaction(TransactionMode.Manual)]
-public class ListAllFamilyTypesSpanAllScreens : ListFamilyTypesBase
+public class ListAllElementsFamilyTypeParametersSpanScreens : ListElementsFamilyTypeParametersBase
 {
-    public override bool spanAllScreens => true;
-    public override bool useSelectedElements => true;
+    public override bool SpanAllScreens => true;
+    public override bool UseSelectedElements => false;
 }

@@ -11,14 +11,13 @@ public class ImportElementsFromLinkedModel : IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
     {
-        // Get the Revit application and document
         UIApplication uiApp = commandData.Application;
         UIDocument uiDoc = uiApp.ActiveUIDocument;
         Document doc = uiDoc.Document;
 
         try
         {
-            // Get the linked Revit model (instance)
+            // Get the linked Revit model
             ElementId linkedInstanceId = uiDoc.Selection.GetElementIds().FirstOrDefault();
             if (linkedInstanceId == null)
             {
@@ -36,79 +35,142 @@ public class ImportElementsFromLinkedModel : IExternalCommand
 
             Document linkedDoc = linkedInstance.GetLinkDocument();
 
-            // Collect all family types (FamilySymbol) in the linked document
-            FilteredElementCollector typeCollector = new FilteredElementCollector(linkedDoc)
-                .OfClass(typeof(FamilySymbol));
-
-            // Create a list of available family types and a dictionary to map them to their ElementIds
+            // Collect all types that we want to import
             List<Dictionary<string, object>> typeEntries = new List<Dictionary<string, object>>();
             Dictionary<string, ElementId> typeIdMap = new Dictionary<string, ElementId>();
 
-            foreach (FamilySymbol familySymbol in typeCollector)
+            // List of element classes we want to collect
+            Type[] typesList = new Type[]
             {
-                string uniqueKey = $"{familySymbol.Name}|{familySymbol.Family.Name}|{familySymbol.Category.Name}";
+                typeof(FamilySymbol),
+                typeof(WallType),
+                typeof(FloorType),
+                typeof(CeilingType),
+                typeof(RoofType)
+            };
 
-                // Store the properties to display in the selection
-                typeEntries.Add(new Dictionary<string, object>
+            foreach (Type elementType in typesList)
+            {
+                FilteredElementCollector typeCollector = new FilteredElementCollector(linkedDoc)
+                    .OfClass(elementType);
+
+                foreach (Element element in typeCollector)
                 {
-                    {"Name", familySymbol.Name},
-                    {"Family", familySymbol.Family.Name},
-                    {"Category", familySymbol.Category.Name},
-                });
+                    string name = element.Name;
+                    string category = element.Category?.Name ?? "Uncategorized";
+                    string family = "";
 
-                // Store the corresponding ElementId (FamilySymbol) with a unique key
-                typeIdMap[uniqueKey] = familySymbol.Id;
+                    // Handle different type of elements
+                    if (element is FamilySymbol familySymbol)
+                    {
+                        family = familySymbol.Family.Name;
+                    }
+                    else
+                    {
+                        // For system families, use the class name as family name
+                        family = element.GetType().Name.Replace("Type", "");
+                    }
+
+                    string uniqueKey = $"{name}|{family}|{category}";
+
+                    typeEntries.Add(new Dictionary<string, object>
+                    {
+                        {"Name", name},
+                        {"Family", family},
+                        {"Category", category},
+                    });
+
+                    typeIdMap[uniqueKey] = element.Id;
+                }
             }
 
-            // Display a GUI to let the user select which family types to import
+            // Display GUI for type selection
             List<string> columnHeaders = new List<string> { "Name", "Family", "Category" };
             List<Dictionary<string, object>> selectedTypes = CustomGUIs.DataGrid(typeEntries, columnHeaders, false);
 
-            // Prepare a list of selected FamilySymbol ElementIds
+            // Get selected type IDs
             List<ElementId> selectedTypeIds = new List<ElementId>();
-
             foreach (var selectedEntry in selectedTypes)
             {
                 string selectedKey = $"{selectedEntry["Name"]}|{selectedEntry["Family"]}|{selectedEntry["Category"]}";
-
                 if (typeIdMap.ContainsKey(selectedKey))
                 {
                     selectedTypeIds.Add(typeIdMap[selectedKey]);
                 }
             }
 
-            // Now collect element instances (FamilyInstance) based on selected types
-            FilteredElementCollector elementCollector = new FilteredElementCollector(linkedDoc)
-                .OfClass(typeof(FamilyInstance));
-
-            // List of element IDs (instances) to be copied
+            // Collect all instances that use the selected types
             List<ElementId> elementInstanceIds = new List<ElementId>();
 
-            foreach (FamilyInstance familyInstance in elementCollector)
+            // Collect FamilyInstances
+            FilteredElementCollector familyInstanceCollector = new FilteredElementCollector(linkedDoc)
+                .OfClass(typeof(FamilyInstance));
+            foreach (FamilyInstance instance in familyInstanceCollector)
             {
-                if (selectedTypeIds.Contains(familyInstance.Symbol.Id)) // Check if this instance's type is selected
+                if (selectedTypeIds.Contains(instance.Symbol.Id))
                 {
-                    elementInstanceIds.Add(familyInstance.Id); // Add instance to the list
+                    elementInstanceIds.Add(instance.Id);
                 }
             }
 
-            // Copy the selected element instances from the linked model into the current model
+            // Collect Walls
+            FilteredElementCollector wallCollector = new FilteredElementCollector(linkedDoc)
+                .OfClass(typeof(Wall));
+            foreach (Wall wall in wallCollector)
+            {
+                if (selectedTypeIds.Contains(wall.WallType.Id))
+                {
+                    elementInstanceIds.Add(wall.Id);
+                }
+            }
+
+            // Collect Floors
+            FilteredElementCollector floorCollector = new FilteredElementCollector(linkedDoc)
+                .OfClass(typeof(Floor));
+            foreach (Floor floor in floorCollector)
+            {
+                if (selectedTypeIds.Contains(floor.FloorType.Id))
+                {
+                    elementInstanceIds.Add(floor.Id);
+                }
+            }
+
+            // Collect Ceilings
+            FilteredElementCollector ceilingCollector = new FilteredElementCollector(linkedDoc)
+                .OfClass(typeof(Ceiling));
+            foreach (Ceiling ceiling in ceilingCollector)
+            {
+                if (selectedTypeIds.Contains(ceiling.GetTypeId()))
+                {
+                    elementInstanceIds.Add(ceiling.Id);
+                }
+            }
+
+            // Collect Roofs
+            FilteredElementCollector roofCollector = new FilteredElementCollector(linkedDoc)
+                .OfClass(typeof(RoofBase));
+            foreach (RoofBase roof in roofCollector)
+            {
+                if (selectedTypeIds.Contains(roof.RoofType.Id))
+                {
+                    elementInstanceIds.Add(roof.Id);
+                }
+            }
+
+            // Copy the selected elements
             using (Transaction transaction = new Transaction(doc, "Import Selected Elements from Linked Model"))
             {
                 transaction.Start();
-
-                // Copy element instances into the current model
                 ElementTransformUtils.CopyElements(linkedDoc, elementInstanceIds, doc, null, new CopyPasteOptions());
-
                 transaction.Commit();
             }
+
+            return Result.Succeeded;
         }
         catch (Exception ex)
         {
             TaskDialog.Show("Error", ex.Message);
             return Result.Failed;
         }
-
-        return Result.Succeeded;
     }
 }

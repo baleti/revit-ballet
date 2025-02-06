@@ -103,6 +103,7 @@
     <Compile Include="revit-scripts\ExportSelectedViews.cs" />
     <Compile Include="revit-scripts\FilterSelectedByCategory.cs" />
     <Compile Include="revit-scripts\FilterTags.cs" />
+    <Compile Include="revit-scripts\ListBoundingBoxCoordinates.cs" />
     <Compile Include="revit-scripts\ListSheetsWithRevisions.cs" />
     <Compile Include="revit-scripts\ListViewsByFilters.cs" />
     <Compile Include="revit-scripts\OffsetWorkplane.cs" />
@@ -181,6 +182,7 @@
     <Compile Include="revit-scripts\SelectLinkedModel.cs" />
     <Compile Include="revit-scripts\SetCustomScaleParameterForSheets.cs" />
     <Compile Include="revit-scripts\SplitFilledRegions.cs" />
+    <Compile Include="revit-scripts\SplitFloors.cs" />
     <Compile Include="revit-scripts\SwitchToLastView.cs" />
     <Compile Include="revit-scripts\SwitchViewByHistory.cs" />
     <Compile Include="revit-scripts\SwitchView.cs" />
