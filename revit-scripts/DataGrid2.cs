@@ -39,6 +39,10 @@ public partial class CustomGUIs
         dataGridView.BackgroundColor = Color.White;
         dataGridView.AllowUserToAddRows = false;
         dataGridView.RowHeadersVisible = false;
+         // prevent row height modification
+        dataGridView.AllowUserToResizeRows = false;
+        dataGridView.AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.None;
+        dataGridView.RowTemplate.Height = 25; // Set a fixed height of 25 pixels for all rows
 
         foreach (string propertyName in propertyNames)
         {
@@ -88,63 +92,22 @@ public partial class CustomGUIs
         }
 
         TextBox searchBox = new TextBox { Dock = DockStyle.Top };
+        Timer delayTimer = new Timer { Interval = 200 };
+        bool useDelay = entries.Count > 200;
 
-        dataGridView.ColumnHeaderMouseClick += (sender, e) =>
+        delayTimer.Tick += (s, e) =>
         {
-            string columnName = dataGridView.Columns[e.ColumnIndex].HeaderText;
-            var existing = sortCriteria.FirstOrDefault(c => c.ColumnName == columnName);
-            
-            if (Control.ModifierKeys == Keys.Shift)
-            {
-                if (existing != null)
-                {
-                    sortCriteria.Remove(existing);
-                }
-            }
-            else
-            {
-                if (existing != null)
-                {
-                    existing.Direction = existing.Direction == ListSortDirection.Ascending 
-                        ? ListSortDirection.Descending 
-                        : ListSortDirection.Ascending;
-                    sortCriteria.Remove(existing);
-                }
-                else
-                {
-                    existing = new SortCriteria 
-                    { 
-                        ColumnName = columnName,
-                        Direction = ListSortDirection.Ascending 
-                    };
-                }
-
-                sortCriteria.Insert(0, existing);
-                if (sortCriteria.Count > 3) sortCriteria = sortCriteria.Take(3).ToList();
-            }
-
-            IOrderedEnumerable<Dictionary<string, object>> ordered = null;
-            foreach (var criteria in sortCriteria)
-            {
-                if (ordered == null)
-                {
-                    ordered = criteria.Direction == ListSortDirection.Ascending
-                        ? sortedEntries.OrderBy(x => x[criteria.ColumnName])
-                        : sortedEntries.OrderByDescending(x => x[criteria.ColumnName]);
-                }
-                else
-                {
-                    ordered = criteria.Direction == ListSortDirection.Ascending
-                        ? ordered.ThenBy(x => x[criteria.ColumnName])
-                        : ordered.ThenByDescending(x => x[criteria.ColumnName]);
-                }
-            }
-
-            sortedEntries = ordered?.ToList() ?? sortedEntries;
-            RefreshGrid(sortedEntries);
+            delayTimer.Stop();
+            UpdateFilteredGrid();
         };
 
-        searchBox.TextChanged += (sender, e) =>
+        form.FormClosed += (s, e) =>
+        {
+            delayTimer.Stop();
+            delayTimer.Dispose();
+        };
+
+        void UpdateFilteredGrid()
         {
             string searchText = searchBox.Text;
 
@@ -289,6 +252,74 @@ public partial class CustomGUIs
             int requiredWidth = dataGridView.Columns.GetColumnsWidth(DataGridViewElementStates.Visible)
                 + SystemInformation.VerticalScrollBarWidth + 50;
             form.Width = Math.Min(requiredWidth, Screen.PrimaryScreen.WorkingArea.Width - 20);
+        }
+
+        searchBox.TextChanged += (sender, e) =>
+        {
+            if (useDelay)
+            {
+                delayTimer.Stop();
+                delayTimer.Start();
+            }
+            else
+            {
+                UpdateFilteredGrid();
+            }
+        };
+
+        dataGridView.ColumnHeaderMouseClick += (sender, e) =>
+        {
+            string columnName = dataGridView.Columns[e.ColumnIndex].HeaderText;
+            var existing = sortCriteria.FirstOrDefault(c => c.ColumnName == columnName);
+            
+            if (Control.ModifierKeys == Keys.Shift)
+            {
+                if (existing != null)
+                {
+                    sortCriteria.Remove(existing);
+                }
+            }
+            else
+            {
+                if (existing != null)
+                {
+                    existing.Direction = existing.Direction == ListSortDirection.Ascending 
+                        ? ListSortDirection.Descending 
+                        : ListSortDirection.Ascending;
+                    sortCriteria.Remove(existing);
+                }
+                else
+                {
+                    existing = new SortCriteria 
+                    { 
+                        ColumnName = columnName,
+                        Direction = ListSortDirection.Ascending 
+                    };
+                }
+
+                sortCriteria.Insert(0, existing);
+                if (sortCriteria.Count > 3) sortCriteria = sortCriteria.Take(3).ToList();
+            }
+
+            IOrderedEnumerable<Dictionary<string, object>> ordered = null;
+            foreach (var criteria in sortCriteria)
+            {
+                if (ordered == null)
+                {
+                    ordered = criteria.Direction == ListSortDirection.Ascending
+                        ? sortedEntries.OrderBy(x => x[criteria.ColumnName])
+                        : sortedEntries.OrderByDescending(x => x[criteria.ColumnName]);
+                }
+                else
+                {
+                    ordered = criteria.Direction == ListSortDirection.Ascending
+                        ? ordered.ThenBy(x => x[criteria.ColumnName])
+                        : ordered.ThenByDescending(x => x[criteria.ColumnName]);
+                }
+            }
+
+            sortedEntries = ordered?.ToList() ?? sortedEntries;
+            RefreshGrid(sortedEntries);
         };
 
         void HandleSelection()
@@ -409,7 +440,8 @@ public partial class CustomGUIs
             int padding = 20;
             int requiredHeight = dataGridView.Rows.GetRowsHeight(DataGridViewElementStates.Visible)
                 + dataGridView.ColumnHeadersHeight + 2 * dataGridView.Rows[0].Height
-                + SystemInformation.HorizontalScrollBarHeight;
+                + SystemInformation.HorizontalScrollBarHeight
+                + 20;
             int availableHeight = Screen.PrimaryScreen.WorkingArea.Height - padding * 2;
 
             form.Height = Math.Min(requiredHeight, availableHeight);
