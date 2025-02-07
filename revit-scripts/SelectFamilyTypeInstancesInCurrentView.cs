@@ -7,6 +7,17 @@ using System.Linq;
 [Transaction(TransactionMode.Manual)]
 public class SelectFamilyTypeInstancesInCurrentView : IExternalCommand
 {
+    // List of built-in categories to include
+    private static readonly BuiltInCategory[] TargetCategories = new BuiltInCategory[]
+    {
+        BuiltInCategory.OST_PipeFitting,
+        BuiltInCategory.OST_PipeCurves,
+        BuiltInCategory.OST_PipeAccessory,
+        BuiltInCategory.OST_PlumbingFixtures,
+        BuiltInCategory.OST_MechanicalEquipment,
+        BuiltInCategory.OST_GenericModel // Keep existing generic models
+    };
+
     public Result Execute(
         ExternalCommandData commandData,
         ref string message,
@@ -15,76 +26,94 @@ public class SelectFamilyTypeInstancesInCurrentView : IExternalCommand
         UIDocument uidoc = commandData.Application.ActiveUIDocument;
         Document doc = uidoc.Document;
 
-        // Step 1: Prepare a list of unique types across all categories in the current view
         List<Dictionary<string, object>> typeEntries = new List<Dictionary<string, object>>();
-        Dictionary<string, FamilySymbol> typeElementMap = new Dictionary<string, FamilySymbol>(); // Map unique keys to FamilySymbols
+        Dictionary<string, Element> typeElementMap = new Dictionary<string, Element>();
 
-        // Get the current view's Id
         ElementId currentViewId = doc.ActiveView.Id;
 
-        // Collect all visible FamilyInstance elements in the current view
-        var familyInstancesInView = new FilteredElementCollector(doc, currentViewId)
-            .OfClass(typeof(FamilyInstance))
+        // Create a multi-category filter for our target categories
+        ElementMulticategoryFilter categoryFilter = new ElementMulticategoryFilter(TargetCategories.ToList());
+
+        // Collect all relevant elements in the current view
+        var elementsInView = new FilteredElementCollector(doc, currentViewId)
+            .WherePasses(categoryFilter)
             .WhereElementIsNotElementType()
-            .Cast<FamilyInstance>()
-            .Where(fi => IsElementVisibleInView(fi, doc.ActiveView))
+            .Where(e => IsElementVisibleInView(e, doc.ActiveView))
             .ToList();
 
-        // Get the unique FamilySymbols used by these instances
-        var familySymbolsInView = familyInstancesInView
-            .Select(fi => fi.Symbol)
-            .Distinct(new FamilySymbolComparer())
-            .ToList();
-
-        // Iterate through the unique FamilySymbols and collect their info
-        foreach (var familySymbol in familySymbolsInView)
+        // Process different types of elements
+        foreach (var element in elementsInView)
         {
-            // Get the family for the current symbol
-            Family family = familySymbol.Family;
-
-            var entry = new Dictionary<string, object>
+            Element typeElement = null;
+            string typeName = "";
+            string familyName = "";
+            
+            if (element is FamilyInstance familyInstance)
             {
-                { "Type Name", familySymbol.Name },
-                { "Family", family.Name },
-                { "Category", familySymbol.Category.Name }
-            };
+                typeElement = familyInstance.Symbol;
+                typeName = familyInstance.Symbol.Name;
+                familyName = familyInstance.Symbol.FamilyName;
+            }
+            else if (element is MEPCurve mepCurve) // Handles pipes
+            {
+                typeElement = doc.GetElement(mepCurve.GetTypeId());
+                typeName = typeElement.Name;
+                familyName = "Pipe";
+            }
 
-            // Store the FamilySymbol with a unique key (Family:Type)
-            string uniqueKey = $"{family.Name}:{familySymbol.Name}";
-            typeElementMap[uniqueKey] = familySymbol;
+            if (typeElement != null)
+            {
+                string uniqueKey = $"{familyName}:{typeName}";
+                if (!typeElementMap.ContainsKey(uniqueKey))
+                {
+                    var entry = new Dictionary<string, object>
+                    {
+                        { "Type Name", typeName },
+                        { "Family", familyName },
+                        { "Category", element.Category.Name }
+                    };
 
-            typeEntries.Add(entry);
+                    typeElementMap[uniqueKey] = typeElement;
+                    typeEntries.Add(entry);
+                }
+            }
         }
 
-        // Step 2: Display the list of unique types using CustomGUIs.DataGrid
+        // Display the list of unique types
         var propertyNames = new List<string> { "Type Name", "Family", "Category" };
         var selectedEntries = CustomGUIs.DataGrid(typeEntries, propertyNames, spanAllScreens: false);
 
         if (selectedEntries.Count == 0)
         {
-            return Result.Cancelled; // No selection made
+            return Result.Cancelled;
         }
 
-        // Step 3: Collect ElementIds of the selected types using the typeElementMap
+        // Collect ElementIds of selected types
         List<ElementId> selectedTypeIds = selectedEntries
             .Select(entry =>
             {
                 string uniqueKey = $"{entry["Family"]}:{entry["Type Name"]}";
-                return typeElementMap[uniqueKey].Id; // Retrieve the FamilySymbol from the map and get its Id
+                return typeElementMap[uniqueKey].Id;
             })
             .ToList();
 
-        // Step 4: Collect all visible instances of the selected types in the current view
-        var selectedInstances = familyInstancesInView
-            .Where(fi => selectedTypeIds.Contains(fi.Symbol.Id))
-            .Select(fi => fi.Id)
+        // Find all instances of selected types
+        var selectedInstances = elementsInView
+            .Where(e =>
+            {
+                if (e is FamilyInstance fi)
+                    return selectedTypeIds.Contains(fi.Symbol.Id);
+                if (e is MEPCurve mc)
+                    return selectedTypeIds.Contains(mc.GetTypeId());
+                return false;
+            })
+            .Select(e => e.Id)
             .ToList();
 
-        // Step 5: Add the new selection to the existing selection
+        // Combine with existing selection
         ICollection<ElementId> currentSelection = uidoc.Selection.GetElementIds();
         List<ElementId> combinedSelection = new List<ElementId>(currentSelection);
 
-        // Add new instances to the combined selection without duplicates
         foreach (var instanceId in selectedInstances)
         {
             if (!combinedSelection.Contains(instanceId))
@@ -93,7 +122,6 @@ public class SelectFamilyTypeInstancesInCurrentView : IExternalCommand
             }
         }
 
-        // Update the selection with both previous and newly selected elements
         if (combinedSelection.Any())
         {
             uidoc.Selection.SetElementIds(combinedSelection);
@@ -106,24 +134,8 @@ public class SelectFamilyTypeInstancesInCurrentView : IExternalCommand
         return Result.Succeeded;
     }
 
-    // Custom comparer for FamilySymbol to handle duplicates
-    private class FamilySymbolComparer : IEqualityComparer<FamilySymbol>
-    {
-        public bool Equals(FamilySymbol x, FamilySymbol y)
-        {
-            return x.Id.IntegerValue == y.Id.IntegerValue;
-        }
-
-        public int GetHashCode(FamilySymbol obj)
-        {
-            return obj.Id.IntegerValue.GetHashCode();
-        }
-    }
-
-    // Helper method to check if an element is visible in a given view
     private bool IsElementVisibleInView(Element element, View view)
     {
-        // Check if the element is visible in the view by testing its bounding box
         BoundingBoxXYZ bbox = element.get_BoundingBox(view);
         return bbox != null;
     }
