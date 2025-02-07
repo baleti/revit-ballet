@@ -1,5 +1,6 @@
 ﻿using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
+using Autodesk.Revit.DB.Plumbing;
 using Autodesk.Revit.UI;
 using System;
 using System.Collections.Generic;
@@ -7,7 +8,7 @@ using System.Linq;
 using System.Windows.Forms;
 
 [Transaction(TransactionMode.Manual)]
-public class ImportElementsFromLinkedModel : IExternalCommand
+public class ImportElementsFromSelectedLinkedModel : IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
     {
@@ -46,7 +47,8 @@ public class ImportElementsFromLinkedModel : IExternalCommand
                 typeof(WallType),
                 typeof(FloorType),
                 typeof(CeilingType),
-                typeof(RoofType)
+                typeof(RoofType),
+                typeof(PipeType)
             };
 
             foreach (Type elementType in typesList)
@@ -87,6 +89,13 @@ public class ImportElementsFromLinkedModel : IExternalCommand
             // Display GUI for type selection
             List<string> columnHeaders = new List<string> { "Name", "Family", "Category" };
             List<Dictionary<string, object>> selectedTypes = CustomGUIs.DataGrid(typeEntries, columnHeaders, false);
+
+            // Check if any types were selected
+            if (selectedTypes == null || selectedTypes.Count == 0)
+            {
+                TaskDialog.Show("Error", "No types were selected. Please select at least one type to import.");
+                return Result.Failed;
+            }
 
             // Get selected type IDs
             List<ElementId> selectedTypeIds = new List<ElementId>();
@@ -155,6 +164,24 @@ public class ImportElementsFromLinkedModel : IExternalCommand
                 {
                     elementInstanceIds.Add(roof.Id);
                 }
+            }
+
+            // Collect Pipes
+            FilteredElementCollector pipeCollector = new FilteredElementCollector(linkedDoc)
+                .OfClass(typeof(Pipe));
+            foreach (Pipe pipe in pipeCollector)
+            {
+                if (selectedTypeIds.Contains(pipe.PipeType.Id))
+                {
+                    elementInstanceIds.Add(pipe.Id);
+                }
+            }
+
+            // Check if any instances were found
+            if (elementInstanceIds.Count == 0)
+            {
+                TaskDialog.Show("Error", "No instances found using the selected types.");
+                return Result.Failed;
             }
 
             // Copy the selected elements
