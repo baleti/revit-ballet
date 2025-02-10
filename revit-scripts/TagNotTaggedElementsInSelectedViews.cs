@@ -8,59 +8,51 @@ using System.IO;
 using System.Globalization;
 
 [Transaction(TransactionMode.Manual)]
-public class TagElementsInSelectedViews : IExternalCommand
+public class TagNotTaggedElementsInSelectedViews : IExternalCommand
 {
-    public Result Execute(
-        ExternalCommandData commandData,
-        ref string message,
-        ElementSet elements)
+    public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
     {
         UIApplication uiApp = commandData.Application;
         UIDocument uiDoc = uiApp.ActiveUIDocument;
         Document doc = uiDoc.Document;
 
-        // Get the selected elements
+        // Get the selected views (or viewports that reference a view)
         ICollection<ElementId> selectedIds = uiDoc.Selection.GetElementIds();
         if (selectedIds.Count == 0)
-        {
             return Result.Failed;
-        }
 
-        List<Autodesk.Revit.DB.View> selectedViews = new List<Autodesk.Revit.DB.View>();
+        List<View> selectedViews = new List<View>();
         foreach (ElementId id in selectedIds)
         {
             Element element = doc.GetElement(id);
             if (element is Viewport viewport)
             {
-                // Get the view associated with the viewport
                 ElementId viewId = viewport.ViewId;
-                Autodesk.Revit.DB.View view = doc.GetElement(viewId) as Autodesk.Revit.DB.View;
+                View view = doc.GetElement(viewId) as View;
                 if (view != null && !(view is ViewSchedule) && view.ViewType != ViewType.DrawingSheet)
-                {
                     selectedViews.Add(view);
-                }
             }
-            else if (element is Autodesk.Revit.DB.View view && !(view is ViewSchedule) && view.ViewType != ViewType.DrawingSheet)
+            else if (element is View view && !(view is ViewSchedule) && view.ViewType != ViewType.DrawingSheet)
             {
                 selectedViews.Add(view);
             }
         }
-
         if (selectedViews.Count == 0)
-        {
             return Result.Failed;
-        }
 
-        // Gather all family types present in the selected views
-        Dictionary<ElementId, (string CategoryName, string FamilyName, string TypeName)> familyTypes = new Dictionary<ElementId, (string, string, string)>();
-        foreach (Autodesk.Revit.DB.View view in selectedViews)
+        // Build a dictionary of family types from elements in the selected views.
+        // (Note: No crop region or heavy geometry tests are done here.)
+        Dictionary<ElementId, (string CategoryName, string FamilyName, string TypeName)> familyTypes =
+            new Dictionary<ElementId, (string, string, string)>();
+
+        foreach (View view in selectedViews)
         {
-            var elementsToTag = new FilteredElementCollector(doc, view.Id)
+            var elementsInView = new FilteredElementCollector(doc, view.Id)
                 .WhereElementIsNotElementType()
                 .Where(e => e.Category != null && e.CanBeTagged(view))
                 .ToList();
 
-            foreach (Element element in elementsToTag)
+            foreach (Element element in elementsInView)
             {
                 ElementId typeId = element.GetTypeId();
                 if (typeId != ElementId.InvalidElementId && !familyTypes.ContainsKey(typeId))
@@ -73,26 +65,91 @@ public class TagElementsInSelectedViews : IExternalCommand
                 }
             }
         }
-
-        // Prompt user to choose family types to tag
-        List<Dictionary<string, object>> entries = familyTypes
-            .Select(kv => new Dictionary<string, object> { { "Category", kv.Value.CategoryName }, { "Family", kv.Value.FamilyName }, { "Type", kv.Value.TypeName } })
-            .ToList();
-        List<string> propertyNames = new List<string> { "Category", "Family", "Type" };
-        List<Dictionary<string, object>> selectedEntries = CustomGUIs.DataGrid(entries, propertyNames, spanAllScreens: false);
-        if (selectedEntries.Count == 0)
+        if (familyTypes.Count == 0)
         {
-            System.Windows.Forms.MessageBox.Show("No family types selected to tag.", "Error");
+            TaskDialog.Show("Warning", "No taggable elements found in the selected views.");
             return Result.Failed;
         }
 
+        // Compute counts for each family type across all views.
+        Dictionary<ElementId, HashSet<ElementId>> allElementsByType = new Dictionary<ElementId, HashSet<ElementId>>();
+        Dictionary<ElementId, HashSet<ElementId>> taggedElementsByType = new Dictionary<ElementId, HashSet<ElementId>>();
+
+        foreach (View view in selectedViews)
+        {
+            // Get existing tags in this view.
+            var existingTags = new FilteredElementCollector(doc, view.Id)
+                .OfClass(typeof(IndependentTag))
+                .Cast<IndependentTag>()
+                .ToList();
+            HashSet<ElementId> alreadyTaggedIds = new HashSet<ElementId>(
+                existingTags.SelectMany(tag => tag.GetTaggedElementIds()
+                    .Where(linkId => linkId.LinkInstanceId == ElementId.InvalidElementId)
+                    .Select(linkId => linkId.HostElementId)));
+
+            var elementsInView = new FilteredElementCollector(doc, view.Id)
+                .WhereElementIsNotElementType()
+                .Where(e => e.Category != null && e.CanBeTagged(view) && familyTypes.ContainsKey(e.GetTypeId()))
+                .ToList();
+
+            foreach (Element element in elementsInView)
+            {
+                ElementId typeId = element.GetTypeId();
+                if (!allElementsByType.ContainsKey(typeId))
+                    allElementsByType[typeId] = new HashSet<ElementId>();
+                allElementsByType[typeId].Add(element.Id);
+
+                if (alreadyTaggedIds.Contains(element.Id))
+                {
+                    if (!taggedElementsByType.ContainsKey(typeId))
+                        taggedElementsByType[typeId] = new HashSet<ElementId>();
+                    taggedElementsByType[typeId].Add(element.Id);
+                }
+            }
+        }
+
+        // Build the DataGrid entries.
+        List<Dictionary<string, object>> entries = familyTypes
+            .Select(kv =>
+            {
+                int totalCount = allElementsByType.ContainsKey(kv.Key) ? allElementsByType[kv.Key].Count : 0;
+                int taggedCount = taggedElementsByType.ContainsKey(kv.Key) ? taggedElementsByType[kv.Key].Count : 0;
+                int untaggedCount = totalCount - taggedCount;
+                return new Dictionary<string, object>
+                {
+                    { "Category", kv.Value.CategoryName },
+                    { "Family", kv.Value.FamilyName },
+                    { "Type", kv.Value.TypeName },
+                    { "Tagged (Estimate)", taggedCount },
+                    { "Untagged (Estimate)", untaggedCount }
+                };
+            })
+            .ToList();
+
+        if (entries.Count == 0)
+        {
+            TaskDialog.Show("Warning", "No family types available to tag.");
+            return Result.Failed;
+        }
+
+        List<string> propertyNames = new List<string> { "Category", "Family", "Type", "Tagged (Estimate)", "Untagged (Estimate)" };
+        // Display the DataGrid without any heavy crop region processing.
+        List<Dictionary<string, object>> selectedEntries =
+            CustomGUIs.DataGrid(entries, propertyNames, spanAllScreens: false);
+        if (selectedEntries == null || selectedEntries.Count == 0)
+        {
+            TaskDialog.Show("Information", "No family types selected to tag.");
+            return Result.Failed;
+        }
+
+        // Determine the selected family type IDs.
         HashSet<ElementId> selectedTypeIds = new HashSet<ElementId>(
             selectedEntries.Select(e =>
                 familyTypes.FirstOrDefault(kv => kv.Value.CategoryName == e["Category"].ToString() &&
                                                   kv.Value.FamilyName == e["Family"].ToString() &&
                                                   kv.Value.TypeName == e["Type"].ToString()).Key));
 
-        // Show a new dialog to allow the user to specify the offset factors.
+        // Now prompt the user for offset factors.
         using (OffsetInputDialog offsetDialog = new OffsetInputDialog())
         {
             if (offsetDialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
@@ -100,57 +157,113 @@ public class TagElementsInSelectedViews : IExternalCommand
                 System.Windows.Forms.MessageBox.Show("Operation cancelled by the user.", "Cancelled");
                 return Result.Failed;
             }
-            // Retrieve user-defined offset factors.
             double userOffsetFactorX = offsetDialog.OffsetX;
             double userOffsetFactorY = offsetDialog.OffsetY;
 
+            // Begin transaction to create tags. Now, for each element the crop region is retrieved
+            // and processed before placing a tag.
             using (Transaction trans = new Transaction(doc, "Place Tags"))
             {
                 trans.Start();
                 try
                 {
                     int tagNumber = 1;
-
-                    foreach (Autodesk.Revit.DB.View view in selectedViews)
+                    foreach (View view in selectedViews)
                     {
+                        // Get existing tags in the view.
+                        var existingTags = new FilteredElementCollector(doc, view.Id)
+                            .OfClass(typeof(IndependentTag))
+                            .Cast<IndependentTag>()
+                            .ToList();
+                        HashSet<ElementId> alreadyTaggedIds = new HashSet<ElementId>(
+                            existingTags.SelectMany(tag => tag.GetTaggedElementIds()
+                                .Where(linkId => linkId.LinkInstanceId == ElementId.InvalidElementId)
+                                .Select(linkId => linkId.HostElementId)));
+
+                        // Retrieve (and cache) the crop region curves once per view.
+                        IList<CurveLoop> cropLoops = null;
+                        if (view.CropBoxActive && view.CropBox != null)
+                        {
+                            ViewCropRegionShapeManager cropManager = view.GetCropRegionShapeManager();
+                            cropLoops = cropManager.GetCropShape();
+                        }
+
+                        // Collect taggable elements that match the selected family types and are not already tagged.
                         var elementsToTag = new FilteredElementCollector(doc, view.Id)
                             .WhereElementIsNotElementType()
                             .Where(e => e.Category != null && e.CanBeTagged(view) && selectedTypeIds.Contains(e.GetTypeId()))
+                            .Where(e => !alreadyTaggedIds.Contains(e.Id))
                             .ToList();
 
                         foreach (Element element in elementsToTag)
                         {
+                            // Process only elements with a LocationPoint.
                             LocationPoint location = element.Location as LocationPoint;
-                            XYZ originalPosition = location?.Point;
-                            BoundingBoxXYZ boundingBox = element.get_BoundingBox(null);
+                            if (location == null)
+                                continue;
 
-                            if (boundingBox != null && originalPosition != null)
+                            XYZ elementPoint = location.Point;
+
+                            // If the view has an active crop region, perform the point-in-polygon test.
+                            if (cropLoops != null && cropLoops.Count > 0)
                             {
-                                // Get the current view scale
-                                Autodesk.Revit.DB.View activeView = view;
-                                int viewScale = activeView.Scale;
+                                // Transform the element’s point from model space into crop-region space.
+                                Transform inverseTransform = view.CropBox.Transform.Inverse;
+                                XYZ elementInCropSpace = inverseTransform.OfPoint(elementPoint);
+                                UV elementUV = new UV(elementInCropSpace.X, elementInCropSpace.Y);
 
-                                // Calculate the offsets using the user-defined factors:
+                                // Assume the first loop is the outer boundary.
+                                List<UV> outerPolygon = GetVerticesFromCurveLoop(cropLoops[0]);
+                                bool isInside = IsPointInsidePolygon(elementUV, outerPolygon);
+
+                                // If additional loops exist, assume they are holes.
+                                if (isInside && cropLoops.Count > 1)
+                                {
+                                    for (int i = 1; i < cropLoops.Count; i++)
+                                    {
+                                        List<UV> holePolygon = GetVerticesFromCurveLoop(cropLoops[i]);
+                                        if (IsPointInsidePolygon(elementUV, holePolygon))
+                                        {
+                                            isInside = false;
+                                            break;
+                                        }
+                                    }
+                                }
+                                if (!isInside)
+                                {
+                                    // Skip this element if it lies outside the crop region.
+                                    continue;
+                                }
+                            }
+
+                            // Determine tag placement using the element’s bounding box and user-defined offsets.
+                            BoundingBoxXYZ boundingBox = element.get_BoundingBox(null);
+                            if (boundingBox != null)
+                            {
+                                int viewScale = view.Scale;
                                 double offsetX = userOffsetFactorX * viewScale;
                                 double offsetY = userOffsetFactorY * viewScale;
 
-                                // Calculate the tag position with offset
-                                XYZ minPoint = boundingBox.Min;
-                                XYZ tagPosition = new XYZ(originalPosition.X + offsetX, minPoint.Y + offsetY, originalPosition.Z);
+                                XYZ centerPoint = (boundingBox.Min + boundingBox.Max) / 2.0;
+                                XYZ tagPosition = new XYZ(elementPoint.X + offsetX, centerPoint.Y + offsetY, elementPoint.Z);
 
-                                IndependentTag newTag = IndependentTag.Create(doc, activeView.Id, new Reference(element), false, TagMode.TM_ADDBY_CATEGORY, TagOrientation.Horizontal, tagPosition);
+                                IndependentTag newTag = IndependentTag.Create(
+                                    doc,
+                                    view.Id,
+                                    new Reference(element),
+                                    false,
+                                    TagMode.TM_ADDBY_CATEGORY,
+                                    TagOrientation.Horizontal,
+                                    tagPosition);
                                 Parameter typeMarkParam = newTag.LookupParameter("Type Mark");
-
                                 if (typeMarkParam != null && !typeMarkParam.IsReadOnly)
                                 {
                                     typeMarkParam.Set(tagNumber.ToString());
                                 }
-
                                 tagNumber++;
                             }
                         }
                     }
-
                     trans.Commit();
                 }
                 catch (Exception ex)
@@ -164,15 +277,47 @@ public class TagElementsInSelectedViews : IExternalCommand
 
         return Result.Succeeded;
     }
+
+    /// <summary>
+    /// Helper method: Extracts a list of UV points from a CurveLoop.
+    /// </summary>
+    private static List<UV> GetVerticesFromCurveLoop(CurveLoop loop)
+    {
+        List<UV> vertices = new List<UV>();
+        foreach (Curve curve in loop)
+        {
+            // For a closed loop, the first point of each curve defines the outline.
+            XYZ p = curve.GetEndPoint(0);
+            vertices.Add(new UV(p.X, p.Y));
+        }
+        return vertices;
+    }
+
+    /// <summary>
+    /// Helper method: Determines if a given 2D point (UV) lies inside a polygon defined by a list of UV points.
+    /// Uses the ray-casting algorithm.
+    /// </summary>
+    private static bool IsPointInsidePolygon(UV point, List<UV> polygon)
+    {
+        bool inside = false;
+        int count = polygon.Count;
+        for (int i = 0, j = count - 1; i < count; j = i++)
+        {
+            if (((polygon[i].V > point.V) != (polygon[j].V > point.V)) &&
+                (point.U < (polygon[j].U - polygon[i].U) * (point.V - polygon[i].V) / (polygon[j].V - polygon[i].V) + polygon[i].U))
+            {
+                inside = !inside;
+            }
+        }
+        return inside;
+    }
 }
 
-// Extension method to check if an element can be tagged in a specific view
+// Extension method for checking whether an element can be tagged in a view.
 public static class ElementExtensions
 {
-    public static bool CanBeTagged(this Element element, Autodesk.Revit.DB.View view)
+    public static bool CanBeTagged(this Element element, View view)
     {
-        // Check if the element can be tagged in the given view.
-        // You can expand this logic as needed for your specific requirements.
         return element.Category != null &&
                element.Category.HasMaterialQuantities &&
                element.Category.CanAddSubcategory &&
@@ -180,7 +325,7 @@ public static class ElementExtensions
     }
 }
 
-// A new dialog form for the offset input.
+// A dialog form for entering offset factors.
 public class OffsetInputDialog : System.Windows.Forms.Form
 {
     private System.Windows.Forms.Label labelX;
@@ -190,7 +335,6 @@ public class OffsetInputDialog : System.Windows.Forms.Form
     private System.Windows.Forms.Button okButton;
     private System.Windows.Forms.Button cancelButton;
 
-    // Properties to retrieve the user-entered offset factors.
     public double OffsetX { get; private set; }
     public double OffsetY { get; private set; }
 
@@ -257,11 +401,8 @@ public class OffsetInputDialog : System.Windows.Forms.Form
         this.cancelButton.UseVisualStyleBackColor = true;
         this.cancelButton.Click += new System.EventHandler(this.CancelButton_Click);
 
-        // Set Accept and Cancel buttons for key handling.
         this.AcceptButton = this.okButton;
         this.CancelButton = this.cancelButton;
-
-        // OffsetInputDialog form settings
         this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
         this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
         this.ClientSize = new System.Drawing.Size(220, 120);
@@ -278,7 +419,7 @@ public class OffsetInputDialog : System.Windows.Forms.Form
         this.Text = "Enter Offset Factors";
     }
 
-    private void OkButton_Click(object sender, System.EventArgs e)
+    private void OkButton_Click(object sender, EventArgs e)
     {
         if (double.TryParse(this.textBoxX.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out double offsetX) &&
             double.TryParse(this.textBoxY.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out double offsetY))
@@ -298,16 +439,12 @@ public class OffsetInputDialog : System.Windows.Forms.Form
         }
     }
 
-    private void CancelButton_Click(object sender, System.EventArgs e)
+    private void CancelButton_Click(object sender, EventArgs e)
     {
         this.DialogResult = System.Windows.Forms.DialogResult.Cancel;
         this.Close();
     }
 
-    /// <summary>
-    /// Loads previously saved offset values (if available) from
-    /// %appdata%\revit-scripts\TagElementsInSelectedViews-last-offsets.
-    /// </summary>
     private void LoadLastOffsets()
     {
         try
@@ -333,14 +470,10 @@ public class OffsetInputDialog : System.Windows.Forms.Form
         }
         catch
         {
-            // If loading fails, leave the default values.
+            // Ignore errors if loading fails.
         }
     }
 
-    /// <summary>
-    /// Saves the provided offset values to
-    /// %appdata%\revit-scripts\TagElementsInSelectedViews-last-offsets.
-    /// </summary>
     private void SaveLastOffsets(double offsetX, double offsetY)
     {
         try
@@ -348,9 +481,7 @@ public class OffsetInputDialog : System.Windows.Forms.Form
             string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
             string folderPath = Path.Combine(appData, "revit-scripts");
             if (!Directory.Exists(folderPath))
-            {
                 Directory.CreateDirectory(folderPath);
-            }
             string filePath = Path.Combine(folderPath, "TagElementsInSelectedViews-last-offsets");
             string[] lines = new string[2];
             lines[0] = offsetX.ToString(CultureInfo.InvariantCulture);
