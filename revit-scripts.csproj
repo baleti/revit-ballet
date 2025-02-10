@@ -131,7 +131,8 @@
     <Compile Include="revit-scripts\PasteInSamePlaceToViews.cs" />
     <Compile Include="revit-scripts\SelectAssociatedDimensions.cs" />
     <Compile Include="revit-scripts\SelectDoubleSwitchedSocketOutletInLink.cs" />
-    <Compile Include="revit-scripts\SelectModelGroup.cs" />
+    <Compile Include="revit-scripts\SelectModelGroups.cs" />
+    <Compile Include="revit-scripts\SelectModelGroupsInView.cs" />
     <Compile Include="revit-scripts\SelectModelGroupsWithParameters.cs" />
     <Compile Include="revit-scripts\SelectTagsForSelectedElements.cs" />
     <Compile Include="revit-scripts\SelectViews.cs" />
@@ -195,7 +196,10 @@
     <Compile Include="revit-scripts\test10.cs" />
     <Compile Include="revit-scripts\FilterDoors.cs" />
     <Compile Include="revit-scripts\DeleteSavedSelections.cs" />
+    <Compile Include="revit-scripts\test19.cs" />
     <Compile Include="revit-scripts\test2.cs" />
+    <Compile Include="revit-scripts\test20.cs" />
+    <Compile Include="revit-scripts\CreateReferenceCallouts.cs" />
     <Compile Include="revit-scripts\test3.cs" />
     <Compile Include="revit-scripts\test4.cs" />
     <Compile Include="revit-scripts\test5.cs" />
