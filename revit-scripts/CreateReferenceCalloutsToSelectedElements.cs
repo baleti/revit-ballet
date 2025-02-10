@@ -8,7 +8,7 @@ using System;
 namespace RevitDetailLines
 {
     [Transaction(TransactionMode.Manual)]
-    public class CreateReferenceCalloutsCommand : IExternalCommand
+    public class CreateReferenceCalloutsToSelectedElements : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
         {

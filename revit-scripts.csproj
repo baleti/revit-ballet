@@ -81,10 +81,12 @@
     <Reference Include="System.Windows.Forms" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="revit-scripts\3DSectionBoxFromView.cs" />
+    <Compile Include="revit-scripts\SectionBox3DFromViews.cs" />
     <Compile Include="revit-scripts\CloseCurrentView.cs" />
     <Compile Include="revit-scripts\CloseViews.cs" />
     <Compile Include="revit-scripts\CopyCrossSession.cs" />
+    <Compile Include="revit-scripts\DeselectOccluded.cs" />
+    <Compile Include="revit-scripts\DeselectRandomlySimplex.cs" />
     <Compile Include="revit-scripts\ExtrudeAreas.cs" />
     <Compile Include="revit-scripts\ExportScheduleToKeynoteFile.cs" />
     <Compile Include="revit-scripts\FilterText.cs" />
@@ -199,7 +201,7 @@
     <Compile Include="revit-scripts\test19.cs" />
     <Compile Include="revit-scripts\test2.cs" />
     <Compile Include="revit-scripts\test20.cs" />
-    <Compile Include="revit-scripts\CreateReferenceCallouts.cs" />
+    <Compile Include="revit-scripts\CreateReferenceCalloutsToSelectedElements.cs" />
     <Compile Include="revit-scripts\test3.cs" />
     <Compile Include="revit-scripts\test4.cs" />
     <Compile Include="revit-scripts\test5.cs" />
