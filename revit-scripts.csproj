@@ -198,7 +198,6 @@
     <Compile Include="revit-scripts\test10.cs" />
     <Compile Include="revit-scripts\FilterDoors.cs" />
     <Compile Include="revit-scripts\DeleteSavedSelections.cs" />
-    <Compile Include="revit-scripts\test19.cs" />
     <Compile Include="revit-scripts\test2.cs" />
     <Compile Include="revit-scripts\test20.cs" />
     <Compile Include="revit-scripts\CreateReferenceCalloutsToSelectedElements.cs" />
