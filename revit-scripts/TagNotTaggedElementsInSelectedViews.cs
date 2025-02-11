@@ -41,7 +41,6 @@ public class TagNotTaggedElementsInSelectedViews : IExternalCommand
             return Result.Failed;
 
         // Build a dictionary of family types from elements in the selected views.
-        // (Note: No crop region or heavy geometry tests are done here.)
         Dictionary<ElementId, (string CategoryName, string FamilyName, string TypeName)> familyTypes =
             new Dictionary<ElementId, (string, string, string)>();
 
@@ -133,7 +132,7 @@ public class TagNotTaggedElementsInSelectedViews : IExternalCommand
         }
 
         List<string> propertyNames = new List<string> { "Category", "Family", "Type", "Tagged (Estimate)", "Untagged (Estimate)" };
-        // Display the DataGrid without any heavy crop region processing.
+        // Display the DataGrid (this is assumed to be a custom UI helper).
         List<Dictionary<string, object>> selectedEntries =
             CustomGUIs.DataGrid(entries, propertyNames, spanAllScreens: false);
         if (selectedEntries == null || selectedEntries.Count == 0)
@@ -149,7 +148,7 @@ public class TagNotTaggedElementsInSelectedViews : IExternalCommand
                                                   kv.Value.FamilyName == e["Family"].ToString() &&
                                                   kv.Value.TypeName == e["Type"].ToString()).Key));
 
-        // Now prompt the user for offset factors.
+        // Now prompt the user for offset factors and whether to orient the tag to the object.
         using (OffsetInputDialog offsetDialog = new OffsetInputDialog())
         {
             if (offsetDialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
@@ -159,9 +158,9 @@ public class TagNotTaggedElementsInSelectedViews : IExternalCommand
             }
             double userOffsetFactorX = offsetDialog.OffsetX;
             double userOffsetFactorY = offsetDialog.OffsetY;
+            bool orientToObject = offsetDialog.OrientToObject;
 
-            // Begin transaction to create tags. Now, for each element the crop region is retrieved
-            // and processed before placing a tag.
+            // Begin transaction to create tags.
             using (Transaction trans = new Transaction(doc, "Place Tags"))
             {
                 trans.Start();
@@ -207,16 +206,13 @@ public class TagNotTaggedElementsInSelectedViews : IExternalCommand
                             // If the view has an active crop region, perform the point-in-polygon test.
                             if (cropLoops != null && cropLoops.Count > 0)
                             {
-                                // Transform the element’s point from model space into crop-region space.
                                 Transform inverseTransform = view.CropBox.Transform.Inverse;
                                 XYZ elementInCropSpace = inverseTransform.OfPoint(elementPoint);
                                 UV elementUV = new UV(elementInCropSpace.X, elementInCropSpace.Y);
 
-                                // Assume the first loop is the outer boundary.
                                 List<UV> outerPolygon = GetVerticesFromCurveLoop(cropLoops[0]);
                                 bool isInside = IsPointInsidePolygon(elementUV, outerPolygon);
 
-                                // If additional loops exist, assume they are holes.
                                 if (isInside && cropLoops.Count > 1)
                                 {
                                     for (int i = 1; i < cropLoops.Count; i++)
@@ -230,23 +226,47 @@ public class TagNotTaggedElementsInSelectedViews : IExternalCommand
                                     }
                                 }
                                 if (!isInside)
-                                {
-                                    // Skip this element if it lies outside the crop region.
                                     continue;
-                                }
                             }
 
-                            // Determine tag placement using the element’s bounding box and user-defined offsets.
+                            XYZ tagPosition = null;
                             BoundingBoxXYZ boundingBox = element.get_BoundingBox(null);
                             if (boundingBox != null)
                             {
                                 int viewScale = view.Scale;
-                                double offsetX = userOffsetFactorX * viewScale;
-                                double offsetY = userOffsetFactorY * viewScale;
+                                if (!orientToObject)
+                                {
+                                    // Use global offsets (as before).
+                                    double offsetX = userOffsetFactorX * viewScale;
+                                    double offsetY = userOffsetFactorY * viewScale;
+                                    XYZ centerPoint = (boundingBox.Min + boundingBox.Max) / 2.0;
+                                    tagPosition = new XYZ(elementPoint.X + offsetX, centerPoint.Y + offsetY, elementPoint.Z);
+                                }
+                                else
+                                {
+                                    // Align tag to the element's orientation.
+                                    // The offset factors will be applied along the element's facing and left directions.
+                                    double offsetX = userOffsetFactorX * viewScale;
+                                    double offsetY = userOffsetFactorY * viewScale;
+                                    XYZ basePoint = elementPoint; // Alternatively, you could use the bounding box center.
+                                    // Determine the element's facing direction.
+                                    XYZ facing = XYZ.BasisY; // default if no orientation available.
+                                    if (element is Autodesk.Revit.DB.FamilyInstance fi)
+                                    {
+                                        facing = fi.FacingOrientation;
+                                        if (facing.IsAlmostEqualTo(XYZ.Zero))
+                                            facing = XYZ.BasisY;
+                                        else
+                                            facing = facing.Normalize();
+                                    }
+                                    // Compute the left direction (assuming Z is up).
+                                    XYZ left = new XYZ(-facing.Y, facing.X, 0).Normalize();
+                                    tagPosition = basePoint + (facing * offsetX) + (left * offsetY);
+                                }
+                            }
 
-                                XYZ centerPoint = (boundingBox.Min + boundingBox.Max) / 2.0;
-                                XYZ tagPosition = new XYZ(elementPoint.X + offsetX, centerPoint.Y + offsetY, elementPoint.Z);
-
+                            if (tagPosition != null)
+                            {
                                 IndependentTag newTag = IndependentTag.Create(
                                     doc,
                                     view.Id,
@@ -286,7 +306,6 @@ public class TagNotTaggedElementsInSelectedViews : IExternalCommand
         List<UV> vertices = new List<UV>();
         foreach (Curve curve in loop)
         {
-            // For a closed loop, the first point of each curve defines the outline.
             XYZ p = curve.GetEndPoint(0);
             vertices.Add(new UV(p.X, p.Y));
         }
@@ -325,18 +344,26 @@ public static class ElementExtensions
     }
 }
 
-// A dialog form for entering offset factors.
+// A dialog form for entering offset factors and optionally orienting tags to objects.
 public class OffsetInputDialog : System.Windows.Forms.Form
 {
     private System.Windows.Forms.Label labelX;
     private System.Windows.Forms.Label labelY;
     private System.Windows.Forms.TextBox textBoxX;
     private System.Windows.Forms.TextBox textBoxY;
+    private System.Windows.Forms.CheckBox checkBoxOrient;
     private System.Windows.Forms.Button okButton;
     private System.Windows.Forms.Button cancelButton;
 
     public double OffsetX { get; private set; }
     public double OffsetY { get; private set; }
+    /// <summary>
+    /// When true, tag placement will be aligned to each element's orientation.
+    /// </summary>
+    public bool OrientToObject
+    {
+        get { return checkBoxOrient.Checked; }
+    }
 
     public OffsetInputDialog()
     {
@@ -350,6 +377,7 @@ public class OffsetInputDialog : System.Windows.Forms.Form
         this.labelY = new System.Windows.Forms.Label();
         this.textBoxX = new System.Windows.Forms.TextBox();
         this.textBoxY = new System.Windows.Forms.TextBox();
+        this.checkBoxOrient = new System.Windows.Forms.CheckBox();
         this.okButton = new System.Windows.Forms.Button();
         this.cancelButton = new System.Windows.Forms.Button();
 
@@ -383,20 +411,30 @@ public class OffsetInputDialog : System.Windows.Forms.Form
         this.textBoxY.TabIndex = 3;
         this.textBoxY.Text = "0.009"; // default value
 
+        // checkBoxOrient
+        this.checkBoxOrient.AutoSize = true;
+        this.checkBoxOrient.Location = new System.Drawing.Point(12, 75);
+        this.checkBoxOrient.Name = "checkBoxOrient";
+        this.checkBoxOrient.Size = new System.Drawing.Size(100, 17);
+        this.checkBoxOrient.TabIndex = 4;
+        this.checkBoxOrient.Text = "Orient to object";
+        this.checkBoxOrient.UseVisualStyleBackColor = true;
+        this.checkBoxOrient.Checked = false;  // off by default
+
         // okButton
-        this.okButton.Location = new System.Drawing.Point(44, 80);
+        this.okButton.Location = new System.Drawing.Point(30, 110);
         this.okButton.Name = "okButton";
         this.okButton.Size = new System.Drawing.Size(75, 23);
-        this.okButton.TabIndex = 4;
+        this.okButton.TabIndex = 5;
         this.okButton.Text = "OK";
         this.okButton.UseVisualStyleBackColor = true;
         this.okButton.Click += new System.EventHandler(this.OkButton_Click);
 
         // cancelButton
-        this.cancelButton.Location = new System.Drawing.Point(125, 80);
+        this.cancelButton.Location = new System.Drawing.Point(115, 110);
         this.cancelButton.Name = "cancelButton";
         this.cancelButton.Size = new System.Drawing.Size(75, 23);
-        this.cancelButton.TabIndex = 5;
+        this.cancelButton.TabIndex = 6;
         this.cancelButton.Text = "Cancel";
         this.cancelButton.UseVisualStyleBackColor = true;
         this.cancelButton.Click += new System.EventHandler(this.CancelButton_Click);
@@ -405,11 +443,12 @@ public class OffsetInputDialog : System.Windows.Forms.Form
         this.CancelButton = this.cancelButton;
         this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
         this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-        this.ClientSize = new System.Drawing.Size(220, 120);
+        this.ClientSize = new System.Drawing.Size(220, 150);
         this.Controls.Add(this.labelX);
         this.Controls.Add(this.textBoxX);
         this.Controls.Add(this.labelY);
         this.Controls.Add(this.textBoxY);
+        this.Controls.Add(this.checkBoxOrient);
         this.Controls.Add(this.okButton);
         this.Controls.Add(this.cancelButton);
         this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedDialog;
