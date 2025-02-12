@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
+using Autodesk.Revit.DB.Architecture; // Required for RoomTag and Room
 using Autodesk.Revit.UI;
 using Autodesk.Revit.UI.Selection;
 using System.Windows.Forms;
@@ -16,16 +17,15 @@ public class FilterTags : IExternalCommand
         UIDocument uidoc = uiApp.ActiveUIDocument;
         Document doc = uidoc.Document;
 
-        // Get currently selected elements
+        // Get currently selected elements.
         ICollection<ElementId> selectedIds = uidoc.Selection.GetElementIds();
-
         if (!selectedIds.Any())
         {
             TaskDialog.Show("Filter Tags", "No elements selected.");
             return Result.Cancelled;
         }
 
-        // Filter for both IndependentTag and SpatialElementTag elements
+        // Filter only tag elements: IndependentTag and SpatialElementTag (which includes RoomTag).
         List<Element> selectedTags = new List<Element>();
         foreach (ElementId id in selectedIds)
         {
@@ -37,26 +37,24 @@ public class FilterTags : IExternalCommand
             else
             {
                 TaskDialog.Show("Filter Tags",
-                    "Please select only tag elements (IndependentTag or Area Tags). Command will now exit.");
+                    "Please select only tag elements (IndependentTag or RoomTag). Command will now exit.");
                 return Result.Cancelled;
             }
         }
 
-        // First pass: determine the maximum number of tag text parameters
+        // Determine the maximum number of tag text lines (split by line breaks).
         int maxTagTextParams = 0;
         foreach (var tag in selectedTags)
         {
             string tagText = "";
-            if (tag is IndependentTag independentTag)
+            if (tag is IndependentTag indTag)
             {
-                tagText = independentTag.TagText;
+                tagText = indTag.TagText;
             }
-            else if (tag is SpatialElementTag spatialTag)
+            else if (tag is SpatialElementTag spatTag)
             {
-                tagText = spatialTag.TagText;
+                tagText = spatTag.TagText;
             }
-
-            // Clean and split the tag text
             if (!string.IsNullOrEmpty(tagText))
             {
                 var cleanText = tagText
@@ -66,12 +64,11 @@ public class FilterTags : IExternalCommand
                     .Select(s => s.Trim())
                     .Where(s => !string.IsNullOrWhiteSpace(s))
                     .ToList();
-
                 maxTagTextParams = Math.Max(maxTagTextParams, cleanText.Count);
             }
         }
 
-        // Build property names list with the determined number of TagText columns
+        // Build property names list.
         List<string> propertyNames = new List<string>();
         for (int i = 1; i <= maxTagTextParams; i++)
         {
@@ -82,35 +79,34 @@ public class FilterTags : IExternalCommand
             "OwnerView",
             "SheetNumber",
             "SheetName",
-            "X",           // X coordinate
-            "Y",           // Y coordinate
-            "Z",           // Z coordinate
+            "TaggedFamilyAndType",
+            "X",   // X coordinate
+            "Y",   // Y coordinate
+            "Z",   // Z coordinate
             "ElementId"
         });
 
-        // Build data to display
+        // Build data entries.
         List<Dictionary<string, object>> entries = new List<Dictionary<string, object>>();
 
-        // Cache for view -> (sheetNumber, sheetName) lookups
-        Dictionary<ElementId, (string viewName, string sheetNumber, string sheetName)> viewSheetInfoCache
-            = new Dictionary<ElementId, (string viewName, string sheetNumber, string sheetName)>();
+        // Cache for view -> (sheetNumber, sheetName) lookups.
+        Dictionary<ElementId, (string viewName, string sheetNumber, string sheetName)> viewSheetInfoCache =
+            new Dictionary<ElementId, (string viewName, string sheetNumber, string sheetName)>();
 
         foreach (var tag in selectedTags)
         {
             var dict = new Dictionary<string, object>();
 
-            // Process tag text into separate columns
+            // Process tag text into separate columns.
             string tagText = "";
-            if (tag is IndependentTag independentTag)
+            if (tag is IndependentTag indTag)
             {
-                tagText = independentTag.TagText;
+                tagText = indTag.TagText;
             }
-            else if (tag is SpatialElementTag spatialTag)
+            else if (tag is SpatialElementTag spatTag)
             {
-                tagText = spatialTag.TagText;
+                tagText = spatTag.TagText;
             }
-
-            // Clean and split the tag text
             var tagTextParams = new List<string>();
             if (!string.IsNullOrEmpty(tagText))
             {
@@ -122,30 +118,25 @@ public class FilterTags : IExternalCommand
                     .Where(s => !string.IsNullOrWhiteSpace(s))
                     .ToList();
             }
-
-            // Add tag text parameters to separate columns
             for (int i = 1; i <= maxTagTextParams; i++)
             {
                 dict[$"TagText{i}"] = i <= tagTextParams.Count ? tagTextParams[i - 1] : "";
             }
 
-            // Get tag location point and add coordinates
+            // Get the tag's location.
             XYZ location = null;
-            if (tag is IndependentTag independentTag2)
+            if (tag is IndependentTag indTag2)
             {
-                location = independentTag2.TagHeadPosition;
+                location = indTag2.TagHeadPosition;
             }
-            else if (tag is SpatialElementTag spatialTag2)
+            else if (tag is SpatialElementTag spatTag2)
             {
-                // For spatial tags, get the location point
                 LocationPoint locPoint = tag.Location as LocationPoint;
                 if (locPoint != null)
                 {
                     location = locPoint.Point;
                 }
             }
-
-            // Add coordinates to dictionary
             if (location != null)
             {
                 dict["X"] = Math.Round(location.X, 2);
@@ -159,34 +150,24 @@ public class FilterTags : IExternalCommand
                 dict["Z"] = "N/A";
             }
 
-            // Get the owner view ID based on tag type
-            ElementId ownerViewId;
-            if (tag is IndependentTag independentTag3)
-            {
-                ownerViewId = independentTag3.OwnerViewId;
-            }
-            else // SpatialElementTag
-            {
-                ownerViewId = tag.OwnerViewId;
-            }
-
+            // Get the owner view of the tag.
+            ElementId ownerViewId = (tag is IndependentTag indTag3)
+                ? indTag3.OwnerViewId
+                : tag.OwnerViewId;
             string viewName = "";
             string sheetNumber = "";
             string sheetName = "";
-
             if (!viewSheetInfoCache.ContainsKey(ownerViewId))
             {
                 var view = doc.GetElement(ownerViewId) as Autodesk.Revit.DB.View;
                 if (view != null)
                 {
                     viewName = view.Name;
-                    
-                    // Attempt to find if this view is placed on a sheet via a Viewport
+                    // Attempt to get sheet info via a Viewport.
                     var viewport = new FilteredElementCollector(doc)
                         .OfClass(typeof(Viewport))
                         .Cast<Viewport>()
                         .FirstOrDefault(vp => vp.ViewId == view.Id);
-
                     if (viewport != null)
                     {
                         ViewSheet sheet = doc.GetElement(viewport.SheetId) as ViewSheet;
@@ -197,47 +178,83 @@ public class FilterTags : IExternalCommand
                         }
                     }
                 }
-
                 viewSheetInfoCache[ownerViewId] = (viewName, sheetNumber, sheetName);
             }
-
-            // Fetch from cache
             var cached = viewSheetInfoCache[ownerViewId];
             dict["OwnerView"] = cached.viewName;
             dict["SheetNumber"] = cached.sheetNumber;
             dict["SheetName"] = cached.sheetName;
 
-            // ElementId
-            dict["ElementId"] = tag.Id.IntegerValue;
+            // --- Retrieve the tagged element ---
+            Element taggedElement = null;
+            if (tag is IndependentTag independentTag4)
+            {
+                var taggedElementIds = independentTag4.GetTaggedElementIds();
+                if (taggedElementIds.Any())
+                {
+                    LinkElementId firstId = taggedElementIds.First();
+                    ElementId elementId = (firstId.LinkedElementId != ElementId.InvalidElementId)
+                        ? firstId.LinkedElementId
+                        : firstId.HostElementId;
+                    taggedElement = doc.GetElement(elementId);
+                }
+            }
+            else if (tag is RoomTag roomTag)
+            {
+                taggedElement = roomTag.Room;
+            }
 
+            // Format the tagged element information for display.
+            string taggedFamilyAndType = "N/A";
+            if (taggedElement != null)
+            {
+                if (taggedElement is FamilyInstance fi)
+                {
+                    var symbol = fi.Symbol;
+                    if (symbol != null)
+                    {
+                        taggedFamilyAndType = $"{symbol.FamilyName} : {symbol.Name}";
+                    }
+                }
+                else if (taggedElement is Room room)
+                {
+                    taggedFamilyAndType = $"Room {room.Number} : {room.Name}";
+                }
+                else
+                {
+                    string categoryName = taggedElement.Category != null ? taggedElement.Category.Name : "N/A";
+                    taggedFamilyAndType = $"{categoryName} : {taggedElement.Name}";
+                }
+            }
+            dict["TaggedFamilyAndType"] = taggedFamilyAndType;
+
+            // Save the tag's own ElementId (for later updating the selection).
+            dict["ElementId"] = tag.Id.IntegerValue;
             entries.Add(dict);
         }
 
-        // Call the provided DataGrid method
+        // Call the DataGrid display (assumed to be part of your CustomGUIs library).
         var filteredEntries = CustomGUIs.DataGrid(
             entries,
             propertyNames,
             spanAllScreens: false,
             initialSelectionIndices: null
         );
-
-        // If user pressed ESC or closed the form, filteredEntries may be empty
         if (filteredEntries == null || !filteredEntries.Any())
         {
             return Result.Cancelled;
         }
 
-        // Update the Revit selection with only the chosen elements
+        // Update the selection with the chosen tags.
         List<ElementId> chosenIds = new List<ElementId>();
         foreach (var row in filteredEntries)
         {
-            if (row.ContainsKey("ElementId")
-                && int.TryParse(row["ElementId"].ToString(), out int intId))
+            if (row.ContainsKey("ElementId") &&
+                int.TryParse(row["ElementId"].ToString(), out int intId))
             {
                 chosenIds.Add(new ElementId(intId));
             }
         }
-
         using (var tx = new Transaction(doc, "Filter Tags Selection"))
         {
             tx.Start();
