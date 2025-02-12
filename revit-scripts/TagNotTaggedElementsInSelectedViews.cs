@@ -201,68 +201,96 @@ public class TagNotTaggedElementsInSelectedViews : IExternalCommand
                             if (location == null)
                                 continue;
 
-                            XYZ elementPoint = location.Point;
+                            // Retrieve the element's bounding box.
+                            BoundingBoxXYZ bbox = element.get_BoundingBox(null);
+                            if (bbox == null)
+                                continue;
 
-                            // If the view has an active crop region, perform the point-in-polygon test.
+                            // --- Crop Region Bounding Box Check ---
+                            // Ensure that all four corners of the element's bounding box (projected to 2D)
+                            // lie completely within the crop region.
                             if (cropLoops != null && cropLoops.Count > 0)
                             {
-                                Transform inverseTransform = view.CropBox.Transform.Inverse;
-                                XYZ elementInCropSpace = inverseTransform.OfPoint(elementPoint);
-                                UV elementUV = new UV(elementInCropSpace.X, elementInCropSpace.Y);
-
+                                Transform invTransform = view.CropBox.Transform.Inverse;
                                 List<UV> outerPolygon = GetVerticesFromCurveLoop(cropLoops[0]);
-                                bool isInside = IsPointInsidePolygon(elementUV, outerPolygon);
 
-                                if (isInside && cropLoops.Count > 1)
+                                // Use the XY extents of the bounding box (with Z set to 0).
+                                XYZ pMin = bbox.Min;
+                                XYZ pMax = bbox.Max;
+                                XYZ corner1 = new XYZ(pMin.X, pMin.Y, 0);
+                                XYZ corner2 = new XYZ(pMax.X, pMin.Y, 0);
+                                XYZ corner3 = new XYZ(pMax.X, pMax.Y, 0);
+                                XYZ corner4 = new XYZ(pMin.X, pMax.Y, 0);
+
+                                // Transform each corner to crop region space.
+                                XYZ cp1 = invTransform.OfPoint(corner1);
+                                XYZ cp2 = invTransform.OfPoint(corner2);
+                                XYZ cp3 = invTransform.OfPoint(corner3);
+                                XYZ cp4 = invTransform.OfPoint(corner4);
+
+                                UV uv1 = new UV(cp1.X, cp1.Y);
+                                UV uv2 = new UV(cp2.X, cp2.Y);
+                                UV uv3 = new UV(cp3.X, cp3.Y);
+                                UV uv4 = new UV(cp4.X, cp4.Y);
+
+                                bool bboxInside = true;
+                                foreach (UV uv in new List<UV> { uv1, uv2, uv3, uv4 })
                                 {
-                                    for (int i = 1; i < cropLoops.Count; i++)
+                                    // Each corner must be inside the outer crop polygon.
+                                    if (!IsPointInsidePolygon(uv, outerPolygon))
                                     {
-                                        List<UV> holePolygon = GetVerticesFromCurveLoop(cropLoops[i]);
-                                        if (IsPointInsidePolygon(elementUV, holePolygon))
+                                        bboxInside = false;
+                                        break;
+                                    }
+                                    // Also, if the crop region has holes, the corner must not lie inside any hole.
+                                    if (cropLoops.Count > 1)
+                                    {
+                                        for (int i = 1; i < cropLoops.Count; i++)
                                         {
-                                            isInside = false;
-                                            break;
+                                            List<UV> holePolygon = GetVerticesFromCurveLoop(cropLoops[i]);
+                                            if (IsPointInsidePolygon(uv, holePolygon))
+                                            {
+                                                bboxInside = false;
+                                                break;
+                                            }
                                         }
+                                        if (!bboxInside)
+                                            break;
                                     }
                                 }
-                                if (!isInside)
-                                    continue;
+                                if (!bboxInside)
+                                    continue; // Skip element if its bounding box is not completely within the crop region.
                             }
+                            // --- End Crop Region Check ---
 
+                            // Determine tag position based on user input.
                             XYZ tagPosition = null;
-                            BoundingBoxXYZ boundingBox = element.get_BoundingBox(null);
-                            if (boundingBox != null)
+                            int viewScale = view.Scale;
+                            if (!orientToObject)
                             {
-                                int viewScale = view.Scale;
-                                if (!orientToObject)
+                                // When orientation is off, use the center of the bounding box.
+                                double offsetX = userOffsetFactorX * viewScale;
+                                double offsetY = userOffsetFactorY * viewScale;
+                                XYZ centerPoint = (bbox.Min + bbox.Max) / 2.0;
+                                tagPosition = new XYZ(centerPoint.X + offsetX, centerPoint.Y + offsetY, centerPoint.Z);
+                            }
+                            else
+                            {
+                                // When orientation is on, apply the offsets along the element's facing and left directions.
+                                double offsetX = userOffsetFactorX * viewScale;
+                                double offsetY = userOffsetFactorY * viewScale;
+                                XYZ basePoint = (bbox.Min + bbox.Max) / 2.0;
+                                XYZ facing = XYZ.BasisY; // default if no orientation available.
+                                if (element is Autodesk.Revit.DB.FamilyInstance fi)
                                 {
-                                    // Use global offsets (as before).
-                                    double offsetX = userOffsetFactorX * viewScale;
-                                    double offsetY = userOffsetFactorY * viewScale;
-                                    XYZ centerPoint = (boundingBox.Min + boundingBox.Max) / 2.0;
-                                    tagPosition = new XYZ(elementPoint.X + offsetX, centerPoint.Y + offsetY, elementPoint.Z);
+                                    facing = fi.FacingOrientation;
+                                    if (facing.IsAlmostEqualTo(XYZ.Zero))
+                                        facing = XYZ.BasisY;
+                                    else
+                                        facing = facing.Normalize();
                                 }
-                                else
-                                {
-                                    // Align tag to the element's orientation.
-                                    // The offset factors will be applied along the element's facing and left directions.
-                                    double offsetX = userOffsetFactorX * viewScale;
-                                    double offsetY = userOffsetFactorY * viewScale;
-                                    XYZ basePoint = elementPoint; // Alternatively, you could use the bounding box center.
-                                    // Determine the element's facing direction.
-                                    XYZ facing = XYZ.BasisY; // default if no orientation available.
-                                    if (element is Autodesk.Revit.DB.FamilyInstance fi)
-                                    {
-                                        facing = fi.FacingOrientation;
-                                        if (facing.IsAlmostEqualTo(XYZ.Zero))
-                                            facing = XYZ.BasisY;
-                                        else
-                                            facing = facing.Normalize();
-                                    }
-                                    // Compute the left direction (assuming Z is up).
-                                    XYZ left = new XYZ(-facing.Y, facing.X, 0).Normalize();
-                                    tagPosition = basePoint + (facing * offsetX) + (left * offsetY);
-                                }
+                                XYZ left = new XYZ(-facing.Y, facing.X, 0).Normalize();
+                                tagPosition = basePoint + (facing * offsetX) + (left * offsetY);
                             }
 
                             if (tagPosition != null)
@@ -344,7 +372,7 @@ public static class ElementExtensions
     }
 }
 
-// A dialog form for entering offset factors and optionally orienting tags to objects.
+// A dialog form for entering offset factors and whether to orient tags to objects.
 public class OffsetInputDialog : System.Windows.Forms.Form
 {
     private System.Windows.Forms.Label labelX;
@@ -471,7 +499,7 @@ public class OffsetInputDialog : System.Windows.Forms.Form
         }
         else
         {
-            System.Windows.Forms.MessageBox.Show("Please enter valid numeric values for both offsets.",
+            System.Windows.Forms.MessageBox.Show("Please enter valid numeric values for the offsets.",
                                                   "Invalid Input",
                                                   System.Windows.Forms.MessageBoxButtons.OK,
                                                   System.Windows.Forms.MessageBoxIcon.Error);
@@ -505,6 +533,13 @@ public class OffsetInputDialog : System.Windows.Forms.Form
                         this.textBoxY.Text = lastOffsetY.ToString(CultureInfo.InvariantCulture);
                     }
                 }
+                if (lines.Length >= 3)
+                {
+                    if (bool.TryParse(lines[2], out bool lastOrient))
+                    {
+                        this.checkBoxOrient.Checked = lastOrient;
+                    }
+                }
             }
         }
         catch
@@ -522,9 +557,10 @@ public class OffsetInputDialog : System.Windows.Forms.Form
             if (!Directory.Exists(folderPath))
                 Directory.CreateDirectory(folderPath);
             string filePath = Path.Combine(folderPath, "TagElementsInSelectedViews-last-offsets");
-            string[] lines = new string[2];
+            string[] lines = new string[3];
             lines[0] = offsetX.ToString(CultureInfo.InvariantCulture);
             lines[1] = offsetY.ToString(CultureInfo.InvariantCulture);
+            lines[2] = checkBoxOrient.Checked.ToString();
             File.WriteAllLines(filePath, lines);
         }
         catch
