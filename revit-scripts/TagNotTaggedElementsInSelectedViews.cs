@@ -160,6 +160,9 @@ public class TagNotTaggedElementsInSelectedViews : IExternalCommand
             double userOffsetFactorY = offsetDialog.OffsetY;
             bool orientToObject = offsetDialog.OrientToObject;
 
+            // Define conversion factor from millimeters to feet.
+            const double mmToFeet = 1.0 / 304.8;
+
             // Begin transaction to create tags.
             using (Transaction trans = new Transaction(doc, "Place Tags"))
             {
@@ -265,20 +268,19 @@ public class TagNotTaggedElementsInSelectedViews : IExternalCommand
 
                             // Determine tag position based on user input.
                             XYZ tagPosition = null;
-                            int viewScale = view.Scale;
                             if (!orientToObject)
                             {
                                 // When orientation is off, use the center of the bounding box.
-                                double offsetX = userOffsetFactorX * viewScale;
-                                double offsetY = userOffsetFactorY * viewScale;
+                                double offsetX = userOffsetFactorX * mmToFeet;
+                                double offsetY = userOffsetFactorY * mmToFeet;
                                 XYZ centerPoint = (bbox.Min + bbox.Max) / 2.0;
                                 tagPosition = new XYZ(centerPoint.X + offsetX, centerPoint.Y + offsetY, centerPoint.Z);
                             }
                             else
                             {
                                 // When orientation is on, apply the offsets along the element's facing and left directions.
-                                double offsetX = userOffsetFactorX * viewScale;
-                                double offsetY = userOffsetFactorY * viewScale;
+                                double offsetX = userOffsetFactorX * mmToFeet;
+                                double offsetY = userOffsetFactorY * mmToFeet;
                                 XYZ basePoint = (bbox.Min + bbox.Max) / 2.0;
                                 XYZ facing = XYZ.BasisY; // default if no orientation available.
                                 if (element is Autodesk.Revit.DB.FamilyInstance fi)
@@ -415,14 +417,14 @@ public class OffsetInputDialog : System.Windows.Forms.Form
         this.labelX.Name = "labelX";
         this.labelX.Size = new System.Drawing.Size(70, 13);
         this.labelX.TabIndex = 0;
-        this.labelX.Text = "Offset X Factor:";
+        this.labelX.Text = "Offset X (mm):";
 
         // textBoxX
         this.textBoxX.Location = new System.Drawing.Point(100, 12);
         this.textBoxX.Name = "textBoxX";
         this.textBoxX.Size = new System.Drawing.Size(100, 20);
         this.textBoxX.TabIndex = 1;
-        this.textBoxX.Text = "0.009"; // default value
+        this.textBoxX.Text = "10"; // default value in millimeters
 
         // labelY
         this.labelY.AutoSize = true;
@@ -430,14 +432,14 @@ public class OffsetInputDialog : System.Windows.Forms.Form
         this.labelY.Name = "labelY";
         this.labelY.Size = new System.Drawing.Size(70, 13);
         this.labelY.TabIndex = 2;
-        this.labelY.Text = "Offset Y Factor:";
+        this.labelY.Text = "Offset Y (mm):";
 
         // textBoxY
         this.textBoxY.Location = new System.Drawing.Point(100, 42);
         this.textBoxY.Name = "textBoxY";
         this.textBoxY.Size = new System.Drawing.Size(100, 20);
         this.textBoxY.TabIndex = 3;
-        this.textBoxY.Text = "0.009"; // default value
+        this.textBoxY.Text = "10"; // default value in millimeters
 
         // checkBoxOrient
         this.checkBoxOrient.AutoSize = true;
