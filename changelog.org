@@ -878,3 +878,5 @@ may have to store Element Ids/GUIDs in a separate file instead to avoid this ove
 virtual list control among other things
 hopefully no new bugs were introduced in the process
 ***** tried making it dark themed as well, but sadly couldn't get scrollbars to change colors, so reverted back to light
+*** 12
+**** =23:33= couldn't adapt TagNotTaggedElementsInSelectedViews command to tag elements in linked models

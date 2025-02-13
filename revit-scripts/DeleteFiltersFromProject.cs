@@ -22,7 +22,7 @@ public class DeleteFilterRow
 /// deleted from the project.
 /// </summary>
 [Transaction(TransactionMode.Manual)]
-public class DeleteFilters : IExternalCommand
+public class DeleteFiltersFromProject : IExternalCommand
 {
     public Result Execute(
         ExternalCommandData commandData,

@@ -81,6 +81,7 @@
     <Reference Include="System.Windows.Forms" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="revit-scripts\ManageFiltersOnSelectedViewsOrViewTemplates.cs" />
     <Compile Include="revit-scripts\SectionBox3DFromViews.cs" />
     <Compile Include="revit-scripts\CloseCurrentView.cs" />
     <Compile Include="revit-scripts\CloseViews.cs" />
@@ -97,7 +98,7 @@
     <Compile Include="revit-scripts\DataGrid1.cs" />
     <Compile Include="revit-scripts\CutGeometryWithGroup.cs" />
     <Compile Include="revit-scripts\DataGrid2.cs" />
-    <Compile Include="revit-scripts\DeleteFilters.cs" />
+    <Compile Include="revit-scripts\DeleteFiltersFromProject.cs" />
     <Compile Include="revit-scripts\DeleteRevisionCloudsFromSheets.cs" />
     <Compile Include="revit-scripts\DeselectRandomly.cs" />
     <Compile Include="revit-scripts\DrawCircleAtOrigin.cs" />
