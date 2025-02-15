@@ -1,12 +1,12 @@
 #+title: revit-scripts
 
-** Productivity tools for revit architecture
-*** Switch/close/open views and sheets
-[[https://github.com/baleti/revit-scripts-demos/blob/8142cd312030378ed0b2543ad563b8514dbf9d5a/OpenViews.gif]]
-*** Invoke commands
-Both Revit commands and any command included in this plugin
-[[https://github.com/baleti/revit-scripts-demos/blob/217abcd02343572d70a4de7ecaa0195892f94ee0/InvokeRevitCommand.gif]]
-*** Select elements by parameters
-[[https://github.com/baleti/revit-scripts-demos/blob/217abcd02343572d70a4de7ecaa0195892f94ee0/SelectCategoriesInView-ListSelectedElementsWithParameters.gif]]
-** Revit versions
-Only Revit 2024 has been tested so far - other versions may or may not work. I will try to increase compatibility soon.
+** productivity tools for revit architecture
+*** switch/close/open views and sheets
+[[https://github.com/baleti/revit-scripts-docs/blob/8142cd312030378ed0b2543ad563b8514dbf9d5a/OpenViews.gif]]
+*** invoke commands
+both revit commands and any command included in this plugin
+[[https://github.com/baleti/revit-scripts-docs/blob/217abcd02343572d70a4de7ecaa0195892f94ee0/InvokeRevitCommand.gif]]
+*** select elements by parameters
+[[https://github.com/baleti/revit-scripts-docs/blob/217abcd02343572d70a4de7ecaa0195892f94ee0/SelectCategoriesInView-ListSelectedElementsWithParameters.gif]]
+** revit versions
+only revit 2024 has been tested so far - other versions may or may not work. i will try to increase compatibility soon.
