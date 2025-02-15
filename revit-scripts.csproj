@@ -202,6 +202,9 @@
     <Compile Include="revit-scripts\test2.cs" />
     <Compile Include="revit-scripts\test20.cs" />
     <Compile Include="revit-scripts\CreateReferenceCalloutsToSelectedElements.cs" />
+    <Compile Include="revit-scripts\test22.cs" />
+    <Compile Include="revit-scripts\test23.cs" />
+    <Compile Include="revit-scripts\test24.cs" />
     <Compile Include="revit-scripts\test3.cs" />
     <Compile Include="revit-scripts\test4.cs" />
     <Compile Include="revit-scripts\test5.cs" />

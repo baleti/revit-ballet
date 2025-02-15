@@ -70,40 +70,42 @@ public class TagNotTaggedElementsInSelectedViews : IExternalCommand
             return Result.Failed;
         }
 
-        // Compute counts for each family type across all views.
-        Dictionary<ElementId, HashSet<ElementId>> allElementsByType = new Dictionary<ElementId, HashSet<ElementId>>();
-        Dictionary<ElementId, HashSet<ElementId>> taggedElementsByType = new Dictionary<ElementId, HashSet<ElementId>>();
+        // --- PATCHED SECTION: Compute counts for each family type using a fast estimate ---
+        // Instead of building large HashSets per view, we group the elements and count them.
+        Dictionary<ElementId, int> totalCounts = new Dictionary<ElementId, int>();
+        Dictionary<ElementId, int> taggedCounts = new Dictionary<ElementId, int>();
 
         foreach (View view in selectedViews)
         {
-            // Get existing tags in this view.
-            var existingTags = new FilteredElementCollector(doc, view.Id)
+            // Get all taggable elements in the view that belong to a known family type.
+            var collector = new FilteredElementCollector(doc, view.Id)
+                .WhereElementIsNotElementType()
+                .Where(e => e.Category != null && e.CanBeTagged(view) && familyTypes.ContainsKey(e.GetTypeId()));
+
+            // Group by element type and sum counts.
+            foreach (var group in collector.GroupBy(e => e.GetTypeId()))
+            {
+                if (!totalCounts.ContainsKey(group.Key))
+                    totalCounts[group.Key] = 0;
+                totalCounts[group.Key] += group.Count();
+            }
+
+            // Get tagged elements in this view.
+            var taggedIds = new FilteredElementCollector(doc, view.Id)
                 .OfClass(typeof(IndependentTag))
                 .Cast<IndependentTag>()
-                .ToList();
-            HashSet<ElementId> alreadyTaggedIds = new HashSet<ElementId>(
-                existingTags.SelectMany(tag => tag.GetTaggedElementIds()
-                    .Where(linkId => linkId.LinkInstanceId == ElementId.InvalidElementId)
-                    .Select(linkId => linkId.HostElementId)));
+                .SelectMany(tag => tag.GetTaggedElementIds()
+                                      .Where(linkId => linkId.LinkInstanceId == ElementId.InvalidElementId)
+                                      .Select(linkId => linkId.HostElementId))
+                .ToHashSet();
 
-            var elementsInView = new FilteredElementCollector(doc, view.Id)
-                .WhereElementIsNotElementType()
-                .Where(e => e.Category != null && e.CanBeTagged(view) && familyTypes.ContainsKey(e.GetTypeId()))
-                .ToList();
-
-            foreach (Element element in elementsInView)
+            // Group again to count tagged elements.
+            foreach (var group in collector.GroupBy(e => e.GetTypeId()))
             {
-                ElementId typeId = element.GetTypeId();
-                if (!allElementsByType.ContainsKey(typeId))
-                    allElementsByType[typeId] = new HashSet<ElementId>();
-                allElementsByType[typeId].Add(element.Id);
-
-                if (alreadyTaggedIds.Contains(element.Id))
-                {
-                    if (!taggedElementsByType.ContainsKey(typeId))
-                        taggedElementsByType[typeId] = new HashSet<ElementId>();
-                    taggedElementsByType[typeId].Add(element.Id);
-                }
+                int countTagged = group.Count(e => taggedIds.Contains(e.Id));
+                if (!taggedCounts.ContainsKey(group.Key))
+                    taggedCounts[group.Key] = 0;
+                taggedCounts[group.Key] += countTagged;
             }
         }
 
@@ -111,8 +113,8 @@ public class TagNotTaggedElementsInSelectedViews : IExternalCommand
         List<Dictionary<string, object>> entries = familyTypes
             .Select(kv =>
             {
-                int totalCount = allElementsByType.ContainsKey(kv.Key) ? allElementsByType[kv.Key].Count : 0;
-                int taggedCount = taggedElementsByType.ContainsKey(kv.Key) ? taggedElementsByType[kv.Key].Count : 0;
+                int totalCount = totalCounts.ContainsKey(kv.Key) ? totalCounts[kv.Key] : 0;
+                int taggedCount = taggedCounts.ContainsKey(kv.Key) ? taggedCounts[kv.Key] : 0;
                 int untaggedCount = totalCount - taggedCount;
                 return new Dictionary<string, object>
                 {

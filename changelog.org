@@ -880,3 +880,6 @@ hopefully no new bugs were introduced in the process
 ***** tried making it dark themed as well, but sadly couldn't get scrollbars to change colors, so reverted back to light
 *** 12
 **** =23:33= couldn't adapt TagNotTaggedElementsInSelectedViews command to tag elements in linked models
+*** 13
+**** =17:28= couldn't fix incorrect view range in SectionBox3DFromCurrentView command
+**** =17:59= found it with revitlookup addin - GetViewRange - PlanViewRange : GetOffset (bottom clip plane, underlay bottom, cut plane, top clip plane) and GetLevelId (level - bottom clip plane, cut plane, top clip plane)

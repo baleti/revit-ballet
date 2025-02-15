@@ -1,6 +1,8 @@
 ﻿using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
+using Autodesk.Revit.DB.Architecture;
 using Autodesk.Revit.UI;
+using System;
 using System.Linq;
 using System.Collections.Generic;
 
@@ -8,8 +10,8 @@ using System.Collections.Generic;
 public class SectionBox3DFromCurrentView : IExternalCommand
 {
     public Result Execute(
-      ExternalCommandData commandData, 
-      ref string message, 
+      ExternalCommandData commandData,
+      ref string message,
       ElementSet elements)
     {
         UIApplication uiApp = commandData.Application;
@@ -52,9 +54,7 @@ public class SectionBox3DFromCurrentView : IExternalCommand
         // Get the crop box from the target view.
         BoundingBoxXYZ cropBox = targetView.CropBox;
 
-        // IMPORTANT:
-        // The cropBox.Min and cropBox.Max are expressed in the crop box’s local coordinate system.
-        // To get the actual (world space) coordinates of its corners, you need to apply cropBox.Transform.
+        // Convert the crop box’s eight corners from its local coordinate system to world coordinates.
         List<XYZ> worldPoints = new List<XYZ>();
         foreach (double x in new double[] { cropBox.Min.X, cropBox.Max.X })
         {
@@ -77,10 +77,58 @@ public class SectionBox3DFromCurrentView : IExternalCommand
         double maxY = worldPoints.Max(pt => pt.Y);
         double maxZ = worldPoints.Max(pt => pt.Z);
 
+        // --- Adjust the Z extents if the target view is a plan view using PLAN_VIEW_RANGE ---
+        if (targetView is ViewPlan viewPlan)
+        {
+            // Get the PLAN_VIEW_RANGE parameter. It should return a string with the view range.
+            Parameter rangeParam = viewPlan.get_Parameter(BuiltInParameter.PLAN_VIEW_RANGE);
+            if (rangeParam != null)
+            {
+                string rangeString = rangeParam.AsString();
+                if (!string.IsNullOrEmpty(rangeString))
+                {
+                    double viewRangeTop = 0;
+                    double viewRangeBottom = 0;
+                    string[] parts = rangeString.Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+                    foreach (string part in parts)
+                    {
+                        string trimmed = part.Trim();
+                        if (trimmed.StartsWith("Top:"))
+                        {
+                            string value = trimmed.Substring("Top:".Length).Trim();
+                            viewRangeTop = ParseFeetInches(value);
+                        }
+                        else if (trimmed.StartsWith("Bottom:"))
+                        {
+                            string value = trimmed.Substring("Bottom:".Length).Trim();
+                            viewRangeBottom = ParseFeetInches(value);
+                        }
+                    }
+                    // Display a TaskDialog with the parsed view range info.
+                    TaskDialog.Show("View Range Info",
+                        $"PLAN_VIEW_RANGE string:\n{rangeString}\n\nParsed Values:\nTop: {viewRangeTop} ft\nBottom: {viewRangeBottom} ft");
+
+                    // Override the Z extents computed from the crop region.
+                    // (Assuming Top is above Bottom.)
+                    minZ = viewRangeBottom;
+                    maxZ = viewRangeTop;
+                }
+                else
+                {
+                    TaskDialog.Show("View Range Info", "PLAN_VIEW_RANGE parameter is empty.");
+                }
+            }
+            else
+            {
+                TaskDialog.Show("View Range Info", "PLAN_VIEW_RANGE parameter was not found.");
+            }
+        }
+        // --------------------------------------------------------------------------
+
+        // Create a new section box bounding box.
         BoundingBoxXYZ sectionBox = new BoundingBoxXYZ();
         sectionBox.Min = new XYZ(minX, minY, minZ);
         sectionBox.Max = new XYZ(maxX, maxY, maxZ);
-        // We now have a bounding box that is axis aligned in world coordinates.
         sectionBox.Transform = Transform.Identity;
 
         // Locate the default 3D view.
@@ -107,5 +155,30 @@ public class SectionBox3DFromCurrentView : IExternalCommand
         // Activate the default 3D view.
         uiDoc.ActiveView = default3DView;
         return Result.Succeeded;
+    }
+
+    /// <summary>
+    /// Parses a feet-inches string (e.g., "8'-0\"") into a double (feet).
+    /// </summary>
+    private double ParseFeetInches(string s)
+    {
+        if (string.IsNullOrEmpty(s))
+            return 0;
+
+        s = s.Trim();
+        // Expecting a format like: 8'-0"
+        string[] parts = s.Split('\'');
+        if (parts.Length < 2)
+            return 0;
+
+        double feet = 0;
+        double inches = 0;
+        double.TryParse(parts[0].Trim(), out feet);
+
+        // The inches part may include extra characters like double quotes or dashes.
+        string inchPart = parts[1].Replace("\"", "").Replace("-", "").Trim();
+        double.TryParse(inchPart, out inches);
+
+        return feet + (inches / 12.0);
     }
 }
