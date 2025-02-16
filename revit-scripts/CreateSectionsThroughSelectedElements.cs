@@ -16,14 +16,14 @@ namespace MyRevitCommands
   public class SectionSettings
   {
       public ElementId SelectedSectionTypeId { get; set; }
-      // Global orientation mode: "Element", "Host", "CurrentView"
+      // Global orientation mode: "Element", "Host", or "CurrentView"
       public string OrientationMode { get; set; }
-      // Local orientation option: one of the 8 strings.
+      // Local orientation: one of "0°", "90°", "180°", "270°"
       public string LocalOrientation { get; set; }
       public string ProjectName { get; set; }
   }
 
-  // A simple panel that draws a red border when a child control has focus.
+  // A panel that draws a subtle light–blue border when any child control is focused.
   public class FocusPanel : WinForms.Panel
   {
       public bool IsFocused { get; set; }
@@ -32,7 +32,7 @@ namespace MyRevitCommands
           base.OnPaint(e);
           if (IsFocused)
           {
-              using (var pen = new Drawing.Pen(Drawing.Color.Red, 2))
+              using (var pen = new Drawing.Pen(Drawing.Color.LightBlue, 1))
               {
                   e.Graphics.DrawRectangle(pen, 0, 0, this.Width - 1, this.Height - 1);
               }
@@ -43,14 +43,19 @@ namespace MyRevitCommands
   // Custom settings form.
   public class SectionSettingsForm : WinForms.Form
   {
+      private WinForms.Label lblSectionType;
+      private FocusPanel fpSectionType;
       private WinForms.TextBox txtSearch;
       private WinForms.ListBox lstSectionTypes;
+
+      private FocusPanel fpOrientation;
       private WinForms.GroupBox gbGlobalOrientation;
       private WinForms.RadioButton rbElements;
       private WinForms.RadioButton rbHosts;
       private WinForms.RadioButton rbCurrentView;
       private WinForms.Label lblLocalOrientation;
       private WinForms.ComboBox cmbLocalOrientation;
+
       private WinForms.Button btnOK;
       private WinForms.Button btnCancel;
 
@@ -82,22 +87,27 @@ namespace MyRevitCommands
           this.MinimizeBox = false;
           this.KeyPreview = true;
 
-          // Create search box and wrap it in FocusPanel.
-          txtSearch = new WinForms.TextBox() { Dock = WinForms.DockStyle.Fill, TabIndex = 0 };
-          FocusPanel fpSearch = new FocusPanel() { Dock = WinForms.DockStyle.Top, Height = txtSearch.Height + 4 };
-          fpSearch.Controls.Add(txtSearch);
-          txtSearch.Enter += (s, e) => { fpSearch.IsFocused = true; fpSearch.Invalidate(); };
-          txtSearch.Leave += (s, e) => { fpSearch.IsFocused = false; fpSearch.Invalidate(); };
+          // Create Section Type label.
+          lblSectionType = new WinForms.Label() { Text = "Section Type", Dock = WinForms.DockStyle.Top, Height = 20, TabIndex = 0 };
 
-          // Create list box and wrap it.
-          lstSectionTypes = new WinForms.ListBox() { Dock = WinForms.DockStyle.Fill, TabIndex = 1 };
+          // Create search box.
+          txtSearch = new WinForms.TextBox() { Dock = WinForms.DockStyle.Fill, TabIndex = 1 };
+          // Wrap in FocusPanel.
+          fpSectionType = new FocusPanel() { Dock = WinForms.DockStyle.Top, Height = txtSearch.Height + 4 };
+          fpSectionType.Controls.Add(txtSearch);
+          txtSearch.Enter += (s, e) => { fpSectionType.IsFocused = true; fpSectionType.Invalidate(); };
+          txtSearch.Leave += (s, e) => { fpSectionType.IsFocused = false; fpSectionType.Invalidate(); };
+
+          // Create list box.
+          lstSectionTypes = new WinForms.ListBox() { Dock = WinForms.DockStyle.Fill, TabIndex = 2 };
+          // Wrap in FocusPanel.
           FocusPanel fpList = new FocusPanel() { Dock = WinForms.DockStyle.Top, Height = 150 + 4 };
           fpList.Controls.Add(lstSectionTypes);
           lstSectionTypes.Enter += (s, e) => { fpList.IsFocused = true; fpList.Invalidate(); };
           lstSectionTypes.Leave += (s, e) => { fpList.IsFocused = false; fpList.Invalidate(); };
 
           // Global Orientation group.
-          gbGlobalOrientation = new WinForms.GroupBox() { Text = "Global Orientation", Dock = WinForms.DockStyle.Top, Height = 130, TabIndex = 2 };
+          gbGlobalOrientation = new WinForms.GroupBox() { Text = "Global Orientation", Dock = WinForms.DockStyle.Top, Height = 100, TabIndex = 3 };
           rbElements = new WinForms.RadioButton() { Text = "Elements", Dock = WinForms.DockStyle.Top, Checked = true, TabIndex = 0 };
           rbHosts = new WinForms.RadioButton() { Text = "Hosts", Dock = WinForms.DockStyle.Top, TabIndex = 1 };
           rbCurrentView = new WinForms.RadioButton() { Text = "Current View", Dock = WinForms.DockStyle.Top, TabIndex = 2 };
@@ -114,38 +124,41 @@ namespace MyRevitCommands
           gbGlobalOrientation.Controls.Add(tlpGlobal);
 
           // Local Orientation label and dropdown.
-          lblLocalOrientation = new WinForms.Label() { Text = "Local Orientation", Dock = WinForms.DockStyle.Top, Height = 20, TabIndex = 3 };
-          cmbLocalOrientation = new WinForms.ComboBox() { Dock = WinForms.DockStyle.Top, DropDownStyle = WinForms.ComboBoxStyle.DropDownList, TabIndex = 4 };
-          cmbLocalOrientation.Items.AddRange(new string[] {
-              "0° Left", "0° Right", "90° Right", "90° Left",
-              "180° Left", "180° Right", "270° Left", "270° Right"
-          });
+          lblLocalOrientation = new WinForms.Label() { Text = "Local Orientation", Dock = WinForms.DockStyle.Top, Height = 20, TabIndex = 4 };
+          cmbLocalOrientation = new WinForms.ComboBox() { Dock = WinForms.DockStyle.Top, DropDownStyle = WinForms.ComboBoxStyle.DropDownList, TabIndex = 5 };
+          cmbLocalOrientation.Items.AddRange(new string[] { "0°", "90°", "180°", "270°" });
           cmbLocalOrientation.SelectedIndex = 0;
 
-          // Create a panel to hold the orientation groups.
-          WinForms.Panel orientationPanel = new WinForms.Panel() { Dock = WinForms.DockStyle.Top, Height = 220 };
-          // We'll add the Global Orientation group first, then the Local Orientation label and dropdown.
-          orientationPanel.Controls.Add(cmbLocalOrientation);
-          orientationPanel.Controls.Add(lblLocalOrientation);
-          orientationPanel.Controls.Add(gbGlobalOrientation);
+          // Wrap the entire orientation area in a FocusPanel.
+          fpOrientation = new FocusPanel() { Dock = WinForms.DockStyle.Top, Height = 160 };
+          // Use a TableLayoutPanel to organize Global and Local orientation.
+          WinForms.TableLayoutPanel tlpOrientation = new WinForms.TableLayoutPanel();
+          tlpOrientation.Dock = WinForms.DockStyle.Fill;
+          tlpOrientation.RowCount = 3;
+          tlpOrientation.ColumnCount = 1;
+          tlpOrientation.Controls.Add(gbGlobalOrientation, 0, 0);
+          tlpOrientation.Controls.Add(lblLocalOrientation, 0, 1);
+          tlpOrientation.Controls.Add(cmbLocalOrientation, 0, 2);
+          fpOrientation.Controls.Add(tlpOrientation);
 
           // Buttons.
-          btnOK = new WinForms.Button() { Text = "OK", DialogResult = WinForms.DialogResult.OK, Dock = WinForms.DockStyle.Bottom, TabIndex = 5 };
-          btnCancel = new WinForms.Button() { Text = "Cancel", DialogResult = WinForms.DialogResult.Cancel, Dock = WinForms.DockStyle.Bottom, TabIndex = 6 };
+          btnOK = new WinForms.Button() { Text = "OK", DialogResult = WinForms.DialogResult.OK, Dock = WinForms.DockStyle.Bottom, TabIndex = 6 };
+          btnCancel = new WinForms.Button() { Text = "Cancel", DialogResult = WinForms.DialogResult.Cancel, Dock = WinForms.DockStyle.Bottom, TabIndex = 7 };
           this.AcceptButton = btnOK;
           this.CancelButton = btnCancel;
 
           // Main layout.
           WinForms.TableLayoutPanel panel = new WinForms.TableLayoutPanel();
           panel.Dock = WinForms.DockStyle.Fill;
-          panel.RowCount = 5;
+          panel.RowCount = 6;
           panel.ColumnCount = 1;
           panel.AutoSize = true;
-          panel.Controls.Add(fpSearch, 0, 0);
-          panel.Controls.Add(fpList, 0, 1);
-          panel.Controls.Add(orientationPanel, 0, 2);
-          panel.Controls.Add(btnOK, 0, 3);
-          panel.Controls.Add(btnCancel, 0, 4);
+          panel.Controls.Add(lblSectionType, 0, 0);
+          panel.Controls.Add(fpSectionType, 0, 1); // instead of fpSearch
+          panel.Controls.Add(fpList, 0, 2);
+          panel.Controls.Add(fpOrientation, 0, 3);
+          panel.Controls.Add(btnOK, 0, 4);
+          panel.Controls.Add(btnCancel, 0, 5);
           this.Controls.Add(panel);
 
           txtSearch.TextChanged += TxtSearch_TextChanged;
@@ -280,24 +293,19 @@ namespace MyRevitCommands
       }
   }
 
-  [Transaction(TransactionMode.Manual)]
   public class CreateSectionsThroughSelectedElements : IExternalCommand
   {
-      // Helper: given a base (global) direction and a local option string (e.g., "90° Left"),
-      // compute the final direction.
+      // Helper: Rotate baseDir about Z by the angle specified in localOption.
       private XYZ RotateVectorWithLocal(XYZ baseDir, string localOption)
       {
-          // baseDir assumed normalized.
-          XYZ perp = new XYZ(-baseDir.Y, baseDir.X, 0);
-          string[] parts = localOption.Split(' ');
-          if (parts.Length < 2) return baseDir;
-          string anglePart = parts[0].Replace("°", "");
+          // localOption is now one of: "0°", "90°", "180°", "270°"
+          string anglePart = localOption.Replace("°", "");
           if (!double.TryParse(anglePart, out double degrees))
               return baseDir;
           double radians = degrees * Math.PI / 180.0;
-          bool left = parts[1].Equals("Left", StringComparison.OrdinalIgnoreCase);
-          XYZ side = left ? -perp : perp;
-          XYZ final = (baseDir * Math.Cos(radians)) + (side * Math.Sin(radians));
+          double cos = Math.Cos(radians);
+          double sin = Math.Sin(radians);
+          XYZ final = new XYZ(baseDir.X * cos - baseDir.Y * sin, baseDir.X * sin + baseDir.Y * cos, baseDir.Z);
           return final.Normalize();
       }
 
@@ -322,7 +330,6 @@ namespace MyRevitCommands
           bool hasHosted = selIds.Select(id => doc.GetElement(id))
               .OfType<FamilyInstance>()
               .Any(fi => fi.Host != null);
-
           string projectName = doc.Title;
 
           SectionSettingsForm settingsForm = new SectionSettingsForm(sectionTypes, hasHosted, projectName);
