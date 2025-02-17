@@ -15,7 +15,8 @@ public class SelectFamilyTypeInstancesInCurrentView : IExternalCommand
         BuiltInCategory.OST_PipeAccessory,
         BuiltInCategory.OST_PlumbingFixtures,
         BuiltInCategory.OST_MechanicalEquipment,
-        BuiltInCategory.OST_GenericModel // Keep existing generic models
+        BuiltInCategory.OST_GenericModel,
+        BuiltInCategory.OST_Walls // Added Walls category
     };
 
     public Result Execute(
@@ -60,7 +61,13 @@ public class SelectFamilyTypeInstancesInCurrentView : IExternalCommand
                 typeName = typeElement.Name;
                 familyName = "Pipe";
             }
-
+            else if (element is Wall wall) // Added logic for walls
+            {
+                typeElement = doc.GetElement(wall.GetTypeId());
+                typeName = typeElement.Name;
+                familyName = "Wall";
+            }
+            
             if (typeElement != null)
             {
                 string uniqueKey = $"{familyName}:{typeName}";
@@ -105,6 +112,8 @@ public class SelectFamilyTypeInstancesInCurrentView : IExternalCommand
                     return selectedTypeIds.Contains(fi.Symbol.Id);
                 if (e is MEPCurve mc)
                     return selectedTypeIds.Contains(mc.GetTypeId());
+                if (e is Wall wall)
+                    return selectedTypeIds.Contains(wall.GetTypeId());
                 return false;
             })
             .Select(e => e.Id)
