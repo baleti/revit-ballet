@@ -116,7 +116,6 @@
     <Compile Include="revit-scripts\ListViewsByFilters.cs" />
     <Compile Include="revit-scripts\OffsetWorkplane.cs" />
     <Compile Include="revit-scripts\PasteCrossSession.cs" />
-    <Compile Include="revit-scripts\PlaceMaterialKeynote.cs" />
     <Compile Include="revit-scripts\RenameGroups.cs" />
     <Compile Include="revit-scripts\RenamesInstanceParameters.cs" />
     <Compile Include="revit-scripts\RenameViews.cs" />
