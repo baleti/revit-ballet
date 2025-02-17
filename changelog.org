@@ -888,3 +888,6 @@ hopefully no new bugs were introduced in the process
 chatgpt explained that likely culprit for incorrect bounding box calculations was using get_BoundingBox(null) instead of get_BoundingBox(activeview)
   the latter was needed to account for bounding box relative to active view
 https://chatgpt.com/share/67afdaf3-9d4c-800c-81bc-327cdd7382b1
+*** 17
+**** =12:03= couldn't get OffsetViewOrigin command to work
+waiting for o3 model to reset, hopefully it will find a solution, all other LLMs failed, couldn't find a location parameter via revitlookup addin
