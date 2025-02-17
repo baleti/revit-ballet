@@ -81,7 +81,9 @@
     <Reference Include="System.Windows.Forms" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="revit-scripts\HideLevelBubblesInSelectedViews.cs" />
+    <Compile Include="revit-scripts\ToggleLevelBubblesInSelectedViews.cs">
+      <SubType>Form</SubType>
+    </Compile>
     <Compile Include="revit-scripts\ManageFiltersOnSelectedViewsOrViewTemplates.cs" />
     <Compile Include="revit-scripts\OffsetCropRegionOfSelectedViews.cs" />
     <Compile Include="revit-scripts\OffsetViewOrigin.cs" />
