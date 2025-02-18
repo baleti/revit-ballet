@@ -13,7 +13,7 @@ public class SelectViews : IExternalCommand
         UIDocument uidoc = uiapp.ActiveUIDocument;
         Document doc = uidoc.Document;
 
-        // Create view-to-sheet mapping first
+        // Create a mapping for views that are placed on sheets (non-sheet views)
         Dictionary<ElementId, ViewSheet> viewToSheetMap = new Dictionary<ElementId, ViewSheet>();
         FilteredElementCollector sheetCollector = new FilteredElementCollector(doc)
             .OfClass(typeof(ViewSheet));
@@ -30,33 +30,40 @@ public class SelectViews : IExternalCommand
             }
         }
 
-        // Get all views in the project
+        // Get all views in the project, including view sheets.
         FilteredElementCollector viewCollector = new FilteredElementCollector(doc)
-            .OfCategory(BuiltInCategory.OST_Views)
-            .WhereElementIsNotElementType();
+            .OfClass(typeof(View));
 
-        // Create a list to store view data and a dictionary to map titles to views
+        // Prepare data for the data grid and map view titles to view objects.
         List<Dictionary<string, object>> viewData = new List<Dictionary<string, object>>();
         Dictionary<string, View> titleToViewMap = new Dictionary<string, View>();
 
-        // Collect view data
         foreach (View view in viewCollector.Cast<View>())
         {
-            // Skip view templates, legends, and schedules
+            // Skip view templates, legends, and schedules.
             if (view.IsTemplate || view.ViewType == ViewType.Legend || view.ViewType == ViewType.Schedule)
                 continue;
 
-            // Get sheet info using the mapping
-            string sheetInfo = "Not Placed";
-            if (viewToSheetMap.TryGetValue(view.Id, out ViewSheet sheet))
+            string sheetInfo = string.Empty;
+            if (view is ViewSheet)
             {
+                // For a sheet, show its own sheet number and name.
+                ViewSheet viewSheet = view as ViewSheet;
+                sheetInfo = $"{viewSheet.SheetNumber} - {viewSheet.Name}";
+            }
+            else if (viewToSheetMap.TryGetValue(view.Id, out ViewSheet sheet))
+            {
+                // For non-sheet views placed on a sheet, display the sheet info.
                 sheetInfo = $"{sheet.SheetNumber} - {sheet.Name}";
             }
+            else
+            {
+                sheetInfo = "Not Placed";
+            }
 
-            // Store the view in our title mapping
+            // Assuming titles are unique; otherwise, you might need to use a different key.
             titleToViewMap[view.Title] = view;
 
-            // Create dictionary for current view
             Dictionary<string, object> viewInfo = new Dictionary<string, object>
             {
                 { "Title", view.Title },
@@ -66,27 +73,24 @@ public class SelectViews : IExternalCommand
             viewData.Add(viewInfo);
         }
 
-        // Define column headers
+        // Define the column headers.
         List<string> columns = new List<string> { "Title", "Sheet" };
 
-        // Show selection dialog
+        // Show the selection dialog (using your custom GUI).
         List<Dictionary<string, object>> selectedViews = CustomGUIs.DataGrid(
             viewData,
             columns,
-            false  // Don't span all screens
+            false  // Don't span all screens.
         );
 
-        // If user selected views, add them to selection
+        // If the user made a selection, set those elements as the current selection.
         if (selectedViews != null && selectedViews.Any())
         {
-            // Get the ElementIds using the title mapping
             List<ElementId> viewIds = selectedViews
                 .Select(v => titleToViewMap[v["Title"].ToString()].Id)
                 .ToList();
 
-            // Set the selection
             uidoc.Selection.SetElementIds(viewIds);
-
             return Result.Succeeded;
         }
 

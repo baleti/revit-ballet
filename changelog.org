@@ -891,3 +891,5 @@ https://chatgpt.com/share/67afdaf3-9d4c-800c-81bc-327cdd7382b1
 *** 17
 **** =12:03= couldn't get OffsetViewOrigin command to work
 waiting for o3 model to reset, hopefully it will find a solution, all other LLMs failed, couldn't find a location parameter via revitlookup addin
+***** =19:03= made a few more attempts with o3 model, but couldn't still get it to work
+having bad luck with sections in revit in general
