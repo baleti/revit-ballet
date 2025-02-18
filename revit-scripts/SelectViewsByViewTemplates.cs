@@ -115,7 +115,6 @@ namespace MyRevitCommands
 
                 if (selectedEntries == null || selectedEntries.Count == 0)
                 {
-                    TaskDialog.Show("Select Views By View Templates", "No view templates were selected.");
                     return Result.Cancelled;
                 }
 
