@@ -81,6 +81,7 @@
     <Reference Include="System.Windows.Forms" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="revit-scripts\SelectViewsByViewTemplates.cs" />
     <Compile Include="revit-scripts\ToggleLevelBubblesInSelectedViews.cs">
       <SubType>Form</SubType>
     </Compile>
