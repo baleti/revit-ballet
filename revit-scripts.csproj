@@ -66,6 +66,7 @@
     <Reference Include="System.Buffers, Version=4.0.4.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
       <HintPath>packages\System.Buffers.4.6.0\lib\net462\System.Buffers.dll</HintPath>
     </Reference>
+    <Reference Include="System.Data" />
     <Reference Include="System.Drawing" />
     <Reference Include="System.Memory, Version=4.0.2.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
       <HintPath>packages\System.Memory.4.6.0\lib\net462\System.Memory.dll</HintPath>
@@ -82,6 +83,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="revit-scripts\DuplicateSelectedViews.cs" />
+    <Compile Include="revit-scripts\RenameFamilies.cs" />
     <Compile Include="revit-scripts\SelectViewsByViewTemplates.cs" />
     <Compile Include="revit-scripts\ToggleLevelBubblesInSelectedViews.cs">
       <SubType>Form</SubType>
@@ -118,7 +120,7 @@
     <Compile Include="revit-scripts\OffsetWorkplane.cs" />
     <Compile Include="revit-scripts\PasteCrossSession.cs" />
     <Compile Include="revit-scripts\RenameGroups.cs" />
-    <Compile Include="revit-scripts\RenamesInstanceParameters.cs" />
+    <Compile Include="revit-scripts\RenameParametersOfSelectedElements.cs" />
     <Compile Include="revit-scripts\RenameViews.cs" />
     <Compile Include="revit-scripts\SelectDetailGroups.cs" />
     <Compile Include="revit-scripts\SelectDetailGroupsInCurrentView.cs" />
