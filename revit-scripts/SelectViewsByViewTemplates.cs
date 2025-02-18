@@ -100,14 +100,14 @@ namespace MyRevitCommands
                         // Using the integer value of the ElementId.
                         ["Id"] = vt.Id.IntegerValue,
                         ["Name"] = vt.Name,
-                        ["Count"] = count,
-                        ["Sheets"] = sheetsList
+                        ["Count (Views)"] = count,
+                        ["Sheet Numbers"] = sheetsList
                     };
                     entries.Add(dict);
                 }
 
                 // Specify the property names (columns) to display.
-                List<string> propertyNames = new List<string> { "Id", "Name", "Count", "Sheets" };
+                List<string> propertyNames = new List<string> { "Id", "Name", "Count (Views)", "Sheet Numbers" };
 
                 // 6. Show the DataGrid UI to the user.
                 //    This custom function displays the list and returns the selected rows.
