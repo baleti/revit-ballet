@@ -14,6 +14,77 @@ public partial class CustomGUIs
         public ListSortDirection Direction { get; set; }
     }
 
+    // NaturalComparer: compares two objects using "natural sort" rules.
+    // It attempts to compare as numbers when possible.
+    private class NaturalComparer : IComparer<object>
+    {
+        public int Compare(object x, object y)
+        {
+            // Handle null values.
+            if (x == null && y == null) return 0;
+            if (x == null) return -1;
+            if (y == null) return 1;
+
+            string s1 = x.ToString();
+            string s2 = y.ToString();
+
+            // If both strings represent numbers, compare numerically.
+            bool aIsNumber = double.TryParse(s1, out double numA);
+            bool bIsNumber = double.TryParse(s2, out double numB);
+            if (aIsNumber && bIsNumber)
+            {
+                return numA.CompareTo(numB);
+            }
+            return CompareNatural(s1, s2);
+        }
+
+        // A simple natural string comparison: digits are compared numerically.
+        private int CompareNatural(string a, string b)
+        {
+            if (a == null && b == null) return 0;
+            if (a == null) return -1;
+            if (b == null) return 1;
+
+            int i = 0, j = 0;
+            while (i < a.Length && j < b.Length)
+            {
+                if (char.IsDigit(a[i]) && char.IsDigit(b[j]))
+                {
+                    int startI = i;
+                    while (i < a.Length && char.IsDigit(a[i])) i++;
+                    int startJ = j;
+                    while (j < b.Length && char.IsDigit(b[j])) j++;
+
+                    string numA = a.Substring(startI, i - startI).TrimStart('0');
+                    string numB = b.Substring(startJ, j - startJ).TrimStart('0');
+                    if (numA == "") numA = "0";
+                    if (numB == "") numB = "0";
+
+                    // First compare based on number of digits.
+                    int cmp = numA.Length.CompareTo(numB.Length);
+                    if (cmp != 0)
+                        return cmp;
+                    // Then lexicographically.
+                    cmp = string.Compare(numA, numB, StringComparison.Ordinal);
+                    if (cmp != 0)
+                        return cmp;
+                }
+                else
+                {
+                    int cmp = a[i].CompareTo(b[j]);
+                    if (cmp != 0)
+                        return cmp;
+                    i++;
+                    j++;
+                }
+            }
+            return a.Length.CompareTo(b.Length);
+        }
+    }
+
+    // A static instance of NaturalComparer for use in sorting.
+    private static readonly NaturalComparer naturalComparer = new NaturalComparer();
+
     public static List<Dictionary<string, object>> DataGrid(
         List<Dictionary<string, object>> entries,
         List<string> propertyNames,
@@ -39,10 +110,10 @@ public partial class CustomGUIs
         dataGridView.BackgroundColor = Color.White;
         dataGridView.AllowUserToAddRows = false;
         dataGridView.RowHeadersVisible = false;
-         // prevent row height modification
+        // Prevent row height modification.
         dataGridView.AllowUserToResizeRows = false;
         dataGridView.AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.None;
-        dataGridView.RowTemplate.Height = 25; // Set a fixed height of 25 pixels for all rows
+        dataGridView.RowTemplate.Height = 25; // Set a fixed height for all rows.
 
         foreach (string propertyName in propertyNames)
         {
@@ -126,12 +197,12 @@ public partial class CustomGUIs
             {
                 if (token.StartsWith("$"))
                 {
-                    int colonIndex = token.IndexOf(':');
-                    if (colonIndex > 0)
+                    // Handle tokens with double colon "::"
+                    if (token.Contains("::"))
                     {
-                        string colPart = token.Substring(1, colonIndex - 1);
-                        string valPart = token.Substring(colonIndex + 1);
-
+                        int doubleColonIndex = token.IndexOf("::");
+                        string colPart = token.Substring(1, doubleColonIndex - 1);
+                        string valPart = token.Substring(doubleColonIndex + 2);
                         bool wasQuoted = colPart.StartsWith("\"") && colPart.EndsWith("\"");
                         string cleanCol = StripQuotes(colPart).ToLower();
                         List<string> colParts = wasQuoted
@@ -140,23 +211,52 @@ public partial class CustomGUIs
 
                         string valFilter = StripQuotes(valPart).ToLower();
 
-                        if (colParts.Count > 0 && !string.IsNullOrWhiteSpace(valFilter))
+                        if (colParts.Count > 0)
                         {
-                            columnValueFilters.Add((colParts, valFilter));
+                            // Always add column filter.
+                            columnVisibilityFilters.Add(colParts);
+                            // Only add row filtering if a value is provided.
+                            if (!string.IsNullOrWhiteSpace(valFilter))
+                            {
+                                columnValueFilters.Add((colParts, valFilter));
+                            }
                         }
                     }
                     else
                     {
-                        string content = token.Substring(1);
-                        bool wasQuoted = content.StartsWith("\"") && content.EndsWith("\"");
-                        string cleanContent = StripQuotes(content).ToLower();
-                        List<string> parts = wasQuoted
-                            ? cleanContent.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries).ToList()
-                            : new List<string> { cleanContent };
-
-                        if (parts.Count > 0)
+                        int colonIndex = token.IndexOf(':');
+                        if (colonIndex > 0)
                         {
-                            columnVisibilityFilters.Add(parts);
+                            string colPart = token.Substring(1, colonIndex - 1);
+                            string valPart = token.Substring(colonIndex + 1);
+                            bool wasQuoted = colPart.StartsWith("\"") && colPart.EndsWith("\"");
+                            string cleanCol = StripQuotes(colPart).ToLower();
+                            List<string> colParts = wasQuoted
+                                ? cleanCol.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries).ToList()
+                                : new List<string> { cleanCol };
+
+                            string valFilter = StripQuotes(valPart).ToLower();
+
+                            if (colParts.Count > 0 && !string.IsNullOrWhiteSpace(valFilter))
+                            {
+                                // With a single colon, only row filtering is applied.
+                                columnValueFilters.Add((colParts, valFilter));
+                            }
+                        }
+                        else
+                        {
+                            string content = token.Substring(1);
+                            bool wasQuoted = content.StartsWith("\"") && content.EndsWith("\"");
+                            string cleanContent = StripQuotes(content).ToLower();
+                            List<string> parts = wasQuoted
+                                ? cleanContent.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries).ToList()
+                                : new List<string> { cleanContent };
+
+                            if (parts.Count > 0)
+                            {
+                                // Column filtering only.
+                                columnVisibilityFilters.Add(parts);
+                            }
                         }
                     }
                 }
@@ -233,21 +333,21 @@ public partial class CustomGUIs
                     if (ordered == null)
                     {
                         ordered = criteria.Direction == ListSortDirection.Ascending
-                            ? sortedEntries.OrderBy(x => x[criteria.ColumnName])
-                            : sortedEntries.OrderByDescending(x => x[criteria.ColumnName]);
+                            ? sortedEntries.OrderBy(x => x[criteria.ColumnName], naturalComparer)
+                            : sortedEntries.OrderByDescending(x => x[criteria.ColumnName], naturalComparer);
                     }
                     else
                     {
                         ordered = criteria.Direction == ListSortDirection.Ascending
-                            ? ordered.ThenBy(x => x[criteria.ColumnName])
-                            : ordered.ThenByDescending(x => x[criteria.ColumnName]);
+                            ? ordered.ThenBy(x => x[criteria.ColumnName], naturalComparer)
+                            : ordered.ThenByDescending(x => x[criteria.ColumnName], naturalComparer);
                     }
                 }
                 sortedEntries = ordered?.ToList() ?? sortedEntries;
             }
 
             RefreshGrid(sortedEntries);
-            
+
             dataGridView.AutoResizeColumns();
             int requiredWidth = dataGridView.Columns.GetColumnsWidth(DataGridViewElementStates.Visible)
                 + SystemInformation.VerticalScrollBarWidth + 50;
@@ -271,7 +371,7 @@ public partial class CustomGUIs
         {
             string columnName = dataGridView.Columns[e.ColumnIndex].HeaderText;
             var existing = sortCriteria.FirstOrDefault(c => c.ColumnName == columnName);
-            
+
             if (Control.ModifierKeys == Keys.Shift)
             {
                 if (existing != null)
@@ -283,17 +383,17 @@ public partial class CustomGUIs
             {
                 if (existing != null)
                 {
-                    existing.Direction = existing.Direction == ListSortDirection.Ascending 
-                        ? ListSortDirection.Descending 
+                    existing.Direction = existing.Direction == ListSortDirection.Ascending
+                        ? ListSortDirection.Descending
                         : ListSortDirection.Ascending;
                     sortCriteria.Remove(existing);
                 }
                 else
                 {
-                    existing = new SortCriteria 
-                    { 
+                    existing = new SortCriteria
+                    {
                         ColumnName = columnName,
-                        Direction = ListSortDirection.Ascending 
+                        Direction = ListSortDirection.Ascending
                     };
                 }
 
@@ -307,14 +407,14 @@ public partial class CustomGUIs
                 if (ordered == null)
                 {
                     ordered = criteria.Direction == ListSortDirection.Ascending
-                        ? sortedEntries.OrderBy(x => x[criteria.ColumnName])
-                        : sortedEntries.OrderByDescending(x => x[criteria.ColumnName]);
+                        ? sortedEntries.OrderBy(x => x[criteria.ColumnName], naturalComparer)
+                        : sortedEntries.OrderByDescending(x => x[criteria.ColumnName], naturalComparer);
                 }
                 else
                 {
                     ordered = criteria.Direction == ListSortDirection.Ascending
-                        ? ordered.ThenBy(x => x[criteria.ColumnName])
-                        : ordered.ThenByDescending(x => x[criteria.ColumnName]);
+                        ? ordered.ThenBy(x => x[criteria.ColumnName], naturalComparer)
+                        : ordered.ThenByDescending(x => x[criteria.ColumnName], naturalComparer);
                 }
             }
 
@@ -353,7 +453,7 @@ public partial class CustomGUIs
         dataGridView.KeyDown += (sender, e) =>
         {
             handleAltD(e);
-            
+
             if (e.KeyCode == Keys.Escape)
             {
                 escapePressed = true;
@@ -389,7 +489,7 @@ public partial class CustomGUIs
         searchBox.KeyDown += (sender, e) =>
         {
             handleAltD(e);
-            
+
             if (e.KeyCode == Keys.Escape)
             {
                 escapePressed = true;
@@ -412,7 +512,7 @@ public partial class CustomGUIs
 
                     int newIndex = 0;
                     int firstVisibleCol = GetFirstVisibleColumnIndex();
-                    
+
                     if (dataGridView.SelectedRows.Count > 0)
                     {
                         int currentIndex = dataGridView.SelectedRows[0].Index;

@@ -1,7 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Globalization;
+using System.Linq;
+using System.Reflection;
 using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
@@ -50,6 +51,128 @@ namespace MyRevitAddin
         }
 
         /// <summary>
+        /// Applies a simple mathematical operation on the input value using the given string.
+        /// Supported operations include:
+        ///   - "2x"  (multiplies x by 2)
+        ///   - "x/2" (divides x by 2)
+        ///   - "x+2" (adds 2)
+        ///   - "x-2" (subtracts 2)
+        ///   - "-x"  (negates x)
+        /// The operation string is case-insensitive and should have no spaces.
+        /// If the string is not recognized, the original value is returned.
+        /// </summary>
+        public static double ApplyMathOperation(double x, string mathOp)
+        {
+            if (string.IsNullOrWhiteSpace(mathOp))
+                return x;
+
+            mathOp = mathOp.Replace(" ", ""); // remove spaces
+            double result = x;
+            if (mathOp.Equals("x", StringComparison.OrdinalIgnoreCase))
+            {
+                return x;
+            }
+            else if (mathOp.Equals("-x", StringComparison.OrdinalIgnoreCase))
+            {
+                return -x;
+            }
+            else if (mathOp.EndsWith("x", StringComparison.OrdinalIgnoreCase) && !mathOp.StartsWith("x"))
+            {
+                // e.g. "2x"
+                string multStr = mathOp.Substring(0, mathOp.Length - 1);
+                if (double.TryParse(multStr, NumberStyles.Any, CultureInfo.InvariantCulture, out double mult))
+                    return mult * x;
+            }
+            else if (mathOp.StartsWith("x", StringComparison.OrdinalIgnoreCase))
+            {
+                string opPart = mathOp.Substring(1);
+                if (opPart.StartsWith("+"))
+                {
+                    string num = opPart.Substring(1);
+                    if (double.TryParse(num, NumberStyles.Any, CultureInfo.InvariantCulture, out double addVal))
+                        return x + addVal;
+                }
+                else if (opPart.StartsWith("-"))
+                {
+                    string num = opPart.Substring(1);
+                    if (double.TryParse(num, NumberStyles.Any, CultureInfo.InvariantCulture, out double subVal))
+                        return x - subVal;
+                }
+                else if (opPart.StartsWith("*"))
+                {
+                    string num = opPart.Substring(1);
+                    if (double.TryParse(num, NumberStyles.Any, CultureInfo.InvariantCulture, out double mult))
+                        return x * mult;
+                }
+                else if (opPart.StartsWith("/"))
+                {
+                    string num = opPart.Substring(1);
+                    if (double.TryParse(num, NumberStyles.Any, CultureInfo.InvariantCulture, out double div) && div != 0)
+                        return x / div;
+                }
+            }
+            return x;
+        }
+
+        /// <summary>
+        /// Determines (via reflection) if a parameter is a Yes/No parameter.
+        /// In Revit 2024 the internal ParameterType string may be "Yes/No",
+        /// so we normalize the value before comparing.
+        /// </summary>
+        public static bool IsYesNoParameter(Parameter param)
+        {
+            if (param == null || param.Definition == null)
+                return false;
+
+            // Use reflection to get the (non-public) ParameterType property.
+            var prop = param.Definition.GetType().GetProperty("ParameterType",
+                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            if (prop != null)
+            {
+                var value = prop.GetValue(param.Definition, null);
+                if (value != null)
+                {
+                    // Remove any slashes and spaces so "Yes/No" becomes "YesNo"
+                    string typeName = value.ToString().Replace("/", "").Replace(" ", "");
+                    if (typeName.Equals("YesNo", StringComparison.OrdinalIgnoreCase))
+                        return true;
+                }
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Transforms the original string value using the provided form values.
+        /// If a Find text is provided, it replaces it with the Replace text.
+        /// Otherwise, if Replace text is provided (and Find is empty), that value is used.
+        /// Then if a Pattern is provided, it is applied (by replacing "{}" with the current value).
+        /// Finally, if a Math value is provided and the result is numeric, it is applied.
+        /// </summary>
+        private static string TransformValue(string original, RenameParamForm form)
+        {
+            string newValue = original;
+            if (!string.IsNullOrEmpty(form.FindText))
+            {
+                newValue = newValue.Replace(form.FindText, form.ReplaceText);
+            }
+            else if (!string.IsNullOrEmpty(form.ReplaceText))
+            {
+                newValue = form.ReplaceText;
+            }
+            if (!string.IsNullOrEmpty(form.PatternText))
+            {
+                newValue = form.PatternText.Replace("{}", newValue);
+            }
+            if (!string.IsNullOrEmpty(form.MathOperationText) &&
+                double.TryParse(newValue, NumberStyles.Any, CultureInfo.InvariantCulture, out double x))
+            {
+                double result = ApplyMathOperation(x, form.MathOperationText);
+                newValue = result.ToString(CultureInfo.InvariantCulture);
+            }
+            return newValue;
+        }
+
+        /// <summary>
         /// Shared routine for renaming parameter values.
         /// 
         /// - For type elements (includeTypeName==true) the routine builds a transposed grid
@@ -73,7 +196,7 @@ namespace MyRevitAddin
         {
             try
             {
-                // Determine if the project is metric using Method 1.
+                // Determine if the project is metric.
                 Units projectUnits = doc.GetUnits();
                 FormatOptions lengthOptions = projectUnits.GetFormatOptions(SpecTypeId.Length);
                 bool isMetric = (lengthOptions.GetUnitTypeId() == UnitTypeId.Millimeters ||
@@ -208,16 +331,13 @@ namespace MyRevitAddin
                             tx.Start();
                             foreach (var pv in paramValues)
                             {
-                                string currentValue = pv.CurrentValue;
-                                if (!string.IsNullOrEmpty(form.FindText) && currentValue.Contains(form.FindText))
-                                    currentValue = currentValue.Replace(form.FindText, form.ReplaceText);
-                                if (!string.IsNullOrEmpty(form.PatternText))
-                                    currentValue = form.PatternText.Replace("{}", currentValue);
-                                if (currentValue != pv.CurrentValue)
+                                string newValue = TransformValue(pv.CurrentValue, form);
+
+                                if (newValue != pv.CurrentValue)
                                 {
                                     if (pv.Parameter == null)
                                     {
-                                        try { pv.Element.Name = currentValue; }
+                                        try { pv.Element.Name = newValue; }
                                         catch (Exception ex)
                                         {
                                             WinForms.MessageBox.Show($"Failed to update Type Name for {pv.Element.Id}:\n{ex.Message}", "Error");
@@ -229,14 +349,13 @@ namespace MyRevitAddin
                                         {
                                             if (pv.Parameter.StorageType == StorageType.String)
                                             {
-                                                pv.Parameter.Set(currentValue);
+                                                pv.Parameter.Set(newValue);
                                             }
                                             else if (pv.Parameter.StorageType == StorageType.Double)
                                             {
-                                                if (double.TryParse(currentValue, NumberStyles.Any, CultureInfo.InvariantCulture, out double newDouble))
+                                                if (double.TryParse(newValue, NumberStyles.Any, CultureInfo.InvariantCulture, out double newDouble))
                                                 {
-                                                    // Instead of checking against SpecTypeId.Length,
-                                                    // we now check if the parameter's unit type is either Millimeters or Meters.
+                                                    // Convert metric length values from mm to feet.
                                                     if ((pv.Parameter.GetUnitTypeId() == UnitTypeId.Millimeters ||
                                                          pv.Parameter.GetUnitTypeId() == UnitTypeId.Meters) && isMetric)
                                                         newDouble = newDouble / 304.8;
@@ -245,8 +364,25 @@ namespace MyRevitAddin
                                             }
                                             else if (pv.Parameter.StorageType == StorageType.Integer)
                                             {
-                                                if (int.TryParse(currentValue, NumberStyles.Any, CultureInfo.InvariantCulture, out int newInt))
-                                                    pv.Parameter.Set(newInt);
+                                                // For Yes/No parameters, use our reflection-based check.
+                                                if (IsYesNoParameter(pv.Parameter))
+                                                {
+                                                    string lower = newValue.Trim().ToLowerInvariant();
+                                                    bool? boolValue = null;
+                                                    if (lower == "yes" || lower == "true" || lower == "1")
+                                                        boolValue = true;
+                                                    else if (lower == "no" || lower == "false" || lower == "0")
+                                                        boolValue = false;
+                                                    if (boolValue.HasValue)
+                                                        pv.Parameter.Set(boolValue.Value ? 1 : 0);
+                                                }
+                                                else
+                                                {
+                                                    if (int.TryParse(newValue, NumberStyles.Any, CultureInfo.InvariantCulture, out int newInt))
+                                                    {
+                                                        pv.Parameter.Set(newInt);
+                                                    }
+                                                }
                                             }
                                         }
                                         catch (Exception ex)
@@ -332,22 +468,18 @@ namespace MyRevitAddin
                             tx.Start();
                             foreach (var pv in paramValues)
                             {
-                                string currentValue = pv.CurrentValue;
-                                if (!string.IsNullOrEmpty(form.FindText) && currentValue.Contains(form.FindText))
-                                    currentValue = currentValue.Replace(form.FindText, form.ReplaceText);
-                                if (!string.IsNullOrEmpty(form.PatternText))
-                                    currentValue = form.PatternText.Replace("{}", currentValue);
-                                if (currentValue != pv.CurrentValue)
+                                string newValue = TransformValue(pv.CurrentValue, form);
+                                if (newValue != pv.CurrentValue)
                                 {
                                     try
                                     {
                                         if (pv.Parameter.StorageType == StorageType.String)
                                         {
-                                            pv.Parameter.Set(currentValue);
+                                            pv.Parameter.Set(newValue);
                                         }
                                         else if (pv.Parameter.StorageType == StorageType.Double)
                                         {
-                                            if (double.TryParse(currentValue, NumberStyles.Any, CultureInfo.InvariantCulture, out double newDouble))
+                                            if (double.TryParse(newValue, NumberStyles.Any, CultureInfo.InvariantCulture, out double newDouble))
                                             {
                                                 if ((pv.Parameter.GetUnitTypeId() == UnitTypeId.Millimeters ||
                                                      pv.Parameter.GetUnitTypeId() == UnitTypeId.Meters) && isMetric)
@@ -357,8 +489,24 @@ namespace MyRevitAddin
                                         }
                                         else if (pv.Parameter.StorageType == StorageType.Integer)
                                         {
-                                            if (int.TryParse(currentValue, NumberStyles.Any, CultureInfo.InvariantCulture, out int newInt))
-                                                pv.Parameter.Set(newInt);
+                                            if (IsYesNoParameter(pv.Parameter))
+                                            {
+                                                string lower = newValue.Trim().ToLowerInvariant();
+                                                bool? boolValue = null;
+                                                if (lower == "yes" || lower == "true" || lower == "1")
+                                                    boolValue = true;
+                                                else if (lower == "no" || lower == "false" || lower == "0")
+                                                    boolValue = false;
+                                                if (boolValue.HasValue)
+                                                    pv.Parameter.Set(boolValue.Value ? 1 : 0);
+                                            }
+                                            else
+                                            {
+                                                if (int.TryParse(newValue, NumberStyles.Any, CultureInfo.InvariantCulture, out int newInt))
+                                                {
+                                                    pv.Parameter.Set(newInt);
+                                                }
+                                            }
                                         }
                                     }
                                     catch (Exception ex)
@@ -391,12 +539,14 @@ namespace MyRevitAddin
         private WinForms.TextBox _txtFind;
         private WinForms.TextBox _txtReplace;
         private WinForms.TextBox _txtPattern;
+        private WinForms.TextBox _txtMathOperation; // Renamed field ("Math")
         private WinForms.RichTextBox _rtbBefore;
         private WinForms.RichTextBox _rtbAfter;
 
         public string FindText => _txtFind.Text;
         public string ReplaceText => _txtReplace.Text;
         public string PatternText => _txtPattern.Text;
+        public string MathOperationText => _txtMathOperation.Text;
 
         public RenameParamForm(List<ParameterRenamerHelper.ParameterValueInfo> paramValues)
         {
@@ -416,27 +566,40 @@ namespace MyRevitAddin
         private void InitializeComponent()
         {
             this.Text = "Modify Parameters";
-            this.Size = new Drawing.Size(600, 500);
+            this.Size = new Drawing.Size(600, 600);
             this.MinimumSize = new Drawing.Size(500, 400);
             this.Font = new Drawing.Font("Segoe UI", 9);
             this.KeyPreview = true;
 
+            // Updated layout: 8 rows total.
+            // Rows:
+            // 0: Find field
+            // 1: Replace field
+            // 2: Pattern label & textbox
+            // 3: Pattern hint ("Use {} to represent current value.")
+            // 4: Math label (renamed from "Math Op") & textbox
+            // 5: Math hint ("Use x to represent current value (e.g., '2x', 'x/2', 'x+2', 'x-2', '-x').")
+            // 6: Current Values (group box)
+            // 7: Preview (group box)
             var mainLayout = new WinForms.TableLayoutPanel
             {
                 Dock = WinForms.DockStyle.Fill,
                 ColumnCount = 2,
-                RowCount = 6,
+                RowCount = 8,
                 Padding = new WinForms.Padding(10)
             };
             mainLayout.ColumnStyles.Add(new WinForms.ColumnStyle(WinForms.SizeType.Absolute, 80));
             mainLayout.ColumnStyles.Add(new WinForms.ColumnStyle(WinForms.SizeType.Percent, 100));
-            mainLayout.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Absolute, 30));
-            mainLayout.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Absolute, 30));
-            mainLayout.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Absolute, 30));
-            mainLayout.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Absolute, 20));
-            mainLayout.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Percent, 45));
-            mainLayout.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Percent, 45));
+            mainLayout.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Absolute, 30)); // Row 0: Find
+            mainLayout.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Absolute, 30)); // Row 1: Replace
+            mainLayout.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Absolute, 30)); // Row 2: Pattern
+            mainLayout.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Absolute, 20)); // Row 3: Pattern Hint
+            mainLayout.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Absolute, 30)); // Row 4: Math
+            mainLayout.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Absolute, 20)); // Row 5: Math Hint
+            mainLayout.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Percent, 45));  // Row 6: Current Values
+            mainLayout.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Percent, 45));  // Row 7: Preview
 
+            // Row 0: Find field
             var lblFind = new WinForms.Label
             {
                 Text = "Find:",
@@ -447,6 +610,7 @@ namespace MyRevitAddin
             _txtFind = new WinForms.TextBox { Dock = WinForms.DockStyle.Fill };
             mainLayout.Controls.Add(_txtFind, 1, 0);
 
+            // Row 1: Replace field
             var lblReplace = new WinForms.Label
             {
                 Text = "Replace:",
@@ -457,6 +621,7 @@ namespace MyRevitAddin
             _txtReplace = new WinForms.TextBox { Dock = WinForms.DockStyle.Fill };
             mainLayout.Controls.Add(_txtReplace, 1, 1);
 
+            // Row 2: Pattern field
             var lblPattern = new WinForms.Label
             {
                 Text = "Pattern:",
@@ -467,27 +632,52 @@ namespace MyRevitAddin
             _txtPattern = new WinForms.TextBox { Dock = WinForms.DockStyle.Fill, Text = "{}" };
             mainLayout.Controls.Add(_txtPattern, 1, 2);
 
-            var lblHint = new WinForms.Label
+            // Row 3: Pattern hint
+            var lblPatternHint = new WinForms.Label
             {
-                Text = "Use {} to represent current value",
+                Text = "Use {} to represent current value.",
                 Font = new Drawing.Font(this.Font, Drawing.FontStyle.Italic),
                 ForeColor = Drawing.Color.Gray,
-                Dock = WinForms.DockStyle.Top
+                Dock = WinForms.DockStyle.Fill
             };
-            mainLayout.Controls.Add(lblHint, 1, 3);
+            mainLayout.Controls.Add(lblPatternHint, 1, 3);
 
+            // Row 4: Math field (renamed from "Math Op" to "Math")
+            var lblMath = new WinForms.Label
+            {
+                Text = "Math:",
+                TextAlign = Drawing.ContentAlignment.MiddleRight,
+                Dock = WinForms.DockStyle.Fill
+            };
+            mainLayout.Controls.Add(lblMath, 0, 4);
+            _txtMathOperation = new WinForms.TextBox { Dock = WinForms.DockStyle.Fill };
+            mainLayout.Controls.Add(_txtMathOperation, 1, 4);
+
+            // Row 5: Math hint
+            var lblMathHint = new WinForms.Label
+            {
+                Text = "Use x to represent current value (e.g., '2x', 'x/2', 'x+2', 'x-2', '-x').",
+                Font = new Drawing.Font(this.Font, Drawing.FontStyle.Italic),
+                ForeColor = Drawing.Color.Gray,
+                Dock = WinForms.DockStyle.Fill
+            };
+            mainLayout.Controls.Add(lblMathHint, 1, 5);
+
+            // Row 6: Current Values
             _rtbBefore = new WinForms.RichTextBox { ReadOnly = true, Dock = WinForms.DockStyle.Fill };
             var groupBefore = new WinForms.GroupBox { Text = "Current Values", Dock = WinForms.DockStyle.Fill };
             groupBefore.Controls.Add(_rtbBefore);
-            mainLayout.Controls.Add(groupBefore, 0, 4);
+            mainLayout.Controls.Add(groupBefore, 0, 6);
             mainLayout.SetColumnSpan(groupBefore, 2);
 
+            // Row 7: Preview
             _rtbAfter = new WinForms.RichTextBox { ReadOnly = true, Dock = WinForms.DockStyle.Fill };
             var groupAfter = new WinForms.GroupBox { Text = "Preview", Dock = WinForms.DockStyle.Fill };
             groupAfter.Controls.Add(_rtbAfter);
-            mainLayout.Controls.Add(groupAfter, 0, 5);
+            mainLayout.Controls.Add(groupAfter, 0, 7);
             mainLayout.SetColumnSpan(groupAfter, 2);
 
+            // Button Panel at the bottom.
             var buttonPanel = new WinForms.Panel { Dock = WinForms.DockStyle.Bottom, Height = 40 };
             var btnCancel = new WinForms.Button { Text = "Cancel", Size = new Drawing.Size(80, 30), DialogResult = WinForms.DialogResult.Cancel };
             buttonPanel.Controls.Add(btnCancel);
@@ -498,9 +688,12 @@ namespace MyRevitAddin
             btnOk.Location = new Drawing.Point(buttonPanel.Width - btnOk.Width - 10, buttonPanel.Height - btnOk.Height - 5);
             btnCancel.Location = new Drawing.Point(btnOk.Left - btnCancel.Width - 10, btnOk.Top);
 
+            // Update preview when any textbox changes.
             _txtFind.TextChanged += UpdatePreview;
             _txtReplace.TextChanged += UpdatePreview;
             _txtPattern.TextChanged += UpdatePreview;
+            _txtMathOperation.TextChanged += UpdatePreview;
+
             this.AcceptButton = btnOk;
             this.CancelButton = btnCancel;
 
@@ -528,10 +721,24 @@ namespace MyRevitAddin
         private string ApplyTransformations(string input)
         {
             string output = input;
-            if (!string.IsNullOrEmpty(FindText) && output.Contains(FindText))
+            if (!string.IsNullOrEmpty(FindText))
+            {
                 output = output.Replace(FindText, ReplaceText);
+            }
+            else if (!string.IsNullOrEmpty(ReplaceText))
+            {
+                output = ReplaceText;
+            }
             if (!string.IsNullOrEmpty(PatternText))
+            {
                 output = PatternText.Replace("{}", output);
+            }
+            if (!string.IsNullOrEmpty(MathOperationText) &&
+                double.TryParse(output, NumberStyles.Any, CultureInfo.InvariantCulture, out double x))
+            {
+                double result = ParameterRenamerHelper.ApplyMathOperation(x, MathOperationText);
+                output = result.ToString(CultureInfo.InvariantCulture);
+            }
             return output;
         }
     }
@@ -567,7 +774,7 @@ namespace MyRevitAddin
     /// In addition to the editable type parameters, this command now displays a transposed grid:
     /// each row shows a parameter (with its Group and Name) and each additional column shows the value
     /// for a given family type. The rows are sorted first by Group then by Name.
-    /// After the grid selection, the same renaming dialog (with preview, find/replace, pattern) is shown.
+    /// After the grid selection, the same renaming dialog (with preview, find/replace, pattern, and math) is shown.
     /// </summary>
     [Transaction(TransactionMode.Manual)]
     public class RenameTypeParametersOfSelectedElements : IExternalCommand
