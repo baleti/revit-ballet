@@ -896,3 +896,6 @@ having bad luck with sections in revit in general
 *** 18
 **** =13:40= couldn't write a command that would automate creating a detail item family out of current elements
 simialar in user experience as grouping
+*** 19
+**** =21:51= tried adding FacingFlip and HandFlip properties to RenameInstanceParametersOfSelectedElements command, but turned out that some elements can't be flipped directly at all (CanFlipFacing and CanFlipHand methods to check)
+may try later a separate command to perform mirror operation on them instead

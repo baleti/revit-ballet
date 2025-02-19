@@ -414,6 +414,16 @@ namespace MyRevitAddin
                         .ThenBy(pi => pi.Name)
                         .ToList();
 
+                    // Add pseudo‑parameters only if at least one FamilyInstance supports the flip.
+                    if (elements.Any(e => e is FamilyInstance fi && fi.CanFlipFacing))
+                    {
+                        paramInfos.Add(new ParameterInfo { Name = "FacingFlipped", IsShared = false, Group = "FamilyInstance Properties" });
+                    }
+                    if (elements.Any(e => e is FamilyInstance fi && fi.CanFlipHand))
+                    {
+                        paramInfos.Add(new ParameterInfo { Name = "HandFlipped", IsShared = false, Group = "FamilyInstance Properties" });
+                    }
+
                     if (paramInfos.Count == 0)
                     {
                         WinForms.MessageBox.Show("No editable parameters found.", "Error");
@@ -436,18 +446,52 @@ namespace MyRevitAddin
                         foreach (var dict in selectedParams)
                         {
                             string paramName = dict["Name"]?.ToString();
-                            var p = elem.LookupParameter(paramName);
-                            if (p != null && !p.IsReadOnly && p.StorageType != StorageType.ElementId)
+                            // Handle the pseudo‑parameters explicitly.
+                            if (paramName == "FacingFlipped")
                             {
-                                string currentVal = p.StorageType == StorageType.String ? p.AsString() ?? "" : p.AsValueString() ?? "";
-                                paramValues.Add(new ParameterValueInfo
+                                if (elem is FamilyInstance fi && fi.CanFlipFacing)
                                 {
-                                    Element = elem,
-                                    Parameter = p,
-                                    ParameterName = paramName,
-                                    CurrentValue = currentVal,
-                                    IsShared = p.IsShared
-                                });
+                                    string currentVal = fi.FacingFlipped ? "True" : "False";
+                                    paramValues.Add(new ParameterValueInfo
+                                    {
+                                        Element = elem,
+                                        Parameter = null,
+                                        ParameterName = "FacingFlipped",
+                                        CurrentValue = currentVal,
+                                        IsShared = false
+                                    });
+                                }
+                            }
+                            else if (paramName == "HandFlipped")
+                            {
+                                if (elem is FamilyInstance fi && fi.CanFlipHand)
+                                {
+                                    string currentVal = fi.HandFlipped ? "True" : "False";
+                                    paramValues.Add(new ParameterValueInfo
+                                    {
+                                        Element = elem,
+                                        Parameter = null,
+                                        ParameterName = "HandFlipped",
+                                        CurrentValue = currentVal,
+                                        IsShared = false
+                                    });
+                                }
+                            }
+                            else
+                            {
+                                var p = elem.LookupParameter(paramName);
+                                if (p != null && !p.IsReadOnly && p.StorageType != StorageType.ElementId)
+                                {
+                                    string currentVal = p.StorageType == StorageType.String ? p.AsString() ?? "" : p.AsValueString() ?? "";
+                                    paramValues.Add(new ParameterValueInfo
+                                    {
+                                        Element = elem,
+                                        Parameter = p,
+                                        ParameterName = paramName,
+                                        CurrentValue = currentVal,
+                                        IsShared = p.IsShared
+                                    });
+                                }
                             }
                         }
                     }
@@ -473,7 +517,39 @@ namespace MyRevitAddin
                                 {
                                     try
                                     {
-                                        if (pv.Parameter.StorageType == StorageType.String)
+                                        if (pv.Parameter == null)
+                                        {
+                                            if (pv.ParameterName == "FacingFlipped" || pv.ParameterName == "HandFlipped")
+                                            {
+                                                if (pv.Element is FamilyInstance fi)
+                                                {
+                                                    string lower = newValue.Trim().ToLowerInvariant();
+                                                    bool? desiredValue = null;
+                                                    if (lower == "yes" || lower == "true" || lower == "1")
+                                                        desiredValue = true;
+                                                    else if (lower == "no" || lower == "false" || lower == "0")
+                                                        desiredValue = false;
+                                                    if (desiredValue.HasValue)
+                                                    {
+                                                        if (pv.ParameterName == "FacingFlipped")
+                                                        {
+                                                            if (fi.FacingFlipped != desiredValue.Value && fi.CanFlipFacing)
+                                                                fi.flipFacing();
+                                                        }
+                                                        else if (pv.ParameterName == "HandFlipped")
+                                                        {
+                                                            if (fi.HandFlipped != desiredValue.Value && fi.CanFlipHand)
+                                                                fi.flipHand();
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            else if (pv.ParameterName == "Type Name")
+                                            {
+                                                pv.Element.Name = newValue;
+                                            }
+                                        }
+                                        else if (pv.Parameter.StorageType == StorageType.String)
                                         {
                                             pv.Parameter.Set(newValue);
                                         }
