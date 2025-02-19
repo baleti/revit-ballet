@@ -330,17 +330,18 @@ public partial class CustomGUIs
                 IOrderedEnumerable<Dictionary<string, object>> ordered = null;
                 foreach (var criteria in sortCriteria)
                 {
+                    // Use a safe lookup for the sort key.
                     if (ordered == null)
                     {
                         ordered = criteria.Direction == ListSortDirection.Ascending
-                            ? sortedEntries.OrderBy(x => x[criteria.ColumnName], naturalComparer)
-                            : sortedEntries.OrderByDescending(x => x[criteria.ColumnName], naturalComparer);
+                            ? sortedEntries.OrderBy(x => x.ContainsKey(criteria.ColumnName) ? x[criteria.ColumnName] : null, naturalComparer)
+                            : sortedEntries.OrderByDescending(x => x.ContainsKey(criteria.ColumnName) ? x[criteria.ColumnName] : null, naturalComparer);
                     }
                     else
                     {
                         ordered = criteria.Direction == ListSortDirection.Ascending
-                            ? ordered.ThenBy(x => x[criteria.ColumnName], naturalComparer)
-                            : ordered.ThenByDescending(x => x[criteria.ColumnName], naturalComparer);
+                            ? ordered.ThenBy(x => x.ContainsKey(criteria.ColumnName) ? x[criteria.ColumnName] : null, naturalComparer)
+                            : ordered.ThenByDescending(x => x.ContainsKey(criteria.ColumnName) ? x[criteria.ColumnName] : null, naturalComparer);
                     }
                 }
                 sortedEntries = ordered?.ToList() ?? sortedEntries;
@@ -407,14 +408,14 @@ public partial class CustomGUIs
                 if (ordered == null)
                 {
                     ordered = criteria.Direction == ListSortDirection.Ascending
-                        ? sortedEntries.OrderBy(x => x[criteria.ColumnName], naturalComparer)
-                        : sortedEntries.OrderByDescending(x => x[criteria.ColumnName], naturalComparer);
+                        ? sortedEntries.OrderBy(x => x.ContainsKey(criteria.ColumnName) ? x[criteria.ColumnName] : null, naturalComparer)
+                        : sortedEntries.OrderByDescending(x => x.ContainsKey(criteria.ColumnName) ? x[criteria.ColumnName] : null, naturalComparer);
                 }
                 else
                 {
                     ordered = criteria.Direction == ListSortDirection.Ascending
-                        ? ordered.ThenBy(x => x[criteria.ColumnName], naturalComparer)
-                        : ordered.ThenByDescending(x => x[criteria.ColumnName], naturalComparer);
+                        ? ordered.ThenBy(x => x.ContainsKey(criteria.ColumnName) ? x[criteria.ColumnName] : null, naturalComparer)
+                        : ordered.ThenByDescending(x => x.ContainsKey(criteria.ColumnName) ? x[criteria.ColumnName] : null, naturalComparer);
                 }
             }
 
@@ -453,7 +454,7 @@ public partial class CustomGUIs
         dataGridView.KeyDown += (sender, e) =>
         {
             handleAltD(e);
-
+            
             if (e.KeyCode == Keys.Escape)
             {
                 escapePressed = true;
@@ -489,7 +490,7 @@ public partial class CustomGUIs
         searchBox.KeyDown += (sender, e) =>
         {
             handleAltD(e);
-
+            
             if (e.KeyCode == Keys.Escape)
             {
                 escapePressed = true;
@@ -512,7 +513,7 @@ public partial class CustomGUIs
 
                     int newIndex = 0;
                     int firstVisibleCol = GetFirstVisibleColumnIndex();
-
+                    
                     if (dataGridView.SelectedRows.Count > 0)
                     {
                         int currentIndex = dataGridView.SelectedRows[0].Index;
