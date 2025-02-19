@@ -1,0 +1,294 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using Autodesk.Revit.Attributes;
+using Autodesk.Revit.DB;
+using Autodesk.Revit.UI;
+
+namespace RevitWorksetVisibilityCommands
+{
+    [Transaction(TransactionMode.Manual)]
+    public class ShowWorksetsInView : IExternalCommand
+    {
+        public Result Execute(ExternalCommandData commandData,
+                              ref string message,
+                              ElementSet elements)
+        {
+            UIDocument uidoc = commandData.Application.ActiveUIDocument;
+            if (uidoc == null)
+            {
+                message = "No active document.";
+                return Result.Failed;
+            }
+            Document doc = uidoc.Document;
+
+            View activeView = doc.ActiveView;
+            View viewToModify = activeView;
+            if (activeView.ViewTemplateId != ElementId.InvalidElementId)
+            {
+                viewToModify = doc.GetElement(activeView.ViewTemplateId) as View;
+            }
+
+            IList<Workset> worksets = new FilteredWorksetCollector(doc)
+                                        .OfKind(WorksetKind.UserWorkset)
+                                        .ToWorksets()
+                                        .ToList();
+
+            List<Dictionary<string, object>> entries = new List<Dictionary<string, object>>();
+            Dictionary<string, WorksetId> worksetNameToId = new Dictionary<string, WorksetId>();
+
+            foreach (Workset ws in worksets)
+            {
+                WorksetVisibility viewVisibility = viewToModify.GetWorksetVisibility(ws.Id);
+                
+                string visibilityText;
+                if (viewVisibility == WorksetVisibility.Visible)
+                {
+                    visibilityText = "Shown";
+                }
+                else if (viewVisibility == WorksetVisibility.Hidden)
+                {
+                    visibilityText = "Hidden";
+                }
+                else if (viewVisibility == WorksetVisibility.UseGlobalSetting)
+                {
+                    visibilityText = ws.IsOpen ? 
+                        "Using Global Settings (Visible)" : 
+                        "Using Global Settings (Not Visible)";
+                }
+                else
+                {
+                    visibilityText = "Unknown";
+                }
+
+                Dictionary<string, object> entry = new Dictionary<string, object>
+                {
+                    { "Workset", ws.Name },
+                    { "Visibility", visibilityText }
+                };
+                entries.Add(entry);
+
+                if (!worksetNameToId.ContainsKey(ws.Name))
+                {
+                    worksetNameToId.Add(ws.Name, ws.Id);
+                }
+            }
+
+            List<Dictionary<string, object>> selectedEntries =
+                CustomGUIs.DataGrid(entries, new List<string> { "Workset", "Visibility" }, spanAllScreens: false);
+
+            if (selectedEntries == null || selectedEntries.Count == 0)
+            {
+                return Result.Cancelled;
+            }
+
+            using (Transaction t = new Transaction(doc, "Show Worksets in View"))
+            {
+                t.Start();
+                foreach (Dictionary<string, object> sel in selectedEntries)
+                {
+                    if (sel.TryGetValue("Workset", out object wsNameObj))
+                    {
+                        string wsName = wsNameObj as string;
+                        if (worksetNameToId.TryGetValue(wsName, out WorksetId wsId))
+                        {
+                            viewToModify.SetWorksetVisibility(wsId, WorksetVisibility.Visible);
+                        }
+                    }
+                }
+                t.Commit();
+            }
+            return Result.Succeeded;
+        }
+    }
+
+    [Transaction(TransactionMode.Manual)]
+    public class HideWorksetsInView : IExternalCommand
+    {
+        public Result Execute(ExternalCommandData commandData,
+                              ref string message,
+                              ElementSet elements)
+        {
+            UIDocument uidoc = commandData.Application.ActiveUIDocument;
+            if (uidoc == null)
+            {
+                message = "No active document.";
+                return Result.Failed;
+            }
+            Document doc = uidoc.Document;
+
+            View activeView = doc.ActiveView;
+            View viewToModify = activeView;
+            if (activeView.ViewTemplateId != ElementId.InvalidElementId)
+            {
+                viewToModify = doc.GetElement(activeView.ViewTemplateId) as View;
+            }
+
+            IList<Workset> worksets = new FilteredWorksetCollector(doc)
+                                        .OfKind(WorksetKind.UserWorkset)
+                                        .ToWorksets()
+                                        .ToList();
+
+            List<Dictionary<string, object>> entries = new List<Dictionary<string, object>>();
+            Dictionary<string, WorksetId> worksetNameToId = new Dictionary<string, WorksetId>();
+
+            foreach (Workset ws in worksets)
+            {
+                WorksetVisibility viewVisibility = viewToModify.GetWorksetVisibility(ws.Id);
+                
+                string visibilityText;
+                if (viewVisibility == WorksetVisibility.Visible)
+                {
+                    visibilityText = "Shown";
+                }
+                else if (viewVisibility == WorksetVisibility.Hidden)
+                {
+                    visibilityText = "Hidden";
+                }
+                else if (viewVisibility == WorksetVisibility.UseGlobalSetting)
+                {
+                    visibilityText = ws.IsOpen ? 
+                        "Using Global Settings (Visible)" : 
+                        "Using Global Settings (Not Visible)";
+                }
+                else
+                {
+                    visibilityText = "Unknown";
+                }
+
+                Dictionary<string, object> entry = new Dictionary<string, object>
+                {
+                    { "Workset", ws.Name },
+                    { "Visibility", visibilityText }
+                };
+                entries.Add(entry);
+
+                if (!worksetNameToId.ContainsKey(ws.Name))
+                {
+                    worksetNameToId.Add(ws.Name, ws.Id);
+                }
+            }
+
+            List<Dictionary<string, object>> selectedEntries =
+                CustomGUIs.DataGrid(entries, new List<string> { "Workset", "Visibility" }, spanAllScreens: false);
+
+            if (selectedEntries == null || selectedEntries.Count == 0)
+            {
+                return Result.Cancelled;
+            }
+
+            using (Transaction t = new Transaction(doc, "Hide Worksets in View"))
+            {
+                t.Start();
+                foreach (Dictionary<string, object> sel in selectedEntries)
+                {
+                    if (sel.TryGetValue("Workset", out object wsNameObj))
+                    {
+                        string wsName = wsNameObj as string;
+                        if (worksetNameToId.TryGetValue(wsName, out WorksetId wsId))
+                        {
+                            viewToModify.SetWorksetVisibility(wsId, WorksetVisibility.Hidden);
+                        }
+                    }
+                }
+                t.Commit();
+            }
+            return Result.Succeeded;
+        }
+    }
+
+    [Transaction(TransactionMode.Manual)]
+    public class SetGlobalVisibilityToWorksetInCurrentView : IExternalCommand
+    {
+        public Result Execute(ExternalCommandData commandData,
+                              ref string message,
+                              ElementSet elements)
+        {
+            UIDocument uidoc = commandData.Application.ActiveUIDocument;
+            if (uidoc == null)
+            {
+                message = "No active document.";
+                return Result.Failed;
+            }
+            Document doc = uidoc.Document;
+
+            View activeView = doc.ActiveView;
+            View viewToModify = activeView;
+            if (activeView.ViewTemplateId != ElementId.InvalidElementId)
+            {
+                viewToModify = doc.GetElement(activeView.ViewTemplateId) as View;
+            }
+
+            IList<Workset> worksets = new FilteredWorksetCollector(doc)
+                                        .OfKind(WorksetKind.UserWorkset)
+                                        .ToWorksets()
+                                        .ToList();
+
+            List<Dictionary<string, object>> entries = new List<Dictionary<string, object>>();
+            Dictionary<string, WorksetId> worksetNameToId = new Dictionary<string, WorksetId>();
+
+            foreach (Workset ws in worksets)
+            {
+                WorksetVisibility viewVisibility = viewToModify.GetWorksetVisibility(ws.Id);
+                
+                string visibilityText;
+                if (viewVisibility == WorksetVisibility.Visible)
+                {
+                    visibilityText = "Shown";
+                }
+                else if (viewVisibility == WorksetVisibility.Hidden)
+                {
+                    visibilityText = "Hidden";
+                }
+                else if (viewVisibility == WorksetVisibility.UseGlobalSetting)
+                {
+                    visibilityText = ws.IsOpen ? 
+                        "Using Global Settings (Visible)" : 
+                        "Using Global Settings (Not Visible)";
+                }
+                else
+                {
+                    visibilityText = "Unknown";
+                }
+
+                Dictionary<string, object> entry = new Dictionary<string, object>
+                {
+                    { "Workset", ws.Name },
+                    { "Visibility", visibilityText }
+                };
+                entries.Add(entry);
+
+                if (!worksetNameToId.ContainsKey(ws.Name))
+                {
+                    worksetNameToId.Add(ws.Name, ws.Id);
+                }
+            }
+
+            List<Dictionary<string, object>> selectedEntries =
+                CustomGUIs.DataGrid(entries, new List<string> { "Workset", "Visibility" }, spanAllScreens: false);
+
+            if (selectedEntries == null || selectedEntries.Count == 0)
+            {
+                return Result.Cancelled;
+            }
+
+            using (Transaction t = new Transaction(doc, "Set Worksets to Use Global Settings"))
+            {
+                t.Start();
+                foreach (Dictionary<string, object> sel in selectedEntries)
+                {
+                    if (sel.TryGetValue("Workset", out object wsNameObj))
+                    {
+                        string wsName = wsNameObj as string;
+                        if (worksetNameToId.TryGetValue(wsName, out WorksetId wsId))
+                        {
+                            viewToModify.SetWorksetVisibility(wsId, WorksetVisibility.UseGlobalSetting);
+                        }
+                    }
+                }
+                t.Commit();
+            }
+            return Result.Succeeded;
+        }
+    }
+}
