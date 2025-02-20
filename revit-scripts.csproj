@@ -85,10 +85,12 @@
     <Compile Include="revit-scripts\ChangeLevelOfSelectedElements.cs" />
     <Compile Include="revit-scripts\DuplicateSelectedViews.cs" />
     <Compile Include="revit-scripts\FilterPosition.cs" />
+    <Compile Include="revit-scripts\FilterDimensions.cs" />
     <Compile Include="revit-scripts\OffsetLinesFromTheirWorkplane.cs" />
     <Compile Include="revit-scripts\RenameFamilies.cs" />
     <Compile Include="revit-scripts\SelectViewsByViewTemplates.cs" />
     <Compile Include="revit-scripts\ShowHideWorksetsInView.cs" />
+    <Compile Include="revit-scripts\SwapFamilyTypeOfSelectedElements.cs" />
     <Compile Include="revit-scripts\ToggleLevelBubblesInSelectedViews.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -145,7 +147,7 @@
     <Compile Include="revit-scripts\PasteInSamePlaceToViews.cs" />
     <Compile Include="revit-scripts\SelectAssociatedDimensions.cs" />
     <Compile Include="revit-scripts\SelectDoubleSwitchedSocketOutletInLink.cs" />
-    <Compile Include="revit-scripts\SelectModelGroups.cs" />
+    <Compile Include="revit-scripts\SelectModelGroupsInProject.cs" />
     <Compile Include="revit-scripts\SelectModelGroupsInView.cs" />
     <Compile Include="revit-scripts\SelectModelGroupsWithParameters.cs" />
     <Compile Include="revit-scripts\SelectAssociatedTagsOfSelectedElements.cs" />
