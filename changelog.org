@@ -899,3 +899,5 @@ simialar in user experience as grouping
 *** 19
 **** =21:51= tried adding FacingFlip and HandFlip properties to RenameInstanceParametersOfSelectedElements command, but turned out that some elements can't be flipped directly at all (CanFlipFacing and CanFlipHand methods to check)
 may try later a separate command to perform mirror operation on them instead
+*** 20
+**** =11:53= tried adding SwapFamilyTypeOfSelectedElements command to replace family instances which values get reset when swapping, but it didn't work after many attempts

@@ -2,6 +2,7 @@
 using System;
 using System.Linq;
 using System.Collections.Generic;
+using System.Drawing;  // For System.Drawing.Color and Font
 using Autodesk.Revit.UI;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.Attributes;
@@ -20,7 +21,7 @@ namespace TransformSelectedElementsSample
     public double MoveY { get; set; }
     public double MoveZ { get; set; }
 
-    // Mirror parameters (using checkboxes):
+    // Mirror parameters:
     public bool DoMirror { get; set; }
     public bool MirrorX { get; set; }
     public bool MirrorY { get; set; }
@@ -58,7 +59,14 @@ namespace TransformSelectedElementsSample
         .Select(id => doc.GetElement(id))
         .Any(e => e is FamilyInstance fi && fi.Host != null);
 
-      using (var form = new TransformForm(onlyViewDependent, hasHosted))
+      // Determine if any hosted element is hosted on a Wall.
+      bool hostedOnWall = selIds
+        .Select(id => doc.GetElement(id))
+        .OfType<FamilyInstance>()
+        .Any(fi => fi.Host is Wall);
+
+      // Pass the flags into the form.
+      using (var form = new TransformForm(onlyViewDependent, hasHosted, hostedOnWall))
       {
         if (form.ShowDialog() != WinForms.DialogResult.OK)
           return Result.Cancelled;
@@ -78,12 +86,31 @@ namespace TransformSelectedElementsSample
               BoundingBoxXYZ bbox = elem.get_BoundingBox(doc.ActiveView);
               if (bbox != null)
               {
-                if (onlyViewDependent)
+                // Check if element is hosted on a wall.
+                if (elem is FamilyInstance fi && fi.Host != null && fi.Host is Wall wall)
                 {
-                  // In view–dependent (detail) mode, only X and Y moves are applied in the active view’s plane.
+                  LocationCurve hostLoc = wall.Location as LocationCurve;
+                  if (hostLoc != null)
+                  {
+                    // Compute the wall's tangent (local X) along its centerline.
+                    XYZ start = hostLoc.Curve.GetEndPoint(0);
+                    XYZ end = hostLoc.Curve.GetEndPoint(1);
+                    XYZ wallTangent = (end - start).Normalize();
+                    // Compute a perpendicular in the XY plane (local Y)
+                    XYZ wallPerp = new XYZ(-wallTangent.Y, wallTangent.X, 0);
+                    // For wall-hosted elements, vertical movement is controlled by the host.
+                    // (Assuming here that if vertical input is provided it will be ignored.)
+                    XYZ displacement = (settings.MoveX / 304.8) * wallTangent +
+                                       (settings.MoveY / 304.8) * wallPerp;
+                    ElementTransformUtils.MoveElement(doc, id, displacement);
+                  }
+                }
+                else if (onlyViewDependent)
+                {
+                  // In view-dependent mode, use the active view's plane.
                   View activeView = doc.ActiveView;
                   XYZ up = activeView.UpDirection;
-                  XYZ viewDir = activeView.ViewDirection;  // e.g., (0,0,-1) in a plan view
+                  XYZ viewDir = activeView.ViewDirection;
                   XYZ right = viewDir.CrossProduct(up);
                   XYZ displacement = (settings.MoveX / 304.8) * right +
                                      (settings.MoveY / 304.8) * up;
@@ -91,7 +118,7 @@ namespace TransformSelectedElementsSample
                 }
                 else
                 {
-                  // For 3D elements, apply the provided move in all three axes.
+                  // For non-hosted 3D elements, apply global 3D movement.
                   XYZ displacement = new XYZ(
                     settings.MoveX / 304.8,
                     settings.MoveY / 304.8,
@@ -110,14 +137,12 @@ namespace TransformSelectedElementsSample
                 XYZ center = (bbox.Min + bbox.Max) * 0.5;
                 if (onlyViewDependent)
                 {
-                  // Only X and Y mirror options are available.
                   int mirrorCount = (settings.MirrorX ? 1 : 0) + (settings.MirrorY ? 1 : 0);
                   if (mirrorCount == 1)
                   {
                     View activeView = doc.ActiveView;
                     if (settings.MirrorX)
                     {
-                      // Mirror about X: use the view’s right vector.
                       XYZ up = activeView.UpDirection;
                       XYZ viewDir = activeView.ViewDirection;
                       XYZ right = viewDir.CrossProduct(up);
@@ -127,7 +152,6 @@ namespace TransformSelectedElementsSample
                     }
                     else if (settings.MirrorY)
                     {
-                      // Mirror about Y: use the view’s up vector.
                       XYZ up = activeView.UpDirection;
                       Plane plane = Plane.CreateByNormalAndOrigin(up, center);
                       ElementTransformUtils.MirrorElement(doc, id, plane);
@@ -136,7 +160,6 @@ namespace TransformSelectedElementsSample
                   }
                   else if (mirrorCount == 2)
                   {
-                    // Mirroring about both X and Y in the view is equivalent to a 180° rotation about the view direction.
                     View activeView = doc.ActiveView;
                     Line rotationAxis = Line.CreateBound(center, center + activeView.ViewDirection);
                     ElementTransformUtils.RotateElement(doc, id, rotationAxis, Math.PI);
@@ -144,7 +167,6 @@ namespace TransformSelectedElementsSample
                 }
                 else
                 {
-                  // 3D elements: support mirror about X, Y, and Z.
                   int mirrorCount = (settings.MirrorX ? 1 : 0) +
                                     (settings.MirrorY ? 1 : 0) +
                                     (settings.MirrorZ ? 1 : 0);
@@ -171,7 +193,6 @@ namespace TransformSelectedElementsSample
                   }
                   else if (mirrorCount == 2)
                   {
-                    // Two mirror axes: use a 180° rotation about the axis perpendicular to the plane defined by them.
                     if (settings.MirrorX && settings.MirrorY)
                     {
                       Line rotationAxis = Line.CreateBound(center, center + XYZ.BasisZ);
@@ -190,11 +211,8 @@ namespace TransformSelectedElementsSample
                   }
                   else if (mirrorCount == 3)
                   {
-                    // All three mirror options: perform sequentially.
-                    // First mirror about X and Y (equivalent to 180° rotation about Z)
                     Line rotationAxis = Line.CreateBound(center, center + XYZ.BasisZ);
                     ElementTransformUtils.RotateElement(doc, id, rotationAxis, Math.PI);
-                    // Then mirror about Z.
                     Plane plane = Plane.CreateByNormalAndOrigin(XYZ.BasisZ, center);
                     ElementTransformUtils.MirrorElement(doc, id, plane);
                     doc.Delete(id);
@@ -249,15 +267,20 @@ namespace TransformSelectedElementsSample
   public class TransformForm : WinForms.Form
   {
     private bool _onlyViewDependent;
-    private bool _disableY;
+    private bool _disableY;     // True if one or more elements are hosted.
+    private bool _hostedOnWall;   // True if one or more hosted elements are on a wall.
+
     private WinForms.TabControl tabControl;
     private WinForms.TabPage tabMove, tabMirror, tabRotate;
 
-    // Move tab controls.
+    // Global move controls.
     private WinForms.Label lblMoveX, lblMoveY, lblMoveZ;
     private WinForms.TextBox txtMoveX, txtMoveY, txtMoveZ;
 
-    // Mirror tab controls (using checkboxes).
+    // Local move controls for hosted elements.
+    private WinForms.TextBox txtLocalX, txtLocalY, txtLocalZ;
+
+    // Mirror tab controls.
     private WinForms.CheckBox cbMirrorX, cbMirrorY, cbMirrorZ;
 
     // Rotate tab controls.
@@ -271,16 +294,18 @@ namespace TransformSelectedElementsSample
 
     /// <summary>
     /// onlyViewDependent: if true, only in‑plane (X/Y) operations are allowed.
-    /// disableY: if true, the Y axis field in the Move tab is disabled because the selected element(s) are hosted.
+    /// disableY: if true, the selected element(s) are hosted.
+    /// hostedOnWall: if true, the hosted element(s) are on a wall (and vertical movement is controlled externally).
     /// </summary>
-    public TransformForm(bool onlyViewDependent, bool disableY)
+    public TransformForm(bool onlyViewDependent, bool disableY, bool hostedOnWall)
     {
       _onlyViewDependent = onlyViewDependent;
       _disableY = disableY;
+      _hostedOnWall = hostedOnWall;
 
       this.Text = "Transform Selected Elements";
-      this.Width = 300;
-      this.Height = 300;
+      this.Width = 320;
+      this.Height = 400;
       this.FormBorderStyle = WinForms.FormBorderStyle.FixedDialog;
       this.StartPosition = WinForms.FormStartPosition.CenterScreen;
       this.MaximizeBox = false;
@@ -288,17 +313,64 @@ namespace TransformSelectedElementsSample
 
       tabControl = new WinForms.TabControl();
       tabControl.Dock = WinForms.DockStyle.Top;
-      tabControl.Height = 200;
+      tabControl.Height = 300;
 
       // ---- Move Tab ----
       tabMove = new WinForms.TabPage("Move");
+
+      // Global move controls.
       lblMoveX = new WinForms.Label() { Text = "Move X (mm):", Left = 10, Top = 20, Width = 90 };
       txtMoveX = new WinForms.TextBox() { Left = 110, Top = 20, Width = 100, Text = "0" };
       lblMoveY = new WinForms.Label() { Text = "Move Y (mm):", Left = 10, Top = 50, Width = 90 };
       txtMoveY = new WinForms.TextBox() { Left = 110, Top = 50, Width = 100, Text = "0" };
       lblMoveZ = new WinForms.Label() { Text = "Move Z (mm):", Left = 10, Top = 80, Width = 90 };
       txtMoveZ = new WinForms.TextBox() { Left = 110, Top = 80, Width = 100, Text = "0" };
+
       tabMove.Controls.AddRange(new WinForms.Control[] { lblMoveX, txtMoveX, lblMoveY, txtMoveY, lblMoveZ, txtMoveZ });
+
+      if (_disableY)
+      {
+        // Disable (grey out) global fields.
+        txtMoveX.Enabled = false;
+        txtMoveY.Enabled = false;
+        txtMoveZ.Enabled = false;
+        txtMoveX.BackColor = System.Drawing.Color.LightGray;
+        txtMoveY.BackColor = System.Drawing.Color.LightGray;
+        txtMoveZ.BackColor = System.Drawing.Color.LightGray;
+
+        // For hosted elements, add local controls.
+        // For wall-hosted elements, only two local axes are used and vertical movement (local Y) is controlled externally.
+        bool showLocalZ = (!_onlyViewDependent && !_hostedOnWall);
+
+        int localStartY = 110;
+        var lblLocalX = new WinForms.Label() { Text = "Local X (mm):", Left = 10, Top = localStartY, Width = 100 };
+        txtLocalX = new WinForms.TextBox() { Left = 120, Top = localStartY, Width = 100, Text = "0" };
+        tabMove.Controls.Add(lblLocalX);
+        tabMove.Controls.Add(txtLocalX);
+
+        localStartY += 30;
+        var lblLocalY = new WinForms.Label() { Text = "Local Y (mm):", Left = 10, Top = localStartY, Width = 100 };
+        txtLocalY = new WinForms.TextBox() { Left = 120, Top = localStartY, Width = 100, Text = "0" };
+        tabMove.Controls.Add(lblLocalY);
+        tabMove.Controls.Add(txtLocalY);
+
+        // If the element is hosted on a wall then vertical movement is controlled by the host;
+        // disable the local Y input (which might be misinterpreted as vertical movement).
+        if (_hostedOnWall)
+        {
+          txtLocalY.Enabled = false;
+          txtLocalY.BackColor = System.Drawing.Color.LightGray;
+        }
+
+        if (showLocalZ)
+        {
+          localStartY += 30;
+          var lblLocalZ = new WinForms.Label() { Text = "Local Z (mm):", Left = 10, Top = localStartY, Width = 100 };
+          txtLocalZ = new WinForms.TextBox() { Left = 120, Top = localStartY, Width = 100, Text = "0" };
+          tabMove.Controls.Add(lblLocalZ);
+          tabMove.Controls.Add(txtLocalZ);
+        }
+      }
 
       // ---- Mirror Tab ----
       tabMirror = new WinForms.TabPage("Mirror");
@@ -320,8 +392,8 @@ namespace TransformSelectedElementsSample
       tabControl.TabPages.AddRange(new WinForms.TabPage[] { tabMove, tabMirror, tabRotate });
       this.Controls.Add(tabControl);
 
-      btnOK = new WinForms.Button() { Text = "OK", Left = 50, Width = 80, Top = 220, DialogResult = WinForms.DialogResult.OK };
-      btnCancel = new WinForms.Button() { Text = "Cancel", Left = 150, Width = 80, Top = 220, DialogResult = WinForms.DialogResult.Cancel };
+      btnOK = new WinForms.Button() { Text = "OK", Left = 50, Width = 80, Top = 320, DialogResult = WinForms.DialogResult.OK };
+      btnCancel = new WinForms.Button() { Text = "Cancel", Left = 150, Width = 80, Top = 320, DialogResult = WinForms.DialogResult.Cancel };
       this.Controls.Add(btnOK);
       this.Controls.Add(btnCancel);
       this.AcceptButton = btnOK;
@@ -329,7 +401,6 @@ namespace TransformSelectedElementsSample
 
       if (_onlyViewDependent)
       {
-        // In view–dependent mode, hide Z controls.
         lblMoveZ.Visible = false;
         txtMoveZ.Visible = false;
         cbMirrorZ.Visible = false;
@@ -337,11 +408,10 @@ namespace TransformSelectedElementsSample
         rbRotateY.Visible = false;
         rbRotateZ.Text = "Rotate about view normal";
         rbRotateZ.Checked = true;
-      }
-      if (_disableY)
-      {
-        txtMoveY.Enabled = false;
-        txtMoveY.Text = "0";
+        if (_disableY && txtLocalZ != null)
+        {
+          txtLocalZ.Visible = false;
+        }
       }
     }
 
@@ -353,18 +423,40 @@ namespace TransformSelectedElementsSample
         TransformationSettings settings = new TransformationSettings();
 
         // --- Move Tab ---
-        double.TryParse(txtMoveX.Text, out double mvX);
-        double.TryParse(txtMoveY.Text, out double mvY);
-        double.TryParse(txtMoveZ.Text, out double mvZ);
-        if (Math.Abs(mvX) > 0 || Math.Abs(mvY) > 0 || Math.Abs(mvZ) > 0)
+        if (_disableY)
         {
-          settings.DoMove = true;
-          settings.MoveX = mvX;
-          settings.MoveY = mvY;
-          settings.MoveZ = mvZ;
+          double.TryParse(txtLocalX.Text, out double mvX);
+          double.TryParse(txtLocalY.Text, out double mvY);
+          double mvZ = 0;
+          bool showLocalZ = (!_onlyViewDependent && !_hostedOnWall);
+          if (showLocalZ && txtLocalZ != null)
+            double.TryParse(txtLocalZ.Text, out mvZ);
+
+          if (Math.Abs(mvX) > 0 || Math.Abs(mvY) > 0 || Math.Abs(mvZ) > 0)
+          {
+            settings.DoMove = true;
+            settings.MoveX = mvX;
+            settings.MoveY = mvY;
+            settings.MoveZ = mvZ;
+          }
+          else
+            settings.DoMove = false;
         }
         else
-          settings.DoMove = false;
+        {
+          double.TryParse(txtMoveX.Text, out double mvX);
+          double.TryParse(txtMoveY.Text, out double mvY);
+          double.TryParse(txtMoveZ.Text, out double mvZ);
+          if (Math.Abs(mvX) > 0 || Math.Abs(mvY) > 0 || Math.Abs(mvZ) > 0)
+          {
+            settings.DoMove = true;
+            settings.MoveX = mvX;
+            settings.MoveY = mvY;
+            settings.MoveZ = mvZ;
+          }
+          else
+            settings.DoMove = false;
+        }
 
         // --- Mirror Tab ---
         settings.MirrorX = cbMirrorX.Checked;
