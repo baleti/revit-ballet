@@ -223,6 +223,7 @@
     <Compile Include="revit-scripts\ToggleWallLocationLine.cs" />
     <Compile Include="revit-scripts\TraceAllLines.cs" />
     <Compile Include="revit-scripts\TraceRooms.cs" />
+    <Compile Include="revit-scripts\TransformSelectedElements.cs" />
     <Compile Include="revit-scripts\ZoomSelected.cs" />
   </ItemGroup>
   <ItemGroup>
