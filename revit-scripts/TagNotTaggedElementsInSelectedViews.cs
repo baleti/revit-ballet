@@ -71,7 +71,6 @@ public class TagNotTaggedElementsInSelectedViews : IExternalCommand
         }
 
         // --- PATCHED SECTION: Compute counts for each family type using a fast estimate ---
-        // Instead of building large HashSets per view, we group the elements and count them.
         Dictionary<ElementId, int> totalCounts = new Dictionary<ElementId, int>();
         Dictionary<ElementId, int> taggedCounts = new Dictionary<ElementId, int>();
 
@@ -212,22 +211,23 @@ public class TagNotTaggedElementsInSelectedViews : IExternalCommand
                                 continue;
 
                             // --- Crop Region Bounding Box Check ---
-                            // Ensure that all four corners of the element's bounding box (projected to 2D)
+                            // Ensure that all four corners of the element's bounding box (projected onto the crop plane)
                             // lie completely within the crop region.
                             if (cropLoops != null && cropLoops.Count > 0)
                             {
                                 Transform invTransform = view.CropBox.Transform.Inverse;
                                 List<UV> outerPolygon = GetVerticesFromCurveLoop(cropLoops[0]);
 
-                                // Use the XY extents of the bounding box (with Z set to 0).
                                 XYZ pMin = bbox.Min;
                                 XYZ pMax = bbox.Max;
-                                XYZ corner1 = new XYZ(pMin.X, pMin.Y, 0);
-                                XYZ corner2 = new XYZ(pMax.X, pMin.Y, 0);
-                                XYZ corner3 = new XYZ(pMax.X, pMax.Y, 0);
-                                XYZ corner4 = new XYZ(pMin.X, pMax.Y, 0);
 
-                                // Transform each corner to crop region space.
+                                // Project the bounding box corners onto the crop plane using the crop box transform.
+                                XYZ corner1 = ProjectPointToCropPlane(new XYZ(pMin.X, pMin.Y, pMin.Z), view.CropBox.Transform);
+                                XYZ corner2 = ProjectPointToCropPlane(new XYZ(pMax.X, pMin.Y, pMin.Z), view.CropBox.Transform);
+                                XYZ corner3 = ProjectPointToCropPlane(new XYZ(pMax.X, pMax.Y, pMax.Z), view.CropBox.Transform);
+                                XYZ corner4 = ProjectPointToCropPlane(new XYZ(pMin.X, pMax.Y, pMax.Z), view.CropBox.Transform);
+
+                                // Transform each corner into crop region space.
                                 XYZ cp1 = invTransform.OfPoint(corner1);
                                 XYZ cp2 = invTransform.OfPoint(corner2);
                                 XYZ cp3 = invTransform.OfPoint(corner3);
@@ -345,13 +345,34 @@ public class TagNotTaggedElementsInSelectedViews : IExternalCommand
     }
 
     /// <summary>
+    /// Helper method: Projects a 3D point onto the crop plane defined by the crop transform.
+    /// </summary>
+    private static XYZ ProjectPointToCropPlane(XYZ point, Transform cropTransform)
+    {
+        XYZ planeOrigin = cropTransform.Origin;
+        XYZ normal = cropTransform.BasisZ;
+        double distance = (point - planeOrigin).DotProduct(normal);
+        return point - distance * normal;
+    }
+
+    /// <summary>
     /// Helper method: Determines if a given 2D point (UV) lies inside a polygon defined by a list of UV points.
+    /// Points exactly on a polygon edge (within a small tolerance) are considered inside.
     /// Uses the ray-casting algorithm.
     /// </summary>
     private static bool IsPointInsidePolygon(UV point, List<UV> polygon)
     {
-        bool inside = false;
+        double tol = 1e-6;
         int count = polygon.Count;
+        // Check if the point lies exactly on any edge.
+        for (int i = 0; i < count; i++)
+        {
+            int j = (i + 1) % count;
+            if (IsPointOnLineSegment(point, polygon[i], polygon[j], tol))
+                return true;
+        }
+
+        bool inside = false;
         for (int i = 0, j = count - 1; i < count; j = i++)
         {
             if (((polygon[i].V > point.V) != (polygon[j].V > point.V)) &&
@@ -361,6 +382,23 @@ public class TagNotTaggedElementsInSelectedViews : IExternalCommand
             }
         }
         return inside;
+    }
+
+    /// <summary>
+    /// Helper method: Determines if a point p lies on the line segment between a and b, within a tolerance.
+    /// </summary>
+    private static bool IsPointOnLineSegment(UV p, UV a, UV b, double tol = 1e-6)
+    {
+        double cross = Math.Abs((p.V - a.V) * (b.U - a.U) - (p.U - a.U) * (b.V - a.V));
+        if (cross > tol)
+            return false;
+        double dot = (p.U - a.U) * (b.U - a.U) + (p.V - a.V) * (b.V - a.V);
+        if (dot < 0)
+            return false;
+        double lenSq = (b.U - a.U) * (b.U - a.U) + (b.V - a.V) * (b.V - a.V);
+        if (dot > lenSq)
+            return false;
+        return true;
     }
 }
 
