@@ -18,7 +18,7 @@ using RevitViewSheet = Autodesk.Revit.DB.ViewSheet;
 namespace RevitAddin
 {
     [Autodesk.Revit.Attributes.Transaction(Autodesk.Revit.Attributes.TransactionMode.Manual)]
-    public class CreateFilledRegionsOfSelectedElementsInViews : IExternalCommand
+    public class CreateFilledRegionsOfSelectedElementsInSelectedViews : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
         {
@@ -34,62 +34,76 @@ namespace RevitAddin
                 return Result.Failed;
             }
 
-            // Build a list of view entries for user selection.
-            List<Dictionary<string, object>> viewEntries = new List<Dictionary<string, object>>();
-            FilteredElementCollector viewCollector = new FilteredElementCollector(doc)
-                .OfClass(typeof(RevitView))
-                .WhereElementIsNotElementType();
-            foreach (RevitView view in viewCollector)
+            // --- Faster view collection for the DataGrid ---
+            // Create a mapping for non-sheet views that are placed on sheets.
+            Dictionary<ElementId, RevitViewSheet> viewToSheetMap = new Dictionary<ElementId, RevitViewSheet>();
+            FilteredElementCollector sheetCollector = new FilteredElementCollector(doc)
+                .OfClass(typeof(RevitViewSheet));
+            foreach (RevitViewSheet sheet in sheetCollector)
             {
-                if (view.IsTemplate)
-                    continue;
-
-                Dictionary<string, object> entry = new Dictionary<string, object>();
-                entry["ViewId"] = view.Id.IntegerValue;
-                entry["View Name"] = view.Name;
-
-                // If the view is placed on a sheet, add sheet number and name.
-                Viewport vp = null;
-                FilteredElementCollector vpCollector = new FilteredElementCollector(doc).OfClass(typeof(Viewport));
-                foreach (Viewport vpt in vpCollector)
+                foreach (ElementId viewportId in sheet.GetAllViewports())
                 {
-                    if (vpt.ViewId == view.Id)
+                    Viewport viewport = doc.GetElement(viewportId) as Viewport;
+                    if (viewport != null)
                     {
-                        vp = vpt;
-                        break;
+                        viewToSheetMap[viewport.ViewId] = sheet;
                     }
                 }
-                if (vp != null)
+            }
+
+            // Collect all views in the project.
+            FilteredElementCollector viewCollector = new FilteredElementCollector(doc)
+                .OfClass(typeof(RevitView));
+
+            // Prepare data for the data grid.
+            List<Dictionary<string, object>> viewData = new List<Dictionary<string, object>>();
+            // Map view Title to view object.
+            Dictionary<string, RevitView> titleToViewMap = new Dictionary<string, RevitView>();
+
+            foreach (RevitView view in viewCollector.Cast<RevitView>())
+            {
+                // Skip view templates, legends, schedules, and sheets themselves.
+                if (view.IsTemplate || view.ViewType == ViewType.Legend || view.ViewType == ViewType.Schedule || view is RevitViewSheet)
+                    continue;
+
+                string sheetInfo = string.Empty;
+                if (viewToSheetMap.TryGetValue(view.Id, out RevitViewSheet sheet))
                 {
-                    Element sheetElem = doc.GetElement(vp.OwnerViewId);
-                    if (sheetElem is RevitViewSheet viewSheet)
-                    {
-                        entry["Sheet Number"] = viewSheet.SheetNumber;
-                        entry["Sheet Name"] = viewSheet.Name;
-                    }
-                    else
-                    {
-                        entry["Sheet Number"] = "";
-                        entry["Sheet Name"] = "";
-                    }
+                    sheetInfo = $"{sheet.SheetNumber} - {sheet.Name}";
                 }
                 else
                 {
-                    entry["Sheet Number"] = "";
-                    entry["Sheet Name"] = "";
+                    sheetInfo = "Not Placed";
                 }
-                viewEntries.Add(entry);
+
+                // Use Title as key (assume uniqueness).
+                titleToViewMap[view.Title] = view;
+                Dictionary<string, object> viewInfo = new Dictionary<string, object>
+                {
+                    { "Title", view.Title },
+                    { "Sheet", sheetInfo }
+                };
+                viewData.Add(viewInfo);
             }
 
-            // Let the user choose one or more views using the provided CustomGUIs.DataGrid.
-            List<string> propertyNames = new List<string> { "ViewId", "View Name", "Sheet Number", "Sheet Name" };
-            List<Dictionary<string, object>> selectedViewEntries = CustomGUIs.DataGrid(viewEntries, propertyNames, false);
-            if (selectedViewEntries.Count == 0)
+            // Define the column headers.
+            List<string> columns = new List<string> { "Title", "Sheet" };
+
+            // Show the selection dialog using your custom DataGrid.
+            List<Dictionary<string, object>> selectedViews = CustomGUIs.DataGrid(
+                viewData,
+                columns,
+                false  // Don't span all screens.
+            );
+
+            // If no view is selected, cancel the command.
+            if (selectedViews == null || selectedViews.Count == 0)
             {
                 message = "No views selected.";
                 return Result.Cancelled;
             }
 
+            // --- Continue with filled region creation ---
             // Get a default FilledRegionType.
             FilledRegionType fillRegionType = new FilteredElementCollector(doc)
                 .OfClass(typeof(FilledRegionType))
@@ -101,30 +115,28 @@ namespace RevitAddin
                 return Result.Failed;
             }
 
-            // Process each selected view.
+            // For each selected view, create unioned outlines from the selected elements.
             using (Transaction trans = new Transaction(doc, "Create Filled Regions"))
             {
                 trans.Start();
-                foreach (var viewEntry in selectedViewEntries)
+                foreach (Dictionary<string, object> viewEntry in selectedViews)
                 {
                     try
                     {
-                        int viewIdInt = Convert.ToInt32(viewEntry["ViewId"]);
-                        ElementId viewId = new ElementId(viewIdInt);
-                        RevitView view = doc.GetElement(viewId) as RevitView;
-                        if (view == null)
+                        // Look up the Revit view using its Title.
+                        string title = viewEntry["Title"].ToString();
+                        if (!titleToViewMap.TryGetValue(title, out RevitView view))
                             continue;
+                        ElementId viewId = view.Id;
 
-                        // We'll work in the view’s local coordinate system.
-                        // Define a scale factor for Clipper (which uses integers).
-                        double clipperScale = 1e6;
+                        // Work in the view’s local coordinate system.
+                        double clipperScale = 1e6; // Scale factor for Clipper.
 
                         // Build a list of polygons (in view-local 2D coordinates) for each selected element.
                         List<List<IntPoint>> subjectPolygons = new List<List<IntPoint>>();
                         foreach (ElementId id in selIds)
                         {
                             Element elem = doc.GetElement(id);
-                            // Get the element’s bounding box in the context of the view.
                             BoundingBoxXYZ bbox = elem.get_BoundingBox(view) ?? elem.get_BoundingBox(null);
                             if (bbox == null)
                                 continue;
@@ -167,11 +179,11 @@ namespace RevitAddin
 
                         if (subjectPolygons.Count == 0)
                         {
-                            TaskDialog.Show("Error", $"No valid outline geometry was created for view \"{view.Name}\".");
+                            TaskDialog.Show("Error", $"No valid outline geometry was created for view \"{view.Title}\".");
                             continue;
                         }
 
-                        // Use Clipper to union all the subject polygons.
+                        // Use Clipper to union all subject polygons.
                         Clipper clipper = new Clipper();
                         foreach (List<IntPoint> poly in subjectPolygons)
                         {
@@ -180,7 +192,7 @@ namespace RevitAddin
                         List<List<IntPoint>> solution = new List<List<IntPoint>>();
                         clipper.Execute(ClipType.ctUnion, solution, PolyFillType.pftNonZero, PolyFillType.pftNonZero);
 
-                        // Convert the unioned polygons back to view-local 2D points then into world coordinates.
+                        // Convert unioned polygons back to view-local 2D points then to world coordinates.
                         List<CurveLoop> curveLoops = new List<CurveLoop>();
                         foreach (var poly in solution)
                         {
@@ -194,11 +206,10 @@ namespace RevitAddin
                             }
                             if (worldPoints.Count < 3)
                                 continue;
-                            // Filled regions typically require a clockwise boundary.
+                            // Ensure the polygon is clockwise (filled regions require a clockwise boundary).
                             if (!IsClockwise(worldPoints))
                                 worldPoints.Reverse();
 
-                            // Build a closed CurveLoop.
                             CurveLoop loop = new CurveLoop();
                             for (int i = 0; i < worldPoints.Count; i++)
                             {
@@ -212,16 +223,16 @@ namespace RevitAddin
 
                         if (curveLoops.Count == 0)
                         {
-                            TaskDialog.Show("Error", $"No valid boundary created for view \"{view.Name}\".");
+                            TaskDialog.Show("Error", $"No valid boundary created for view \"{view.Title}\".");
                             continue;
                         }
 
-                        // Create the filled region in the current view using the unioned curve loops.
+                        // Create the filled region in the current view.
                         FilledRegion filledRegion = FilledRegion.Create(doc, fillRegionType.Id, viewId, curveLoops);
                     }
                     catch (Exception ex)
                     {
-                        TaskDialog.Show("Error", $"Error creating filled region in view \"{viewEntry["View Name"]}\": {ex.Message}");
+                        TaskDialog.Show("Error", $"Error creating filled region in view \"{viewEntry["Title"]}\": {ex.Message}");
                     }
                 }
                 trans.Commit();
@@ -230,9 +241,7 @@ namespace RevitAddin
             return Result.Succeeded;
         }
 
-        /// <summary>
-        /// Projects a world point onto the view’s sketch plane (defined by view.Origin and view.ViewDirection).
-        /// </summary>
+        // Projects a world point onto the view’s sketch plane (defined by view.Origin and view.ViewDirection).
         private XYZ ProjectPointToViewPlane(XYZ p, RevitView view)
         {
             XYZ origin = view.Origin;
@@ -241,9 +250,7 @@ namespace RevitAddin
             return p - distance * vDir;
         }
 
-        /// <summary>
-        /// Converts a world point (assumed to lie on the view’s sketch plane) into the view’s local 2D coordinates.
-        /// </summary>
+        // Converts a world point (assumed to lie on the view’s sketch plane) into the view’s local 2D coordinates.
         private PointF WorldPointToViewLocal(XYZ p, RevitView view)
         {
             XYZ origin = view.Origin;
@@ -254,9 +261,7 @@ namespace RevitAddin
             return new PointF((float)x, (float)y);
         }
 
-        /// <summary>
-        /// Converts a local 2D point in view coordinates back into world coordinates (on the view’s sketch plane).
-        /// </summary>
+        // Converts a local 2D point in view coordinates back into world coordinates (on the view’s sketch plane).
         private XYZ ViewLocalToWorldPoint(PointF pt, RevitView view)
         {
             XYZ origin = view.Origin;
@@ -265,9 +270,7 @@ namespace RevitAddin
             return origin + right.Multiply(pt.X) + up.Multiply(pt.Y);
         }
 
-        /// <summary>
-        /// Computes the 2D convex hull of a set of PointF using the monotone chain algorithm.
-        /// </summary>
+        // Computes the 2D convex hull of a set of PointF using the monotone chain algorithm.
         private List<PointF> Compute2DConvexHull(List<PointF> points)
         {
             List<PointF> sorted = points.OrderBy(p => p.X).ThenBy(p => p.Y).ToList();
@@ -294,17 +297,13 @@ namespace RevitAddin
             return hull;
         }
 
-        /// <summary>
-        /// Returns the 2D cross product (z-component) of vectors OA and OB.
-        /// </summary>
+        // Returns the 2D cross product (z-component) of vectors OA and OB.
         private float Cross(PointF O, PointF A, PointF B)
         {
             return (A.X - O.X) * (B.Y - O.Y) - (A.Y - O.Y) * (B.X - O.X);
         }
 
-        /// <summary>
-        /// Checks whether a polygon defined by a list of XYZ points is oriented clockwise.
-        /// </summary>
+        // Checks whether a polygon defined by a list of XYZ points is oriented clockwise.
         private bool IsClockwise(List<XYZ> pts)
         {
             double sum = 0;
