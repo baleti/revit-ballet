@@ -18,6 +18,9 @@ public class InvokeAddinCommand : IExternalCommand
     private static readonly string ConfigFilePath = Path.Combine(ConfigFolderPath, ConfigFileName);
     private static readonly string LastCommandFilePath = Path.Combine(ConfigFolderPath, LastCommandFileName);
 
+    // Dictionary to store loaded assemblies
+    private Dictionary<string, Assembly> loadedAssemblies = new Dictionary<string, Assembly>();
+
     public Result Execute(
         ExternalCommandData commandData,
         ref string message,
@@ -25,13 +28,11 @@ public class InvokeAddinCommand : IExternalCommand
     {
         string dllPath = null;
 
-        // Check if the config file exists and read the DLL path from it
         if (File.Exists(ConfigFilePath))
         {
             dllPath = File.ReadAllText(ConfigFilePath);
         }
 
-        // If DLL path is not valid, prompt the user to select a DLL file
         if (string.IsNullOrEmpty(dllPath) || !File.Exists(dllPath))
         {
             using (OpenFileDialog openFileDialog = new OpenFileDialog())
@@ -43,7 +44,6 @@ public class InvokeAddinCommand : IExternalCommand
                 {
                     dllPath = openFileDialog.FileName;
 
-                    // Save the selected DLL path to the config file
                     if (!Directory.Exists(ConfigFolderPath))
                     {
                         Directory.CreateDirectory(ConfigFolderPath);
@@ -57,52 +57,43 @@ public class InvokeAddinCommand : IExternalCommand
         {
             try
             {
-                // Read the DLL into a byte array
-                byte[] dllBytes = File.ReadAllBytes(dllPath);
+                // Register the assembly resolve event handler
+                AppDomain.CurrentDomain.AssemblyResolve += CurrentDomain_AssemblyResolve;
 
-                // Load the DLL from the byte array
-                Assembly assembly = Assembly.Load(dllBytes);
+                // Load the main assembly
+                Assembly assembly = LoadAssembly(dllPath);
 
-                // Find all IExternalCommand implementing types in the assembly
                 var commandEntries = new List<Dictionary<string, object>>();
                 var commandTypes = new Dictionary<string, string>();
                 foreach (var type in assembly.GetTypes().Where(t => typeof(IExternalCommand).IsAssignableFrom(t) && !t.IsInterface && !t.IsAbstract))
                 {
                     var typeName = type.Name;
                     commandEntries.Add(new Dictionary<string, object> { { "Command", typeName } });
-                    commandTypes[typeName] = type.FullName; // Store the full type name
+                    commandTypes[typeName] = type.FullName;
                 }
 
-                // Use CustomGUIs.DataGrid to let user select a command
                 List<string> propertyNames = new List<string> { "Command" };
                 var selectedCommand = CustomGUIs.DataGrid(commandEntries, propertyNames, false).FirstOrDefault();
 
                 if (selectedCommand != null)
                 {
                     string commandClassName = selectedCommand["Command"].ToString();
-                    string fullCommandClassName = commandTypes[commandClassName]; // Get the full type name
+                    string fullCommandClassName = commandTypes[commandClassName];
                     Type commandType = assembly.GetType(fullCommandClassName);
 
                     if (commandType != null)
                     {
-                        // Save the selected command to the last-command file if it is not InvokeLastCommand
-                        if (fullCommandClassName != "InvokeLastAddinCommand")  // <-- This is the modified check
+                        if (fullCommandClassName != "InvokeLastAddinCommand")
                         {
                             File.WriteAllText(LastCommandFilePath, fullCommandClassName);
                         }
 
-                        // Create an instance of the command type
                         object commandInstance = Activator.CreateInstance(commandType);
-
-                        // Find the Execute method to invoke
                         MethodInfo method = commandType.GetMethod("Execute", new Type[] { typeof(ExternalCommandData), typeof(string).MakeByRefType(), typeof(ElementSet) });
 
                         if (method != null)
                         {
-                            // Prepare parameters for the Execute method
                             object[] parameters = new object[] { commandData, message, elements };
-
-                            // Invoke the Execute method
                             return (Result)method.Invoke(commandInstance, parameters);
                         }
                     }
@@ -111,81 +102,91 @@ public class InvokeAddinCommand : IExternalCommand
             catch (Exception ex)
             {
                 message = $"An error occurred: {ex.Message}";
+                if (ex.InnerException != null)
+                {
+                    message += $"\nInner Exception: {ex.InnerException.Message}";
+                }
+            }
+            finally
+            {
+                // Unregister the assembly resolve event handler
+                AppDomain.CurrentDomain.AssemblyResolve -= CurrentDomain_AssemblyResolve;
             }
         }
 
         return Result.Failed;
     }
-}
 
-[Transaction(TransactionMode.Manual)]
-public class InvokeLastAddinCommand : IExternalCommand
-{
-    private const string FolderName = "revit-scripts";
-    private const string LastCommandFileName = "InvokeAddinCommand-last-command";
-    private static readonly string ConfigFolderPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), FolderName);
-    private static readonly string LastCommandFilePath = Path.Combine(ConfigFolderPath, LastCommandFileName);
-
-    public Result Execute(
-        ExternalCommandData commandData,
-        ref string message,
-        ElementSet elements)
+    private Assembly LoadAssembly(string assemblyPath)
     {
-        // Check if the InvokeAddinCommand-last-command file exists
-        if (!File.Exists(LastCommandFilePath))
+        string assemblyName = Path.GetFileNameWithoutExtension(assemblyPath);
+        
+        if (loadedAssemblies.ContainsKey(assemblyName))
         {
-            // If not, invoke InvokeAddinCommand command
-            var invokeAddinCommand = new InvokeAddinCommand();
-            return invokeAddinCommand.Execute(commandData, ref message, elements);
+            return loadedAssemblies[assemblyName];
         }
 
-        // Read the command type name from the InvokeAddinCommand-last-command file
-        string commandTypeName = File.ReadAllText(LastCommandFilePath);
-
-        // Find the assembly that contains the command
-        string dllPath = null;
-        if (File.Exists(Path.Combine(ConfigFolderPath, "InvokeAddinCommand-last-dll-path")))
+        byte[] assemblyBytes = File.ReadAllBytes(assemblyPath);
+        Assembly assembly = Assembly.Load(assemblyBytes);
+        loadedAssemblies[assemblyName] = assembly;
+        
+        // Load all DLLs in the same directory
+        string directory = Path.GetDirectoryName(assemblyPath);
+        foreach (string dllFile in Directory.GetFiles(directory, "*.dll"))
         {
-            dllPath = File.ReadAllText(Path.Combine(ConfigFolderPath, "InvokeAddinCommand-last-dll-path"));
-        }
-
-        if (!string.IsNullOrEmpty(dllPath) && File.Exists(dllPath))
-        {
-            try
+            if (dllFile != assemblyPath)
             {
-                // Read the DLL into a byte array
-                byte[] dllBytes = File.ReadAllBytes(dllPath);
-
-                // Load the DLL from the byte array
-                Assembly assembly = Assembly.Load(dllBytes);
-
-                // Get the command type
-                Type commandType = assembly.GetType(commandTypeName);
-
-                if (commandType != null)
+                string dllName = Path.GetFileNameWithoutExtension(dllFile);
+                if (!loadedAssemblies.ContainsKey(dllName))
                 {
-                    // Create an instance of the command type
-                    object commandInstance = Activator.CreateInstance(commandType);
-
-                    // Find the Execute method to invoke
-                    MethodInfo method = commandType.GetMethod("Execute", new Type[] { typeof(ExternalCommandData), typeof(string).MakeByRefType(), typeof(ElementSet) });
-
-                    if (method != null)
+                    try
                     {
-                        // Prepare parameters for the Execute method
-                        object[] parameters = new object[] { commandData, message, elements };
-
-                        // Invoke the Execute method
-                        return (Result)method.Invoke(commandInstance, parameters);
+                        byte[] dllBytes = File.ReadAllBytes(dllFile);
+                        Assembly dllAssembly = Assembly.Load(dllBytes);
+                        loadedAssemblies[dllName] = dllAssembly;
+                    }
+                    catch (BadImageFormatException)
+                    {
+                        // Skip native DLLs or incompatible assemblies
+                        continue;
                     }
                 }
             }
-            catch (Exception ex)
+        }
+
+        return assembly;
+    }
+
+    private Assembly CurrentDomain_AssemblyResolve(object sender, ResolveEventArgs args)
+    {
+        // Parse the assembly name
+        AssemblyName assemblyName = new AssemblyName(args.Name);
+        string shortName = assemblyName.Name;
+
+        // Check if we've already loaded this assembly
+        if (loadedAssemblies.ContainsKey(shortName))
+        {
+            return loadedAssemblies[shortName];
+        }
+
+        // Look for the assembly in the same directory as the main DLL
+        string dllPath = File.ReadAllText(ConfigFilePath);
+        string directory = Path.GetDirectoryName(dllPath);
+        string assemblyPath = Path.Combine(directory, shortName + ".dll");
+
+        if (File.Exists(assemblyPath))
+        {
+            try
             {
-                message = $"An error occurred: {ex.Message}";
+                Assembly assembly = LoadAssembly(assemblyPath);
+                return assembly;
+            }
+            catch (Exception)
+            {
+                return null;
             }
         }
 
-        return Result.Failed;
+        return null;
     }
 }
