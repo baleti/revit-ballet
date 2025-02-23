@@ -87,12 +87,12 @@ namespace RevitAddin
             }
 
             // Define the column headers.
-            List<string> columns = new List<string> { "Title", "Sheet" };
+            List<string> viewColumns = new List<string> { "Title", "Sheet" };
 
             // Show the selection dialog using your custom DataGrid.
             List<Dictionary<string, object>> selectedViews = CustomGUIs.DataGrid(
                 viewData,
-                columns,
+                viewColumns,
                 false  // Don't span all screens.
             );
 
@@ -103,19 +103,48 @@ namespace RevitAddin
                 return Result.Cancelled;
             }
 
-            // --- Continue with filled region creation ---
-            // Get a default FilledRegionType.
-            FilledRegionType fillRegionType = new FilteredElementCollector(doc)
-                .OfClass(typeof(FilledRegionType))
-                .Cast<FilledRegionType>()
-                .FirstOrDefault();
-            if (fillRegionType == null)
+            // --- Next: Prompt for Filled Region Type selection ---
+            // Collect all available FilledRegionTypes.
+            FilteredElementCollector regionTypeCollector = new FilteredElementCollector(doc)
+                .OfClass(typeof(FilledRegionType));
+            List<Dictionary<string, object>> regionTypeData = new List<Dictionary<string, object>>();
+            // Map filled region type name to FilledRegionType object.
+            Dictionary<string, FilledRegionType> nameToRegionTypeMap = new Dictionary<string, FilledRegionType>();
+            foreach (FilledRegionType frt in regionTypeCollector.Cast<FilledRegionType>())
             {
-                message = "No filled region type found in the document.";
+                string name = frt.Name;
+                // Add to mapping and data grid list.
+                nameToRegionTypeMap[name] = frt;
+                regionTypeData.Add(new Dictionary<string, object>
+                {
+                    { "Name", name }
+                });
+            }
+
+            // Define the columns for the filled region type selection.
+            List<string> regionTypeColumns = new List<string> { "Name" };
+            List<Dictionary<string, object>> selectedRegionTypes = CustomGUIs.DataGrid(
+                regionTypeData,
+                regionTypeColumns,
+                false  // Don't span all screens.
+            );
+
+            // Ensure a selection was made.
+            if (selectedRegionTypes == null || selectedRegionTypes.Count == 0)
+            {
+                message = "No filled region type selected.";
+                return Result.Cancelled;
+            }
+
+            // For simplicity, take the first selected filled region type.
+            string selectedRegionTypeName = selectedRegionTypes[0]["Name"].ToString();
+            if (!nameToRegionTypeMap.TryGetValue(selectedRegionTypeName, out FilledRegionType selectedRegionType))
+            {
+                message = "Unable to resolve the selected filled region type.";
                 return Result.Failed;
             }
 
-            // For each selected view, create unioned outlines from the selected elements.
+            // --- Continue with filled region creation using the selected filled region type ---
             using (Transaction trans = new Transaction(doc, "Create Filled Regions"))
             {
                 trans.Start();
@@ -227,8 +256,8 @@ namespace RevitAddin
                             continue;
                         }
 
-                        // Create the filled region in the current view.
-                        FilledRegion filledRegion = FilledRegion.Create(doc, fillRegionType.Id, viewId, curveLoops);
+                        // Create the filled region in the current view using the unioned curve loops and the selected filled region type.
+                        FilledRegion filledRegion = FilledRegion.Create(doc, selectedRegionType.Id, viewId, curveLoops);
                     }
                     catch (Exception ex)
                     {
@@ -241,7 +270,9 @@ namespace RevitAddin
             return Result.Succeeded;
         }
 
-        // Projects a world point onto the view’s sketch plane (defined by view.Origin and view.ViewDirection).
+        /// <summary>
+        /// Projects a world point onto the view’s sketch plane (defined by view.Origin and view.ViewDirection).
+        /// </summary>
         private XYZ ProjectPointToViewPlane(XYZ p, RevitView view)
         {
             XYZ origin = view.Origin;
@@ -250,7 +281,9 @@ namespace RevitAddin
             return p - distance * vDir;
         }
 
-        // Converts a world point (assumed to lie on the view’s sketch plane) into the view’s local 2D coordinates.
+        /// <summary>
+        /// Converts a world point (assumed to lie on the view’s sketch plane) into the view’s local 2D coordinates.
+        /// </summary>
         private PointF WorldPointToViewLocal(XYZ p, RevitView view)
         {
             XYZ origin = view.Origin;
@@ -261,7 +294,9 @@ namespace RevitAddin
             return new PointF((float)x, (float)y);
         }
 
-        // Converts a local 2D point in view coordinates back into world coordinates (on the view’s sketch plane).
+        /// <summary>
+        /// Converts a local 2D point in view coordinates back into world coordinates (on the view’s sketch plane).
+        /// </summary>
         private XYZ ViewLocalToWorldPoint(PointF pt, RevitView view)
         {
             XYZ origin = view.Origin;
@@ -270,7 +305,9 @@ namespace RevitAddin
             return origin + right.Multiply(pt.X) + up.Multiply(pt.Y);
         }
 
-        // Computes the 2D convex hull of a set of PointF using the monotone chain algorithm.
+        /// <summary>
+        /// Computes the 2D convex hull of a set of PointF using the monotone chain algorithm.
+        /// </summary>
         private List<PointF> Compute2DConvexHull(List<PointF> points)
         {
             List<PointF> sorted = points.OrderBy(p => p.X).ThenBy(p => p.Y).ToList();
@@ -297,13 +334,17 @@ namespace RevitAddin
             return hull;
         }
 
-        // Returns the 2D cross product (z-component) of vectors OA and OB.
+        /// <summary>
+        /// Returns the 2D cross product (z-component) of vectors OA and OB.
+        /// </summary>
         private float Cross(PointF O, PointF A, PointF B)
         {
             return (A.X - O.X) * (B.Y - O.Y) - (A.Y - O.Y) * (B.X - O.X);
         }
 
-        // Checks whether a polygon defined by a list of XYZ points is oriented clockwise.
+        /// <summary>
+        /// Checks whether a polygon defined by a list of XYZ points is oriented clockwise.
+        /// </summary>
         private bool IsClockwise(List<XYZ> pts)
         {
             double sum = 0;
