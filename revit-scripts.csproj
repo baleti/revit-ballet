@@ -87,7 +87,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="revit-scripts\ChangeLevelOfSelectedElements.cs" />
-    <Compile Include="revit-scripts\CreateFilledRegionsOfSelectedElementsInSelectedViews.cs" />
+    <Compile Include="revit-scripts\CreateFilledRegionsOfSelectedElementsInViews.cs" />
     <Compile Include="revit-scripts\DuplicateSelectedViews.cs" />
     <Compile Include="revit-scripts\FilterPosition.cs" />
     <Compile Include="revit-scripts\FilterDimensions.cs" />
