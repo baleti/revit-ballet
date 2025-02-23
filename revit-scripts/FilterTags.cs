@@ -74,6 +74,7 @@ public class FilterTags : IExternalCommand
         {
             propertyNames.Add($"TagText{i}");
         }
+
         propertyNames.AddRange(new[]
         {
             "OwnerView",
@@ -85,6 +86,9 @@ public class FilterTags : IExternalCommand
             "Z",   // Z coordinate
             "ElementId"
         });
+
+        // Add the new HasLeader column.
+        propertyNames.Add("HasLeader");
 
         // Build data entries.
         List<Dictionary<string, object>> entries = new List<Dictionary<string, object>>();
@@ -121,6 +125,16 @@ public class FilterTags : IExternalCommand
             for (int i = 1; i <= maxTagTextParams; i++)
             {
                 dict[$"TagText{i}"] = i <= tagTextParams.Count ? tagTextParams[i - 1] : "";
+            }
+
+            // Add HasLeader information.
+            if (tag is IndependentTag independentTag)
+            {
+                dict["HasLeader"] = independentTag.HasLeader;
+            }
+            else
+            {
+                dict["HasLeader"] = "N/A";
             }
 
             // Get the tag's location.
