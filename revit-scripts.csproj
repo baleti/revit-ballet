@@ -51,7 +51,6 @@
   <ItemGroup>
     <Reference Include="clipper_library, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
       <HintPath>packages\Clipper.6.4.0\lib\net40\clipper_library.dll</HintPath>
-      <Private>True</Private>
     </Reference>
     <Reference Include="Microsoft.CSharp" />
     <Reference Include="Newtonsoft.Json, Version=13.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
@@ -86,6 +85,7 @@
     <Reference Include="System.Windows.Forms" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="revit-scripts\BooleanDifferenceFilledRegionsWithSelectedElements.cs" />
     <Compile Include="revit-scripts\ChangeLevelOfSelectedElements.cs" />
     <Compile Include="revit-scripts\CreateFilledRegionsOfSelectedElementsInViews.cs" />
     <Compile Include="revit-scripts\DuplicateSelectedViews.cs" />

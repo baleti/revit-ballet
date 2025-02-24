@@ -901,3 +901,5 @@ simialar in user experience as grouping
 may try later a separate command to perform mirror operation on them instead
 *** 20
 **** =11:53= tried adding SwapFamilyTypeOfSelectedElements command to replace family instances which values get reset when swapping, but it didn't work after many attempts
+*** 24
+**** =00:51= encountered unexpected confusion over clipper and org.angusj.clipper packages, which led to number of issues, unfortunately one unresolved that led to silent errors likely in the core InvokeAddinCommand command itself
