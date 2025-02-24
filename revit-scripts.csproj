@@ -93,6 +93,7 @@
     <Compile Include="revit-scripts\FilterDimensions.cs" />
     <Compile Include="revit-scripts\OffsetLinesFromTheirWorkplane.cs" />
     <Compile Include="revit-scripts\RenameFamilies.cs" />
+    <Compile Include="revit-scripts\SelectSheetsBySelectedTitleBlocks.cs" />
     <Compile Include="revit-scripts\SelectViewsByViewTemplates.cs" />
     <Compile Include="revit-scripts\ShowHideWorksetsInView.cs" />
     <Compile Include="revit-scripts\SwapFamilyTypeOfSelectedElements.cs" />
