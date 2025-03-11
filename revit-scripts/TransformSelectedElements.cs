@@ -31,6 +31,12 @@ namespace TransformSelectedElementsSample
     public bool DoRotate { get; set; }
     public double RotationAngle { get; set; }
     public TransformationAxis RotationAxis { get; set; }
+    
+    // Set Origin parameters (always applied)
+    public bool DoSetOrigin { get; set; }
+    public double OriginX { get; set; }
+    public double OriginY { get; set; }
+    public double OriginZ { get; set; }
   }
 
   [Transaction(TransactionMode.Manual)]
@@ -65,6 +71,15 @@ namespace TransformSelectedElementsSample
         .OfType<FamilyInstance>()
         .Any(fi => fi.Host is Wall);
 
+      // Determine if the project is metric using your previous snippet.
+      Units projectUnits = doc.GetUnits();
+      FormatOptions lengthOptions = projectUnits.GetFormatOptions(SpecTypeId.Length);
+      bool isMetric = (lengthOptions.GetUnitTypeId() == UnitTypeId.Millimeters ||
+                       lengthOptions.GetUnitTypeId() == UnitTypeId.Meters);
+      // When metric, assume user input is in millimeters and convert to feet.
+      // Otherwise, assume user input is already in feet.
+      double moveConversionFactor = isMetric ? (1.0 / 304.8) : 1.0;
+
       // Pass the flags into the form.
       using (var form = new TransformForm(onlyViewDependent, hasHosted, hostedOnWall))
       {
@@ -86,43 +101,36 @@ namespace TransformSelectedElementsSample
               BoundingBoxXYZ bbox = elem.get_BoundingBox(doc.ActiveView);
               if (bbox != null)
               {
-                // Check if element is hosted on a wall.
                 if (elem is FamilyInstance fi && fi.Host != null && fi.Host is Wall wall)
                 {
                   LocationCurve hostLoc = wall.Location as LocationCurve;
                   if (hostLoc != null)
                   {
-                    // Compute the wall's tangent (local X) along its centerline.
                     XYZ start = hostLoc.Curve.GetEndPoint(0);
                     XYZ end = hostLoc.Curve.GetEndPoint(1);
                     XYZ wallTangent = (end - start).Normalize();
-                    // Compute a perpendicular in the XY plane (local Y)
                     XYZ wallPerp = new XYZ(-wallTangent.Y, wallTangent.X, 0);
-                    // For wall-hosted elements, vertical movement is controlled by the host.
-                    // (Assuming here that if vertical input is provided it will be ignored.)
-                    XYZ displacement = (settings.MoveX / 304.8) * wallTangent +
-                                       (settings.MoveY / 304.8) * wallPerp;
+                    XYZ displacement = (settings.MoveX * moveConversionFactor) * wallTangent +
+                                       (settings.MoveY * moveConversionFactor) * wallPerp;
                     ElementTransformUtils.MoveElement(doc, id, displacement);
                   }
                 }
                 else if (onlyViewDependent)
                 {
-                  // In view-dependent mode, use the active view's plane.
                   View activeView = doc.ActiveView;
                   XYZ up = activeView.UpDirection;
                   XYZ viewDir = activeView.ViewDirection;
                   XYZ right = viewDir.CrossProduct(up);
-                  XYZ displacement = (settings.MoveX / 304.8) * right +
-                                     (settings.MoveY / 304.8) * up;
+                  XYZ displacement = (settings.MoveX * moveConversionFactor) * right +
+                                     (settings.MoveY * moveConversionFactor) * up;
                   ElementTransformUtils.MoveElement(doc, id, displacement);
                 }
                 else
                 {
-                  // For non-hosted 3D elements, apply global 3D movement.
                   XYZ displacement = new XYZ(
-                    settings.MoveX / 304.8,
-                    settings.MoveY / 304.8,
-                    settings.MoveZ / 304.8);
+                    settings.MoveX * moveConversionFactor,
+                    settings.MoveY * moveConversionFactor,
+                    settings.MoveZ * moveConversionFactor);
                   ElementTransformUtils.MoveElement(doc, id, displacement);
                 }
               }
@@ -244,6 +252,36 @@ namespace TransformSelectedElementsSample
                 }
               }
             }
+            
+            // --- Set Origin Operation ---
+            // Always apply the new origin using the user-specified values.
+            double originX = settings.OriginX;
+            double originY = settings.OriginY;
+            double originZ = settings.OriginZ;
+
+            XYZ newOrigin = new XYZ(originX, originY, originZ);
+
+            // Handle linked IFC elements separately.
+            if (elem is RevitLinkInstance rli)
+            {
+              Transform linkTransform = rli.GetTransform();
+              XYZ currentOrigin = linkTransform.Origin;
+              XYZ displacement = newOrigin - currentOrigin;
+              ElementTransformUtils.MoveElement(doc, id, displacement);
+            }
+            else if (elem.Location != null)
+            {
+              if (elem.Location is LocationPoint locPoint)
+              {
+                locPoint.Point = newOrigin;
+              }
+              else if (elem.Location is LocationCurve locCurve)
+              {
+                XYZ currentOrigin = locCurve.Curve.GetEndPoint(0);
+                XYZ displacement = newOrigin - currentOrigin;
+                ElementTransformUtils.MoveElement(doc, id, displacement);
+              }
+            }
           }
           trans.Commit();
         }
@@ -263,7 +301,8 @@ namespace TransformSelectedElementsSample
     }
   }
 
-  // The WinForm uses a tabbed layout with separate tabs for Move, Mirror, and Rotate.
+  // The WinForm uses a tabbed layout with separate tabs for Move, Mirror, Rotate, and Set Origin.
+  // The "Set Origin" tab no longer includes a checkbox; the origin values are always applied.
   public class TransformForm : WinForms.Form
   {
     private bool _onlyViewDependent;
@@ -271,7 +310,7 @@ namespace TransformSelectedElementsSample
     private bool _hostedOnWall;   // True if one or more hosted elements are on a wall.
 
     private WinForms.TabControl tabControl;
-    private WinForms.TabPage tabMove, tabMirror, tabRotate;
+    private WinForms.TabPage tabMove, tabMirror, tabRotate, tabSetOrigin;
 
     // Global move controls.
     private WinForms.Label lblMoveX, lblMoveY, lblMoveZ;
@@ -287,6 +326,10 @@ namespace TransformSelectedElementsSample
     private WinForms.Label lblRotateAngle;
     private WinForms.TextBox txtRotateAngle;
     private WinForms.RadioButton rbRotateX, rbRotateY, rbRotateZ;
+    
+    // Set Origin tab controls.
+    private WinForms.Label lblOriginX, lblOriginY, lblOriginZ;
+    private WinForms.TextBox txtOriginX, txtOriginY, txtOriginZ;
 
     private WinForms.Button btnOK, btnCancel;
 
@@ -305,7 +348,7 @@ namespace TransformSelectedElementsSample
 
       this.Text = "Transform Selected Elements";
       this.Width = 320;
-      this.Height = 400;
+      this.Height = 430;
       this.FormBorderStyle = WinForms.FormBorderStyle.FixedDialog;
       this.StartPosition = WinForms.FormStartPosition.CenterScreen;
       this.MaximizeBox = false;
@@ -313,24 +356,20 @@ namespace TransformSelectedElementsSample
 
       tabControl = new WinForms.TabControl();
       tabControl.Dock = WinForms.DockStyle.Top;
-      tabControl.Height = 300;
+      tabControl.Height = 320;
 
       // ---- Move Tab ----
       tabMove = new WinForms.TabPage("Move");
-
-      // Global move controls.
       lblMoveX = new WinForms.Label() { Text = "Move X (mm):", Left = 10, Top = 20, Width = 90 };
       txtMoveX = new WinForms.TextBox() { Left = 110, Top = 20, Width = 100, Text = "0" };
       lblMoveY = new WinForms.Label() { Text = "Move Y (mm):", Left = 10, Top = 50, Width = 90 };
       txtMoveY = new WinForms.TextBox() { Left = 110, Top = 50, Width = 100, Text = "0" };
       lblMoveZ = new WinForms.Label() { Text = "Move Z (mm):", Left = 10, Top = 80, Width = 90 };
       txtMoveZ = new WinForms.TextBox() { Left = 110, Top = 80, Width = 100, Text = "0" };
-
       tabMove.Controls.AddRange(new WinForms.Control[] { lblMoveX, txtMoveX, lblMoveY, txtMoveY, lblMoveZ, txtMoveZ });
 
       if (_disableY)
       {
-        // Disable (grey out) global fields.
         txtMoveX.Enabled = false;
         txtMoveY.Enabled = false;
         txtMoveZ.Enabled = false;
@@ -338,10 +377,7 @@ namespace TransformSelectedElementsSample
         txtMoveY.BackColor = System.Drawing.Color.LightGray;
         txtMoveZ.BackColor = System.Drawing.Color.LightGray;
 
-        // For hosted elements, add local controls.
-        // For wall-hosted elements, only two local axes are used and vertical movement (local Y) is controlled externally.
         bool showLocalZ = (!_onlyViewDependent && !_hostedOnWall);
-
         int localStartY = 110;
         var lblLocalX = new WinForms.Label() { Text = "Local X (mm):", Left = 10, Top = localStartY, Width = 100 };
         txtLocalX = new WinForms.TextBox() { Left = 120, Top = localStartY, Width = 100, Text = "0" };
@@ -354,8 +390,6 @@ namespace TransformSelectedElementsSample
         tabMove.Controls.Add(lblLocalY);
         tabMove.Controls.Add(txtLocalY);
 
-        // If the element is hosted on a wall then vertical movement is controlled by the host;
-        // disable the local Y input (which might be misinterpreted as vertical movement).
         if (_hostedOnWall)
         {
           txtLocalY.Enabled = false;
@@ -389,11 +423,21 @@ namespace TransformSelectedElementsSample
       rbRotateX.Checked = true;
       tabRotate.Controls.AddRange(new WinForms.Control[] { lblRotateAngle, txtRotateAngle, rbRotateX, rbRotateY, rbRotateZ });
 
-      tabControl.TabPages.AddRange(new WinForms.TabPage[] { tabMove, tabMirror, tabRotate });
+      // ---- Set Origin Tab ----
+      tabSetOrigin = new WinForms.TabPage("Set Origin");
+      lblOriginX = new WinForms.Label() { Text = "Origin X (mm):", Left = 10, Top = 20, Width = 100 };
+      txtOriginX = new WinForms.TextBox() { Left = 120, Top = 20, Width = 100, Text = "0" };
+      lblOriginY = new WinForms.Label() { Text = "Origin Y (mm):", Left = 10, Top = 50, Width = 100 };
+      txtOriginY = new WinForms.TextBox() { Left = 120, Top = 50, Width = 100, Text = "0" };
+      lblOriginZ = new WinForms.Label() { Text = "Origin Z (mm):", Left = 10, Top = 80, Width = 100 };
+      txtOriginZ = new WinForms.TextBox() { Left = 120, Top = 80, Width = 100, Text = "0" };
+      tabSetOrigin.Controls.AddRange(new WinForms.Control[] { lblOriginX, txtOriginX, lblOriginY, txtOriginY, lblOriginZ, txtOriginZ });
+
+      tabControl.TabPages.AddRange(new WinForms.TabPage[] { tabMove, tabMirror, tabRotate, tabSetOrigin });
       this.Controls.Add(tabControl);
 
-      btnOK = new WinForms.Button() { Text = "OK", Left = 50, Width = 80, Top = 320, DialogResult = WinForms.DialogResult.OK };
-      btnCancel = new WinForms.Button() { Text = "Cancel", Left = 150, Width = 80, Top = 320, DialogResult = WinForms.DialogResult.Cancel };
+      btnOK = new WinForms.Button() { Text = "OK", Left = 50, Width = 80, Top = 340, DialogResult = WinForms.DialogResult.OK };
+      btnCancel = new WinForms.Button() { Text = "Cancel", Left = 150, Width = 80, Top = 340, DialogResult = WinForms.DialogResult.Cancel };
       this.Controls.Add(btnOK);
       this.Controls.Add(btnCancel);
       this.AcceptButton = btnOK;
@@ -486,6 +530,15 @@ namespace TransformSelectedElementsSample
         }
         else
           settings.DoRotate = false;
+
+        // --- Set Origin Tab ---
+        double.TryParse(txtOriginX.Text, out double originX);
+        double.TryParse(txtOriginY.Text, out double originY);
+        double.TryParse(txtOriginZ.Text, out double originZ);
+        settings.DoSetOrigin = true;
+        settings.OriginX = originX;
+        settings.OriginY = originY;
+        settings.OriginZ = originZ;
 
         this.Settings = settings;
       }
