@@ -3,6 +3,8 @@ using System;
 using System.Linq;
 using System.Collections.Generic;
 using System.Drawing;  // For System.Drawing.Color and Font
+using System.Globalization;
+using System.IO;
 using Autodesk.Revit.UI;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.Attributes;
@@ -32,7 +34,7 @@ namespace TransformSelectedElementsSample
     public double RotationAngle { get; set; }
     public TransformationAxis RotationAxis { get; set; }
     
-    // Set Origin parameters (always applied)
+    // Set Origin parameters (applied only if enabled)
     public bool DoSetOrigin { get; set; }
     public double OriginX { get; set; }
     public double OriginY { get; set; }
@@ -71,16 +73,14 @@ namespace TransformSelectedElementsSample
         .OfType<FamilyInstance>()
         .Any(fi => fi.Host is Wall);
 
-      // Determine if the project is metric using your previous snippet.
+      // Determine if the project is metric.
       Units projectUnits = doc.GetUnits();
       FormatOptions lengthOptions = projectUnits.GetFormatOptions(SpecTypeId.Length);
       bool isMetric = (lengthOptions.GetUnitTypeId() == UnitTypeId.Millimeters ||
                        lengthOptions.GetUnitTypeId() == UnitTypeId.Meters);
       // When metric, assume user input is in millimeters and convert to feet.
-      // Otherwise, assume user input is already in feet.
       double moveConversionFactor = isMetric ? (1.0 / 304.8) : 1.0;
 
-      // Pass the flags into the form.
       using (var form = new TransformForm(onlyViewDependent, hasHosted, hostedOnWall))
       {
         if (form.ShowDialog() != WinForms.DialogResult.OK)
@@ -91,7 +91,7 @@ namespace TransformSelectedElementsSample
         using (Transaction trans = new Transaction(doc, "Transform Selected Elements"))
         {
           trans.Start();
-          foreach (ElementId id in selIds.ToList()) // use ToList() to avoid iteration issues if elements are deleted
+          foreach (ElementId id in selIds.ToList()) // Use ToList() to avoid iteration issues if elements are deleted.
           {
             Element elem = doc.GetElement(id);
 
@@ -254,32 +254,33 @@ namespace TransformSelectedElementsSample
             }
             
             // --- Set Origin Operation ---
-            // Always apply the new origin using the user-specified values.
-            double originX = settings.OriginX;
-            double originY = settings.OriginY;
-            double originZ = settings.OriginZ;
-
-            XYZ newOrigin = new XYZ(originX, originY, originZ);
-
-            // Handle linked IFC elements separately.
-            if (elem is RevitLinkInstance rli)
+            if (settings.DoSetOrigin)
             {
-              Transform linkTransform = rli.GetTransform();
-              XYZ currentOrigin = linkTransform.Origin;
-              XYZ displacement = newOrigin - currentOrigin;
-              ElementTransformUtils.MoveElement(doc, id, displacement);
-            }
-            else if (elem.Location != null)
-            {
-              if (elem.Location is LocationPoint locPoint)
+              double originX = settings.OriginX;
+              double originY = settings.OriginY;
+              double originZ = settings.OriginZ;
+
+              XYZ newOrigin = new XYZ(originX, originY, originZ);
+
+              if (elem is RevitLinkInstance rli)
               {
-                locPoint.Point = newOrigin;
-              }
-              else if (elem.Location is LocationCurve locCurve)
-              {
-                XYZ currentOrigin = locCurve.Curve.GetEndPoint(0);
+                Transform linkTransform = rli.GetTransform();
+                XYZ currentOrigin = linkTransform.Origin;
                 XYZ displacement = newOrigin - currentOrigin;
                 ElementTransformUtils.MoveElement(doc, id, displacement);
+              }
+              else if (elem.Location != null)
+              {
+                if (elem.Location is LocationPoint locPoint)
+                {
+                  locPoint.Point = newOrigin;
+                }
+                else if (elem.Location is LocationCurve locCurve)
+                {
+                  XYZ currentOrigin = locCurve.Curve.GetEndPoint(0);
+                  XYZ displacement = newOrigin - currentOrigin;
+                  ElementTransformUtils.MoveElement(doc, id, displacement);
+                }
               }
             }
           }
@@ -301,45 +302,48 @@ namespace TransformSelectedElementsSample
     }
   }
 
-  // The WinForm uses a tabbed layout with separate tabs for Move, Mirror, Rotate, and Set Origin.
-  // The "Set Origin" tab no longer includes a checkbox; the origin values are always applied.
+  // The TransformForm now displays all options in one view.
+  // It loads and saves the last values to %APPDATA%\revit-scripts\TransformSelectedElements.
+  // A "Reset" button resets all fields, and a "Set new origin" checkbox controls the Set Origin options.
   public class TransformForm : WinForms.Form
   {
     private bool _onlyViewDependent;
-    private bool _disableY;     // True if one or more elements are hosted.
-    private bool _hostedOnWall;   // True if one or more hosted elements are on a wall.
+    private bool _disableY;
+    private bool _hostedOnWall;
 
-    private WinForms.TabControl tabControl;
-    private WinForms.TabPage tabMove, tabMirror, tabRotate, tabSetOrigin;
+    // GroupBoxes for organization.
+    private WinForms.GroupBox groupMove;
+    private WinForms.GroupBox groupMirror;
+    private WinForms.GroupBox groupRotate;
+    private WinForms.GroupBox groupSetOrigin;
 
-    // Global move controls.
+    // Move controls.
     private WinForms.Label lblMoveX, lblMoveY, lblMoveZ;
     private WinForms.TextBox txtMoveX, txtMoveY, txtMoveZ;
-
-    // Local move controls for hosted elements.
+    private WinForms.Label lblLocalX, lblLocalY, lblLocalZ;
     private WinForms.TextBox txtLocalX, txtLocalY, txtLocalZ;
 
-    // Mirror tab controls.
+    // Mirror controls.
     private WinForms.CheckBox cbMirrorX, cbMirrorY, cbMirrorZ;
 
-    // Rotate tab controls.
+    // Rotate controls.
     private WinForms.Label lblRotateAngle;
     private WinForms.TextBox txtRotateAngle;
     private WinForms.RadioButton rbRotateX, rbRotateY, rbRotateZ;
-    
-    // Set Origin tab controls.
+
+    // Set Origin controls.
+    private WinForms.CheckBox cbSetOrigin;
     private WinForms.Label lblOriginX, lblOriginY, lblOriginZ;
     private WinForms.TextBox txtOriginX, txtOriginY, txtOriginZ;
 
-    private WinForms.Button btnOK, btnCancel;
+    // Buttons.
+    private WinForms.Button btnOK, btnCancel, btnReset;
 
     public TransformationSettings Settings { get; private set; }
 
-    /// <summary>
-    /// onlyViewDependent: if true, only in‑plane (X/Y) operations are allowed.
-    /// disableY: if true, the selected element(s) are hosted.
-    /// hostedOnWall: if true, the hosted element(s) are on a wall (and vertical movement is controlled externally).
-    /// </summary>
+    // File path to persist settings.
+    private string settingsFilePath;
+
     public TransformForm(bool onlyViewDependent, bool disableY, bool hostedOnWall)
     {
       _onlyViewDependent = onlyViewDependent;
@@ -347,26 +351,33 @@ namespace TransformSelectedElementsSample
       _hostedOnWall = hostedOnWall;
 
       this.Text = "Transform Selected Elements";
-      this.Width = 320;
-      this.Height = 430;
+      this.Width = 400; // Increased width.
+      this.Height = 650;
       this.FormBorderStyle = WinForms.FormBorderStyle.FixedDialog;
       this.StartPosition = WinForms.FormStartPosition.CenterScreen;
       this.MaximizeBox = false;
       this.MinimizeBox = false;
 
-      tabControl = new WinForms.TabControl();
-      tabControl.Dock = WinForms.DockStyle.Top;
-      tabControl.Height = 320;
+      // Determine settings file path.
+      string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+      string folder = Path.Combine(appData, "revit-scripts");
+      if (!Directory.Exists(folder))
+        Directory.CreateDirectory(folder);
+      settingsFilePath = Path.Combine(folder, "TransformSelectedElements");
 
-      // ---- Move Tab ----
-      tabMove = new WinForms.TabPage("Move");
-      lblMoveX = new WinForms.Label() { Text = "Move X (mm):", Left = 10, Top = 20, Width = 90 };
-      txtMoveX = new WinForms.TextBox() { Left = 110, Top = 20, Width = 100, Text = "0" };
-      lblMoveY = new WinForms.Label() { Text = "Move Y (mm):", Left = 10, Top = 50, Width = 90 };
-      txtMoveY = new WinForms.TextBox() { Left = 110, Top = 50, Width = 100, Text = "0" };
-      lblMoveZ = new WinForms.Label() { Text = "Move Z (mm):", Left = 10, Top = 80, Width = 90 };
-      txtMoveZ = new WinForms.TextBox() { Left = 110, Top = 80, Width = 100, Text = "0" };
-      tabMove.Controls.AddRange(new WinForms.Control[] { lblMoveX, txtMoveX, lblMoveY, txtMoveY, lblMoveZ, txtMoveZ });
+      // --- GroupBox: Move ---
+      groupMove = new WinForms.GroupBox();
+      groupMove.Text = "Move";
+      int moveGroupHeight = _disableY ? (_onlyViewDependent ? 120 : (_hostedOnWall ? 150 : 180)) : 110;
+      groupMove.SetBounds(10, 10, 370, moveGroupHeight);
+
+      lblMoveX = new WinForms.Label() { Text = "Move X (mm):", Left = 10, Top = 20, Width = 80 };
+      txtMoveX = new WinForms.TextBox() { Left = 100, Top = 20, Width = 120, Text = "0" };
+      lblMoveY = new WinForms.Label() { Text = "Move Y (mm):", Left = 10, Top = 50, Width = 80 };
+      txtMoveY = new WinForms.TextBox() { Left = 100, Top = 50, Width = 120, Text = "0" };
+      lblMoveZ = new WinForms.Label() { Text = "Move Z (mm):", Left = 10, Top = 80, Width = 80 };
+      txtMoveZ = new WinForms.TextBox() { Left = 100, Top = 80, Width = 120, Text = "0" };
+      groupMove.Controls.AddRange(new WinForms.Control[] { lblMoveX, txtMoveX, lblMoveY, txtMoveY, lblMoveZ, txtMoveZ });
 
       if (_disableY)
       {
@@ -377,86 +388,108 @@ namespace TransformSelectedElementsSample
         txtMoveY.BackColor = System.Drawing.Color.LightGray;
         txtMoveZ.BackColor = System.Drawing.Color.LightGray;
 
-        bool showLocalZ = (!_onlyViewDependent && !_hostedOnWall);
-        int localStartY = 110;
-        var lblLocalX = new WinForms.Label() { Text = "Local X (mm):", Left = 10, Top = localStartY, Width = 100 };
-        txtLocalX = new WinForms.TextBox() { Left = 120, Top = localStartY, Width = 100, Text = "0" };
-        tabMove.Controls.Add(lblLocalX);
-        tabMove.Controls.Add(txtLocalX);
-
-        localStartY += 30;
-        var lblLocalY = new WinForms.Label() { Text = "Local Y (mm):", Left = 10, Top = localStartY, Width = 100 };
-        txtLocalY = new WinForms.TextBox() { Left = 120, Top = localStartY, Width = 100, Text = "0" };
-        tabMove.Controls.Add(lblLocalY);
-        tabMove.Controls.Add(txtLocalY);
-
-        if (_hostedOnWall)
+        int localYStart = 110;
+        lblLocalX = new WinForms.Label() { Text = "Local X (mm):", Left = 10, Top = localYStart, Width = 80 };
+        txtLocalX = new WinForms.TextBox() { Left = 100, Top = localYStart, Width = 120, Text = "0" };
+        groupMove.Controls.Add(lblLocalX);
+        groupMove.Controls.Add(txtLocalX);
+        localYStart += 30;
+        lblLocalY = new WinForms.Label() { Text = "Local Y (mm):", Left = 10, Top = localYStart, Width = 80 };
+        txtLocalY = new WinForms.TextBox() { Left = 100, Top = localYStart, Width = 120, Text = "0" };
+        groupMove.Controls.Add(lblLocalY);
+        groupMove.Controls.Add(txtLocalY);
+        if (!_onlyViewDependent && !_hostedOnWall)
         {
-          txtLocalY.Enabled = false;
-          txtLocalY.BackColor = System.Drawing.Color.LightGray;
-        }
-
-        if (showLocalZ)
-        {
-          localStartY += 30;
-          var lblLocalZ = new WinForms.Label() { Text = "Local Z (mm):", Left = 10, Top = localStartY, Width = 100 };
-          txtLocalZ = new WinForms.TextBox() { Left = 120, Top = localStartY, Width = 100, Text = "0" };
-          tabMove.Controls.Add(lblLocalZ);
-          tabMove.Controls.Add(txtLocalZ);
+          localYStart += 30;
+          lblLocalZ = new WinForms.Label() { Text = "Local Z (mm):", Left = 10, Top = localYStart, Width = 80 };
+          txtLocalZ = new WinForms.TextBox() { Left = 100, Top = localYStart, Width = 120, Text = "0" };
+          groupMove.Controls.Add(lblLocalZ);
+          groupMove.Controls.Add(txtLocalZ);
         }
       }
 
-      // ---- Mirror Tab ----
-      tabMirror = new WinForms.TabPage("Mirror");
+      // --- GroupBox: Mirror ---
+      groupMirror = new WinForms.GroupBox();
+      groupMirror.Text = "Mirror";
+      groupMirror.SetBounds(10, groupMove.Bottom + 10, 370, 120);
       cbMirrorX = new WinForms.CheckBox() { Text = "Mirror about X", Left = 10, Top = 20, Width = 150 };
-      cbMirrorY = new WinForms.CheckBox() { Text = "Mirror about Y", Left = 10, Top = 50, Width = 150 };
-      cbMirrorZ = new WinForms.CheckBox() { Text = "Mirror about Z", Left = 10, Top = 80, Width = 150 };
-      tabMirror.Controls.AddRange(new WinForms.Control[] { cbMirrorX, cbMirrorY, cbMirrorZ });
+      cbMirrorY = new WinForms.CheckBox() { Text = "Mirror about Y", Left = 10, Top = 45, Width = 150 };
+      cbMirrorZ = new WinForms.CheckBox() { Text = "Mirror about Z", Left = 10, Top = 70, Width = 150 };
+      groupMirror.Controls.AddRange(new WinForms.Control[] { cbMirrorX, cbMirrorY, cbMirrorZ });
+      if (_onlyViewDependent)
+        cbMirrorZ.Visible = false;
 
-      // ---- Rotate Tab ----
-      tabRotate = new WinForms.TabPage("Rotate");
-      lblRotateAngle = new WinForms.Label() { Text = "Angle (deg):", Left = 10, Top = 20, Width = 90 };
-      txtRotateAngle = new WinForms.TextBox() { Left = 110, Top = 20, Width = 100, Text = "0" };
-      rbRotateX = new WinForms.RadioButton() { Text = "Rotate about X", Left = 10, Top = 50, Width = 150 };
-      rbRotateY = new WinForms.RadioButton() { Text = "Rotate about Y", Left = 10, Top = 80, Width = 150 };
-      rbRotateZ = new WinForms.RadioButton() { Text = "Rotate about Z", Left = 10, Top = 110, Width = 150 };
-      rbRotateX.Checked = true;
-      tabRotate.Controls.AddRange(new WinForms.Control[] { lblRotateAngle, txtRotateAngle, rbRotateX, rbRotateY, rbRotateZ });
+      // --- GroupBox: Rotate ---
+      groupRotate = new WinForms.GroupBox();
+      groupRotate.Text = "Rotate";
+      groupRotate.SetBounds(10, groupMirror.Bottom + 10, 370, _onlyViewDependent ? 100 : 130);
+      lblRotateAngle = new WinForms.Label() { Text = "Angle (deg):", Left = 10, Top = 20, Width = 80 };
+      txtRotateAngle = new WinForms.TextBox() { Left = 100, Top = 20, Width = 120, Text = "0" };
+      groupRotate.Controls.Add(lblRotateAngle);
+      groupRotate.Controls.Add(txtRotateAngle);
+      if (_onlyViewDependent)
+      {
+        rbRotateZ = new WinForms.RadioButton() { Text = "Rotate about view normal", Left = 10, Top = 50, Width = 200 };
+        rbRotateZ.Checked = true;
+        groupRotate.Controls.Add(rbRotateZ);
+      }
+      else
+      {
+        rbRotateX = new WinForms.RadioButton() { Text = "Rotate about X", Left = 10, Top = 50, Width = 150 };
+        rbRotateY = new WinForms.RadioButton() { Text = "Rotate about Y", Left = 10, Top = 75, Width = 150 };
+        rbRotateZ = new WinForms.RadioButton() { Text = "Rotate about Z", Left = 10, Top = 100, Width = 150 };
+        rbRotateX.Checked = true;
+        groupRotate.Controls.AddRange(new WinForms.Control[] { rbRotateX, rbRotateY, rbRotateZ });
+      }
 
-      // ---- Set Origin Tab ----
-      tabSetOrigin = new WinForms.TabPage("Set Origin");
-      lblOriginX = new WinForms.Label() { Text = "Origin X (mm):", Left = 10, Top = 20, Width = 100 };
-      txtOriginX = new WinForms.TextBox() { Left = 120, Top = 20, Width = 100, Text = "0" };
-      lblOriginY = new WinForms.Label() { Text = "Origin Y (mm):", Left = 10, Top = 50, Width = 100 };
-      txtOriginY = new WinForms.TextBox() { Left = 120, Top = 50, Width = 100, Text = "0" };
-      lblOriginZ = new WinForms.Label() { Text = "Origin Z (mm):", Left = 10, Top = 80, Width = 100 };
-      txtOriginZ = new WinForms.TextBox() { Left = 120, Top = 80, Width = 100, Text = "0" };
-      tabSetOrigin.Controls.AddRange(new WinForms.Control[] { lblOriginX, txtOriginX, lblOriginY, txtOriginY, lblOriginZ, txtOriginZ });
+      // --- GroupBox: Set Origin ---
+      groupSetOrigin = new WinForms.GroupBox();
+      groupSetOrigin.Text = "Set Origin";
+      groupSetOrigin.SetBounds(10, groupRotate.Bottom + 10, 370, 150);
 
-      tabControl.TabPages.AddRange(new WinForms.TabPage[] { tabMove, tabMirror, tabRotate, tabSetOrigin });
-      this.Controls.Add(tabControl);
+      // Checkbox to enable setting origin.
+      cbSetOrigin = new WinForms.CheckBox() { Text = "Set new origin", Left = 10, Top = 20, Width = 150 };
+      cbSetOrigin.CheckedChanged += new EventHandler(cbSetOrigin_CheckedChanged);
+      groupSetOrigin.Controls.Add(cbSetOrigin);
 
-      btnOK = new WinForms.Button() { Text = "OK", Left = 50, Width = 80, Top = 340, DialogResult = WinForms.DialogResult.OK };
-      btnCancel = new WinForms.Button() { Text = "Cancel", Left = 150, Width = 80, Top = 340, DialogResult = WinForms.DialogResult.Cancel };
-      this.Controls.Add(btnOK);
-      this.Controls.Add(btnCancel);
+      lblOriginX = new WinForms.Label() { Text = "Origin X (mm):", Left = 10, Top = 50, Width = 80 };
+      txtOriginX = new WinForms.TextBox() { Left = 100, Top = 50, Width = 120, Text = "0" };
+      lblOriginY = new WinForms.Label() { Text = "Origin Y (mm):", Left = 10, Top = 80, Width = 80 };
+      txtOriginY = new WinForms.TextBox() { Left = 100, Top = 80, Width = 120, Text = "0" };
+      lblOriginZ = new WinForms.Label() { Text = "Origin Z (mm):", Left = 10, Top = 110, Width = 80 };
+      txtOriginZ = new WinForms.TextBox() { Left = 100, Top = 110, Width = 120, Text = "0" };
+      groupSetOrigin.Controls.AddRange(new WinForms.Control[] { lblOriginX, txtOriginX, lblOriginY, txtOriginY, lblOriginZ, txtOriginZ });
+
+      this.Controls.AddRange(new WinForms.Control[] { groupMove, groupMirror, groupRotate, groupSetOrigin });
+
+      // OK, Cancel, and Reset buttons.
+      btnOK = new WinForms.Button() { Text = "OK", Left = 40, Width = 80, Top = groupSetOrigin.Bottom + 20, DialogResult = WinForms.DialogResult.OK };
+      btnCancel = new WinForms.Button() { Text = "Cancel", Left = 140, Width = 80, Top = groupSetOrigin.Bottom + 20, DialogResult = WinForms.DialogResult.Cancel };
+      btnReset = new WinForms.Button() { Text = "Reset", Left = 240, Width = 80, Top = groupSetOrigin.Bottom + 20 };
+      btnReset.Click += new EventHandler(btnReset_Click);
+      this.Controls.AddRange(new WinForms.Control[] { btnOK, btnCancel, btnReset });
       this.AcceptButton = btnOK;
       this.CancelButton = btnCancel;
 
-      if (_onlyViewDependent)
-      {
-        lblMoveZ.Visible = false;
-        txtMoveZ.Visible = false;
-        cbMirrorZ.Visible = false;
-        rbRotateX.Visible = false;
-        rbRotateY.Visible = false;
-        rbRotateZ.Text = "Rotate about view normal";
-        rbRotateZ.Checked = true;
-        if (_disableY && txtLocalZ != null)
-        {
-          txtLocalZ.Visible = false;
-        }
-      }
+      UpdateOriginControls();
+      LoadSettings();
+    }
+
+    private void cbSetOrigin_CheckedChanged(object sender, EventArgs e)
+    {
+      UpdateOriginControls();
+    }
+
+    private void UpdateOriginControls()
+    {
+      bool enabled = cbSetOrigin.Checked;
+      txtOriginX.Enabled = enabled;
+      txtOriginY.Enabled = enabled;
+      txtOriginZ.Enabled = enabled;
+      var bg = enabled ? SystemColors.Window : System.Drawing.Color.LightGray;
+      txtOriginX.BackColor = bg;
+      txtOriginY.BackColor = bg;
+      txtOriginZ.BackColor = bg;
     }
 
     protected override void OnFormClosing(WinForms.FormClosingEventArgs e)
@@ -466,7 +499,7 @@ namespace TransformSelectedElementsSample
       {
         TransformationSettings settings = new TransformationSettings();
 
-        // --- Move Tab ---
+        // --- Move ---
         if (_disableY)
         {
           double.TryParse(txtLocalX.Text, out double mvX);
@@ -475,7 +508,6 @@ namespace TransformSelectedElementsSample
           bool showLocalZ = (!_onlyViewDependent && !_hostedOnWall);
           if (showLocalZ && txtLocalZ != null)
             double.TryParse(txtLocalZ.Text, out mvZ);
-
           if (Math.Abs(mvX) > 0 || Math.Abs(mvY) > 0 || Math.Abs(mvZ) > 0)
           {
             settings.DoMove = true;
@@ -502,13 +534,13 @@ namespace TransformSelectedElementsSample
             settings.DoMove = false;
         }
 
-        // --- Mirror Tab ---
+        // --- Mirror ---
         settings.MirrorX = cbMirrorX.Checked;
         settings.MirrorY = cbMirrorY.Checked;
         settings.MirrorZ = (!_onlyViewDependent && cbMirrorZ.Checked);
         settings.DoMirror = settings.MirrorX || settings.MirrorY || settings.MirrorZ;
 
-        // --- Rotate Tab ---
+        // --- Rotate ---
         double.TryParse(txtRotateAngle.Text, out double angle);
         if (Math.Abs(angle) > 0)
         {
@@ -531,17 +563,125 @@ namespace TransformSelectedElementsSample
         else
           settings.DoRotate = false;
 
-        // --- Set Origin Tab ---
-        double.TryParse(txtOriginX.Text, out double originX);
-        double.TryParse(txtOriginY.Text, out double originY);
-        double.TryParse(txtOriginZ.Text, out double originZ);
-        settings.DoSetOrigin = true;
-        settings.OriginX = originX;
-        settings.OriginY = originY;
-        settings.OriginZ = originZ;
+        // --- Set Origin ---
+        settings.DoSetOrigin = cbSetOrigin.Checked;
+        if (settings.DoSetOrigin)
+        {
+          double.TryParse(txtOriginX.Text, out double originX);
+          double.TryParse(txtOriginY.Text, out double originY);
+          double.TryParse(txtOriginZ.Text, out double originZ);
+          settings.OriginX = originX;
+          settings.OriginY = originY;
+          settings.OriginZ = originZ;
+        }
 
         this.Settings = settings;
+        SaveSettings();
       }
+    }
+
+    private void btnReset_Click(object sender, EventArgs e)
+    {
+      txtMoveX.Text = "0"; txtMoveY.Text = "0"; txtMoveZ.Text = "0";
+      if (txtLocalX != null) txtLocalX.Text = "0";
+      if (txtLocalY != null) txtLocalY.Text = "0";
+      if (txtLocalZ != null) txtLocalZ.Text = "0";
+      cbMirrorX.Checked = false; cbMirrorY.Checked = false; cbMirrorZ.Checked = false;
+      txtRotateAngle.Text = "0";
+      if (_onlyViewDependent)
+      {
+        if (rbRotateZ != null) rbRotateZ.Checked = true;
+      }
+      else
+      {
+        if (rbRotateX != null) rbRotateX.Checked = true;
+        if (rbRotateY != null) rbRotateY.Checked = false;
+        if (rbRotateZ != null) rbRotateZ.Checked = false;
+      }
+      cbSetOrigin.Checked = false;
+      txtOriginX.Text = "0"; txtOriginY.Text = "0"; txtOriginZ.Text = "0";
+    }
+
+    private void LoadSettings()
+    {
+      if (File.Exists(settingsFilePath))
+      {
+        try
+        {
+          var lines = File.ReadAllLines(settingsFilePath);
+          foreach (var line in lines)
+          {
+            if (string.IsNullOrWhiteSpace(line)) continue;
+            var parts = line.Split(new char[] { '=' }, 2);
+            if (parts.Length < 2) continue;
+            string key = parts[0].Trim();
+            string value = parts[1].Trim();
+            switch (key)
+            {
+              case "MoveX": txtMoveX.Text = value; break;
+              case "MoveY": txtMoveY.Text = value; break;
+              case "MoveZ": txtMoveZ.Text = value; break;
+              case "LocalX": if (txtLocalX != null) txtLocalX.Text = value; break;
+              case "LocalY": if (txtLocalY != null) txtLocalY.Text = value; break;
+              case "LocalZ": if (txtLocalZ != null) txtLocalZ.Text = value; break;
+              case "MirrorX": cbMirrorX.Checked = bool.TryParse(value, out bool bx) && bx; break;
+              case "MirrorY": cbMirrorY.Checked = bool.TryParse(value, out bool by) && by; break;
+              case "MirrorZ": cbMirrorZ.Checked = bool.TryParse(value, out bool bz) && bz; break;
+              case "RotateAngle": txtRotateAngle.Text = value; break;
+              case "RotateAxis":
+                if (!_onlyViewDependent)
+                {
+                  if (value == "X")
+                    rbRotateX.Checked = true;
+                  else if (value == "Y")
+                    rbRotateY.Checked = true;
+                  else if (value == "Z")
+                    rbRotateZ.Checked = true;
+                }
+                break;
+              case "SetOrigin": cbSetOrigin.Checked = bool.TryParse(value, out bool so) && so; break;
+              case "OriginX": txtOriginX.Text = value; break;
+              case "OriginY": txtOriginY.Text = value; break;
+              case "OriginZ": txtOriginZ.Text = value; break;
+            }
+          }
+          UpdateOriginControls();
+        }
+        catch { /* Ignore errors */ }
+      }
+    }
+
+    private void SaveSettings()
+    {
+      var lines = new List<string>();
+      lines.Add("MoveX=" + txtMoveX.Text);
+      lines.Add("MoveY=" + txtMoveY.Text);
+      lines.Add("MoveZ=" + txtMoveZ.Text);
+      if (txtLocalX != null) lines.Add("LocalX=" + txtLocalX.Text);
+      if (txtLocalY != null) lines.Add("LocalY=" + txtLocalY.Text);
+      if (txtLocalZ != null) lines.Add("LocalZ=" + txtLocalZ.Text);
+      lines.Add("MirrorX=" + cbMirrorX.Checked.ToString());
+      lines.Add("MirrorY=" + cbMirrorY.Checked.ToString());
+      lines.Add("MirrorZ=" + cbMirrorZ.Checked.ToString());
+      lines.Add("RotateAngle=" + txtRotateAngle.Text);
+      if (!_onlyViewDependent)
+      {
+        if (rbRotateX != null && rbRotateX.Checked)
+          lines.Add("RotateAxis=X");
+        else if (rbRotateY != null && rbRotateY.Checked)
+          lines.Add("RotateAxis=Y");
+        else if (rbRotateZ != null && rbRotateZ.Checked)
+          lines.Add("RotateAxis=Z");
+      }
+      lines.Add("SetOrigin=" + cbSetOrigin.Checked.ToString());
+      lines.Add("OriginX=" + txtOriginX.Text);
+      lines.Add("OriginY=" + txtOriginY.Text);
+      lines.Add("OriginZ=" + txtOriginZ.Text);
+      try
+      {
+        File.WriteAllLines(settingsFilePath, lines);
+      }
+      catch { /* Ignore errors */ }
     }
   }
 }

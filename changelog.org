@@ -903,3 +903,5 @@ may try later a separate command to perform mirror operation on them instead
 **** =11:53= tried adding SwapFamilyTypeOfSelectedElements command to replace family instances which values get reset when swapping, but it didn't work after many attempts
 *** 24
 **** =00:51= encountered unexpected confusion over clipper and org.angusj.clipper packages, which led to number of issues, unfortunately one unresolved that led to silent errors likely in the core InvokeAddinCommand command itself
+*** 25
+**** =14:10= caught myself getting unable to create a script generating ModelInPlace via revit api, it's just not available to the api as of now, however succeeded getting a family generated via api, as well as a directshape instance
