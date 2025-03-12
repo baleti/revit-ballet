@@ -40,7 +40,7 @@ public class ImportElementsFromSelectedLinkedModel : IExternalCommand
             List<Dictionary<string, object>> typeEntries = new List<Dictionary<string, object>>();
             Dictionary<string, ElementId> typeIdMap = new Dictionary<string, ElementId>();
 
-            // List of element classes we want to collect
+            // List of element classes we want to collect, now including DirectShape
             Type[] typesList = new Type[]
             {
                 typeof(FamilySymbol),
@@ -48,7 +48,8 @@ public class ImportElementsFromSelectedLinkedModel : IExternalCommand
                 typeof(FloorType),
                 typeof(CeilingType),
                 typeof(RoofType),
-                typeof(PipeType)
+                typeof(PipeType),
+                typeof(DirectShape)  // Added DirectShape here
             };
 
             foreach (Type elementType in typesList)
@@ -69,7 +70,7 @@ public class ImportElementsFromSelectedLinkedModel : IExternalCommand
                     }
                     else
                     {
-                        // For system families, use the class name as family name
+                        // For system families and others, use the class name as family name
                         family = element.GetType().Name.Replace("Type", "");
                     }
 
@@ -174,6 +175,18 @@ public class ImportElementsFromSelectedLinkedModel : IExternalCommand
                 if (selectedTypeIds.Contains(pipe.PipeType.Id))
                 {
                     elementInstanceIds.Add(pipe.Id);
+                }
+            }
+            
+            // Collect DirectShapes
+            FilteredElementCollector directShapeCollector = new FilteredElementCollector(linkedDoc)
+                .OfClass(typeof(DirectShape));
+            foreach (DirectShape directShape in directShapeCollector)
+            {
+                // For DirectShape, the element itself is used as the "type"
+                if (selectedTypeIds.Contains(directShape.Id))
+                {
+                    elementInstanceIds.Add(directShape.Id);
                 }
             }
 
