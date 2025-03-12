@@ -8,7 +8,7 @@ using Autodesk.Revit.UI;
 namespace RevitWorksetVisibilityCommands
 {
     [Transaction(TransactionMode.Manual)]
-    public class ShowWorksetsInView : IExternalCommand
+    public class ShowWorksetsInCurrentView : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData,
                               ref string message,
@@ -52,7 +52,7 @@ namespace RevitWorksetVisibilityCommands
                 }
                 else if (viewVisibility == WorksetVisibility.UseGlobalSetting)
                 {
-                    visibilityText = ws.IsOpen ? 
+                    visibilityText = ws.IsVisibleByDefault ? 
                         "Using Global Settings (Visible)" : 
                         "Using Global Settings (Not Visible)";
                 }
@@ -82,7 +82,7 @@ namespace RevitWorksetVisibilityCommands
                 return Result.Cancelled;
             }
 
-            using (Transaction t = new Transaction(doc, "Show Worksets in View"))
+            using (Transaction t = new Transaction(doc, "Show Worksets in Current View"))
             {
                 t.Start();
                 foreach (Dictionary<string, object> sel in selectedEntries)
@@ -103,7 +103,7 @@ namespace RevitWorksetVisibilityCommands
     }
 
     [Transaction(TransactionMode.Manual)]
-    public class HideWorksetsInView : IExternalCommand
+    public class HideWorksetsInCurrentView : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData,
                               ref string message,
@@ -147,7 +147,7 @@ namespace RevitWorksetVisibilityCommands
                 }
                 else if (viewVisibility == WorksetVisibility.UseGlobalSetting)
                 {
-                    visibilityText = ws.IsOpen ? 
+                    visibilityText = ws.IsVisibleByDefault ? 
                         "Using Global Settings (Visible)" : 
                         "Using Global Settings (Not Visible)";
                 }
@@ -177,7 +177,7 @@ namespace RevitWorksetVisibilityCommands
                 return Result.Cancelled;
             }
 
-            using (Transaction t = new Transaction(doc, "Hide Worksets in View"))
+            using (Transaction t = new Transaction(doc, "Hide Worksets in Current View"))
             {
                 t.Start();
                 foreach (Dictionary<string, object> sel in selectedEntries)
@@ -242,7 +242,7 @@ namespace RevitWorksetVisibilityCommands
                 }
                 else if (viewVisibility == WorksetVisibility.UseGlobalSetting)
                 {
-                    visibilityText = ws.IsOpen ? 
+                    visibilityText = ws.IsVisibleByDefault ? 
                         "Using Global Settings (Visible)" : 
                         "Using Global Settings (Not Visible)";
                 }
