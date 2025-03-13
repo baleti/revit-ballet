@@ -905,3 +905,13 @@ may try later a separate command to perform mirror operation on them instead
 **** =00:51= encountered unexpected confusion over clipper and org.angusj.clipper packages, which led to number of issues, unfortunately one unresolved that led to silent errors likely in the core InvokeAddinCommand command itself
 *** 25
 **** =14:10= caught myself getting unable to create a script generating ModelInPlace via revit api, it's just not available to the api as of now, however succeeded getting a family generated via api, as well as a directshape instance
+** March
+*** 12
+**** =15:46= tried writing a HideCategoriesInLinksInCurrentView command to automate toggling visibility of categories in links
+it appears to not be exposed to API: https://forums.autodesk.com/t5/revit-api-forum/change-revit-link-display-settings-and-design-options-using-api/td-p/6322135
+*** 13
+**** =22:21= tried writing a ChangeIFCLinksPath to change paths of links in a single command, but didn't manage to get it to work
+https://chatgpt.com/c/67d355b1-41a8-800c-8195-e720852093e3
+a few api calls were wrong, still worth revisiting later as this issue likely will come up again
+independently discovered that this information may not be stored in revit database, but in a separate file/stream TransmissinoData in .rvt file formatted as a plain text xml
+suggesting that perhaps this change could be made directly in .rvt file without opening revit
