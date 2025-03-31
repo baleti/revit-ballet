@@ -1,5 +1,6 @@
 #+title: revit-scripts
 
+[[https://github.com/baleti/revit-scripts-docs/blob/cd36e0fcb5a5babc3698047f2f41c984bd53d4b6/logo.png]]
 ** productivity tools for revit architecture
 *** switch/close/open views and sheets
 [[https://github.com/baleti/revit-scripts-docs/blob/8142cd312030378ed0b2543ad563b8514dbf9d5a/OpenViews.gif]]
