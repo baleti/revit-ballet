@@ -1,5 +1,6 @@
 #+title: revit-scripts
 
+#+attr_org: :width 200px
 [[https://github.com/baleti/revit-scripts-docs/blob/cd36e0fcb5a5babc3698047f2f41c984bd53d4b6/logo.png]]
 ** productivity tools for revit architecture
 *** switch/close/open views and sheets
