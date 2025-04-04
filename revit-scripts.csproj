@@ -103,6 +103,8 @@
     <Compile Include="revit-scripts\StretchLevelsToCropRegion.cs" />
     <Compile Include="revit-scripts\SwapFamilyTypeOfSelectedElements.cs" />
     <Compile Include="revit-scripts\SelectLastCreatedSection.cs" />
+    <Compile Include="revit-scripts\SwitchPhase.cs" />
+    <Compile Include="revit-scripts\SwitchToLastPhase.cs" />
     <Compile Include="revit-scripts\test25.cs" />
     <Compile Include="revit-scripts\test26.cs" />
     <Compile Include="revit-scripts\RehostToAdjacentWall.cs" />
