@@ -105,7 +105,7 @@
     <Compile Include="revit-scripts\SelectLastCreatedSection.cs" />
     <Compile Include="revit-scripts\test25.cs" />
     <Compile Include="revit-scripts\test26.cs" />
-    <Compile Include="revit-scripts\test27.cs" />
+    <Compile Include="revit-scripts\test28.cs" />
     <Compile Include="revit-scripts\test33.cs" />
     <Compile Include="revit-scripts\ToggleLevelBubblesInSelectedViews.cs">
       <SubType>Form</SubType>
