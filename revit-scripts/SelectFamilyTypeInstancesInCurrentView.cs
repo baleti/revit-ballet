@@ -16,7 +16,11 @@ public class SelectFamilyTypeInstancesInCurrentView : IExternalCommand
         BuiltInCategory.OST_PlumbingFixtures,
         BuiltInCategory.OST_MechanicalEquipment,
         BuiltInCategory.OST_GenericModel,
-        BuiltInCategory.OST_Walls // Added Walls category
+        BuiltInCategory.OST_Walls,
+        BuiltInCategory.OST_Doors,       // Added Doors category
+        BuiltInCategory.OST_Windows,     // Added Windows category
+        BuiltInCategory.OST_Floors,      // Added Floors category
+        BuiltInCategory.OST_Roofs        // Added Roofs category
     };
 
     public Result Execute(
@@ -61,11 +65,23 @@ public class SelectFamilyTypeInstancesInCurrentView : IExternalCommand
                 typeName = typeElement.Name;
                 familyName = "Pipe";
             }
-            else if (element is Wall wall) // Added logic for walls
+            else if (element is Wall wall) // Handles walls
             {
                 typeElement = doc.GetElement(wall.GetTypeId());
                 typeName = typeElement.Name;
                 familyName = "Wall";
+            }
+            else if (element is Floor floor) // Handles floors
+            {
+                typeElement = doc.GetElement(floor.GetTypeId());
+                typeName = typeElement.Name;
+                familyName = "Floor";
+            }
+            else if (element is RoofBase roof) // Handles roofs
+            {
+                typeElement = doc.GetElement(roof.GetTypeId());
+                typeName = typeElement.Name;
+                familyName = "Roof";
             }
             
             if (typeElement != null)
@@ -114,6 +130,10 @@ public class SelectFamilyTypeInstancesInCurrentView : IExternalCommand
                     return selectedTypeIds.Contains(mc.GetTypeId());
                 if (e is Wall wall)
                     return selectedTypeIds.Contains(wall.GetTypeId());
+                if (e is Floor floor)
+                    return selectedTypeIds.Contains(floor.GetTypeId());
+                if (e is RoofBase roof)
+                    return selectedTypeIds.Contains(roof.GetTypeId());
                 return false;
             })
             .Select(e => e.Id)

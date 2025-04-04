@@ -88,6 +88,7 @@
     <Compile Include="revit-scripts\BooleanDifferenceFilledRegionsWithSelectedElements.cs" />
     <Compile Include="revit-scripts\ChangeLevelOfSelectedElements.cs" />
     <Compile Include="revit-scripts\CreateFilledRegionsOfSelectedElementsInViews.cs" />
+    <Compile Include="revit-scripts\DuplicateAsDraftingView.cs" />
     <Compile Include="revit-scripts\DuplicateSelectedViews.cs" />
     <Compile Include="revit-scripts\FilterPosition.cs" />
     <Compile Include="revit-scripts\FilterDimensions.cs" />
@@ -97,10 +98,14 @@
     <Compile Include="revit-scripts\SelectAssociatedElementsFromSelectedDimensions.cs" />
     <Compile Include="revit-scripts\SelectSheetsBySelectedTitleBlocks.cs" />
     <Compile Include="revit-scripts\SelectViewsByViewTemplates.cs" />
+    <Compile Include="revit-scripts\ShowGeoegraphicData.cs" />
     <Compile Include="revit-scripts\ShowHideWorksetsInView.cs" />
     <Compile Include="revit-scripts\StretchLevelsToCropRegion.cs" />
     <Compile Include="revit-scripts\SwapFamilyTypeOfSelectedElements.cs" />
     <Compile Include="revit-scripts\SelectLastCreatedSection.cs" />
+    <Compile Include="revit-scripts\test25.cs" />
+    <Compile Include="revit-scripts\test26.cs" />
+    <Compile Include="revit-scripts\test27.cs" />
     <Compile Include="revit-scripts\test33.cs" />
     <Compile Include="revit-scripts\ToggleLevelBubblesInSelectedViews.cs">
       <SubType>Form</SubType>

@@ -915,3 +915,8 @@ https://chatgpt.com/c/67d355b1-41a8-800c-8195-e720852093e3
 a few api calls were wrong, still worth revisiting later as this issue likely will come up again
 independently discovered that this information may not be stored in revit database, but in a separate file/stream TransmissinoData in .rvt file formatted as a plain text xml
 suggesting that perhaps this change could be made directly in .rvt file without opening revit
+** April
+*** 03
+**** =11:22= couldn't get ShowGeogrpahicData command to work
+jeremy tammik [[https://thebuildingcoder.typepad.com/blog/2012/11/survey-and-project-base-point.html][reported]] that shared coordaintes / shared site information isn't available to revit api
+couldn't find any coordinate values when parsing .rvt file directly
