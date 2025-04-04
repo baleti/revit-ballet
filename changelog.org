@@ -920,3 +920,6 @@ suggesting that perhaps this change could be made directly in .rvt file without 
 **** =11:22= couldn't get ShowGeogrpahicData command to work
 jeremy tammik [[https://thebuildingcoder.typepad.com/blog/2012/11/survey-and-project-base-point.html][reported]] that shared coordaintes / shared site information isn't available to revit api
 couldn't find any coordinate values when parsing .rvt file directly
+*** 04
+**** =17:00= couldn't get DirectContext3D API to work to show even anything on screen
+further research is needed
