@@ -17,10 +17,10 @@ public class SelectFamilyTypeInstancesInCurrentView : IExternalCommand
         BuiltInCategory.OST_MechanicalEquipment,
         BuiltInCategory.OST_GenericModel,
         BuiltInCategory.OST_Walls,
-        BuiltInCategory.OST_Doors,       // Added Doors category
-        BuiltInCategory.OST_Windows,     // Added Windows category
-        BuiltInCategory.OST_Floors,      // Added Floors category
-        BuiltInCategory.OST_Roofs        // Added Roofs category
+        BuiltInCategory.OST_Doors,
+        BuiltInCategory.OST_Windows,
+        BuiltInCategory.OST_Floors,
+        BuiltInCategory.OST_Roofs
     };
 
     public Result Execute(
