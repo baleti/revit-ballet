@@ -22,13 +22,19 @@ public class RehostToAdjacentWall : IExternalCommand
             return Result.Failed;
         }
         
+        // Setup geometry options (for higher detail and to compute references).
+        Options geomOptions = new Options();
+        geomOptions.ComputeReferences = true;
+        geomOptions.IncludeNonVisibleObjects = true;
+        geomOptions.DetailLevel = ViewDetailLevel.Fine;
+        
         // Lists for valid elements and candidate walls per element.
         List<FamilyInstance> validHostElements = new List<FamilyInstance>();
-        // Dictionary mapping each valid element to its candidate walls (unique by wall type).
+        // Map each valid element to its candidate walls (all walls that cut it, except its current host).
         Dictionary<ElementId, List<Wall>> elementCandidates = new Dictionary<ElementId, List<Wall>>();
-        // Union of candidate wall types across all elements.
-        // Key: wall type id, Value: a candidate wall instance (first encountered) of that type.
-        Dictionary<int, Wall> unionCandidateWallTypes = new Dictionary<int, Wall>();
+        // Build a union of candidate wall types across all elements.
+        // Key: wall type id; Value: list of candidate walls of that type.
+        Dictionary<int, List<Wall>> unionCandidateWallTypes = new Dictionary<int, List<Wall>>();
         
         // Process each selected element.
         foreach (ElementId id in selectedIds)
@@ -39,19 +45,18 @@ public class RehostToAdjacentWall : IExternalCommand
                !(fi.Category.Id.IntegerValue == (int)BuiltInCategory.OST_Windows ||
                  fi.Category.Id.IntegerValue == (int)BuiltInCategory.OST_Doors))
             {
-                // Skip elements that are not doors or windows.
                 continue;
             }
             
             // Get the element's bounding box.
-            BoundingBoxXYZ bb = fi.get_BoundingBox(null);
-            if (bb == null)
+            BoundingBoxXYZ fiBB = fi.get_BoundingBox(null);
+            if (fiBB == null)
             {
                 TaskDialog.Show("Warning", $"Element id {fi.Id.IntegerValue} does not have a bounding box. Skipping.");
                 continue;
             }
             
-            // Collect all walls that intersect the element's bounding box.
+            // Collect all walls whose bounding boxes intersect this element.
             FilteredElementCollector wallCollector = new FilteredElementCollector(doc).OfClass(typeof(Wall));
             List<Wall> cutWalls = new List<Wall>();
             foreach (Element wallElem in wallCollector)
@@ -60,7 +65,7 @@ public class RehostToAdjacentWall : IExternalCommand
                 if (wall != null)
                 {
                     BoundingBoxXYZ wallBB = wall.get_BoundingBox(null);
-                    if (wallBB != null && DoBoundingBoxesIntersect(bb, wallBB))
+                    if (wallBB != null && DoBoundingBoxesIntersect(fiBB, wallBB))
                     {
                         cutWalls.Add(wall);
                     }
@@ -77,7 +82,7 @@ public class RehostToAdjacentWall : IExternalCommand
                 continue;
             }
             
-            // Candidate walls: those cut by the element that are not the current host.
+            // Candidate walls: all walls (from the cutWalls) except the current host.
             List<Wall> candidateWalls = cutWalls.Where(w => w.Id != currentHostWall.Id).ToList();
             if (candidateWalls.Count == 0)
             {
@@ -85,18 +90,20 @@ public class RehostToAdjacentWall : IExternalCommand
                 continue;
             }
             
-            // For candidate walls, remove duplicates by wall type (choose the first instance for each type).
-            List<Wall> uniqueCandidates = candidateWalls.GroupBy(w => w.WallType.Id.IntegerValue)
-                                                         .Select(g => g.First())
-                                                         .ToList();
-            // Save these candidates for the element.
-            elementCandidates[fi.Id] = uniqueCandidates;
-            // Update the union of candidate wall types.
-            foreach (Wall candidate in uniqueCandidates)
+            elementCandidates[fi.Id] = candidateWalls;
+            
+            // Update union candidate wall types.
+            foreach (Wall candidate in candidateWalls)
             {
-                int key = candidate.WallType.Id.IntegerValue;
-                if (!unionCandidateWallTypes.ContainsKey(key))
-                    unionCandidateWallTypes.Add(key, candidate);
+                int wallTypeId = candidate.WallType.Id.IntegerValue;
+                if (!unionCandidateWallTypes.ContainsKey(wallTypeId))
+                {
+                    unionCandidateWallTypes[wallTypeId] = new List<Wall>();
+                }
+                if (!unionCandidateWallTypes[wallTypeId].Contains(candidate))
+                {
+                    unionCandidateWallTypes[wallTypeId].Add(candidate);
+                }
             }
             
             validHostElements.Add(fi);
@@ -120,15 +127,18 @@ public class RehostToAdjacentWall : IExternalCommand
             Dictionary<int, int> wallTypeMapping = new Dictionary<int, int>();
             foreach (var kvp in unionCandidateWallTypes)
             {
-                Wall wall = kvp.Value;
+                // Use the first candidate as representative.
+                Wall repWall = kvp.Value.First();
                 Dictionary<string, object> entry = new Dictionary<string, object>
                 {
-                    { "Wall Type Id", wall.WallType.Id.IntegerValue },
-                    { "Wall Type", wall.WallType.Name }
+                    { "Wall Type Id", repWall.WallType.Id.IntegerValue },
+                    { "Wall Type", repWall.WallType.Name }
                 };
                 entries.Add(entry);
-                if (!wallTypeMapping.ContainsKey(wall.WallType.Id.IntegerValue))
-                    wallTypeMapping.Add(wall.WallType.Id.IntegerValue, wall.WallType.Id.IntegerValue);
+                if (!wallTypeMapping.ContainsKey(repWall.WallType.Id.IntegerValue))
+                {
+                    wallTypeMapping.Add(repWall.WallType.Id.IntegerValue, repWall.WallType.Id.IntegerValue);
+                }
             }
             
             List<Dictionary<string, object>> selectedEntries =
@@ -136,7 +146,6 @@ public class RehostToAdjacentWall : IExternalCommand
             
             if (selectedEntries == null || selectedEntries.Count == 0)
             {
-                TaskDialog.Show("Warning", "No wall type selected from prompt. Operation aborted.");
                 return Result.Failed;
             }
             
@@ -148,7 +157,7 @@ public class RehostToAdjacentWall : IExternalCommand
             }
         }
         
-        // Rehost each valid element on its candidate wall that matches the chosen wall type.
+        // Rehost each valid element on its candidate wall of the chosen type with the maximum cut metric.
         List<FamilyInstance> rehostedElements = new List<FamilyInstance>();
         List<FamilyInstance> skippedElements = new List<FamilyInstance>();
         
@@ -157,14 +166,41 @@ public class RehostToAdjacentWall : IExternalCommand
             trans.Start();
             foreach (FamilyInstance fi in validHostElements)
             {
-                List<Wall> candidates = elementCandidates[fi.Id];
-                // Look for a candidate wall of the chosen wall type.
-                Wall chosenCandidate = candidates.FirstOrDefault(w => w.WallType.Id.IntegerValue == chosenWallTypeId);
-                if (chosenCandidate == null)
+                // Retrieve the element's bounding box (used for projection fallback).
+                BoundingBoxXYZ fiBB = fi.get_BoundingBox(null);
+                if (fiBB == null)
                 {
-                    // This element wasn't cut by a wall of the chosen type.
                     skippedElements.Add(fi);
                     continue;
+                }
+                
+                List<Wall> candidates = elementCandidates[fi.Id];
+                // Filter candidates by the chosen wall type.
+                List<Wall> matchingCandidates = candidates.Where(w => w.WallType.Id.IntegerValue == chosenWallTypeId).ToList();
+                if (matchingCandidates.Count == 0)
+                {
+                    skippedElements.Add(fi);
+                    continue;
+                }
+                
+                // Further filter candidates to those on the same level as the source element, if available.
+                List<Wall> sameLevelCandidates = matchingCandidates.Where(w => w.LevelId == fi.LevelId).ToList();
+                if (sameLevelCandidates.Count > 0)
+                {
+                    matchingCandidates = sameLevelCandidates;
+                }
+                
+                // For each candidate, compute the cut metric and choose the one with the highest value.
+                Wall chosenCandidate = matchingCandidates.First();
+                double maxMetric = ComputeCutMetric(fi, chosenCandidate, geomOptions, fiBB);
+                foreach (Wall candidate in matchingCandidates.Skip(1))
+                {
+                    double metric = ComputeCutMetric(fi, candidate, geomOptions, fiBB);
+                    if (metric > maxMetric)
+                    {
+                        maxMetric = metric;
+                        chosenCandidate = candidate;
+                    }
                 }
                 
                 // Activate the FamilySymbol if necessary.
@@ -175,7 +211,7 @@ public class RehostToAdjacentWall : IExternalCommand
                     doc.Regenerate();
                 }
                 
-                // Get the insertion point (assumed LocationPoint).
+                // Get the insertion point (assumed to be a LocationPoint).
                 LocationPoint locPoint = fi.Location as LocationPoint;
                 if (locPoint == null)
                 {
@@ -194,7 +230,7 @@ public class RehostToAdjacentWall : IExternalCommand
                     continue;
                 }
                 
-                // Create a new instance on the candidate wall for this element.
+                // Create a new instance on the chosen candidate wall.
                 FamilyInstance newInstance = doc.Create.NewFamilyInstance(
                     insertionPoint,
                     symbol,
@@ -214,7 +250,131 @@ public class RehostToAdjacentWall : IExternalCommand
         return Result.Succeeded;
     }
     
-    // Helper method to check if two bounding boxes intersect.
+    // Computes the cut metric for a given element (fi) and candidate wall.
+    // It uses a boolean intersection to compute volume first;
+    // if that is negligible, it falls back to a projection-based area calculation.
+    private double ComputeCutMetric(FamilyInstance fi, Wall wall, Options geomOptions, BoundingBoxXYZ fiBB)
+    {
+        double bestMetric = 0.0;
+        GeometryElement geomFi = fi.get_Geometry(geomOptions);
+        GeometryElement geomWall = wall.get_Geometry(geomOptions);
+        if (geomFi == null || geomWall == null)
+            return bestMetric;
+        
+        foreach (GeometryObject goFi in geomFi)
+        {
+            Solid solidFi = goFi as Solid;
+            if (solidFi == null || solidFi.Volume < 1e-9)
+                continue;
+            
+            foreach (GeometryObject goWall in geomWall)
+            {
+                Solid solidWall = goWall as Solid;
+                if (solidWall == null || solidWall.Volume < 1e-9)
+                    continue;
+                
+                double metric = 0.0;
+                try
+                {
+                    Solid intersection = BooleanOperationsUtils.ExecuteBooleanOperation(solidFi, solidWall, BooleanOperationsType.Intersect);
+                    if (intersection != null)
+                    {
+                        metric = intersection.Volume;
+                    }
+                }
+                catch
+                {
+                    // Ignore boolean operation failure.
+                }
+                // If the volume is very low, fallback to a projection-based approach.
+                if (metric < 1e-6)
+                {
+                    double areaMetric = ComputeProjectedIntersectionArea(fiBB, wall);
+                    if (areaMetric > metric)
+                        metric = areaMetric;
+                }
+                if (metric > bestMetric)
+                    bestMetric = metric;
+            }
+        }
+        
+        return bestMetric;
+    }
+    
+    // A projection-based method to approximate the overlapping area between the element and wall.
+    // This implementation projects the element's bounding box and the wall's bounding box
+    // into a 2D coordinate system defined by the wall's exterior (normal) and vertical direction.
+    private double ComputeProjectedIntersectionArea(BoundingBoxXYZ fiBB, Wall wall)
+    {
+        // Get the wall's horizontal direction from its location curve.
+        LocationCurve locCurve = wall.Location as LocationCurve;
+        if (locCurve == null)
+            return 0.0;
+        XYZ p0 = locCurve.Curve.GetEndPoint(0);
+        XYZ p1 = locCurve.Curve.GetEndPoint(1);
+        XYZ wallDir = (p1 - p0).Normalize();
+        // Vertical direction (Z axis).
+        XYZ up = new XYZ(0, 0, 1);
+        // Wall's exterior normal is perpendicular to the wall's direction and up.
+        XYZ wallNormal = wallDir.CrossProduct(up).Normalize();
+        
+        // Define a 2D coordinate system for projection:
+        // u-axis = wallNormal, v-axis = up.
+        // Project the eight corners of the element's bounding box.
+        double fiMinU = double.MaxValue, fiMaxU = double.MinValue;
+        double fiMinV = double.MaxValue, fiMaxV = double.MinValue;
+        foreach (XYZ pt in GetCorners(fiBB))
+        {
+            double u = pt.DotProduct(wallNormal);
+            double v = pt.DotProduct(up);
+            fiMinU = Math.Min(fiMinU, u);
+            fiMaxU = Math.Max(fiMaxU, u);
+            fiMinV = Math.Min(fiMinV, v);
+            fiMaxV = Math.Max(fiMaxV, v);
+        }
+        
+        // Do the same for the wall's bounding box.
+        BoundingBoxXYZ wallBB = wall.get_BoundingBox(null);
+        if (wallBB == null)
+            return 0.0;
+        double wallMinU = double.MaxValue, wallMaxU = double.MinValue;
+        double wallMinV = double.MaxValue, wallMaxV = double.MinValue;
+        foreach (XYZ pt in GetCorners(wallBB))
+        {
+            double u = pt.DotProduct(wallNormal);
+            double v = pt.DotProduct(up);
+            wallMinU = Math.Min(wallMinU, u);
+            wallMaxU = Math.Max(wallMaxU, u);
+            wallMinV = Math.Min(wallMinV, v);
+            wallMaxV = Math.Max(wallMaxV, v);
+        }
+        
+        // Compute the intersection rectangle in the (u,v) plane.
+        double interMinU = Math.Max(fiMinU, wallMinU);
+        double interMaxU = Math.Min(fiMaxU, wallMaxU);
+        double interMinV = Math.Max(fiMinV, wallMinV);
+        double interMaxV = Math.Min(fiMaxV, wallMaxV);
+        if (interMaxU > interMinU && interMaxV > interMinV)
+        {
+            return (interMaxU - interMinU) * (interMaxV - interMinV);
+        }
+        return 0.0;
+    }
+    
+    // Helper: returns the eight corner points of a BoundingBoxXYZ.
+    private IEnumerable<XYZ> GetCorners(BoundingBoxXYZ box)
+    {
+        yield return new XYZ(box.Min.X, box.Min.Y, box.Min.Z);
+        yield return new XYZ(box.Min.X, box.Min.Y, box.Max.Z);
+        yield return new XYZ(box.Min.X, box.Max.Y, box.Min.Z);
+        yield return new XYZ(box.Min.X, box.Max.Y, box.Max.Z);
+        yield return new XYZ(box.Max.X, box.Min.Y, box.Min.Z);
+        yield return new XYZ(box.Max.X, box.Min.Y, box.Max.Z);
+        yield return new XYZ(box.Max.X, box.Max.Y, box.Min.Z);
+        yield return new XYZ(box.Max.X, box.Max.Y, box.Max.Z);
+    }
+    
+    // Helper: Tests whether two bounding boxes intersect.
     private bool DoBoundingBoxesIntersect(BoundingBoxXYZ bb1, BoundingBoxXYZ bb2)
     {
         return (bb1.Max.X >= bb2.Min.X && bb1.Min.X <= bb2.Max.X) &&
