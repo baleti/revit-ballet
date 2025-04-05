@@ -99,6 +99,7 @@
     <Compile Include="revit-scripts\RenameFamilies.cs" />
     <Compile Include="revit-scripts\SelectAssociatedElementsFromSelectedDimensions.cs" />
     <Compile Include="revit-scripts\SelectSheetsBySelectedTitleBlocks.cs" />
+    <Compile Include="revit-scripts\SelectViewportsOfViews.cs" />
     <Compile Include="revit-scripts\SelectViewsByViewTemplates.cs" />
     <Compile Include="revit-scripts\ShowGeoegraphicData.cs" />
     <Compile Include="revit-scripts\ShowHideWorksetsInView.cs" />
