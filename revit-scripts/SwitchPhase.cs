@@ -10,6 +10,14 @@ using System.Text.RegularExpressions;
 [Transaction(TransactionMode.Manual)]
 public class SwitchPhase : IExternalCommand
 {
+    // Wrapper class for displaying phases with a Number column.
+    public class PhaseWrapper
+    {
+        public int Number { get; set; }
+        public string Name { get; set; }
+        public Phase Phase { get; set; }
+    }
+
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
     {
         // Helper: Wrap a string in quotes if it contains spaces.
@@ -44,21 +52,18 @@ public class SwitchPhase : IExternalCommand
         UIDocument uidoc = commandData.Application.ActiveUIDocument;
         View activeView = uidoc.ActiveView;
 
-        // Retrieve all phases in the project and sort them alphabetically.
-        List<Phase> phases = new FilteredElementCollector(doc)
-            .OfClass(typeof(Phase))
-            .Cast<Phase>()
-            .OrderBy(p => p.Name)
-            .ToList();
+        // Retrieve phases in their natural chronological order from the document's Phases collection.
+        List<Phase> phases = new List<Phase>();
+        foreach (Phase phase in doc.Phases)
+        {
+            phases.Add(phase);
+        }
 
         if (phases == null || phases.Count == 0)
         {
             TaskDialog.Show("Error", "No phases found in the project.");
             return Result.Failed;
         }
-
-        // Define the property names to display in the custom UI (here, only the phase Name).
-        List<string> propertyNames = new List<string> { "Name" };
 
         // Determine the current phase of the active view (if applicable).
         ElementId currentPhaseId = ElementId.InvalidElementId;
@@ -67,15 +72,29 @@ public class SwitchPhase : IExternalCommand
         {
             currentPhaseId = phaseParam.AsElementId();
         }
+
+        // Create a list of PhaseWrapper objects with a Number column (1-based index).
+        List<PhaseWrapper> phaseWrappers = phases.Select((p, index) => new PhaseWrapper
+        {
+            Number = index + 1,
+            Name = p.Name,
+            Phase = p
+        }).ToList();
+
+        // Define the property names for the DataGrid; "Number" appears first.
+        List<string> propertyNames = new List<string> { "Number", "Name" };
+
+        // Determine the current phase index in the original phases list.
         int selectedIndex = phases.FindIndex(p => p.Id == currentPhaseId);
         List<int> initialSelectionIndices = selectedIndex >= 0 ? new List<int> { selectedIndex } : new List<int>();
 
-        // Display the phases using a custom DataGrid UI.
-        List<Phase> selectedPhases = CustomGUIs.DataGrid(phases, propertyNames, initialSelectionIndices);
-        if (selectedPhases == null || selectedPhases.Count == 0)
+        // Display the phases using the custom DataGrid UI.
+        List<PhaseWrapper> selectedPhaseWrappers = CustomGUIs.DataGrid(phaseWrappers, propertyNames, initialSelectionIndices);
+        if (selectedPhaseWrappers == null || selectedPhaseWrappers.Count == 0)
             return Result.Failed;
 
-        Phase chosenPhase = selectedPhases.First();
+        // Retrieve the underlying Phase from the selected wrapper.
+        Phase chosenPhase = selectedPhaseWrappers.First().Phase;
 
         // Start a transaction to update the active view's phase parameter.
         using (Transaction tx = new Transaction(doc, "Switch Phase"))
@@ -95,7 +114,6 @@ public class SwitchPhase : IExternalCommand
         }
 
         // Logging the phase change.
-        // Expected log format for each line: "phaseId phaseName viewName"
         try
         {
             string projectName = doc != null ? doc.Title : "UnknownProject";
@@ -178,7 +196,6 @@ public class SwitchPhase : IExternalCommand
         catch (Exception ex)
         {
             TaskDialog.Show("Logging Error", $"Failed to log phase change: {ex.Message}");
-            // Continue execution even if logging fails.
         }
 
         return Result.Succeeded;
