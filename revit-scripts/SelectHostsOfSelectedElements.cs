@@ -128,7 +128,6 @@ namespace YourNamespace
 
             // Update the current selection.
             uidoc.Selection.SetElementIds(finalSelection.ToList());
-            TaskDialog.Show("Select Hosts", $"Selection updated with {finalSelection.Count} element(s).");
 
             return Result.Succeeded;
         }

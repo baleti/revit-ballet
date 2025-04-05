@@ -112,7 +112,6 @@
     <Compile Include="revit-scripts\RehostToJoinedWalls.cs" />
     <Compile Include="revit-scripts\test27.cs" />
     <Compile Include="revit-scripts\test33.cs" />
-    <Compile Include="revit-scripts\test28.cs" />
     <Compile Include="revit-scripts\ToggleLevelBubblesInSelectedViews.cs">
       <SubType>Form</SubType>
     </Compile>
