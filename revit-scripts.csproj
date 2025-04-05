@@ -93,6 +93,7 @@
     <Compile Include="revit-scripts\FilterPosition.cs" />
     <Compile Include="revit-scripts\FilterDimensions.cs" />
     <Compile Include="revit-scripts\InvokeLastAddinCommand.cs" />
+    <Compile Include="revit-scripts\SelectHostsOfSelectedElements.cs" />
     <Compile Include="revit-scripts\SelectLevels.cs" />
     <Compile Include="revit-scripts\OffsetLinesFromTheirWorkplane.cs" />
     <Compile Include="revit-scripts\RenameFamilies.cs" />
@@ -108,8 +109,10 @@
     <Compile Include="revit-scripts\SwitchToLastPhase.cs" />
     <Compile Include="revit-scripts\test25.cs" />
     <Compile Include="revit-scripts\test26.cs" />
-    <Compile Include="revit-scripts\RehostToAdjacentWall.cs" />
+    <Compile Include="revit-scripts\RehostToJoinedWalls.cs" />
+    <Compile Include="revit-scripts\test27.cs" />
     <Compile Include="revit-scripts\test33.cs" />
+    <Compile Include="revit-scripts\test28.cs" />
     <Compile Include="revit-scripts\ToggleLevelBubblesInSelectedViews.cs">
       <SubType>Form</SubType>
     </Compile>
