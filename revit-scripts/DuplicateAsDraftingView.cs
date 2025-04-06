@@ -126,37 +126,209 @@ namespace YourNamespace
 
                         if (cropLoops != null && cropLoops.Count > 0)
                         {
-                            // Get a FilledRegionType (assumes at least one exists in the document).
+                            // Compute the transform between the original view and the new drafting view.
+                            Transform viewTransform = ElementTransformUtils.GetTransformFromViewToView(originalView, newDraftingView);
+                            // Determine where the world (internal) origin lands in the drafting view.
+                            XYZ projectedOrigin = viewTransform.OfPoint(new XYZ(0, 0, 0));
+                            // Use only X and Y components.
+                            XYZ translation2D = new XYZ(projectedOrigin.X, projectedOrigin.Y, 0);
+
+                            // Create new crop loops shifted by the 2D translation.
+                            List<CurveLoop> shiftedLoops = new List<CurveLoop>();
+                            
+                            // Process each original crop loop
+                            foreach (CurveLoop loop in cropLoops)
+                            {
+                                // 1. First create the shifted loop (from original crop region)
+                                CurveLoop shiftedLoop = new CurveLoop();
+                                foreach (Curve curve in loop)
+                                {
+                                    // Apply the translation to each curve.
+                                    Curve shiftedCurve = curve.CreateTransformed(Transform.CreateTranslation(translation2D));
+                                    shiftedLoop.Append(shiftedCurve);
+                                }
+                                shiftedLoops.Add(shiftedLoop);
+                                
+                                // 2. Create an outer loop by expanding the bounding box of the crop region
+                                try
+                                {
+                                    // Convert 500mm to feet (Revit's internal unit)
+                                    double offsetDistanceFeet = 500 / 304.8; // 1 foot = 304.8 mm
+                                    
+                                    // Find the bounding box of the loop
+                                    XYZ min = null;
+                                    XYZ max = null;
+                                    
+                                    foreach (Curve curve in shiftedLoop)
+                                    {
+                                        for (int i = 0; i < 2; i++)
+                                        {
+                                            XYZ point = curve.GetEndPoint(i);
+                                            
+                                            if (min == null)
+                                            {
+                                                min = point;
+                                                max = point;
+                                            }
+                                            else
+                                            {
+                                                min = new XYZ(
+                                                    Math.Min(min.X, point.X),
+                                                    Math.Min(min.Y, point.Y),
+                                                    Math.Min(min.Z, point.Z)
+                                                );
+                                                
+                                                max = new XYZ(
+                                                    Math.Max(max.X, point.X),
+                                                    Math.Max(max.Y, point.Y),
+                                                    Math.Max(max.Z, point.Z)
+                                                );
+                                            }
+                                        }
+                                    }
+                                    
+                                    // Expand the bounding box by the offset distance
+                                    min = new XYZ(min.X - offsetDistanceFeet, min.Y - offsetDistanceFeet, min.Z);
+                                    max = new XYZ(max.X + offsetDistanceFeet, max.Y + offsetDistanceFeet, max.Z);
+                                    
+                                    // Create a rectangle from the expanded bounding box
+                                    CurveLoop outerLoop = new CurveLoop();
+                                    
+                                    // Create the four lines of the rectangle (clockwise)
+                                    XYZ pt1 = new XYZ(min.X, min.Y, min.Z);
+                                    XYZ pt2 = new XYZ(max.X, min.Y, min.Z);
+                                    XYZ pt3 = new XYZ(max.X, max.Y, min.Z);
+                                    XYZ pt4 = new XYZ(min.X, max.Y, min.Z);
+                                    
+                                    outerLoop.Append(Line.CreateBound(pt1, pt2));
+                                    outerLoop.Append(Line.CreateBound(pt2, pt3));
+                                    outerLoop.Append(Line.CreateBound(pt3, pt4));
+                                    outerLoop.Append(Line.CreateBound(pt4, pt1));
+                                    
+                                    // Add the outer loop to our collection
+                                    shiftedLoops.Add(outerLoop);
+                                }
+                                catch (Exception ex)
+                                {
+                                    // If creation fails, log the error but continue with just the original loop
+                                    TaskDialog.Show("Offset Error", $"Failed to create outer loop: {ex.Message}");
+                                }
+                            }
+
+                            // Look for a filled region type named "Solid - White" (fallback to any type if not found).
                             FilledRegionType filledRegionType = new FilteredElementCollector(doc)
                                 .OfClass(typeof(FilledRegionType))
                                 .Cast<FilledRegionType>()
-                                .FirstOrDefault();
-
-                            if (filledRegionType != null)
+                                .FirstOrDefault(frt => frt.Name.Equals("Solid - White", StringComparison.InvariantCultureIgnoreCase));
+                            if (filledRegionType == null)
                             {
-                                // Compute the transform between the original view and the new drafting view.
-                                Transform viewTransform = ElementTransformUtils.GetTransformFromViewToView(originalView, newDraftingView);
-                                // Determine where the world (internal) origin lands in the drafting view.
-                                XYZ projectedOrigin = viewTransform.OfPoint(new XYZ(0, 0, 0));
-                                // Use only X and Y components.
-                                XYZ translation2D = new XYZ(projectedOrigin.X, projectedOrigin.Y, 0);
+                                filledRegionType = new FilteredElementCollector(doc)
+                                    .OfClass(typeof(FilledRegionType))
+                                    .Cast<FilledRegionType>()
+                                    .FirstOrDefault();
+                            }
 
-                                // Create new crop loops shifted by the 2D translation.
-                                List<CurveLoop> shiftedLoops = new List<CurveLoop>();
-                                foreach (CurveLoop loop in cropLoops)
+                            // Create the filled region in the new drafting view using the shifted crop loops.
+                            FilledRegion filledRegion = FilledRegion.Create(doc, filledRegionType.Id, newDraftingView.Id, shiftedLoops);
+
+                            // --- Create a new approach to modify the filled region's boundary line style ---
+                            if (filledRegion != null)
+                            {
+                                // Find the white line style
+                                GraphicsStyle whiteLineStyle = new FilteredElementCollector(doc)
+                                    .OfClass(typeof(GraphicsStyle))
+                                    .Cast<GraphicsStyle>()
+                                    .FirstOrDefault(gs => gs.Name.Equals("White Line", StringComparison.InvariantCultureIgnoreCase));
+
+                                // If White Line style doesn't exist, create it
+                                if (whiteLineStyle == null)
                                 {
-                                    CurveLoop shiftedLoop = new CurveLoop();
-                                    foreach (Curve curve in loop)
+                                    // Get the line category
+                                    Category lineCategory = doc.Settings.Categories.get_Item(BuiltInCategory.OST_Lines);
+                                    
+                                    if (lineCategory != null)
                                     {
-                                        // Apply the translation to each curve.
-                                        Curve shiftedCurve = curve.CreateTransformed(Transform.CreateTranslation(translation2D));
-                                        shiftedLoop.Append(shiftedCurve);
+                                        // Create a new line style subcategory named "White Line"
+                                        Category newLineStyle = null;
+                                        try
+                                        {
+                                            newLineStyle = doc.Settings.Categories.NewSubcategory(lineCategory, "White Line");
+                                            
+                                            // Set the line color to white
+                                            newLineStyle.LineColor = new Color(255, 255, 255); // RGB for white
+                                            
+                                            // Set line weight (1 = thin line)
+                                            newLineStyle.SetLineWeight(1, GraphicsStyleType.Projection);
+                                            
+                                            // Get the graphics style for the new subcategory
+                                            whiteLineStyle = new FilteredElementCollector(doc)
+                                                .OfClass(typeof(GraphicsStyle))
+                                                .Cast<GraphicsStyle>()
+                                                .FirstOrDefault(gs => gs.Name.Equals("White Line", StringComparison.InvariantCultureIgnoreCase));
+                                        }
+                                        catch (Exception ex)
+                                        {
+                                            // If creation fails, log the error and try to use an existing style
+                                            TaskDialog.Show("Error", $"Failed to create White Line style: {ex.Message}");
+                                            
+                                            // If we couldn't create a style, try to find any line style
+                                            var allStyles = new FilteredElementCollector(doc)
+                                                .OfClass(typeof(GraphicsStyle))
+                                                .Cast<GraphicsStyle>()
+                                                .Where(gs => gs.GraphicsStyleCategory != null && 
+                                                            gs.GraphicsStyleCategory.Parent != null && 
+                                                            gs.GraphicsStyleCategory.Parent.Name.Equals("Lines", StringComparison.InvariantCultureIgnoreCase))
+                                                .ToList();
+                                                
+                                            if (allStyles.Count > 0)
+                                            {
+                                                whiteLineStyle = allStyles.FirstOrDefault();
+                                                // Log available styles for debugging
+                                                string availableStyles = string.Join(", ", allStyles.Select(s => s.Name));
+                                                TaskDialog.Show("Available Line Styles", $"Using {whiteLineStyle.Name} instead. Available styles: {availableStyles}");
+                                            }
+                                        }
                                     }
-                                    shiftedLoops.Add(shiftedLoop);
                                 }
 
-                                // Create the filled region in the new drafting view using the shifted crop loops.
-                                FilledRegion.Create(doc, filledRegionType.Id, newDraftingView.Id, shiftedLoops);
+                                if (whiteLineStyle != null)
+                                {
+                                    // Method 1: Try setting the FilledRegion's LineStyleId directly if it exists
+                                    try
+                                    {
+                                        // Use reflection to access the property if it exists
+                                        var propertyInfo = typeof(FilledRegion).GetProperty("LineStyleId");
+                                        if (propertyInfo != null)
+                                        {
+                                            propertyInfo.SetValue(filledRegion, whiteLineStyle.Id);
+                                        }
+                                    }
+                                    catch
+                                    {
+                                        // Property not available, continue to next method
+                                    }
+                                    
+                                    // Method 2: Create DetailCurves with the desired line style around the filled region
+                                    // First, delete the original filled region and recreate it
+                                    doc.Delete(filledRegion.Id);
+                                    
+                                    // Recreate the filled region
+                                    filledRegion = FilledRegion.Create(doc, filledRegionType.Id, newDraftingView.Id, shiftedLoops);
+                                    
+                                    // Now create DetailCurves with white line style around the boundary
+                                    foreach (CurveLoop loop in shiftedLoops)
+                                    {
+                                        foreach (Curve curve in loop)
+                                        {
+                                            DetailCurve detailCurve = doc.Create.NewDetailCurve(newDraftingView, curve);
+                                            if (detailCurve != null)
+                                            {
+                                                // Set the line style of the detail curve
+                                                detailCurve.LineStyle = whiteLineStyle;
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                         // --- End of filled region creation ---
