@@ -7,7 +7,7 @@ using System.Linq;
 using System.Collections.Generic;
 
 [Transaction(TransactionMode.Manual)]
-public class SectionBox3DFromCurrentView : IExternalCommand
+public class SectionBox3DFromSelectedView : IExternalCommand
 {
     public Result Execute(
       ExternalCommandData commandData,
@@ -20,29 +20,62 @@ public class SectionBox3DFromCurrentView : IExternalCommand
         View currentView = doc.ActiveView;
         View targetView = null;
 
-        // If we're on a sheet, get the viewport’s view.
-        if (currentView.ViewType == ViewType.DrawingSheet)
+        // First, check if exactly one element is selected.
+        var selectedIds = uiDoc.Selection.GetElementIds();
+        if (selectedIds.Count == 1)
         {
-            var selectedIds = uiDoc.Selection.GetElementIds();
-            var viewports = selectedIds.Select(id => doc.GetElement(id))
-                                       .OfType<Viewport>()
-                                       .ToList();
-            if (viewports.Count != 1)
+            Element selElem = doc.GetElement(selectedIds.First());
+            // If the element belongs to the OST_Viewers category, retrieve its corresponding view using the VIEW_NAME parameter.
+            if (selElem.Category != null &&
+                selElem.Category.Id.IntegerValue == (int)BuiltInCategory.OST_Viewers)
             {
-                TaskDialog.Show("Error", "Please select a single viewport on the sheet.");
+                Parameter nameParam = selElem.get_Parameter(BuiltInParameter.VIEW_NAME);
+                if (nameParam != null)
+                {
+                    string viewName = nameParam.AsString();
+                    if (!string.IsNullOrEmpty(viewName))
+                    {
+                        // Find the view with the given name (ignoring case).
+                        targetView = new FilteredElementCollector(doc)
+                                        .OfClass(typeof(View))
+                                        .Cast<View>()
+                                        .FirstOrDefault(v => v.Name.Equals(viewName, StringComparison.OrdinalIgnoreCase));
+                    }
+                }
+            }
+            // Otherwise, if the selected element is a View (but not a sheet), use it.
+            else if (selElem is View && !(selElem is ViewSheet))
+            {
+                targetView = selElem as View;
+            }
+        }
+
+        // If no valid selection was found, fall back to existing logic.
+        if (targetView == null)
+        {
+            // If we're on a sheet, get the viewport’s view.
+            if (currentView.ViewType == ViewType.DrawingSheet)
+            {
+                var viewports = selectedIds.Select(id => doc.GetElement(id))
+                                           .OfType<Viewport>()
+                                           .ToList();
+                if (viewports.Count != 1)
+                {
+                    TaskDialog.Show("Error", "Please select a single viewport on the sheet.");
+                    return Result.Failed;
+                }
+                targetView = doc.GetElement(viewports.First().ViewId) as View;
+            }
+            // Otherwise, if the active view has a crop box, use it.
+            else if (currentView.CropBoxActive)
+            {
+                targetView = currentView;
+            }
+            else
+            {
+                TaskDialog.Show("Error", "Active view does not have an active crop region.");
                 return Result.Failed;
             }
-            targetView = doc.GetElement(viewports.First().ViewId) as View;
-        }
-        // Otherwise, if the active view has a crop box, use it.
-        else if (currentView.CropBoxActive)
-        {
-            targetView = currentView;
-        }
-        else
-        {
-            TaskDialog.Show("Error", "Active view does not have an active crop region.");
-            return Result.Failed;
         }
 
         if (!targetView.CropBoxActive)

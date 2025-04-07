@@ -112,8 +112,6 @@
     <Compile Include="revit-scripts\test25.cs" />
     <Compile Include="revit-scripts\test26.cs" />
     <Compile Include="revit-scripts\RehostToJoinedWalls.cs" />
-    <Compile Include="revit-scripts\test27.cs" />
-    <Compile Include="revit-scripts\test33.cs" />
     <Compile Include="revit-scripts\ToggleLevelBubblesInSelectedViews.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -214,7 +212,7 @@
     <Compile Include="revit-scripts\Resize3DSectionBoxHorizontally.cs" />
     <Compile Include="revit-scripts\Resize3DSectionBoxVertically.cs" />
     <Compile Include="revit-scripts\SaveOpenedViews.cs" />
-    <Compile Include="revit-scripts\SectionBox3DFromCurrentView.cs" />
+    <Compile Include="revit-scripts\SectionBox3DFromSelectedView.cs" />
     <Compile Include="revit-scripts\SelectAllElementsInView.cs" />
     <Compile Include="revit-scripts\SelectCategories.cs" />
     <Compile Include="revit-scripts\SelectAllElementsInViewAndInGroups.cs" />
