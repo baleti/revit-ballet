@@ -149,8 +149,6 @@ namespace RevitCustomCommands
                     }
                     
                     trans.Commit();
-                    
-                    TaskDialog.Show("Outline Complete", $"Created {linesCreated} detail lines to outline selected elements with {offsetMm}mm offset.");
                 }
                 
                 return Result.Succeeded;
