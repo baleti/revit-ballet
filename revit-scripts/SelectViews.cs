@@ -40,8 +40,12 @@ public class SelectViews : IExternalCommand
 
         foreach (View view in viewCollector.Cast<View>())
         {
-            // Skip view templates, legends, and schedules.
-            if (view.IsTemplate || view.ViewType == ViewType.Legend || view.ViewType == ViewType.Schedule)
+            // Skip view templates, legends, schedules, project browser, and system browser.
+            if (view.IsTemplate || 
+                view.ViewType == ViewType.Legend || 
+                view.ViewType == ViewType.Schedule ||
+                view.ViewType == ViewType.ProjectBrowser ||
+                view.ViewType == ViewType.SystemBrowser)
                 continue;
 
             string sheetInfo = string.Empty;
