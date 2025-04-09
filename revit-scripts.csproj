@@ -91,6 +91,7 @@
     <Compile Include="revit-scripts\DuplicateSheetWithViewsAsDraftingViews.cs" />
     <Compile Include="revit-scripts\DuplicateViewsAsDraftingViews.cs" />
     <Compile Include="revit-scripts\DuplicateSelectedViews.cs" />
+    <Compile Include="revit-scripts\DuplicateViewsToSheets.cs" />
     <Compile Include="revit-scripts\FilterPosition.cs" />
     <Compile Include="revit-scripts\FilterDimensions.cs" />
     <Compile Include="revit-scripts\InvokeLastAddinCommand.cs" />
