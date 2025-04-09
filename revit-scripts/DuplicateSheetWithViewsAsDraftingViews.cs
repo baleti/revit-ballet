@@ -105,36 +105,100 @@ namespace YourNamespace
                         // Copy parameters from the original sheet.
                         CopyParameters(originalSheet, newSheet);
 
-                        // --- Duplicate and Replace Viewports ---
-                        // Gather viewports from the original sheet.
-                        Dictionary<ElementId, XYZ> viewportInfo = new Dictionary<ElementId, XYZ>();
+                        // --- Improved Viewport Handling ---
+                        // Gather viewports from the original sheet with enhanced information.
+                        Dictionary<ElementId, ViewportInfo> viewportInfoDict = new Dictionary<ElementId, ViewportInfo>();
                         FilteredElementCollector viewportCollector = new FilteredElementCollector(doc)
                             .OfClass(typeof(Viewport))
                             .WhereElementIsNotElementType();
+
                         foreach (Viewport vp in viewportCollector)
                         {
                             if (vp.SheetId.Equals(originalSheet.Id))
                             {
-                                viewportInfo[vp.ViewId] = vp.GetBoxCenter();
+                                View origView = doc.GetElement(vp.ViewId) as View;
+                                if (origView == null) continue;
+
+                                // Retrieve the label outline and convert it to a list of corner points.
+                                List<XYZ> labelCorners = new List<XYZ>();
+                                Outline labelOutline = vp.GetLabelOutline();
+                                if (labelOutline != null)
+                                {
+                                    // Calculate the four corners of the rectangle.
+                                    XYZ min = labelOutline.MinimumPoint;
+                                    XYZ max = labelOutline.MaximumPoint;
+                                    XYZ bottomRight = new XYZ(max.X, min.Y, min.Z);
+                                    XYZ topLeft = new XYZ(min.X, max.Y, min.Z);
+                                    labelCorners.Add(min);
+                                    labelCorners.Add(bottomRight);
+                                    labelCorners.Add(max);
+                                    labelCorners.Add(topLeft);
+                                }
+
+                                viewportInfoDict[vp.ViewId] = new ViewportInfo
+                                {
+                                    Center = vp.GetBoxCenter(),
+                                    ViewportId = vp.Id,
+                                    ViewScale = origView.Scale,
+                                    ViewName = origView.Name,
+                                    LabelBoxXYZ = labelCorners
+                                };
+
+                                // Try to get viewport outline (assumed to represent the original crop region outline).
+                                try
+                                {
+                                    Outline vpOutline = vp.GetBoxOutline();
+                                    viewportInfoDict[vp.ViewId].OutlineMin = vpOutline.MinimumPoint;
+                                    viewportInfoDict[vp.ViewId].OutlineMax = vpOutline.MaximumPoint;
+                                }
+                                catch (Exception)
+                                {
+                                    viewportInfoDict[vp.ViewId].HasValidOutline = false;
+                                }
                             }
                         }
 
-                        // For each viewport, duplicate its view as a drafting view and place it on the new sheet.
-                        foreach (KeyValuePair<ElementId, XYZ> vpInfo in viewportInfo)
+                        // For each viewport, duplicate its view as a drafting view, set its scale, and place it on the new sheet
+                        // so that it is positioned based on the original crop region outline.
+                        foreach (KeyValuePair<ElementId, ViewportInfo> vpInfo in viewportInfoDict)
                         {
                             View origView = doc.GetElement(vpInfo.Key) as View;
                             if (origView == null)
                                 continue;
 
-                            // Use the helper to duplicate the view.
+                            // Duplicate the view as a drafting view using your custom duplicator.
                             ViewDrafting newDraftingView = DraftingViewDuplicator.DuplicateView(doc, origView, draftingViewType);
                             if (newDraftingView == null)
                                 continue;
 
-                            // Place the duplicated drafting view on the new sheet at the same location.
+                            // Account for the original view's scale.
+                            newDraftingView.Scale = vpInfo.Value.ViewScale;
+
+                            // Determine the target center based on the original crop region outline.
+                            // If a valid outline is available then use its center; otherwise, fall back on the original viewport center.
+                            XYZ targetCenter = vpInfo.Value.Center;
+                            if (vpInfo.Value.HasValidOutline && vpInfo.Value.OutlineMin != null && vpInfo.Value.OutlineMax != null)
+                            {
+                                targetCenter = (vpInfo.Value.OutlineMin + vpInfo.Value.OutlineMax) * 0.5;
+                            }
+
+                            // Place the duplicated drafting view on the new sheet.
                             if (Viewport.CanAddViewToSheet(doc, newSheet.Id, newDraftingView.Id))
                             {
-                                Viewport.Create(doc, newSheet.Id, newDraftingView.Id, vpInfo.Value);
+                                Viewport newViewport = Viewport.Create(doc, newSheet.Id, newDraftingView.Id, targetCenter);
+                                try
+                                {
+                                    // Adjust the viewport to match the original crop region placement.
+                                    newViewport.SetBoxCenter(targetCenter);
+                                }
+                                catch (Exception ex)
+                                {
+                                    System.Diagnostics.Debug.WriteLine($"Error setting viewport center: {ex.Message}");
+                                }
+
+                                // Optionally refine the viewport by calling the helper,
+                                // which may further adjust placement and size if API methods are available.
+                                AdjustViewportToMatchOriginal(newViewport, vpInfo.Value);
                             }
                             else
                             {
@@ -165,6 +229,51 @@ namespace YourNamespace
             TaskDialog.Show("Duplicate Sheets With Drafting Views",
                 $"{sheetCount} sheet(s) were duplicated with replaced drafting view placements and detailing elements.");
             return Result.Succeeded;
+        }
+
+        /// <summary>
+        /// Represents enhanced information about a viewport, including outline information (from the original crop region/fill region).
+        /// </summary>
+        private class ViewportInfo
+        {
+            public XYZ Center { get; set; }
+            public ElementId ViewportId { get; set; }
+            public int ViewScale { get; set; }
+            public string ViewName { get; set; }
+            public XYZ OutlineMin { get; set; }
+            public XYZ OutlineMax { get; set; }
+            public bool HasValidOutline { get; set; } = true;
+            public IList<XYZ> LabelBoxXYZ { get; set; }
+        }
+
+        /// <summary>
+        /// Adjusts the new viewport to match the original crop region placement and outline.
+        /// </summary>
+        private void AdjustViewportToMatchOriginal(Viewport newViewport, ViewportInfo originalInfo)
+        {
+            // Compute the target center based on the crop region outline.
+            XYZ targetCenter = originalInfo.Center;
+            if (originalInfo.HasValidOutline && originalInfo.OutlineMin != null && originalInfo.OutlineMax != null)
+            {
+                targetCenter = (originalInfo.OutlineMin + originalInfo.OutlineMax) * 0.5;
+            }
+            // Set the viewport's center to the computed target center.
+            newViewport.SetBoxCenter(targetCenter);
+
+            // If additional adjustments are needed (for example, matching width/height if supported by the API),
+            // they can be added here. Some Revit versions support methods to set the box width and height.
+            try
+            {
+                // Example (uncomment if supported):
+                // double width = originalInfo.OutlineMax.X - originalInfo.OutlineMin.X;
+                // double height = originalInfo.OutlineMax.Y - originalInfo.OutlineMin.Y;
+                // newViewport.SetBoxWidth(width);
+                // newViewport.SetBoxHeight(height);
+            }
+            catch (Exception)
+            {
+                // Fallback if these methods aren't available.
+            }
         }
 
         /// <summary>
