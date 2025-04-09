@@ -13,7 +13,7 @@ public class SwitchPhase : IExternalCommand
     // Wrapper class for displaying phases with a Number column.
     public class PhaseWrapper
     {
-        public int Number { get; set; }
+        public int i { get; set; }
         public string Name { get; set; }
         public Phase Phase { get; set; }
     }
@@ -76,13 +76,13 @@ public class SwitchPhase : IExternalCommand
         // Create a list of PhaseWrapper objects with a Number column (1-based index).
         List<PhaseWrapper> phaseWrappers = phases.Select((p, index) => new PhaseWrapper
         {
-            Number = index + 1,
+            i = index + 1,
             Name = p.Name,
             Phase = p
         }).ToList();
 
         // Define the property names for the DataGrid; "Number" appears first.
-        List<string> propertyNames = new List<string> { "Number", "Name" };
+        List<string> propertyNames = new List<string> { "i", "Name" };
 
         // Determine the current phase index in the original phases list.
         int selectedIndex = phases.FindIndex(p => p.Id == currentPhaseId);
