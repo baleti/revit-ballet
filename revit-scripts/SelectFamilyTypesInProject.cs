@@ -15,34 +15,65 @@ public class SelectFamilyTypesInProject : IExternalCommand
         UIDocument uidoc = commandData.Application.ActiveUIDocument;
         Document doc = uidoc.Document;
 
-        // Step 1: Prepare a list of family types (FamilySymbols) across all categories in the current project
+        // Step 1: Collect all element types (both loaded family types and system types) in the current project.
         List<Dictionary<string, object>> typeEntries = new List<Dictionary<string, object>>();
-        Dictionary<string, FamilySymbol> typeElementMap = new Dictionary<string, FamilySymbol>(); // Map unique keys to FamilySymbols
+        Dictionary<string, ElementType> typeElementMap = new Dictionary<string, ElementType>();
 
-        // Collect all FamilySymbol elements in the project
-        var familySymbols = new FilteredElementCollector(doc)
-            .OfClass(typeof(FamilySymbol))
-            .Cast<FamilySymbol>()
+        var elementTypes = new FilteredElementCollector(doc)
+            .OfClass(typeof(ElementType))
+            .Cast<ElementType>()
             .ToList();
 
-        // Iterate through the FamilySymbols, and collect their basic info
-        foreach (var familySymbol in familySymbols)
+        foreach (var elementType in elementTypes)
         {
-            Family family = familySymbol.Family;
+            string typeName = elementType.Name;
+            string familyName = "";
+            string categoryName = "";
+
+            // If the element type is a FamilySymbol (loaded family), gather its family name and category.
+            if (elementType is FamilySymbol fs)
+            {
+                familyName = fs.Family.Name;
+                categoryName = fs.Category != null ? fs.Category.Name : "N/A";
+            }
+            else
+            {
+                // For system types (like WallType), try to extract the family name via the built-in parameter.
+                Parameter familyParam = elementType.get_Parameter(BuiltInParameter.SYMBOL_FAMILY_NAME_PARAM);
+                familyName = (familyParam != null && !string.IsNullOrEmpty(familyParam.AsString()))
+                    ? familyParam.AsString()
+                    : "System Type";
+                categoryName = elementType.Category != null ? elementType.Category.Name : "N/A";
+            }
 
             var entry = new Dictionary<string, object>
             {
-                { "Type Name", familySymbol.Name },
-                { "Family", family.Name },
-                { "Category", familySymbol.Category.Name }
+                { "Type Name", typeName },
+                { "Family", familyName },
+                { "Category", categoryName }
             };
 
-            string uniqueKey = $"{family.Name}:{familySymbol.Name}";
-            typeElementMap[uniqueKey] = familySymbol;
+            // Build a unique key based on family and type name.
+            string uniqueKey = $"{familyName}:{typeName}";
+            // If duplicate keys exist, append an index.
+            if (typeElementMap.ContainsKey(uniqueKey))
+            {
+                int duplicateIndex = 1;
+                string newKey = uniqueKey + "_" + duplicateIndex;
+                while (typeElementMap.ContainsKey(newKey))
+                {
+                    duplicateIndex++;
+                    newKey = uniqueKey + "_" + duplicateIndex;
+                }
+                uniqueKey = newKey;
+            }
+
+            typeElementMap[uniqueKey] = elementType;
             typeEntries.Add(entry);
         }
 
-        // Step 2: Display the list of family types using CustomGUIs.DataGrid
+        // Step 2: Display a DataGrid for the user to select types.
+        // 'CustomGUIs.DataGrid' is assumed to be a method that displays the data in a grid and returns the selected rows.
         var propertyNames = new List<string> { "Type Name", "Family", "Category" };
         var selectedEntries = CustomGUIs.DataGrid(typeEntries, propertyNames, spanAllScreens: false);
 
@@ -51,51 +82,22 @@ public class SelectFamilyTypesInProject : IExternalCommand
             return Result.Cancelled; // No selection made
         }
 
-        // Step 3: Collect ElementIds of the selected types using the typeElementMap
+        // Step 3: Retrieve the ElementIds from the selected entries using the typeElementMap.
         List<ElementId> selectedTypeIds = selectedEntries
-            .Select(entry => 
+            .Select(entry =>
             {
                 string uniqueKey = $"{entry["Family"]}:{entry["Type Name"]}";
-                return typeElementMap[uniqueKey].Id; // Retrieve the FamilySymbol from the map and get its Id
+                if (!typeElementMap.ContainsKey(uniqueKey))
+                {
+                    uniqueKey = typeElementMap.Keys.FirstOrDefault(k => k.StartsWith($"{entry["Family"]}:{entry["Type Name"]}"));
+                }
+                return typeElementMap.ContainsKey(uniqueKey) ? typeElementMap[uniqueKey].Id : null;
             })
+            .Where(id => id != null)
             .ToList();
 
-        // Step 4: Retrieve and display all available parameters for the selected types
-        List<Dictionary<string, object>> parameterEntries = new List<Dictionary<string, object>>();
-
-        foreach (ElementId typeId in selectedTypeIds)
-        {
-            FamilySymbol familySymbol = doc.GetElement(typeId) as FamilySymbol;
-
-            if (familySymbol != null)
-            {
-                var entry = new Dictionary<string, object>
-                {
-                    { "Type Name", familySymbol.Name },
-                    { "Family", familySymbol.Family.Name },
-                    { "Category", familySymbol.Category.Name }
-                };
-
-                // Add all available parameters
-                foreach (Parameter param in familySymbol.Parameters)
-                {
-                    string paramName = param.Definition.Name;
-                    string paramValue = param.AsValueString() ?? param.AsString() ?? "None";
-                    entry[paramName] = paramValue;
-                }
-
-                parameterEntries.Add(entry);
-            }
-        }
-
-        // Step 5: Display the parameters of the selected types in a second DataGrid
-        var paramPropertyNames = parameterEntries.FirstOrDefault()?.Keys.ToList();
-        var finalSelection = CustomGUIs.DataGrid(parameterEntries, paramPropertyNames, spanAllScreens: false);
-
-        if (finalSelection.Count == 0)
-        {
-            return Result.Cancelled; // No selection made
-        }
+        // Step 4: Set the selected ElementIds in the UIDocument, which selects them in the Revit UI.
+        uidoc.Selection.SetElementIds(selectedTypeIds);
 
         return Result.Succeeded;
     }
