@@ -8,72 +8,10 @@ using Autodesk.Revit.UI;
 namespace YourNamespace
 {
     /// <summary>
-    /// Contains helper methods for duplicating a view as a drafting view.
+    /// Contains a helper method for duplicating a view as a drafting view.
     /// </summary>
     public static class DraftingViewDuplicator
     {
-        /// <summary>
-        /// Validates and fixes a CurveLoop by filtering out segments that are too short, 
-        /// forcing all endpoints to lie on Z = 0, and ensuring the loop is properly closed.
-        /// </summary>
-        /// <param name="loop">Input CurveLoop.</param>
-        /// <param name="tolerance">Minimum distance tolerance.</param>
-        /// <returns>A new, validated CurveLoop.</returns>
-        private static CurveLoop ValidateAndFixCurveLoop(CurveLoop loop, double tolerance = 1e-6)
-        {
-            // Gather vertices from the original loop.
-            List<XYZ> vertices = new List<XYZ>();
-
-            foreach (Curve curve in loop)
-            {
-                // Force endpoints onto Z = 0.
-                XYZ start = new XYZ(curve.GetEndPoint(0).X, curve.GetEndPoint(0).Y, 0);
-                XYZ end = new XYZ(curve.GetEndPoint(1).X, curve.GetEndPoint(1).Y, 0);
-
-                // Add endpoints only if they differ by more than the tolerance.
-                if (vertices.Count == 0)
-                {
-                    vertices.Add(start);
-                    if (start.DistanceTo(end) > tolerance)
-                        vertices.Add(end);
-                }
-                else
-                {
-                    XYZ last = vertices.Last();
-                    if (last.DistanceTo(start) > tolerance)
-                        vertices.Add(start);
-                    if (vertices.Last().DistanceTo(end) > tolerance)
-                        vertices.Add(end);
-                }
-            }
-
-            // Remove any adjacent duplicates.
-            List<XYZ> filtered = new List<XYZ>();
-            foreach (XYZ pt in vertices)
-            {
-                if (filtered.Count == 0 || filtered.Last().DistanceTo(pt) > tolerance)
-                    filtered.Add(pt);
-            }
-            
-            // Ensure the loop is closed.
-            if (filtered.Count > 0 && filtered.First().DistanceTo(filtered.Last()) > tolerance)
-                filtered.Add(filtered.First());
-
-            // Rebuild the CurveLoop only using segments that are sufficiently long.
-            CurveLoop newLoop = new CurveLoop();
-            for (int i = 0; i < filtered.Count - 1; i++)
-            {
-                XYZ p1 = filtered[i];
-                XYZ p2 = filtered[i + 1];
-                if (p1.DistanceTo(p2) > tolerance)
-                {
-                    Line seg = Line.CreateBound(p1, p2);
-                    newLoop.Append(seg);
-                }
-            }
-            return newLoop;
-        }
-
         /// <summary>
         /// Duplicates the provided view as a drafting view, including annotations and crop regions.
         /// </summary>
@@ -83,20 +21,23 @@ namespace YourNamespace
             string viewTitle = $"{originalView.Name} ({originalView.ViewType.ToString()})";
             // Create a new drafting view.
             ViewDrafting newDraftingView = ViewDrafting.Create(doc, draftingViewType.Id);
-            
+
             // Define a base name.
             string baseName = viewTitle + " - Drafting View";
 
-            // For legend views, ensure a unique name.
+            // If the view is a Legend, check for existing drafting views with the same name.
             if (originalView.ViewType == ViewType.Legend)
             {
+                // Collect all existing drafting view names in the document.
                 var existingNames = new FilteredElementCollector(doc)
                     .OfClass(typeof(ViewDrafting))
                     .Cast<ViewDrafting>()
                     .Select(v => v.Name)
                     .ToList();
+                
                 string newName = baseName;
                 int counter = 2;
+                // Append a counter until a unique name is found.
                 while (existingNames.Contains(newName))
                 {
                     newName = baseName + " " + counter.ToString();
@@ -106,181 +47,212 @@ namespace YourNamespace
             }
             else
             {
+                // For non-legend views, simply use the base name.
                 newDraftingView.Name = baseName;
             }
 
-            // Collect annotation elements and detail components from the original view.
+            // Collect annotation elements and other detail components from the original view.
             FilteredElementCollector collector = new FilteredElementCollector(doc, originalView.Id)
                 .WhereElementIsNotElementType();
+
+            // Create a list to store valid element IDs.
             ICollection<ElementId> elementIds = new List<ElementId>();
 
+            // Process each element to determine if it can be copied to a drafting view.
             foreach (Element e in collector)
             {
                 bool canCopy = false;
+                
+                // Check for annotation elements.
                 if (e.Category != null && e.Category.CategoryType == CategoryType.Annotation)
                 {
                     canCopy = true;
                 }
+                // Check for specific built-in categories allowed in drafting views.
                 else if (e.Category != null && (
                     e.Category.Id.IntegerValue == (int)BuiltInCategory.OST_DetailComponents ||
                     e.Category.Id.IntegerValue == (int)BuiltInCategory.OST_IOSDetailGroups ||
                     e.Category.Id.IntegerValue == (int)BuiltInCategory.OST_Lines ||
                     e.Category.Id.IntegerValue == (int)BuiltInCategory.OST_RasterImages ||
-                    e.Category.Id.IntegerValue == (int)BuiltInCategory.OST_InsulationLines))
+                    e.Category.Id.IntegerValue == (int)BuiltInCategory.OST_InsulationLines
+                ))
                 {
                     canCopy = true;
                 }
-                else if (e is ImportInstance importInstance && importInstance.ViewSpecific)
+                // Handle ImportInstance elements specifically - only allow detail item imports.
+                else if (e is ImportInstance importInstance)
                 {
-                    canCopy = true;
+                    // Check if it's a 2D or detail import (not a 3D model import).
+                    if (importInstance.ViewSpecific)
+                    {
+                        canCopy = true;
+                    }
                 }
-
+                
                 if (canCopy)
+                {
                     elementIds.Add(e.Id);
+                }
             }
-            
-            // Copy acceptable elements to the new drafting view.
-            if (elementIds.Count > 0)
-                ElementTransformUtils.CopyElements(originalView, elementIds, newDraftingView, Transform.Identity, null);
 
-            // Process the crop region.
+            // Copy the filtered elements to the new drafting view.
+            if (elementIds.Count > 0)
+            {
+                ElementTransformUtils.CopyElements(originalView, elementIds, newDraftingView, Transform.Identity, null);
+            }
+
+            // Duplicate the crop region and annotations (filled region, detail curves, etc.).
             ViewCropRegionShapeManager cropManager = originalView.GetCropRegionShapeManager();
             IList<CurveLoop> cropLoops = cropManager.GetCropShape();
+
             if (cropLoops != null && cropLoops.Count > 0)
             {
-                // Get the transform from the original view to the new drafting view.
+                // Compute the transform between the original view and the new drafting view.
                 Transform viewTransform = ElementTransformUtils.GetTransformFromViewToView(originalView, newDraftingView);
                 XYZ projectedOrigin = viewTransform.OfPoint(new XYZ(0, 0, 0));
                 XYZ translation2D = new XYZ(projectedOrigin.X, projectedOrigin.Y, 0);
 
-                // Process each crop region loop.
                 List<CurveLoop> shiftedLoops = new List<CurveLoop>();
+
                 foreach (CurveLoop loop in cropLoops)
                 {
-                    // Translate each curve in the loop.
                     CurveLoop shiftedLoop = new CurveLoop();
-                    foreach (Curve c in loop)
+                    foreach (Curve curve in loop)
                     {
-                        Curve cShifted = c.CreateTransformed(Transform.CreateTranslation(translation2D));
-                        shiftedLoop.Append(cShifted);
+                        Curve shiftedCurve = curve.CreateTransformed(Transform.CreateTranslation(translation2D));
+                        shiftedLoop.Append(shiftedCurve);
                     }
+                    shiftedLoops.Add(shiftedLoop);
 
-                    // Validate and fix the shifted loop.
-                    CurveLoop validLoop = ValidateAndFixCurveLoop(shiftedLoop);
-                    shiftedLoops.Add(validLoop);
-                }
-
-                // Validate and filter out degenerate loops (i.e. those with fewer than three distinct vertices).
-                List<CurveLoop> validLoops = new List<CurveLoop>();
-                foreach (CurveLoop loop in shiftedLoops)
-                {
-                    HashSet<string> distinctPoints = new HashSet<string>();
-                    foreach (Curve c in loop)
-                    {
-                        XYZ pt = c.GetEndPoint(0);
-                        string key = $"{Math.Round(pt.X, 6)},{Math.Round(pt.Y, 6)},{Math.Round(pt.Z, 6)}";
-                        distinctPoints.Add(key);
-                    }
-                    if (distinctPoints.Count >= 3)
-                    {
-                        validLoops.Add(loop);
-                    }
-                }
-
-                // If no valid loops remain, skip filled region creation.
-                if (validLoops.Count > 0)
-                {
-                    // Look up the filled region type "White - Solid".
-                    FilledRegionType filledRegionType = new FilteredElementCollector(doc)
-                        .OfClass(typeof(FilledRegionType))
-                        .Cast<FilledRegionType>()
-                        .FirstOrDefault(frt =>
-                            frt.Name.Equals("White - Solid", StringComparison.InvariantCultureIgnoreCase)
-                            || (frt.Name.Contains("White") && frt.Name.Contains("Solid")));
-
-                    if (filledRegionType == null)
-                    {
-                        filledRegionType = new FilteredElementCollector(doc)
-                            .OfClass(typeof(FilledRegionType))
-                            .Cast<FilledRegionType>()
-                            .FirstOrDefault();
-                    }
-
-                    // Create the filled region using the valid loops.
-                    FilledRegion filledRegion = null;
+                    // Create an outer loop (e.g., offset rectangle) if possible.
                     try
                     {
-                        filledRegion = FilledRegion.Create(doc, filledRegionType.Id, newDraftingView.Id, validLoops);
-                    }
-                    catch (Exception)
-                    {
-                        // If creation fails, skip without notifying the user.
-                    }
-
-                    if (filledRegion != null)
-                    {
-                        Parameter commentsParam = filledRegion.LookupParameter("Comments");
-                        if (commentsParam != null && !commentsParam.IsReadOnly)
-                            commentsParam.Set("crop region");
-
-                        // Adjust the boundary line style using a "White Line" style.
-                        GraphicsStyle whiteLineStyle = new FilteredElementCollector(doc)
-                            .OfClass(typeof(GraphicsStyle))
-                            .Cast<GraphicsStyle>()
-                            .FirstOrDefault(gs => gs.Name.Equals("White Line", StringComparison.InvariantCultureIgnoreCase));
-
-                        if (whiteLineStyle == null)
+                        double offsetDistanceFeet = 500 / 304.8; // Convert 500 mm to feet.
+                        XYZ min = null;
+                        XYZ max = null;
+                        foreach (Curve curve in shiftedLoop)
                         {
-                            Category lineCategory = doc.Settings.Categories.get_Item(BuiltInCategory.OST_Lines);
-                            if (lineCategory != null)
+                            for (int i = 0; i < 2; i++)
                             {
-                                try
+                                XYZ point = curve.GetEndPoint(i);
+                                if (min == null)
                                 {
-                                    Category newLineStyle = doc.Settings.Categories.NewSubcategory(lineCategory, "White Line");
-                                    newLineStyle.LineColor = new Color(255, 255, 255);
-                                    newLineStyle.SetLineWeight(1, GraphicsStyleType.Projection);
-                                    whiteLineStyle = new FilteredElementCollector(doc)
-                                        .OfClass(typeof(GraphicsStyle))
-                                        .Cast<GraphicsStyle>()
-                                        .FirstOrDefault(gs => gs.Name.Equals("White Line", StringComparison.InvariantCultureIgnoreCase));
+                                    min = point;
+                                    max = point;
                                 }
-                                catch (Exception)
+                                else
                                 {
-                                    // Skip silently if the White Line style cannot be created.
+                                    min = new XYZ(Math.Min(min.X, point.X), Math.Min(min.Y, point.Y), Math.Min(min.Z, point.Z));
+                                    max = new XYZ(Math.Max(max.X, point.X), Math.Max(max.Y, point.Y), Math.Max(max.Z, point.Z));
                                 }
                             }
                         }
+                        min = new XYZ(min.X - offsetDistanceFeet, min.Y - offsetDistanceFeet, min.Z);
+                        max = new XYZ(max.X + offsetDistanceFeet, max.Y + offsetDistanceFeet, max.Z);
+                        CurveLoop outerLoop = new CurveLoop();
+                        XYZ pt1 = new XYZ(min.X, min.Y, min.Z);
+                        XYZ pt2 = new XYZ(max.X, min.Y, min.Z);
+                        XYZ pt3 = new XYZ(max.X, max.Y, min.Z);
+                        XYZ pt4 = new XYZ(min.X, max.Y, min.Z);
+                        outerLoop.Append(Line.CreateBound(pt1, pt2));
+                        outerLoop.Append(Line.CreateBound(pt2, pt3));
+                        outerLoop.Append(Line.CreateBound(pt3, pt4));
+                        outerLoop.Append(Line.CreateBound(pt4, pt1));
+                        shiftedLoops.Add(outerLoop);
+                    }
+                    catch (Exception ex)
+                    {
+                        TaskDialog.Show("Offset Error", $"Failed to create outer loop: {ex.Message}");
+                    }
+                }
 
-                        if (whiteLineStyle != null)
+                // Look up the filled region type "White - Solid".
+                FilledRegionType filledRegionType = new FilteredElementCollector(doc)
+                    .OfClass(typeof(FilledRegionType))
+                    .Cast<FilledRegionType>()
+                    .FirstOrDefault(frt => frt.Name.Equals("White - Solid", StringComparison.InvariantCultureIgnoreCase)
+                        || (frt.Name.Contains("White") && frt.Name.Contains("Solid")));
+
+                if (filledRegionType == null)
+                {
+                    TaskDialog.Show("Warning", "Filled region type 'White - Solid' was not found. A random filled region type will be used.");
+                    filledRegionType = new FilteredElementCollector(doc)
+                        .OfClass(typeof(FilledRegionType))
+                        .Cast<FilledRegionType>()
+                        .FirstOrDefault();
+                }
+
+                // Create the filled region in the new drafting view.
+                FilledRegion filledRegion = FilledRegion.Create(doc, filledRegionType.Id, newDraftingView.Id, shiftedLoops);
+                Parameter commentsParam = filledRegion.LookupParameter("Comments");
+                if (commentsParam != null && !commentsParam.IsReadOnly)
+                {
+                    commentsParam.Set("crop region");
+                }
+
+                // Adjust the boundary line style using a "White Line" style.
+                GraphicsStyle whiteLineStyle = new FilteredElementCollector(doc)
+                    .OfClass(typeof(GraphicsStyle))
+                    .Cast<GraphicsStyle>()
+                    .FirstOrDefault(gs => gs.Name.Equals("White Line", StringComparison.InvariantCultureIgnoreCase));
+
+                if (whiteLineStyle == null)
+                {
+                    Category lineCategory = doc.Settings.Categories.get_Item(BuiltInCategory.OST_Lines);
+                    if (lineCategory != null)
+                    {
+                        try
                         {
-                            try
-                            {
-                                var prop = typeof(FilledRegion).GetProperty("LineStyleId");
-                                if (prop != null)
-                                    prop.SetValue(filledRegion, whiteLineStyle.Id);
-                            }
-                            catch { }
+                            Category newLineStyle = doc.Settings.Categories.NewSubcategory(lineCategory, "White Line");
+                            newLineStyle.LineColor = new Color(255, 255, 255); // White.
+                            newLineStyle.SetLineWeight(1, GraphicsStyleType.Projection);
+                            whiteLineStyle = new FilteredElementCollector(doc)
+                                .OfClass(typeof(GraphicsStyle))
+                                .Cast<GraphicsStyle>()
+                                .FirstOrDefault(gs => gs.Name.Equals("White Line", StringComparison.InvariantCultureIgnoreCase));
+                        }
+                        catch (Exception ex)
+                        {
+                            TaskDialog.Show("Error", $"Failed to create White Line style: {ex.Message}");
+                        }
+                    }
+                }
 
-                            // Recreate the filled region and add detail curves.
-                            doc.Delete(filledRegion.Id);
-                            filledRegion = FilledRegion.Create(doc, filledRegionType.Id, newDraftingView.Id, validLoops);
-                            commentsParam = filledRegion.LookupParameter("Comments");
-                            if (commentsParam != null && !commentsParam.IsReadOnly)
-                                commentsParam.Set("crop region");
-                            foreach (CurveLoop loop in validLoops)
+                if (whiteLineStyle != null)
+                {
+                    // Option 1: Try setting the filled region's LineStyleId via reflection.
+                    try
+                    {
+                        var propertyInfo = typeof(FilledRegion).GetProperty("LineStyleId");
+                        if (propertyInfo != null)
+                        {
+                            propertyInfo.SetValue(filledRegion, whiteLineStyle.Id);
+                        }
+                    }
+                    catch { }
+
+                    // Option 2: Recreate the filled region and add detail curves.
+                    doc.Delete(filledRegion.Id);
+                    filledRegion = FilledRegion.Create(doc, filledRegionType.Id, newDraftingView.Id, shiftedLoops);
+                    commentsParam = filledRegion.LookupParameter("Comments");
+                    if (commentsParam != null && !commentsParam.IsReadOnly)
+                    {
+                        commentsParam.Set("crop region");
+                    }
+                    foreach (CurveLoop loop in shiftedLoops)
+                    {
+                        foreach (Curve curve in loop)
+                        {
+                            DetailCurve detailCurve = doc.Create.NewDetailCurve(newDraftingView, curve);
+                            if (detailCurve != null)
                             {
-                                foreach (Curve curve in loop)
-                                {
-                                    DetailCurve detailCurve = doc.Create.NewDetailCurve(newDraftingView, curve);
-                                    if (detailCurve != null)
-                                        detailCurve.LineStyle = whiteLineStyle;
-                                }
+                                detailCurve.LineStyle = whiteLineStyle;
                             }
                         }
                     }
                 }
             }
-            
+
             return newDraftingView;
         }
     }
@@ -293,14 +265,14 @@ namespace YourNamespace
             UIDocument uidoc = commandData.Application.ActiveUIDocument;
             Document doc = uidoc.Document;
 
-            // Collect eligible views (non-template and non-drafting).
+            // Collect eligible views.
             List<View> views = new FilteredElementCollector(doc)
                 .OfClass(typeof(View))
                 .Cast<View>()
                 .Where(v => !v.IsTemplate && v.ViewType != ViewType.DraftingView)
                 .ToList();
 
-            // Prepare entries for a custom UI (assumed implemented elsewhere).
+            // Prepare data for the custom GUI.
             List<Dictionary<string, object>> entries = new List<Dictionary<string, object>>();
             List<ViewSheet> sheets = new FilteredElementCollector(doc)
                 .OfClass(typeof(ViewSheet))
@@ -330,8 +302,9 @@ namespace YourNamespace
             }
 
             List<string> propertyNames = new List<string> { "Id", "Title", "Sheet", "SheetFolder" };
-            // CustomGUIs.DataGrid is assumed to provide a selection UI.
+            // CustomGUIs.DataGrid is assumed to be defined elsewhere.
             List<Dictionary<string, object>> selectedEntries = CustomGUIs.DataGrid(entries, propertyNames, spanAllScreens: false);
+
             if (selectedEntries == null || selectedEntries.Count == 0)
             {
                 TaskDialog.Show("Duplicate Views As Drafting Views", "No views were selected.");
@@ -343,6 +316,7 @@ namespace YourNamespace
                 .OfClass(typeof(ViewFamilyType))
                 .Cast<ViewFamilyType>()
                 .FirstOrDefault(vft => vft.ViewFamily == ViewFamily.Drafting);
+
             if (draftingViewType == null)
             {
                 message = "No Drafting ViewFamilyType found.";
@@ -353,6 +327,7 @@ namespace YourNamespace
             using (Transaction trans = new Transaction(doc, "Duplicate Views As Drafting Views"))
             {
                 trans.Start();
+
                 foreach (var entry in selectedEntries)
                 {
                     if (entry.ContainsKey("Id") && int.TryParse(entry["Id"].ToString(), out int viewIdValue))
@@ -362,12 +337,15 @@ namespace YourNamespace
                         if (originalView == null)
                             continue;
 
-                        // Duplicate the view using our helper.
+                        // Use the helper to duplicate the view.
                         ViewDrafting newDraftingView = DraftingViewDuplicator.DuplicateView(doc, originalView, draftingViewType);
                         if (newDraftingView != null)
+                        {
                             count++;
+                        }
                     }
                 }
+
                 trans.Commit();
             }
 
