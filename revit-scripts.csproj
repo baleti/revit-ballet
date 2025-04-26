@@ -95,6 +95,7 @@
     <Compile Include="revit-scripts\FilterDimensions.cs" />
     <Compile Include="revit-scripts\InvokeLastAddinCommand.cs" />
     <Compile Include="revit-scripts\OutlineSelectedElementsInCurrentViewWithDetailLines.cs" />
+    <Compile Include="revit-scripts\RenameSelectedTexts.cs" />
     <Compile Include="revit-scripts\SelectHostsOfSelectedElements.cs" />
     <Compile Include="revit-scripts\SelectLevels.cs" />
     <Compile Include="revit-scripts\OffsetLinesFromTheirWorkplane.cs" />
@@ -148,7 +149,7 @@
     <Compile Include="revit-scripts\OffsetWorkplane.cs" />
     <Compile Include="revit-scripts\PasteCrossSession.cs" />
     <Compile Include="revit-scripts\RenameGroups.cs" />
-    <Compile Include="revit-scripts\RenameParametersOfSelectedElements.cs" />
+    <Compile Include="revit-scripts\RenameInstanceParametersOfSelectedElements.cs" />
     <Compile Include="revit-scripts\RenameViews.cs" />
     <Compile Include="revit-scripts\SelectDetailGroups.cs" />
     <Compile Include="revit-scripts\SelectDetailGroupsInCurrentView.cs" />
