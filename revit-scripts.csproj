@@ -188,7 +188,9 @@
     <Compile Include="revit-scripts\SetRevisionsToSheets.cs" />
     <Compile Include="revit-scripts\DrawRevisionCloudAroundSelectedElements.cs" />
     <Compile Include="revit-scripts\DrawSectionLine.cs" />
-    <Compile Include="revit-scripts\DuplicateSheetsWithDetailing.cs" />
+    <Compile Include="revit-scripts\DuplicateSheets.cs">
+      <SubType>Form</SubType>
+    </Compile>
     <Compile Include="revit-scripts\DuplicateTypesHandler.cs" />
     <Compile Include="revit-scripts\DuplicateViews.cs" />
     <Compile Include="revit-scripts\ListDetailItemsByKeynote.cs" />
@@ -239,7 +241,6 @@
     <Compile Include="revit-scripts\test2.cs" />
     <Compile Include="revit-scripts\test20.cs" />
     <Compile Include="revit-scripts\CreateReferenceCalloutsToSelectedElements.cs" />
-    <Compile Include="revit-scripts\test22.cs" />
     <Compile Include="revit-scripts\test23.cs" />
     <Compile Include="revit-scripts\CreateSectionsThroughSelectedElements.cs" />
     <Compile Include="revit-scripts\test3.cs" />
