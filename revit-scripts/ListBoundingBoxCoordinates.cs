@@ -1,131 +1,137 @@
 ﻿using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using Autodesk.Revit.Attributes;
-using System.Collections.Generic;
-using System.Linq;
-using System.Windows.Forms;
 using System;
+using System.Collections.Generic;
+using System.Data;
+using System.Linq;
+using SWF = System.Windows.Forms;   // ───── alias avoids ambiguity with Autodesk.Revit.DB.Form
 
 namespace RevitCommands
 {
     [Transaction(TransactionMode.ReadOnly)]
     public class ListBoundingBoxCoordinates : IExternalCommand
     {
-        public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
+        public Result Execute(ExternalCommandData commandData,
+                              ref string message,
+                              ElementSet elements)
         {
             UIDocument uidoc = commandData.Application.ActiveUIDocument;
-            Document doc = uidoc.Document;
+            Document   doc   = uidoc.Document;
 
-            // Get selected elements
-            ICollection<ElementId> selectedIds = uidoc.Selection.GetElementIds();
-            if (selectedIds.Count == 0)
+            ICollection<ElementId> selIds = uidoc.Selection.GetElementIds();
+            if (selIds.Count == 0)
             {
                 TaskDialog.Show("Error", "Please select at least one element.");
                 return Result.Failed;
             }
 
-            List<Dictionary<string, object>> elementData = new List<Dictionary<string, object>>();
-            
-            foreach (ElementId id in selectedIds)
+            var elementData = new List<Dictionary<string, object>>();
+
+            //------------------------------------------------------------------
+            // 1. Collect geometry & parameters
+            //------------------------------------------------------------------
+            foreach (ElementId id in selIds)
             {
                 Element elem = doc.GetElement(id);
-                BoundingBoxXYZ bbox = elem.get_BoundingBox(null);
-                
-                if (bbox == null) continue;
 
-                // Get element's transform if it's a family instance
-                Transform transform = Transform.Identity;
-                if (elem is FamilyInstance familyInstance)
+                XYZ minPt, maxPt;
+                double width, depth, height;
+
+                if (elem is Viewport vp)
                 {
-                    transform = familyInstance.GetTransform();
+                    Outline ol = vp.GetBoxOutline();
+                    minPt  = ol.MinimumPoint;
+                    maxPt  = ol.MaximumPoint;
+
+                    width  = Math.Abs(maxPt.X - minPt.X);
+                    height = Math.Abs(maxPt.Y - minPt.Y);
+                    depth  = 0;
                 }
-                
-                // Transform coordinates to project coordinates
-                XYZ minPoint = transform.OfPoint(bbox.Min);
-                XYZ maxPoint = transform.OfPoint(bbox.Max);
-
-                // Calculate dimensions
-                double width = Math.Abs(maxPoint.X - minPoint.X);
-                double depth = Math.Abs(maxPoint.Y - minPoint.Y);
-                double height = Math.Abs(maxPoint.Z - minPoint.Z);
-
-                Dictionary<string, object> data = new Dictionary<string, object>
+                else
                 {
-                    // Basic element parameters
-                    {"ElementId", elem.Id.IntegerValue},
-                    {"Name", elem.Name},
-                    {"Category", elem.Category?.Name ?? "N/A"},
-                    {"Family", (elem as FamilyInstance)?.Symbol?.Family?.Name ?? "N/A"},
-                    {"Type", elem.GetType().Name},
-                    
-                    // Dimensions
-                    {"Width", Math.Round(width * 304.8, 2)}, // Convert to mm
-                    {"Depth", Math.Round(depth * 304.8, 2)},
-                    {"Height", Math.Round(height * 304.8, 2)},
-                    
-                    // Min point coordinates
-                    {"Min X", Math.Round(minPoint.X * 304.8, 2)},
-                    {"Min Y", Math.Round(minPoint.Y * 304.8, 2)},
-                    {"Min Z", Math.Round(minPoint.Z * 304.8, 2)},
-                    
-                    // Max point coordinates
-                    {"Max X", Math.Round(maxPoint.X * 304.8, 2)},
-                    {"Max Y", Math.Round(maxPoint.Y * 304.8, 2)},
-                    {"Max Z", Math.Round(maxPoint.Z * 304.8, 2)},
+                    BoundingBoxXYZ bb = elem.get_BoundingBox(null);
+                    if (bb == null) continue;
+
+                    Transform tf = Transform.Identity;
+                    FamilyInstance fi = elem as FamilyInstance;
+                    if (fi != null) tf = fi.GetTransform();
+
+                    minPt  = tf.OfPoint(bb.Min);
+                    maxPt  = tf.OfPoint(bb.Max);
+
+                    width  = Math.Abs(maxPt.X - minPt.X);
+                    depth  = Math.Abs(maxPt.Y - minPt.Y);
+                    height = Math.Abs(maxPt.Z - minPt.Z);
+                }
+
+                XYZ ctrPt = new XYZ((minPt.X + maxPt.X) * 0.5,
+                                    (minPt.Y + maxPt.Y) * 0.5,
+                                    (minPt.Z + maxPt.Z) * 0.5);
+
+                var data = new Dictionary<string, object>
+                {
+                    { "ElementId", elem.Id.IntegerValue },
+                    { "Name",      elem.Name },
+                    { "Category",  elem.Category != null ? elem.Category.Name : "N/A" },
+                    { "Family",    (elem as FamilyInstance) != null ?
+                                       ((FamilyInstance)elem).Symbol.Family.Name : "N/A" },
+                    { "Type",      elem.GetType().Name },
+
+                    { "Width",     Math.Round(width  * 304.8, 2) },
+                    { "Depth",     Math.Round(depth  * 304.8, 2) },
+                    { "Height",    Math.Round(height * 304.8, 2) },
+
+                    { "Min X",     Math.Round(minPt.X * 304.8, 2) },
+                    { "Min Y",     Math.Round(minPt.Y * 304.8, 2) },
+                    { "Min Z",     Math.Round(minPt.Z * 304.8, 2) },
+                    { "Max X",     Math.Round(maxPt.X * 304.8, 2) },
+                    { "Max Y",     Math.Round(maxPt.Y * 304.8, 2) },
+                    { "Max Z",     Math.Round(maxPt.Z * 304.8, 2) },
+
+                    { "Centroid X",Math.Round(ctrPt.X * 304.8, 2) },
+                    { "Centroid Y",Math.Round(ctrPt.Y * 304.8, 2) },
+                    { "Centroid Z",Math.Round(ctrPt.Z * 304.8, 2) },
                 };
 
-                // Add common parameters
                 AddCommonParameters(elem, data);
-
                 elementData.Add(data);
             }
 
-            // Define column order
-            List<string> propertyNames = new List<string>
+            if (elementData.Count == 0)
             {
-                "ElementId", "Name", "Category", "Family", "Type",
-                "Width", "Depth", "Height",
-                "Min X", "Min Y", "Min Z",
-                "Max X", "Max Y", "Max Z",
-                // Additional parameters will be added dynamically
-            };
-
-            // Add any additional parameter names that were found
-            if (elementData.Count > 0)
-            {
-                var additionalParams = elementData[0].Keys
-                    .Where(k => !propertyNames.Contains(k))
-                    .OrderBy(k => k);
-                propertyNames.AddRange(additionalParams);
+                TaskDialog.Show("Info", "No data to display.");
+                return Result.Succeeded;
             }
 
-            // Show the DataGrid
+            //------------------------------------------------------------------
+            // 2. Transpose → rows = properties, columns = elements
+            //------------------------------------------------------------------
+            var columnHeaders  = elementData.Select(d => "Id " + d["ElementId"]).ToList();
+            var propertyNames  = elementData[0].Keys.ToList();
+
+            DataTable table = new DataTable();
+            table.Columns.Add("Property");
+            foreach (string h in columnHeaders) table.Columns.Add(h);
+
+            foreach (string prop in propertyNames)
+            {
+                DataRow row = table.NewRow();
+                row["Property"] = prop;
+                for (int i = 0; i < elementData.Count; ++i)
+                {
+                    object v;
+                    if (elementData[i].TryGetValue(prop, out v)) row[i + 1] = v;
+                }
+                table.Rows.Add(row);
+            }
+
+            //------------------------------------------------------------------
+            // 3. Display WinForms DataGridView (cell-select, Esc closes)
+            //------------------------------------------------------------------
             try
             {
-                var results = CustomGUIs.DataGrid(elementData, propertyNames, false);
-                
-                // If user confirmed selection (didn't press Escape)
-                if (results != null && results.Any())
-                {
-                    // Get the ElementIds from the selected rows
-                    var selectedElementIds = new List<ElementId>();
-                    foreach (var result in results)
-                    {
-                        if (result.ContainsKey("ElementId") && result["ElementId"] is int elementIdInt)
-                        {
-                            selectedElementIds.Add(new ElementId(elementIdInt));
-                        }
-                    }
-
-                    // Update Revit's selection
-                    using (Transaction trans = new Transaction(doc, "Update Selection"))
-                    {
-                        trans.Start();
-                        uidoc.Selection.SetElementIds(selectedElementIds);
-                        trans.Commit();
-                    }
-                }
-                
+                ShowGrid(table, "");
                 return Result.Succeeded;
             }
             catch (Exception ex)
@@ -135,38 +141,67 @@ namespace RevitCommands
             }
         }
 
-        private void AddCommonParameters(Element elem, Dictionary<string, object> data)
+        private static void AddCommonParameters(Element elem,
+                                                IDictionary<string, object> data)
         {
-            // Get all parameters of the element
-            foreach (Parameter param in elem.Parameters)
+            foreach (Parameter p in elem.Parameters)
             {
-                if (!param.HasValue) continue;
+                if (!p.HasValue) continue;
+                string name = p.Definition.Name;
+                if (data.ContainsKey(name)) continue;
 
-                string paramName = param.Definition.Name;
-                if (data.ContainsKey(paramName)) continue; // Skip if already added
-
-                // Get parameter value based on its storage type
-                object paramValue = null;
-                switch (param.StorageType)
+                object val = null;
+                switch (p.StorageType)
                 {
                     case StorageType.Double:
-                        paramValue = Math.Round(param.AsDouble() * 304.8, 2); // Convert to mm
-                        break;
+                        val = Math.Round(p.AsDouble() * 304.8, 2); break;
                     case StorageType.Integer:
-                        paramValue = param.AsInteger();
-                        break;
+                        val = p.AsInteger(); break;
                     case StorageType.String:
-                        paramValue = param.AsString();
-                        break;
+                        val = p.AsString(); break;
                     case StorageType.ElementId:
-                        paramValue = param.AsElementId().IntegerValue;
-                        break;
+                        val = p.AsElementId().IntegerValue; break;
                 }
+                if (val != null) data[name] = val;
+            }
+        }
 
-                if (paramValue != null)
+        // ------------------------------------------------------------------
+        // WinForms helper (alias prefix = SWF.)
+        // ------------------------------------------------------------------
+        private static void ShowGrid(DataTable table, string caption)
+        {
+            using (SWF.Form form = new SWF.Form())
+            using (SWF.DataGridView dgv = new SWF.DataGridView())
+            {
+                // Form
+                form.Text = caption;
+                form.StartPosition = SWF.FormStartPosition.CenterScreen;
+                form.Width  = 1000;
+                form.Height = 600;
+
+                // Esc closes
+                form.KeyPreview = true;
+                form.KeyDown += (s, e) =>
                 {
-                    data[paramName] = paramValue;
-                }
+                    if (e.KeyCode == SWF.Keys.Escape) form.Close();
+                };
+
+                // DataGridView
+                dgv.Dock = SWF.DockStyle.Fill;
+                dgv.DataSource = table;
+                dgv.ReadOnly = true;
+                dgv.SelectionMode = SWF.DataGridViewSelectionMode.CellSelect;
+                dgv.MultiSelect = true;
+                dgv.AllowUserToAddRows = false;
+                dgv.ClipboardCopyMode =
+                    SWF.DataGridViewClipboardCopyMode.EnableWithoutHeaderText;
+                dgv.AutoSizeColumnsMode = SWF.DataGridViewAutoSizeColumnsMode.DisplayedCells;
+                dgv.AutoResizeRowHeadersWidth(
+                    SWF.DataGridViewRowHeadersWidthSizeMode.AutoSizeToAllHeaders);
+
+                form.Controls.Add(dgv);
+                form.ShowDialog();
             }
         }
     }
