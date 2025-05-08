@@ -5,7 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Linq;
-using SWF = System.Windows.Forms;   // ───── alias avoids ambiguity with Autodesk.Revit.DB.Form
+using SWF = System.Windows.Forms;          // Windows-Forms alias
 
 namespace RevitCommands
 {
@@ -29,7 +29,7 @@ namespace RevitCommands
             var elementData = new List<Dictionary<string, object>>();
 
             //------------------------------------------------------------------
-            // 1. Collect geometry & parameters
+            // 1. Gather geometry + parameters
             //------------------------------------------------------------------
             foreach (ElementId id in selIds)
             {
@@ -38,16 +38,34 @@ namespace RevitCommands
                 XYZ minPt, maxPt;
                 double width, depth, height;
 
+                // ─── 1) Viewport on a sheet ─────────────────────────────────
                 if (elem is Viewport vp)
                 {
-                    Outline ol = vp.GetBoxOutline();
-                    minPt  = ol.MinimumPoint;
-                    maxPt  = ol.MaximumPoint;
+                    Outline ol = vp.GetBoxOutline();              // sheet coords
+                    minPt = ol.MinimumPoint;
+                    maxPt = ol.MaximumPoint;
 
                     width  = Math.Abs(maxPt.X - minPt.X);
                     height = Math.Abs(maxPt.Y - minPt.Y);
                     depth  = 0;
                 }
+                // ─── 2) Title block (no view activation) ───────────────────
+                else if (elem is FamilyInstance fiTB &&
+                         fiTB.Category != null &&
+                         fiTB.Category.Id.IntegerValue == (int)BuiltInCategory.OST_TitleBlocks)
+                {
+                    BoundingBoxXYZ symBB = fiTB.Symbol.get_BoundingBox(null);
+                    if (symBB == null) continue;
+
+                    Transform tf = fiTB.GetTransform();           // sheet space
+                    minPt = tf.OfPoint(symBB.Min);
+                    maxPt = tf.OfPoint(symBB.Max);
+
+                    width  = Math.Abs(maxPt.X - minPt.X);
+                    height = Math.Abs(maxPt.Y - minPt.Y);
+                    depth  = 0;
+                }
+                // ─── 3) Any other element (model or detail) ────────────────
                 else
                 {
                     BoundingBoxXYZ bb = elem.get_BoundingBox(null);
@@ -57,14 +75,15 @@ namespace RevitCommands
                     FamilyInstance fi = elem as FamilyInstance;
                     if (fi != null) tf = fi.GetTransform();
 
-                    minPt  = tf.OfPoint(bb.Min);
-                    maxPt  = tf.OfPoint(bb.Max);
+                    minPt = tf.OfPoint(bb.Min);
+                    maxPt = tf.OfPoint(bb.Max);
 
                     width  = Math.Abs(maxPt.X - minPt.X);
                     depth  = Math.Abs(maxPt.Y - minPt.Y);
                     height = Math.Abs(maxPt.Z - minPt.Z);
                 }
 
+                // Centroid in same space
                 XYZ ctrPt = new XYZ((minPt.X + maxPt.X) * 0.5,
                                     (minPt.Y + maxPt.Y) * 0.5,
                                     (minPt.Z + maxPt.Z) * 0.5);
@@ -105,14 +124,14 @@ namespace RevitCommands
             }
 
             //------------------------------------------------------------------
-            // 2. Transpose → rows = properties, columns = elements
+            // 2. Transpose -> rows = properties, columns = elements
             //------------------------------------------------------------------
-            var columnHeaders  = elementData.Select(d => "Id " + d["ElementId"]).ToList();
-            var propertyNames  = elementData[0].Keys.ToList();
+            var headers       = elementData.Select(d => "Id " + d["ElementId"]).ToList();
+            var propertyNames = elementData[0].Keys.ToList();
 
             DataTable table = new DataTable();
             table.Columns.Add("Property");
-            foreach (string h in columnHeaders) table.Columns.Add(h);
+            foreach (string h in headers) table.Columns.Add(h);
 
             foreach (string prop in propertyNames)
             {
@@ -127,11 +146,11 @@ namespace RevitCommands
             }
 
             //------------------------------------------------------------------
-            // 3. Display WinForms DataGridView (cell-select, Esc closes)
+            // 3. Show grid (empty caption) – Esc closes, Ctrl+C copies cells
             //------------------------------------------------------------------
             try
             {
-                ShowGrid(table, "");
+                ShowGrid(table, "");           // ← no caption text
                 return Result.Succeeded;
             }
             catch (Exception ex)
@@ -141,6 +160,7 @@ namespace RevitCommands
             }
         }
 
+        // Copy every parameter that has a value
         private static void AddCommonParameters(Element elem,
                                                 IDictionary<string, object> data)
         {
@@ -166,28 +186,23 @@ namespace RevitCommands
             }
         }
 
-        // ------------------------------------------------------------------
-        // WinForms helper (alias prefix = SWF.)
-        // ------------------------------------------------------------------
+        // Modal WinForms grid helper
         private static void ShowGrid(DataTable table, string caption)
         {
             using (SWF.Form form = new SWF.Form())
             using (SWF.DataGridView dgv = new SWF.DataGridView())
             {
-                // Form
                 form.Text = caption;
                 form.StartPosition = SWF.FormStartPosition.CenterScreen;
                 form.Width  = 1000;
                 form.Height = 600;
 
-                // Esc closes
                 form.KeyPreview = true;
                 form.KeyDown += (s, e) =>
                 {
                     if (e.KeyCode == SWF.Keys.Escape) form.Close();
                 };
 
-                // DataGridView
                 dgv.Dock = SWF.DockStyle.Fill;
                 dgv.DataSource = table;
                 dgv.ReadOnly = true;
