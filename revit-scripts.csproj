@@ -95,6 +95,7 @@
     <Compile Include="revit-scripts\FilterPosition.cs" />
     <Compile Include="revit-scripts\FilterDimensions.cs" />
     <Compile Include="revit-scripts\InvokeLastAddinCommand.cs" />
+    <Compile Include="revit-scripts\MoveSelectedToCentroid.cs" />
     <Compile Include="revit-scripts\OutlineSelectedElementsInCurrentViewWithDetailLines.cs" />
     <Compile Include="revit-scripts\RenameSelectedTexts.cs" />
     <Compile Include="revit-scripts\SelectHostsOfSelectedElements.cs" />
