@@ -17,7 +17,6 @@ public class SelectViews : IExternalCommand
         Dictionary<ElementId, ViewSheet> viewToSheetMap = new Dictionary<ElementId, ViewSheet>();
         FilteredElementCollector sheetCollector = new FilteredElementCollector(doc)
             .OfClass(typeof(ViewSheet));
-
         foreach (ViewSheet sheet in sheetCollector)
         {
             foreach (ElementId viewportId in sheet.GetAllViewports())
@@ -67,13 +66,11 @@ public class SelectViews : IExternalCommand
 
             // Assuming titles are unique; otherwise, you might need to use a different key.
             titleToViewMap[view.Title] = view;
-
             Dictionary<string, object> viewInfo = new Dictionary<string, object>
             {
                 { "Title", view.Title },
                 { "Sheet", sheetInfo }
             };
-
             viewData.Add(viewInfo);
         }
 
@@ -87,14 +84,29 @@ public class SelectViews : IExternalCommand
             false  // Don't span all screens.
         );
 
-        // If the user made a selection, set those elements as the current selection.
+        // If the user made a selection, add those elements to the current selection.
         if (selectedViews != null && selectedViews.Any())
         {
-            List<ElementId> viewIds = selectedViews
+            // Get the current selection
+            ICollection<ElementId> currentSelectionIds = uidoc.Selection.GetElementIds();
+            
+            // Get the ElementIds of the views selected in the dialog
+            List<ElementId> newViewIds = selectedViews
                 .Select(v => titleToViewMap[v["Title"].ToString()].Id)
                 .ToList();
-
-            uidoc.Selection.SetElementIds(viewIds);
+                
+            // Add the new views to the current selection
+            foreach (ElementId id in newViewIds)
+            {
+                if (!currentSelectionIds.Contains(id))
+                {
+                    currentSelectionIds.Add(id);
+                }
+            }
+            
+            // Update the selection with the combined set of elements
+            uidoc.Selection.SetElementIds(currentSelectionIds);
+            
             return Result.Succeeded;
         }
 
