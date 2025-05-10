@@ -87,6 +87,7 @@
   <ItemGroup>
     <Compile Include="revit-scripts\BooleanDifferenceFilledRegionsWithSelectedElements.cs" />
     <Compile Include="revit-scripts\ChangeLevelOfSelectedElements.cs" />
+    <Compile Include="revit-scripts\CopyCropRegionOfSelectedView.cs" />
     <Compile Include="revit-scripts\CreateFilledRegionsOfSelectedElementsInViews.cs" />
     <Compile Include="revit-scripts\DirectShapesFromVisibleRooms.cs" />
     <Compile Include="revit-scripts\DuplicateSheetWithViewsAsDraftingViews.cs" />
@@ -114,7 +115,6 @@
     <Compile Include="revit-scripts\SelectLastCreatedSection.cs" />
     <Compile Include="revit-scripts\SwitchPhase.cs" />
     <Compile Include="revit-scripts\SwitchToLastPhase.cs" />
-    <Compile Include="revit-scripts\test30.cs" />
     <Compile Include="revit-scripts\test25.cs" />
     <Compile Include="revit-scripts\test26.cs" />
     <Compile Include="revit-scripts\RehostToJoinedWalls.cs" />
