@@ -1,4 +1,4 @@
-﻿// MoveSelectedToCentroidCmd.cs  – Revit 2024 / .NET 4.8 / C# 7.3
+﻿// MoveSelectedToCentroid.cs  – Revit 2024 / .NET 4.8 / C# 7.3
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -46,7 +46,7 @@ namespace MoveSelectedToCentroid
             bool onlyViewDependent = selIds.All(id =>
             {
                 Element el = doc.GetElement(id);
-                return el != null && el.ViewSpecific;
+                return el != null && (el.ViewSpecific || el is View);
             });
 
             // ------------------------------------------------------------------
@@ -108,6 +108,23 @@ namespace MoveSelectedToCentroid
                         continue;
                     }
 
+                    // Handle Views (must be placed on sheets)
+                    if (el is View view)
+                    {
+                        // Find if this view is placed on any sheet
+                        Viewport viewport = FindViewportForView(doc, view.Id);
+                        
+                        if (viewport != null)
+                        {
+                            // View is placed on a sheet, move its viewport
+                            XYZ current = viewport.GetBoxCenter();
+                            XYZ newCenter = new XYZ(target.X, target.Y, current.Z);
+                            viewport.SetBoxCenter(newCenter);
+                        }
+                        // Skip views not placed on sheets (as per requirements)
+                        continue;
+                    }
+
                     // Other elements
                     BoundingBoxXYZ bb = el.get_BoundingBox(null);
                     if (bb == null) continue;
@@ -129,6 +146,28 @@ namespace MoveSelectedToCentroid
             }
 
             return Result.Succeeded;
+        }
+
+        /// <summary>
+        /// Finds the viewport that contains the specified view
+        /// </summary>
+        /// <param name="doc">The current document</param>
+        /// <param name="viewId">The ID of the view to find</param>
+        /// <returns>The viewport displaying the view, or null if the view isn't placed on any sheet</returns>
+        private Viewport FindViewportForView(Document doc, ElementId viewId)
+        {
+            // Find all viewports in the document
+            FilteredElementCollector collector = new FilteredElementCollector(doc);
+            collector.OfClass(typeof(Viewport));
+            
+            // Look for a viewport that references our view
+            foreach (Viewport vp in collector)
+            {
+                if (vp.ViewId.Equals(viewId))
+                    return vp;
+            }
+            
+            return null;
         }
     }
 
