@@ -1,601 +1,353 @@
-﻿using System;
+﻿// *************************************************************************************************
+//  RenameInstanceParametersOfSelectedElements.cs
+//  Revit add-in (C# 7.3 / .NET 4.8 compliant)
+// *************************************************************************************************
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Reflection;
+using System.Text.RegularExpressions;
 using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 
 // Alias WinForms and Drawing to avoid type ambiguities.
 using WinForms = System.Windows.Forms;
-using Drawing = System.Drawing;
+using Drawing  = System.Drawing;
 
 namespace MyRevitAddin
 {
-    /// <summary>
-    /// Contains the shared logic for renaming parameters.
-    /// </summary>
+    // =============================================================================================
+    // 1. Shared helper – math, reflection and RenameParameters worker
+    // =============================================================================================
     public static class ParameterRenamerHelper
     {
+        #region DTOs ------------------------------------------------------------------------------
+
         public class ParameterInfo
         {
-            public string Name { get; set; }
-            public bool IsShared { get; set; }
-            /// <summary>
-            /// A string representing the parameter’s group (for example, Constraints, Dimensions, Identity Data, etc.)
-            /// </summary>
-            public string Group { get; set; }
+            public string Name;
+            public bool   IsShared;
+            public string Group;
         }
 
         public class ParameterValueInfo
         {
-            /// <summary>
-            /// The element whose “parameter” is to be updated.
-            /// For a pseudo parameter (such as “Type Name”), this is still the element.
-            /// </summary>
-            public Element Element { get; set; }
-            /// <summary>
-            /// The actual Revit Parameter. If null, this ParameterValueInfo represents a pseudo parameter.
-            /// </summary>
-            public Parameter Parameter { get; set; }
-            /// <summary>
-            /// The display name of the parameter.
-            /// </summary>
-            public string ParameterName { get; set; }
-            /// <summary>
-            /// The current value (as text) to be modified.
-            /// </summary>
-            public string CurrentValue { get; set; }
-            public bool IsShared { get; set; }
+            public Element   Element;        // owning element
+            public Parameter Parameter;      // null if pseudo parameter
+            public string    ParameterName;
+            public string    CurrentValue;
+            public bool      IsShared;
         }
 
-        /// <summary>
-        /// Applies a simple mathematical operation on the input value using the given string.
-        /// Supported operations include:
-        ///   - "2x"  (multiplies x by 2)
-        ///   - "x/2" (divides x by 2)
-        ///   - "x+2" (adds 2)
-        ///   - "x-2" (subtracts 2)
-        ///   - "-x"  (negates x)
-        /// The operation string is case-insensitive and should have no spaces.
-        /// If the string is not recognized, the original value is returned.
-        /// </summary>
+        #endregion
+
+        #region Math helpers ----------------------------------------------------------------------
+
+        /// <summary>Interprets <paramref name="mathOp"/> ("2x", "x/2", "x+1", …) and applies it to <paramref name="x"/>.</summary>
         public static double ApplyMathOperation(double x, string mathOp)
         {
             if (string.IsNullOrWhiteSpace(mathOp))
                 return x;
 
-            mathOp = mathOp.Replace(" ", ""); // remove spaces
-            double result = x;
-            if (mathOp.Equals("x", StringComparison.OrdinalIgnoreCase))
+            mathOp = mathOp.Replace(" ", string.Empty);
+
+            // identity / negate
+            if (mathOp.Equals("x",  StringComparison.OrdinalIgnoreCase)) return x;
+            if (mathOp.Equals("-x", StringComparison.OrdinalIgnoreCase)) return -x;
+
+            // "2x"  (multiplier before x)
+            if (!mathOp.StartsWith("x", StringComparison.OrdinalIgnoreCase) &&
+                 mathOp.EndsWith("x",  StringComparison.OrdinalIgnoreCase))
             {
-                return x;
-            }
-            else if (mathOp.Equals("-x", StringComparison.OrdinalIgnoreCase))
-            {
-                return -x;
-            }
-            else if (mathOp.EndsWith("x", StringComparison.OrdinalIgnoreCase) && !mathOp.StartsWith("x"))
-            {
-                // e.g. "2x"
                 string multStr = mathOp.Substring(0, mathOp.Length - 1);
                 if (double.TryParse(multStr, NumberStyles.Any, CultureInfo.InvariantCulture, out double mult))
                     return mult * x;
             }
-            else if (mathOp.StartsWith("x", StringComparison.OrdinalIgnoreCase))
+
+            // operations after x
+            if (mathOp.StartsWith("x", StringComparison.OrdinalIgnoreCase) && mathOp.Length >= 3)
             {
-                string opPart = mathOp.Substring(1);
-                if (opPart.StartsWith("+"))
+                char   op  = mathOp[1];
+                string num = mathOp.Substring(2);
+                if (double.TryParse(num, NumberStyles.Any, CultureInfo.InvariantCulture, out double n))
                 {
-                    string num = opPart.Substring(1);
-                    if (double.TryParse(num, NumberStyles.Any, CultureInfo.InvariantCulture, out double addVal))
-                        return x + addVal;
-                }
-                else if (opPart.StartsWith("-"))
-                {
-                    string num = opPart.Substring(1);
-                    if (double.TryParse(num, NumberStyles.Any, CultureInfo.InvariantCulture, out double subVal))
-                        return x - subVal;
-                }
-                else if (opPart.StartsWith("*"))
-                {
-                    string num = opPart.Substring(1);
-                    if (double.TryParse(num, NumberStyles.Any, CultureInfo.InvariantCulture, out double mult))
-                        return x * mult;
-                }
-                else if (opPart.StartsWith("/"))
-                {
-                    string num = opPart.Substring(1);
-                    if (double.TryParse(num, NumberStyles.Any, CultureInfo.InvariantCulture, out double div) && div != 0)
-                        return x / div;
+                    switch (op)
+                    {
+                        case '+': return x + n;
+                        case '-': return x - n;
+                        case '*': return x * n;
+                        case '/': return Math.Abs(n) < double.Epsilon ? x : x / n;
+                    }
                 }
             }
-            return x;
+            return x;   // unrecognised -> unchanged
         }
 
-        /// <summary>
-        /// Determines (via reflection) if a parameter is a Yes/No parameter.
-        /// In Revit 2024 the internal ParameterType string may be "Yes/No",
-        /// so we normalize the value before comparing.
-        /// </summary>
+        /// <summary>Applies <see cref="ApplyMathOperation"/> to every numeric token in <paramref name="input"/>.</summary>
+        public static string ApplyMathToNumbersInString(string input, string mathOp)
+        {
+            if (string.IsNullOrEmpty(input) || string.IsNullOrWhiteSpace(mathOp))
+                return input;
+
+            return Regex.Replace(
+                input,
+                @"-?\d+(?:\.\d+)?",                              // signed integers/decimals
+                m =>
+                {
+                    if (!double.TryParse(m.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out double n))
+                        return m.Value;                           // shouldn’t happen
+
+                    double res = ApplyMathOperation(n, mathOp);
+
+                    // keep integer look-and-feel where possible
+                    return Math.Abs(res % 1) < 1e-10
+                         ? Math.Round(res).ToString(CultureInfo.InvariantCulture)
+                         : res.ToString(CultureInfo.InvariantCulture);
+                });
+        }
+
+        #endregion
+
+        #region Reflection helper – Yes/No parameters ---------------------------------------------
+
         public static bool IsYesNoParameter(Parameter param)
         {
-            if (param == null || param.Definition == null)
-                return false;
+            if (param?.Definition == null) return false;
 
-            // Use reflection to get the (non-public) ParameterType property.
-            var prop = param.Definition.GetType().GetProperty("ParameterType",
-                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-            if (prop != null)
+            PropertyInfo pi = param.Definition.GetType().GetProperty(
+                                "ParameterType",
+                                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+
+            if (pi != null)
             {
-                var value = prop.GetValue(param.Definition, null);
-                if (value != null)
+                object val = pi.GetValue(param.Definition, null);
+                if (val != null)
                 {
-                    // Remove any slashes and spaces so "Yes/No" becomes "YesNo"
-                    string typeName = value.ToString().Replace("/", "").Replace(" ", "");
-                    if (typeName.Equals("YesNo", StringComparison.OrdinalIgnoreCase))
-                        return true;
+                    string s = val.ToString().Replace("/", string.Empty).Replace(" ", string.Empty);
+                    return s.Equals("YesNo", StringComparison.OrdinalIgnoreCase);
                 }
             }
             return false;
         }
 
-        /// <summary>
-        /// Transforms the original string value using the provided form values.
-        /// If a Find text is provided, it replaces it with the Replace text.
-        /// Otherwise, if Replace text is provided (and Find is empty), that value is used.
-        /// Then if a Pattern is provided, it is applied (by replacing "{}" with the current value).
-        /// Finally, if a Math value is provided and the result is numeric, it is applied.
-        /// </summary>
+        #endregion
+
+        #region Value transformation --------------------------------------------------------------
+
         private static string TransformValue(string original, RenameParamForm form)
         {
-            string newValue = original;
+            string value = original;
+
+            // 1. Find / Replace
             if (!string.IsNullOrEmpty(form.FindText))
-            {
-                newValue = newValue.Replace(form.FindText, form.ReplaceText);
-            }
+                value = value.Replace(form.FindText, form.ReplaceText);
             else if (!string.IsNullOrEmpty(form.ReplaceText))
-            {
-                newValue = form.ReplaceText;
-            }
+                value = form.ReplaceText;
+
+            // 2. Pattern
             if (!string.IsNullOrEmpty(form.PatternText))
+                value = form.PatternText.Replace("{}", value);
+
+            // 3. Math
+            if (!string.IsNullOrEmpty(form.MathOperationText))
             {
-                newValue = form.PatternText.Replace("{}", newValue);
+                if (double.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out double n))
+                    value = ApplyMathOperation(n, form.MathOperationText).ToString(CultureInfo.InvariantCulture);
+                else
+                    value = ApplyMathToNumbersInString(value, form.MathOperationText);
             }
-            if (!string.IsNullOrEmpty(form.MathOperationText) &&
-                double.TryParse(newValue, NumberStyles.Any, CultureInfo.InvariantCulture, out double x))
-            {
-                double result = ApplyMathOperation(x, form.MathOperationText);
-                newValue = result.ToString(CultureInfo.InvariantCulture);
-            }
-            return newValue;
+            return value;
         }
 
+        #endregion
+
+        #region Parameter setter ------------------------------------------------------------------
+
+        private static void SetParameterValue(Parameter p, string newVal, bool isMetric)
+        {
+            switch (p.StorageType)
+            {
+                case StorageType.String:
+                    p.Set(newVal);
+                    break;
+
+                case StorageType.Double:
+                    if (double.TryParse(newVal, NumberStyles.Any, CultureInfo.InvariantCulture, out double d))
+                    {
+                        // convert mm → ft if necessary
+                        ForgeTypeId ut = p.GetUnitTypeId();
+                        if (isMetric &&
+                            (ut == UnitTypeId.Millimeters || ut == UnitTypeId.Meters))
+                            d = d / 304.8;
+                        p.Set(d);
+                    }
+                    break;
+
+                case StorageType.Integer:
+                    if (IsYesNoParameter(p))
+                    {
+                        string s = newVal.Trim().ToLowerInvariant();
+                        if (s == "yes" || s == "true" || s == "1")  p.Set(1);
+                        if (s == "no"  || s == "false"|| s == "0") p.Set(0);
+                    }
+                    else if (int.TryParse(newVal, NumberStyles.Any, CultureInfo.InvariantCulture, out int i))
+                    {
+                        p.Set(i);
+                    }
+                    break;
+            }
+        }
+
+        #endregion
+
+        #region Main worker – RenameParameters (instance only) ------------------------------------
+
         /// <summary>
-        /// Shared routine for renaming parameter values.
-        /// 
-        /// - For type elements (includeTypeName==true) the routine builds a transposed grid
-        ///   (rows = parameters; columns = family type names) and then, after the user selects
-        ///   one or more rows, it converts the selection to a flat list of ParameterValueInfo objects
-        ///   and calls the standard renaming dialog.
-        /// 
-        /// - For instance elements (includeTypeName==false) we now collect all editable parameters
-        ///   (not just string parameters) from the selected instance elements. The union is sorted by
-        ///   parameter group then by name. The grid shows two columns ("Group" and "Name") so the user
-        ///   may select any instance parameter – such as constraints, dimensions, phasing, etc.
-        ///   Then we build a flat list of ParameterValueInfo objects (one for each element/parameter)
-        ///   and show the same renaming dialog.
-        /// 
-        /// IMPORTANT: Before updating a numerical parameter (Double), if the parameter represents a length
-        /// and if the project’s length unit (obtained via doc.GetUnits().GetFormatOptions(SpecTypeId.Length)) 
-        /// indicates metric (i.e. its unit type is UnitTypeId.Millimeters or UnitTypeId.Meters), then we assume 
-        /// the user‐entered value is in millimeters and convert it to feet (by dividing by 304.8) before calling Set.
+        /// Lets the user pick instance parameters and renames them.
+        /// Two-pass scheme prevents temporary duplicates (e.g. when renumbering sheets).
         /// </summary>
-        public static Result RenameParameters(Document doc, List<Element> elements, bool includeTypeName = false)
+        public static Result RenameInstanceParameters(Document doc, List<Element> elements)
         {
             try
             {
-                // Determine if the project is metric.
-                Units projectUnits = doc.GetUnits();
-                FormatOptions lengthOptions = projectUnits.GetFormatOptions(SpecTypeId.Length);
-                bool isMetric = (lengthOptions.GetUnitTypeId() == UnitTypeId.Millimeters ||
-                                 lengthOptions.GetUnitTypeId() == UnitTypeId.Meters);
+                // ---------- project units (needed for mm → ft conversion) ----------------------
+                Units         projUnits = doc.GetUnits();
+                FormatOptions lenOpts   = projUnits.GetFormatOptions(SpecTypeId.Length);
+                bool isMetric = lenOpts.GetUnitTypeId() == UnitTypeId.Millimeters ||
+                                lenOpts.GetUnitTypeId() == UnitTypeId.Meters;
 
-                if (includeTypeName)
+                // helper – parameter ➔ string
+                string AsString(Parameter pp) =>
+                    pp == null ? string.Empty
+                               : (pp.StorageType == StorageType.String
+                                     ? (pp.AsString()      ?? string.Empty)
+                                     : (pp.AsValueString() ?? string.Empty));
+
+                // 1. Build list of editable parameters present on at least one element ----------
+                List<ParameterInfo> pInfos =
+                    elements.SelectMany(el =>
+                    {
+                        List<ParameterInfo> list = new List<ParameterInfo>();
+                        foreach (Parameter p in el.Parameters)
+                        {
+                            if (p.IsReadOnly || p.StorageType == StorageType.ElementId) continue;
+                            list.Add(new ParameterInfo
+                            {
+                                Name     = p.Definition.Name,
+                                Group    = p.Definition.ParameterGroup.ToString(),
+                                IsShared = p.IsShared
+                            });
+                        }
+                        return list;
+                    })
+                    .GroupBy(info => info.Name)
+                    .Select(g => g.First())
+                    .OrderBy(info => info.Group)
+                    .ThenBy(info => info.Name)
+                    .ToList();
+
+                if (pInfos.Count == 0)
                 {
-                    // === TYPE PARAMETERS (Matrix/Transposed View) ===
-                    var unionParams = new Dictionary<(string Group, string Name), ParameterInfo>();
-
-                    foreach (var elem in elements)
-                    {
-                        foreach (Parameter p in elem.Parameters)
-                        {
-                            if (!p.IsReadOnly && p.StorageType != StorageType.ElementId)
-                            {
-                                string paramName = p.Definition.Name;
-                                string group = p.Definition.ParameterGroup.ToString();
-                                var key = (group, paramName);
-                                if (!unionParams.ContainsKey(key))
-                                {
-                                    unionParams[key] = new ParameterInfo
-                                    {
-                                        Name = paramName,
-                                        IsShared = p.IsShared,
-                                        Group = group
-                                    };
-                                }
-                            }
-                        }
-                        // Add pseudo parameter "Type Name"
-                        var key2 = ("Identity Data", "Type Name");
-                        if (!unionParams.ContainsKey(key2))
-                        {
-                            unionParams[key2] = new ParameterInfo
-                            {
-                                Name = "Type Name",
-                                IsShared = false,
-                                Group = "Identity Data"
-                            };
-                        }
-                    }
-
-                    var sortedParamInfos = unionParams.Values
-                        .OrderBy(pi => pi.Group)
-                        .ThenBy(pi => pi.Name)
-                        .ToList();
-
-                    var typeNames = elements.Select(e => e.Name).ToList();
-                    var propertyNames = new List<string> { "Group", "Name" };
-                    propertyNames.AddRange(typeNames);
-
-                    var gridEntries = new List<Dictionary<string, object>>();
-                    foreach (var pi in sortedParamInfos)
-                    {
-                        var row = new Dictionary<string, object>();
-                        row["Group"] = pi.Group;
-                        row["Name"] = pi.Name;
-                        foreach (var elem in elements)
-                        {
-                            string value = "";
-                            if (pi.Name == "Type Name")
-                            {
-                                value = elem.Name;
-                            }
-                            else
-                            {
-                                var p = elem.LookupParameter(pi.Name);
-                                if (p != null && !p.IsReadOnly && p.StorageType != StorageType.ElementId)
-                                {
-                                    value = p.StorageType == StorageType.String ? p.AsString() ?? "" : p.AsValueString() ?? "";
-                                }
-                            }
-                            row[elem.Name] = value;
-                        }
-                        gridEntries.Add(row);
-                    }
-
-                    var selectedRows = CustomGUIs.DataGrid(gridEntries, propertyNames, false);
-                    if (selectedRows == null || selectedRows.Count == 0)
-                        return Result.Succeeded;
-
-                    var paramValues = new List<ParameterValueInfo>();
-                    foreach (var row in selectedRows)
-                    {
-                        string paramName = row["Name"]?.ToString();
-                        foreach (var elem in elements)
-                        {
-                            if (paramName == "Type Name")
-                            {
-                                paramValues.Add(new ParameterValueInfo
-                                {
-                                    Element = elem,
-                                    Parameter = null,
-                                    ParameterName = "Type Name",
-                                    CurrentValue = elem.Name,
-                                    IsShared = false
-                                });
-                            }
-                            else
-                            {
-                                var p = elem.LookupParameter(paramName);
-                                if (p != null && !p.IsReadOnly && p.StorageType != StorageType.ElementId)
-                                {
-                                    string currentVal = p.StorageType == StorageType.String ? p.AsString() ?? "" : p.AsValueString() ?? "";
-                                    paramValues.Add(new ParameterValueInfo
-                                    {
-                                        Element = elem,
-                                        Parameter = p,
-                                        ParameterName = paramName,
-                                        CurrentValue = currentVal,
-                                        IsShared = p.IsShared
-                                    });
-                                }
-                            }
-                        }
-                    }
-
-                    if (paramValues.Count == 0)
-                    {
-                        WinForms.MessageBox.Show("No valid parameters found in selection.", "Error");
-                        return Result.Cancelled;
-                    }
-
-                    using (var form = new RenameParamForm(paramValues))
-                    {
-                        if (form.ShowDialog() != WinForms.DialogResult.OK)
-                            return Result.Succeeded;
-
-                        using (var tx = new Transaction(doc, "Rename Type Parameters"))
-                        {
-                            tx.Start();
-                            foreach (var pv in paramValues)
-                            {
-                                string newValue = TransformValue(pv.CurrentValue, form);
-
-                                if (newValue != pv.CurrentValue)
-                                {
-                                    if (pv.Parameter == null)
-                                    {
-                                        try { pv.Element.Name = newValue; }
-                                        catch (Exception ex)
-                                        {
-                                            WinForms.MessageBox.Show($"Failed to update Type Name for {pv.Element.Id}:\n{ex.Message}", "Error");
-                                        }
-                                    }
-                                    else
-                                    {
-                                        try
-                                        {
-                                            if (pv.Parameter.StorageType == StorageType.String)
-                                            {
-                                                pv.Parameter.Set(newValue);
-                                            }
-                                            else if (pv.Parameter.StorageType == StorageType.Double)
-                                            {
-                                                if (double.TryParse(newValue, NumberStyles.Any, CultureInfo.InvariantCulture, out double newDouble))
-                                                {
-                                                    // Convert metric length values from mm to feet.
-                                                    if ((pv.Parameter.GetUnitTypeId() == UnitTypeId.Millimeters ||
-                                                         pv.Parameter.GetUnitTypeId() == UnitTypeId.Meters) && isMetric)
-                                                        newDouble = newDouble / 304.8;
-                                                    pv.Parameter.Set(newDouble);
-                                                }
-                                            }
-                                            else if (pv.Parameter.StorageType == StorageType.Integer)
-                                            {
-                                                // For Yes/No parameters, use our reflection-based check.
-                                                if (IsYesNoParameter(pv.Parameter))
-                                                {
-                                                    string lower = newValue.Trim().ToLowerInvariant();
-                                                    bool? boolValue = null;
-                                                    if (lower == "yes" || lower == "true" || lower == "1")
-                                                        boolValue = true;
-                                                    else if (lower == "no" || lower == "false" || lower == "0")
-                                                        boolValue = false;
-                                                    if (boolValue.HasValue)
-                                                        pv.Parameter.Set(boolValue.Value ? 1 : 0);
-                                                }
-                                                else
-                                                {
-                                                    if (int.TryParse(newValue, NumberStyles.Any, CultureInfo.InvariantCulture, out int newInt))
-                                                    {
-                                                        pv.Parameter.Set(newInt);
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        catch (Exception ex)
-                                        {
-                                            WinForms.MessageBox.Show($"Failed to update parameter {pv.ParameterName} on element {pv.Element.Id}:\n{ex.Message}", "Error");
-                                        }
-                                    }
-                                }
-                            }
-                            tx.Commit();
-                        }
-                    }
-                    return Result.Succeeded;
+                    WinForms.MessageBox.Show("No editable parameters found.");
+                    return Result.Cancelled;
                 }
-                else
+
+                // 2. Parameter pick UI (small grid) --------------------------------------------
+                List<Dictionary<string, object>> rows = new List<Dictionary<string, object>>();
+                foreach (ParameterInfo pi in pInfos)
                 {
-                    // === INSTANCE PARAMETERS (Standard View) ===
-                    var paramInfos = elements
-                        .SelectMany(elem => elem.Parameters.Cast<Parameter>())
-                        .Where(p => !p.IsReadOnly && p.StorageType != StorageType.ElementId)
-                        .GroupBy(p => p.Definition.Name)
-                        .Select(g => new ParameterInfo
-                        {
-                            Name = g.Key,
-                            IsShared = g.First().IsShared,
-                            Group = g.First().Definition.ParameterGroup.ToString()
-                        })
-                        .OrderBy(pi => pi.Group)
-                        .ThenBy(pi => pi.Name)
-                        .ToList();
-
-                    // Add pseudo‑parameters only if at least one FamilyInstance supports the flip.
-                    if (elements.Any(e => e is FamilyInstance fi && fi.CanFlipFacing))
-                    {
-                        paramInfos.Add(new ParameterInfo { Name = "FacingFlipped", IsShared = false, Group = "FamilyInstance Properties" });
-                    }
-                    if (elements.Any(e => e is FamilyInstance fi && fi.CanFlipHand))
-                    {
-                        paramInfos.Add(new ParameterInfo { Name = "HandFlipped", IsShared = false, Group = "FamilyInstance Properties" });
-                    }
-
-                    if (paramInfos.Count == 0)
-                    {
-                        WinForms.MessageBox.Show("No editable parameters found.", "Error");
-                        return Result.Cancelled;
-                    }
-
-                    var gridEntries = paramInfos.Select(pi => new Dictionary<string, object>
+                    rows.Add(new Dictionary<string, object>
                     {
                         { "Group", pi.Group },
-                        { "Name", pi.Name }
-                    }).ToList();
+                        { "Name",  pi.Name  }
+                    });
+                }
+                List<string> headers = new List<string> { "Group", "Name" };
+                IList<Dictionary<string, object>> picked =
+                    CustomGUIs.DataGrid(rows, headers, /*multiSelect=*/false);
 
-                    var selectedParams = CustomGUIs.DataGrid(gridEntries, new List<string> { "Group", "Name" }, false);
-                    if (selectedParams == null || selectedParams.Count == 0)
+                if (picked == null || picked.Count == 0)
+                    return Result.Succeeded;
+
+                // 3. Flatten to ParameterValueInfo list ----------------------------------------
+                List<ParameterValueInfo> pVals = new List<ParameterValueInfo>();
+                foreach (Element el in elements)
+                {
+                    foreach (Dictionary<string, object> d in picked)
+                    {
+                        string pName = d["Name"].ToString();
+                        Parameter p  = el.LookupParameter(pName);
+                        if (p != null && !p.IsReadOnly && p.StorageType != StorageType.ElementId)
+                        {
+                            pVals.Add(new ParameterValueInfo
+                            {
+                                Element       = el,
+                                Parameter     = p,
+                                ParameterName = pName,
+                                CurrentValue  = AsString(p),
+                                IsShared      = p.IsShared
+                            });
+                        }
+                    }
+                }
+                if (pVals.Count == 0)
+                {
+                    WinForms.MessageBox.Show("No valid parameters in selection.");
+                    return Result.Cancelled;
+                }
+
+                // 4. Rename UI + write-back -----------------------------------------------------
+                using (RenameParamForm form = new RenameParamForm(pVals))
+                {
+                    if (form.ShowDialog() != WinForms.DialogResult.OK)
                         return Result.Succeeded;
 
-                    var paramValues = new List<ParameterValueInfo>();
-                    foreach (var elem in elements)
+                    // build update list BEFORE opening the transaction
+                    var updates = new List<(ParameterValueInfo Pv, string NewVal)>();
+                    foreach (ParameterValueInfo pv in pVals)
                     {
-                        foreach (var dict in selectedParams)
+                        string newVal = TransformValue(pv.CurrentValue, form);
+                        if (newVal != pv.CurrentValue)
+                            updates.Add((pv, newVal));
+                    }
+                    if (updates.Count == 0) return Result.Succeeded;
+
+                    using (Transaction tx = new Transaction(doc, "Rename Parameters"))
+                    {
+                        tx.Start();
+
+                        // === PASS 1 – temporary unique placeholders (string params) ===============
+                        foreach (var u in updates)
                         {
-                            string paramName = dict["Name"]?.ToString();
-                            // Handle the pseudo‑parameters explicitly.
-                            if (paramName == "FacingFlipped")
+                            if (u.Pv.Parameter != null &&
+                                u.Pv.Parameter.StorageType == StorageType.String)
                             {
-                                if (elem is FamilyInstance fi && fi.CanFlipFacing)
-                                {
-                                    string currentVal = fi.FacingFlipped ? "True" : "False";
-                                    paramValues.Add(new ParameterValueInfo
-                                    {
-                                        Element = elem,
-                                        Parameter = null,
-                                        ParameterName = "FacingFlipped",
-                                        CurrentValue = currentVal,
-                                        IsShared = false
-                                    });
-                                }
-                            }
-                            else if (paramName == "HandFlipped")
-                            {
-                                if (elem is FamilyInstance fi && fi.CanFlipHand)
-                                {
-                                    string currentVal = fi.HandFlipped ? "True" : "False";
-                                    paramValues.Add(new ParameterValueInfo
-                                    {
-                                        Element = elem,
-                                        Parameter = null,
-                                        ParameterName = "HandFlipped",
-                                        CurrentValue = currentVal,
-                                        IsShared = false
-                                    });
-                                }
-                            }
-                            else
-                            {
-                                var p = elem.LookupParameter(paramName);
-                                if (p != null && !p.IsReadOnly && p.StorageType != StorageType.ElementId)
-                                {
-                                    string currentVal = p.StorageType == StorageType.String ? p.AsString() ?? "" : p.AsValueString() ?? "";
-                                    paramValues.Add(new ParameterValueInfo
-                                    {
-                                        Element = elem,
-                                        Parameter = p,
-                                        ParameterName = paramName,
-                                        CurrentValue = currentVal,
-                                        IsShared = p.IsShared
-                                    });
-                                }
+                                SetParameterValue(u.Pv.Parameter,
+                                                  $"TMP_{Guid.NewGuid():N}",
+                                                  isMetric);
                             }
                         }
-                    }
 
-                    if (paramValues.Count == 0)
-                    {
-                        WinForms.MessageBox.Show("No valid parameters found in selection.", "Error");
-                        return Result.Cancelled;
-                    }
-
-                    using (var form = new RenameParamForm(paramValues))
-                    {
-                        if (form.ShowDialog() != WinForms.DialogResult.OK)
-                            return Result.Succeeded;
-
-                        using (var tx = new Transaction(doc, "Rename Parameters"))
+                        // === PASS 2 – final values ================================================
+                        foreach (var u in updates)
                         {
-                            tx.Start();
-                            foreach (var pv in paramValues)
+                            try
                             {
-                                string newValue = TransformValue(pv.CurrentValue, form);
-                                if (newValue != pv.CurrentValue)
-                                {
-                                    try
-                                    {
-                                        if (pv.Parameter == null)
-                                        {
-                                            if (pv.ParameterName == "FacingFlipped" || pv.ParameterName == "HandFlipped")
-                                            {
-                                                if (pv.Element is FamilyInstance fi)
-                                                {
-                                                    string lower = newValue.Trim().ToLowerInvariant();
-                                                    bool? desiredValue = null;
-                                                    if (lower == "yes" || lower == "true" || lower == "1")
-                                                        desiredValue = true;
-                                                    else if (lower == "no" || lower == "false" || lower == "0")
-                                                        desiredValue = false;
-                                                    if (desiredValue.HasValue)
-                                                    {
-                                                        if (pv.ParameterName == "FacingFlipped")
-                                                        {
-                                                            if (fi.FacingFlipped != desiredValue.Value && fi.CanFlipFacing)
-                                                                fi.flipFacing();
-                                                        }
-                                                        else if (pv.ParameterName == "HandFlipped")
-                                                        {
-                                                            if (fi.HandFlipped != desiredValue.Value && fi.CanFlipHand)
-                                                                fi.flipHand();
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                            else if (pv.ParameterName == "Type Name")
-                                            {
-                                                pv.Element.Name = newValue;
-                                            }
-                                        }
-                                        else if (pv.Parameter.StorageType == StorageType.String)
-                                        {
-                                            pv.Parameter.Set(newValue);
-                                        }
-                                        else if (pv.Parameter.StorageType == StorageType.Double)
-                                        {
-                                            if (double.TryParse(newValue, NumberStyles.Any, CultureInfo.InvariantCulture, out double newDouble))
-                                            {
-                                                if ((pv.Parameter.GetUnitTypeId() == UnitTypeId.Millimeters ||
-                                                     pv.Parameter.GetUnitTypeId() == UnitTypeId.Meters) && isMetric)
-                                                    newDouble = newDouble / 304.8;
-                                                pv.Parameter.Set(newDouble);
-                                            }
-                                        }
-                                        else if (pv.Parameter.StorageType == StorageType.Integer)
-                                        {
-                                            if (IsYesNoParameter(pv.Parameter))
-                                            {
-                                                string lower = newValue.Trim().ToLowerInvariant();
-                                                bool? boolValue = null;
-                                                if (lower == "yes" || lower == "true" || lower == "1")
-                                                    boolValue = true;
-                                                else if (lower == "no" || lower == "false" || lower == "0")
-                                                    boolValue = false;
-                                                if (boolValue.HasValue)
-                                                    pv.Parameter.Set(boolValue.Value ? 1 : 0);
-                                            }
-                                            else
-                                            {
-                                                if (int.TryParse(newValue, NumberStyles.Any, CultureInfo.InvariantCulture, out int newInt))
-                                                {
-                                                    pv.Parameter.Set(newInt);
-                                                }
-                                            }
-                                        }
-                                    }
-                                    catch (Exception ex)
-                                    {
-                                        WinForms.MessageBox.Show($"Failed to update {pv.Element.Name}:\n{ex.Message}", "Error");
-                                    }
-                                }
+                                SetParameterValue(u.Pv.Parameter, u.NewVal, isMetric);
                             }
-                            tx.Commit();
+                            catch (Exception ex)
+                            {
+                                WinForms.MessageBox.Show(ex.Message, "Error");
+                            }
                         }
+
+                        tx.Commit();
                     }
-                    return Result.Succeeded;
                 }
+
+                return Result.Succeeded;
             }
             catch (Exception ex)
             {
@@ -603,293 +355,207 @@ namespace MyRevitAddin
                 return Result.Failed;
             }
         }
+
+        #endregion
     }
 
-    /// <summary>
-    /// The form used for previewing and applying parameter renaming.
-    /// This dialog is used by both instance and type parameter commands.
-    /// </summary>
+    // =============================================================================================
+    // 2. WinForms preview dialog
+    // =============================================================================================
     public class RenameParamForm : WinForms.Form
     {
-        private readonly List<ParameterRenamerHelper.ParameterValueInfo> _paramValues;
-        private WinForms.TextBox _txtFind;
-        private WinForms.TextBox _txtReplace;
-        private WinForms.TextBox _txtPattern;
-        private WinForms.TextBox _txtMathOperation; // Renamed field ("Math")
-        private WinForms.RichTextBox _rtbBefore;
-        private WinForms.RichTextBox _rtbAfter;
+        private readonly List<ParameterRenamerHelper.ParameterValueInfo> _paramVals;
 
-        public string FindText => _txtFind.Text;
-        public string ReplaceText => _txtReplace.Text;
-        public string PatternText => _txtPattern.Text;
-        public string MathOperationText => _txtMathOperation.Text;
+        private WinForms.TextBox      _txtFind;
+        private WinForms.TextBox      _txtReplace;
+        private WinForms.TextBox      _txtPattern;
+        private WinForms.TextBox      _txtMath;
+        private WinForms.RichTextBox  _rtbBefore;
+        private WinForms.RichTextBox  _rtbAfter;
 
-        public RenameParamForm(List<ParameterRenamerHelper.ParameterValueInfo> paramValues)
+        #region Exposed properties
+
+        public string FindText          => _txtFind.Text;
+        public string ReplaceText       => _txtReplace.Text;
+        public string PatternText       => _txtPattern.Text;
+        public string MathOperationText => _txtMath.Text;
+
+        #endregion
+
+        public RenameParamForm(List<ParameterRenamerHelper.ParameterValueInfo> paramVals)
         {
-            _paramValues = paramValues;
-            InitializeComponent();
-            InitializeData();
-            this.KeyDown += (s, e) =>
-            {
-                if (e.KeyCode == WinForms.Keys.Escape)
-                {
-                    this.DialogResult = WinForms.DialogResult.Cancel;
-                    this.Close();
-                }
-            };
+            _paramVals = paramVals;
+            BuildUI();
+            LoadCurrentValues();
         }
 
-        private void InitializeComponent()
+        private void BuildUI()
         {
-            this.Text = "Modify Parameters";
-            this.Size = new Drawing.Size(600, 600);
-            this.MinimumSize = new Drawing.Size(500, 400);
-            this.Font = new Drawing.Font("Segoe UI", 9);
-            this.KeyPreview = true;
+            Text        = "Modify Parameters";
+            Font        = new Drawing.Font("Segoe UI", 9);
+            MinimumSize = new Drawing.Size(520, 480);
+            Size        = new Drawing.Size(640, 560);
+            KeyPreview  = true;
+            KeyDown    += (s, e) => { if (e.KeyCode == WinForms.Keys.Escape) Close(); };
 
-            // Updated layout: 8 rows total.
-            // Rows:
-            // 0: Find field
-            // 1: Replace field
-            // 2: Pattern label & textbox
-            // 3: Pattern hint ("Use {} to represent current value.")
-            // 4: Math label (renamed from "Math Op") & textbox
-            // 5: Math hint ("Use x to represent current value (e.g., '2x', 'x/2', 'x+2', 'x-2', '-x').")
-            // 6: Current Values (group box)
-            // 7: Preview (group box)
-            var mainLayout = new WinForms.TableLayoutPanel
+            // === layout ========================================================================
+            WinForms.TableLayoutPanel grid = new WinForms.TableLayoutPanel
             {
-                Dock = WinForms.DockStyle.Fill,
+                Dock        = WinForms.DockStyle.Fill,
                 ColumnCount = 2,
-                RowCount = 8,
-                Padding = new WinForms.Padding(10)
+                RowCount    = 8,
+                Padding     = new WinForms.Padding(8)
             };
-            mainLayout.ColumnStyles.Add(new WinForms.ColumnStyle(WinForms.SizeType.Absolute, 80));
-            mainLayout.ColumnStyles.Add(new WinForms.ColumnStyle(WinForms.SizeType.Percent, 100));
-            mainLayout.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Absolute, 30)); // Row 0: Find
-            mainLayout.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Absolute, 30)); // Row 1: Replace
-            mainLayout.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Absolute, 30)); // Row 2: Pattern
-            mainLayout.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Absolute, 20)); // Row 3: Pattern Hint
-            mainLayout.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Absolute, 30)); // Row 4: Math
-            mainLayout.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Absolute, 20)); // Row 5: Math Hint
-            mainLayout.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Percent, 45));  // Row 6: Current Values
-            mainLayout.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Percent, 45));  // Row 7: Preview
+            grid.ColumnStyles.Add(new WinForms.ColumnStyle(WinForms.SizeType.Absolute, 90));
+            grid.ColumnStyles.Add(new WinForms.ColumnStyle(WinForms.SizeType.Percent, 100));
+            for (int r = 0; r < 6; ++r)
+                grid.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Absolute, r % 2 == 0 ? 28 : 20));
+            grid.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Percent, 45));
+            grid.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Percent, 45));
 
-            // Row 0: Find field
-            var lblFind = new WinForms.Label
-            {
-                Text = "Find:",
-                TextAlign = Drawing.ContentAlignment.MiddleRight,
-                Dock = WinForms.DockStyle.Fill
-            };
-            mainLayout.Controls.Add(lblFind, 0, 0);
-            _txtFind = new WinForms.TextBox { Dock = WinForms.DockStyle.Fill };
-            mainLayout.Controls.Add(_txtFind, 1, 0);
+            // Find / Replace
+            grid.Controls.Add(MakeLabel("Find:"), 0, 0);
+            _txtFind    = MakeTextBox();
+            grid.Controls.Add(_txtFind, 1, 0);
 
-            // Row 1: Replace field
-            var lblReplace = new WinForms.Label
-            {
-                Text = "Replace:",
-                TextAlign = Drawing.ContentAlignment.MiddleRight,
-                Dock = WinForms.DockStyle.Fill
-            };
-            mainLayout.Controls.Add(lblReplace, 0, 1);
-            _txtReplace = new WinForms.TextBox { Dock = WinForms.DockStyle.Fill };
-            mainLayout.Controls.Add(_txtReplace, 1, 1);
+            grid.Controls.Add(MakeLabel("Replace:"), 0, 1);
+            _txtReplace = MakeTextBox();
+            grid.Controls.Add(_txtReplace, 1, 1);
 
-            // Row 2: Pattern field
-            var lblPattern = new WinForms.Label
-            {
-                Text = "Pattern:",
-                TextAlign = Drawing.ContentAlignment.MiddleRight,
-                Dock = WinForms.DockStyle.Fill
-            };
-            mainLayout.Controls.Add(lblPattern, 0, 2);
-            _txtPattern = new WinForms.TextBox { Dock = WinForms.DockStyle.Fill, Text = "{}" };
-            mainLayout.Controls.Add(_txtPattern, 1, 2);
+            // Pattern
+            grid.Controls.Add(MakeLabel("Pattern:"), 0, 2);
+            _txtPattern = MakeTextBox("{}");   // default
+            grid.Controls.Add(_txtPattern, 1, 2);
 
-            // Row 3: Pattern hint
-            var lblPatternHint = new WinForms.Label
-            {
-                Text = "Use {} to represent current value.",
-                Font = new Drawing.Font(this.Font, Drawing.FontStyle.Italic),
-                ForeColor = Drawing.Color.Gray,
-                Dock = WinForms.DockStyle.Fill
-            };
-            mainLayout.Controls.Add(lblPatternHint, 1, 3);
+            grid.Controls.Add(MakeHint("Use {} to represent current value."), 1, 3);
 
-            // Row 4: Math field (renamed from "Math Op" to "Math")
-            var lblMath = new WinForms.Label
-            {
-                Text = "Math:",
-                TextAlign = Drawing.ContentAlignment.MiddleRight,
-                Dock = WinForms.DockStyle.Fill
-            };
-            mainLayout.Controls.Add(lblMath, 0, 4);
-            _txtMathOperation = new WinForms.TextBox { Dock = WinForms.DockStyle.Fill };
-            mainLayout.Controls.Add(_txtMathOperation, 1, 4);
+            // Math
+            grid.Controls.Add(MakeLabel("Math:"), 0, 4);
+            _txtMath = MakeTextBox();
+            grid.Controls.Add(_txtMath, 1, 4);
 
-            // Row 5: Math hint
-            var lblMathHint = new WinForms.Label
-            {
-                Text = "Use x to represent current value (e.g., '2x', 'x/2', 'x+2', 'x-2', '-x').",
-                Font = new Drawing.Font(this.Font, Drawing.FontStyle.Italic),
-                ForeColor = Drawing.Color.Gray,
-                Dock = WinForms.DockStyle.Fill
-            };
-            mainLayout.Controls.Add(lblMathHint, 1, 5);
+            grid.Controls.Add(MakeHint("Use x to represent current value (e.g. 2x, x/2, x+3, -x)."), 1, 5);
 
-            // Row 6: Current Values
+            // Before / After preview
             _rtbBefore = new WinForms.RichTextBox { ReadOnly = true, Dock = WinForms.DockStyle.Fill };
-            var groupBefore = new WinForms.GroupBox { Text = "Current Values", Dock = WinForms.DockStyle.Fill };
-            groupBefore.Controls.Add(_rtbBefore);
-            mainLayout.Controls.Add(groupBefore, 0, 6);
-            mainLayout.SetColumnSpan(groupBefore, 2);
+            WinForms.GroupBox grpBefore = new WinForms.GroupBox { Text = "Current Values", Dock = WinForms.DockStyle.Fill };
+            grpBefore.Controls.Add(_rtbBefore);
+            grid.Controls.Add(grpBefore, 0, 6);
+            grid.SetColumnSpan(grpBefore, 2);
 
-            // Row 7: Preview
             _rtbAfter = new WinForms.RichTextBox { ReadOnly = true, Dock = WinForms.DockStyle.Fill };
-            var groupAfter = new WinForms.GroupBox { Text = "Preview", Dock = WinForms.DockStyle.Fill };
-            groupAfter.Controls.Add(_rtbAfter);
-            mainLayout.Controls.Add(groupAfter, 0, 7);
-            mainLayout.SetColumnSpan(groupAfter, 2);
+            WinForms.GroupBox grpAfter = new WinForms.GroupBox { Text = "Preview", Dock = WinForms.DockStyle.Fill };
+            grpAfter.Controls.Add(_rtbAfter);
+            grid.Controls.Add(grpAfter, 0, 7);
+            grid.SetColumnSpan(grpAfter, 2);
 
-            // Button Panel at the bottom.
-            var buttonPanel = new WinForms.Panel { Dock = WinForms.DockStyle.Bottom, Height = 40 };
-            var btnCancel = new WinForms.Button { Text = "Cancel", Size = new Drawing.Size(80, 30), DialogResult = WinForms.DialogResult.Cancel };
-            buttonPanel.Controls.Add(btnCancel);
-            btnCancel.Anchor = WinForms.AnchorStyles.Bottom | WinForms.AnchorStyles.Right;
-            var btnOk = new WinForms.Button { Text = "OK", Size = new Drawing.Size(80, 30), DialogResult = WinForms.DialogResult.OK };
-            buttonPanel.Controls.Add(btnOk);
-            btnOk.Anchor = WinForms.AnchorStyles.Bottom | WinForms.AnchorStyles.Right;
-            btnOk.Location = new Drawing.Point(buttonPanel.Width - btnOk.Width - 10, buttonPanel.Height - btnOk.Height - 5);
-            btnCancel.Location = new Drawing.Point(btnOk.Left - btnCancel.Width - 10, btnOk.Top);
+            // buttons
+            WinForms.FlowLayoutPanel buttons = new WinForms.FlowLayoutPanel
+            {
+                FlowDirection = WinForms.FlowDirection.RightToLeft,
+                Dock          = WinForms.DockStyle.Bottom,
+                Padding       = new WinForms.Padding(8)
+            };
 
-            // Update preview when any textbox changes.
-            _txtFind.TextChanged += UpdatePreview;
-            _txtReplace.TextChanged += UpdatePreview;
-            _txtPattern.TextChanged += UpdatePreview;
-            _txtMathOperation.TextChanged += UpdatePreview;
+            WinForms.Button btnOK     = new WinForms.Button { Text = "OK",     DialogResult = WinForms.DialogResult.OK };
+            WinForms.Button btnCancel = new WinForms.Button { Text = "Cancel", DialogResult = WinForms.DialogResult.Cancel };
+            buttons.Controls.Add(btnOK);
+            buttons.Controls.Add(btnCancel);
 
-            this.AcceptButton = btnOk;
-            this.CancelButton = btnCancel;
+            AcceptButton = btnOK;
+            CancelButton = btnCancel;
 
-            this.Controls.Add(mainLayout);
-            this.Controls.Add(buttonPanel);
+            // events
+            _txtFind.TextChanged    += (s, e) => RefreshPreview();
+            _txtReplace.TextChanged += (s, e) => RefreshPreview();
+            _txtPattern.TextChanged += (s, e) => RefreshPreview();
+            _txtMath.TextChanged    += (s, e) => RefreshPreview();
+
+            Controls.Add(grid);
+            Controls.Add(buttons);
         }
 
-        private void InitializeData()
+        private static WinForms.Label MakeLabel(string txt) =>
+            new WinForms.Label
+            {
+                Text      = txt,
+                TextAlign = Drawing.ContentAlignment.MiddleRight,
+                Dock      = WinForms.DockStyle.Fill
+            };
+
+        private static WinForms.TextBox MakeTextBox(string initial = "") =>
+            new WinForms.TextBox { Text = initial, Dock = WinForms.DockStyle.Fill };
+
+        private static WinForms.Label MakeHint(string txt) =>
+            new WinForms.Label
+            {
+                Text      = txt,
+                Dock      = WinForms.DockStyle.Fill,
+                ForeColor = Drawing.Color.Gray,
+                Font      = new Drawing.Font("Segoe UI", 8, Drawing.FontStyle.Italic)
+            };
+
+        private void LoadCurrentValues()
         {
-            foreach (var pv in _paramValues)
-                _rtbBefore.AppendText($"{pv.CurrentValue}{Environment.NewLine}");
-            UpdatePreview(this, EventArgs.Empty);
+            foreach (var pv in _paramVals)
+                _rtbBefore.AppendText(pv.CurrentValue + Environment.NewLine);
+
+            RefreshPreview();
         }
 
-        private void UpdatePreview(object sender, EventArgs e)
+        private void RefreshPreview()
         {
             _rtbAfter.Clear();
-            foreach (var pv in _paramValues)
+            foreach (var pv in _paramVals)
             {
-                string current = ApplyTransformations(pv.CurrentValue);
-                _rtbAfter.AppendText($"{current}{Environment.NewLine}");
-            }
-        }
+                string v = pv.CurrentValue;
 
-        private string ApplyTransformations(string input)
-        {
-            string output = input;
-            if (!string.IsNullOrEmpty(FindText))
-            {
-                output = output.Replace(FindText, ReplaceText);
+                // Apply same transformations as helper
+                if (!string.IsNullOrEmpty(FindText))
+                    v = v.Replace(FindText, ReplaceText);
+                else if (!string.IsNullOrEmpty(ReplaceText))
+                    v = ReplaceText;
+
+                if (!string.IsNullOrEmpty(PatternText))
+                    v = PatternText.Replace("{}", v);
+
+                if (!string.IsNullOrEmpty(MathOperationText))
+                {
+                    if (double.TryParse(v, NumberStyles.Any, CultureInfo.InvariantCulture, out double n))
+                        v = ParameterRenamerHelper.ApplyMathOperation(n, MathOperationText).ToString(CultureInfo.InvariantCulture);
+                    else
+                        v = ParameterRenamerHelper.ApplyMathToNumbersInString(v, MathOperationText);
+                }
+
+                _rtbAfter.AppendText(v + Environment.NewLine);
             }
-            else if (!string.IsNullOrEmpty(ReplaceText))
-            {
-                output = ReplaceText;
-            }
-            if (!string.IsNullOrEmpty(PatternText))
-            {
-                output = PatternText.Replace("{}", output);
-            }
-            if (!string.IsNullOrEmpty(MathOperationText) &&
-                double.TryParse(output, NumberStyles.Any, CultureInfo.InvariantCulture, out double x))
-            {
-                double result = ParameterRenamerHelper.ApplyMathOperation(x, MathOperationText);
-                output = result.ToString(CultureInfo.InvariantCulture);
-            }
-            return output;
         }
     }
 
-    /// <summary>
-    /// Command for renaming instance parameters of selected elements.
-    /// </summary>
+    // =============================================================================================
+    // 3. External command – rename instance parameters of selection
+    // =============================================================================================
     [Transaction(TransactionMode.Manual)]
     public class RenameInstanceParametersOfSelectedElements : IExternalCommand
     {
-        public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
+        public Result Execute(ExternalCommandData cData, ref string msg, ElementSet set)
         {
-            UIApplication uiApp = commandData.Application;
-            UIDocument uiDoc = uiApp.ActiveUIDocument;
-            Document doc = uiDoc.Document;
-            var selectedIds = uiDoc.Selection.GetElementIds();
-            if (selectedIds.Count == 0)
-            {
-                WinForms.MessageBox.Show("Please select elements first.", "Error");
-                return Result.Cancelled;
-            }
-            var selectedElements = selectedIds
-                .Cast<ElementId>()
-                .Select(id => doc.GetElement(id))
-                .Where(e => e != null)
-                .ToList();
-            return ParameterRenamerHelper.RenameParameters(doc, selectedElements, includeTypeName: false);
-        }
-    }
+            UIDocument uiDoc = cData.Application.ActiveUIDocument;
+            Document   doc   = uiDoc.Document;
 
-    /// <summary>
-    /// Command for renaming type parameters of selected elements (or types).
-    /// In addition to the editable type parameters, this command now displays a transposed grid:
-    /// each row shows a parameter (with its Group and Name) and each additional column shows the value
-    /// for a given family type. The rows are sorted first by Group then by Name.
-    /// After the grid selection, the same renaming dialog (with preview, find/replace, pattern, and math) is shown.
-    /// </summary>
-    [Transaction(TransactionMode.Manual)]
-    public class RenameTypeParametersOfSelectedElements : IExternalCommand
-    {
-        public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
-        {
-            UIApplication uiApp = commandData.Application;
-            UIDocument uiDoc = uiApp.ActiveUIDocument;
-            Document doc = uiDoc.Document;
-            var selectedIds = uiDoc.Selection.GetElementIds();
-            if (selectedIds.Count == 0)
+            IList<ElementId> selIds = uiDoc.Selection.GetElementIds().ToList();
+            if (selIds.Count == 0)
             {
-                WinForms.MessageBox.Show("Please select elements or types first.", "Error");
+                WinForms.MessageBox.Show("Please select elements first.");
                 return Result.Cancelled;
             }
-            var selectedElements = selectedIds
-                .Cast<ElementId>()
-                .Select(id => doc.GetElement(id))
-                .Where(e => e != null)
-                .ToList();
-            var typeElements = new List<Element>();
-            foreach (var elem in selectedElements)
-            {
-                if (elem is ElementType)
-                    typeElements.Add(elem);
-                else
-                {
-                    Element typeElem = doc.GetElement(elem.GetTypeId());
-                    if (typeElem != null)
-                        typeElements.Add(typeElem);
-                }
-            }
-            typeElements = typeElements.GroupBy(e => e.Id).Select(g => g.First()).ToList();
-            if (typeElements.Count == 0)
-            {
-                WinForms.MessageBox.Show("No type elements found in selection.", "Error");
-                return Result.Cancelled;
-            }
-            return ParameterRenamerHelper.RenameParameters(doc, typeElements, includeTypeName: true);
+
+            List<Element> elems = selIds
+                                  .Select(id => doc.GetElement(id))
+                                  .Where(e => e != null)
+                                  .ToList();
+
+            return ParameterRenamerHelper.RenameInstanceParameters(doc, elems);
         }
     }
 }

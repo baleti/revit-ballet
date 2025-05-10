@@ -202,7 +202,6 @@
     <Compile Include="revit-scripts\ExportSchedule.cs" />
     <Compile Include="revit-scripts\ExportViewTemplatesToRvt.cs" />
     <Compile Include="revit-scripts\ListSheetsByDetailItemSelected.cs" />
-    <Compile Include="revit-scripts\IncrementSheetNumbers.cs" />
     <Compile Include="revit-scripts\InvokeAddinCommand.cs" />
     <Compile Include="revit-scripts\InvokeRevitCommand.cs" />
     <Compile Include="revit-scripts\ListChildViews.cs" />
