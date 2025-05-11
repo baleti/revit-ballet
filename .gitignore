@@ -18,7 +18,7 @@ obj/
 *.log
 
 # Revit specific
-*.addin
+#*.addin
 Revit_addins/
 
 # NuGet packages
