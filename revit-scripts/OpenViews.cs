@@ -8,71 +8,75 @@ using Autodesk.Revit.UI;
 [Regeneration(RegenerationOption.Manual)]
 public class OpenViews : IExternalCommand
 {
-    public class ViewInfo
-    {
-        public string Title { get; set; }
-        public string SheetFolder { get; set; }
-        public View RevitView { get; set; }
-    }
-
-    public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
+    public Result Execute(
+        ExternalCommandData commandData,
+        ref string message,
+        ElementSet elements)
     {
         UIDocument uidoc = commandData.Application.ActiveUIDocument;
-        Document doc = uidoc.Document;
-        View activeView = uidoc.ActiveView;
+        Document   doc   = uidoc.Document;
+        View       activeView = uidoc.ActiveView;
 
+        // ─────────────────────────────────────────────────────────────
+        // 1. Collect every non-template, non-browser view (incl. sheets)
+        // ─────────────────────────────────────────────────────────────
         List<View> allViews = new FilteredElementCollector(doc)
             .OfClass(typeof(View))
             .Cast<View>()
-            .Where(v => !v.IsTemplate && v.Title != "Project Browser" && v.Title != "System Browser")
+            .Where(v =>
+                   !v.IsTemplate &&
+                   v.ViewType != ViewType.ProjectBrowser &&
+                   v.ViewType != ViewType.SystemBrowser)
             .OrderBy(v => v.Title)
             .ToList();
 
-        List<ViewInfo> viewInfoList = allViews.Select(v =>
-        {
-            Parameter sheetFolderParam = v.LookupParameter("Sheet Folder");
-            string sheetFolderValue = sheetFolderParam?.AsString() ?? string.Empty;
-            return new ViewInfo
-            {
-                Title = v.Title,
-                SheetFolder = sheetFolderValue,
-                RevitView = v
-            };
-        }).ToList();
+        // ─────────────────────────────────────────────────────────────
+        // 2. Prepare data for the grid
+        //    • one Dictionary per row
+        //    • map title → view so we can open it later
+        // ─────────────────────────────────────────────────────────────
+        List<Dictionary<string, object>> gridData =
+            new List<Dictionary<string, object>>();
+        Dictionary<string, View> titleToView = new Dictionary<string, View>();
 
-        int selectedIndex = -1;
-        if (activeView is ViewSheet)
+        foreach (View v in allViews)
         {
-            selectedIndex = viewInfoList.FindIndex(v => v.RevitView.Id == activeView.Id);
+            string sheetFolder =
+                v.LookupParameter("Sheet Folder")?.AsString() ?? string.Empty;
+
+            gridData.Add(new Dictionary<string, object>
+            {
+                { "Title",       v.Title },
+                { "SheetFolder", sheetFolder }
+            });
+
+            // (assumes titles are unique; adjust if your projects break that rule)
+            titleToView[v.Title] = v;
         }
-        else
-        {
-            var viewports = new FilteredElementCollector(doc)
-                .OfClass(typeof(Viewport))
-                .Cast<Viewport>()
-                .Where(vp => vp.ViewId == activeView.Id)
-                .ToList();
 
-            if (viewports.Any())
+        // Column headers in the order you want them shown
+        List<string> columns = new List<string> { "Title", "SheetFolder" };
+
+        // ─────────────────────────────────────────────────────────────
+        // 3. Show the grid.  (false = do NOT span across all screens)
+        // ─────────────────────────────────────────────────────────────
+        List<Dictionary<string, object>> selectedRows =
+            CustomGUIs.DataGrid(gridData, columns, false);
+
+        if (selectedRows != null && selectedRows.Any())
+        {
+            // Open every selected view (sheet or model view)
+            foreach (Dictionary<string, object> row in selectedRows)
             {
-                ViewSheet containingSheet = doc.GetElement(viewports.First().SheetId) as ViewSheet;
-                if (containingSheet != null)
+                string title = row["Title"].ToString();
+                if (titleToView.TryGetValue(title, out View view))
                 {
-                    selectedIndex = viewInfoList.FindIndex(v => v.RevitView.Id == containingSheet.Id);
+                    uidoc.RequestViewChange(view);
                 }
             }
-            else
-            {
-                selectedIndex = viewInfoList.FindIndex(v => v.RevitView.Id == activeView.Id);
-            }
         }
 
-        List<int> initialSelectionIndices = selectedIndex >= 0 ? new List<int> { selectedIndex } : new List<int>();
-        List<string> properties = new List<string> { "Title", "SheetFolder" };
-        
-        var selectedItems = CustomGUIs.DataGrid<ViewInfo>(viewInfoList, properties, initialSelectionIndices);
-        selectedItems.ForEach(vInfo => uidoc.RequestViewChange(vInfo.RevitView));
-        
+        // match original behaviour – always return Succeeded
         return Result.Succeeded;
     }
 }
