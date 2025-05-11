@@ -6,7 +6,7 @@
   <ShortcutItem CommandName="Select elements by face" CommandId="ID_TOGGLE_ALLOW_FACE_SELECTION" Paths="Create&gt;Select; Insert&gt;Select; Annotate&gt;Select; View&gt;Select; Manage&gt;Select; Add-Ins&gt;Select; Modify&gt;Select; Architecture&gt;Select; Structure&gt;Select; Steel&gt;Select; Systems&gt;Select; Analyze&gt;Select; Massing &amp; Site&gt;Select; Collaborate&gt;Select; Contextual Tabs&gt;Select" />
   <ShortcutItem CommandName="Drag elements on selection" CommandId="ID_TOGGLE_ALLOW_DRAG_ON_SELECTION" Paths="Create&gt;Select; Insert&gt;Select; Annotate&gt;Select; View&gt;Select; Manage&gt;Select; Add-Ins&gt;Select; Modify&gt;Select; Architecture&gt;Select; Structure&gt;Select; Steel&gt;Select; Systems&gt;Select; Analyze&gt;Select; Massing &amp; Site&gt;Select; Collaborate&gt;Select; Contextual Tabs&gt;Select" />
   <ShortcutItem CommandName="Type Properties" CommandId="ID_EDIT_TYPE" Shortcuts="ET" Paths="Create&gt;Properties; Modify&gt;Properties" />
-  <ShortcutItem CommandName="Properties" CommandId="ID_TOGGLE_PROPERTIES_PALETTE" Shortcuts="PP#Ctrl+1#VP" Paths="Create&gt;Properties; View&gt;Windows; Modify&gt;Properties; Contextual Tabs&gt;Properties" />
+  <ShortcutItem CommandName="Properties" CommandId="ID_TOGGLE_PROPERTIES_PALETTE" Shortcuts="Ctrl+1#VP" Paths="Create&gt;Properties; View&gt;Windows; Modify&gt;Properties; Contextual Tabs&gt;Properties" />
   <ShortcutItem CommandName="Family Category and Parameters" CommandId="ID_OBJECTS_FAMILYHOST" Paths="Create&gt;Properties; Modify&gt;Properties" />
   <ShortcutItem CommandName="Family Types" CommandId="ID_FAMILY_TYPE" Shortcuts="FT" Paths="Create&gt;Properties; Modify&gt;Properties" />
   <ShortcutItem CommandName="Solid Extrusion" CommandId="ID_OBJECTS_EXTRUSION" Shortcuts="EX" Paths="Create&gt;Forms" />
@@ -14,7 +14,7 @@
   <ShortcutItem CommandName="Solid Revolve" CommandId="ID_OBJECTS_REVOLUTION" Paths="Create&gt;Forms" />
   <ShortcutItem CommandName="Solid Sweep" CommandId="ID_OBJECTS_SWEEP" Paths="Create&gt;Forms" />
   <ShortcutItem CommandName="Solid Swept Blend" CommandId="ID_OBJECTS_SWEPTBLEND" Paths="Create&gt;Forms" />
-  <ShortcutItem CommandName="Void Forms:Void Extrusion" CommandId="ID_OBJECTS_EXTRUSION_CUT" Paths="Create&gt;Forms" />
+  <ShortcutItem CommandName="Void Forms:Void Extrusion" CommandId="ID_OBJECTS_EXTRUSION_CUT" Shortcuts="VE" Paths="Create&gt;Forms" />
   <ShortcutItem CommandName="Void Forms:Void Blend" CommandId="ID_OBJECTS_BLEND_CUT" Paths="Create&gt;Forms" />
   <ShortcutItem CommandName="Void Forms:Void Revolve" CommandId="ID_OBJECTS_REVOLUTION_CUT" Paths="Create&gt;Forms" />
   <ShortcutItem CommandName="Void Forms:Void Sweep" CommandId="ID_OBJECTS_SWEEP_CUT" Paths="Create&gt;Forms" />
@@ -108,7 +108,7 @@
   <ShortcutItem CommandName="Tile Views" CommandId="ID_WINDOW_TILE_VERT" Paths="View&gt;Windows" />
   <ShortcutItem CommandName="ViewCube" CommandId="ID_SHOW_VIEWCUBE" Paths="View&gt;Windows" />
   <ShortcutItem CommandName="Navigation Bar" CommandId="ID_NAVIGATION_BAR" Paths="View&gt;Windows" />
-  <ShortcutItem CommandName="Project Browser" CommandId="ID_VIEW_PROJECTEXPLORER" Shortcuts="BB" Paths="View&gt;Windows" />
+  <ShortcutItem CommandName="Project Browser" CommandId="ID_VIEW_PROJECTEXPLORER" Shortcuts="BB#Ctrl+2" Paths="View&gt;Windows" />
   <ShortcutItem CommandName="System Browser" CommandId="ID_RBS_SYSTEM_NAVIGATOR" Shortcuts="Fn9" Paths="View&gt;Windows" />
   <ShortcutItem CommandName="MEP Fabrication Parts; Fabrication Part" CommandId="ID_TOGGLE_FABPART_BROWSER" Shortcuts="PB" Paths="View&gt;Windows; Systems&gt;Fabrication" />
   <ShortcutItem CommandName="P&amp;ID Modeler" CommandId="ID_MEP_TOGGLE_PNID_BROWSER" Paths="View&gt;Windows" />
@@ -151,40 +151,32 @@
   <ShortcutItem CommandName="Macro Security" CommandId="ID_TOOLS_MACROSECURITY" Paths="Manage&gt;Macros" />
   <ShortcutItem CommandName="Dynamo" CommandId="ID_VISUAL_PROGRAMMING_DYNAMO" Paths="Manage&gt;Visual Programming" />
   <ShortcutItem CommandName="Dynamo Player" CommandId="ID_PLAYLIST_DYNAMO" Paths="Manage&gt;Visual Programming" />
+  <ShortcutItem CommandName="External Tools:SwitchPhase" CommandId="e38b4b7b-5a67-49af-b819-ecaa9752578e" Shortcuts="P[" Paths="Add-Ins&gt;External" />
+  <ShortcutItem CommandName="External Tools:SwitchToLastPhase" CommandId="e38b4b7b-6a67-49af-b819-ecaa9752578e" Shortcuts="PP" Paths="Add-Ins&gt;External" />
   <ShortcutItem CommandName="External Tools:SwitchToLastView" CommandId="e19b084b-4a63-10af-a876-ec308252335e" Shortcuts="WE" Paths="Add-Ins&gt;External" />
   <ShortcutItem CommandName="External Tools:SwitchViewByHistory" CommandId="e19b084b-4a63-94af-a876-ec308252335e" Shortcuts="WR" Paths="Add-Ins&gt;External" />
   <ShortcutItem CommandName="External Tools:SwitchView" CommandId="e19b084b-4a63-84af-a876-ec308252335e" Shortcuts="WW" Paths="Add-Ins&gt;External" />
   <ShortcutItem CommandName="External Tools:CloseCurrentView" CommandId="e19b494b-4a63-44af-a876-ec308252335e" Shortcuts="WQ" Paths="Add-Ins&gt;External" />
   <ShortcutItem CommandName="External Tools:CloseViews" CommandId="e19b494b-4a63-47af-a876-ec308252335e" Shortcuts="WC" Paths="Add-Ins&gt;External" />
-  <ShortcutItem CommandName="External Tools:FamilyReferences" CommandId="e19b494b-4a63-45af-a876-ec308252335e" Paths="Add-Ins&gt;External" />
-  <ShortcutItem CommandName="External Tools:CopyStructuralFoundationsFromLinkedModel" CommandId="e39b494b-4a63-45af-a876-ec308252335e" Paths="Add-Ins&gt;External" />
-  <ShortcutItem CommandName="External Tools:CutGeometryWithGroup" CommandId="e39b494b-4a63-45af-a876-ec308252535e" Paths="Add-Ins&gt;External" />
-  <ShortcutItem CommandName="External Tools:SynchronizeViews" CommandId="e39b494b-4a63-45af-b876-ec308252535e" Shortcuts="AA" Paths="Add-Ins&gt;External" />
   <ShortcutItem CommandName="External Tools:SelectAllElementsInView" CommandId="e39b494b-4a63-45af-b876-ec508252535e" Shortcuts="Ctrl+A" Paths="Add-Ins&gt;External" />
   <ShortcutItem CommandName="External Tools:SelectAllElementsInViewAndInGroups" CommandId="e39b494b-4a63-45af-b876-ec50875257be" Shortcuts="Ctrl+Alt+A" Paths="Add-Ins&gt;External" />
   <ShortcutItem CommandName="External Tools:SelectCategoriesInProject" CommandId="e39b499b-4a63-45af-b876-ea508752535e" Shortcuts="SCA" Paths="Add-Ins&gt;External" />
   <ShortcutItem CommandName="External Tools:SelectCategoriesInView" CommandId="e39b494b-4a63-45af-b876-ea508752535e" Shortcuts="SCV" Paths="Add-Ins&gt;External" />
-  <ShortcutItem CommandName="External Tools:ToggleLevels2D" CommandId="e39b494b-4a63-45af-b876-ec508752535e" Paths="Add-Ins&gt;External" />
   <ShortcutItem CommandName="External Tools:OpenViews" CommandId="e39b494b-4a63-45af-b876-ec508752575e" Shortcuts="WO" Paths="Add-Ins&gt;External" />
-  <ShortcutItem CommandName="External Tools:ExportViewTemplatesToRvt" CommandId="e39b494b-4a63-45af-b876-ec508752578e" Paths="Add-Ins&gt;External" />
-  <ShortcutItem CommandName="External Tools:ListSelectedElements" CommandId="e39b494b-4a63-451f-b876-ec508752578e" Shortcuts="ES" Paths="Add-Ins&gt;External" />
-  <ShortcutItem CommandName="External Tools:ListAllElementsInView" CommandId="e39b494b-4a63-45af-b879-ec508752578e" Paths="Add-Ins&gt;External" />
-  <ShortcutItem CommandName="External Tools:ListAllElementsInViewWithParameters" CommandId="e39b494b-4a63-45af-b879-ec509752578e" Paths="Add-Ins&gt;External" />
-  <ShortcutItem CommandName="External Tools:ListSelectedElementsWithParameters" CommandId="e39b494b-4a63-451f-b876-ec508752578f" Shortcuts="EP" Paths="Add-Ins&gt;External" />
-  <ShortcutItem CommandName="External Tools:ListSelectedElementsWithParametersSpanAllScreens" CommandId="e39b494b-4a63-45af-b871-ec508752578e" Shortcuts="EA" Paths="Add-Ins&gt;External" />
-  <ShortcutItem CommandName="External Tools:SelectLinkedModels" CommandId="e39b494b-4a63-45af-b879-ec5a8752578e" Shortcuts="SEL" Paths="Add-Ins&gt;External" />
+  <ShortcutItem CommandName="External Tools:FilterSelectedElements" CommandId="e39b494b-4a63-451f-b876-ec508752578f" Shortcuts="EP" Paths="Add-Ins&gt;External" />
+  <ShortcutItem CommandName="External Tools:FilterSelectedElementsSpanAllScreens" CommandId="e39b494b-4a63-45af-b871-ec508752578e" Shortcuts="EA" Paths="Add-Ins&gt;External" />
   <ShortcutItem CommandName="External Tools:ZoomSelected" CommandId="e39b4b4b-4a63-45af-b879-ec5a8752578e" Shortcuts="ZS" Paths="Add-Ins&gt;External" />
   <ShortcutItem CommandName="External Tools:InvokeAddinCommand" CommandId="e39b4b4b-4a63-48af-b879-ec5a8752578e" Shortcuts="Q`" Paths="Add-Ins&gt;External" />
   <ShortcutItem CommandName="External Tools:InvokeRevitCommand" CommandId="e39b4b4b-4a67-48af-b879-ec5a8752578e" Shortcuts="`" Paths="Add-Ins&gt;External" />
   <ShortcutItem CommandName="External Tools:InvokeLastAddinCommand" CommandId="e39b4b4b-4a67-48af-b879-ec5a9752578e" Shortcuts="QQ`" Paths="Add-Ins&gt;External" />
   <ShortcutItem CommandName="External Tools:OpenSheet" CommandId="e39b4b4b-4a68-48af-b879-ec5a9752578e" Paths="Add-Ins&gt;External" />
-  <ShortcutItem CommandName="External Tools:NewFamily" CommandId="e38b4b7b-4a67-49af-b819-ecaa9752578e" Shortcuts="NF" Paths="Add-Ins&gt;External" />
-  <ShortcutItem CommandName="Align Left" CommandId="CustomCtrl_%CustomCtrl_%Add-Ins%Align%alignLeftButton" Shortcuts="XX" Paths="Add-Ins&gt;Align" />
-  <ShortcutItem CommandName="Align Center" CommandId="CustomCtrl_%CustomCtrl_%Add-Ins%Align%alignCenterButton" Paths="Add-Ins&gt;Align" />
-  <ShortcutItem CommandName="Align Right" CommandId="CustomCtrl_%CustomCtrl_%Add-Ins%Align%alignRightButton" Paths="Add-Ins&gt;Align" />
-  <ShortcutItem CommandName="Align Top" CommandId="CustomCtrl_%CustomCtrl_%Add-Ins%Align%alignTopButton" Paths="Add-Ins&gt;Align" />
-  <ShortcutItem CommandName="Align Middle" CommandId="CustomCtrl_%CustomCtrl_%Add-Ins%Align%alignMiddleButton" Paths="Add-Ins&gt;Align" />
-  <ShortcutItem CommandName="Align Bottom" CommandId="CustomCtrl_%CustomCtrl_%Add-Ins%Align%alignBottomButton" Paths="Add-Ins&gt;Align" />
+  <ShortcutItem CommandName="External Tools:SelectViews" CommandId="e38b4b7b-4a67-49af-ba19-ecaa9752578e" Shortcuts="VS" Paths="Add-Ins&gt;External" />
+  <ShortcutItem CommandName="Align Left" CommandId="CustomCtrl_%CustomCtrl_%Add-Ins%Align%alignLeftButton" Shortcuts="AAL" Paths="Add-Ins&gt;Align" />
+  <ShortcutItem CommandName="Align Center" CommandId="CustomCtrl_%CustomCtrl_%Add-Ins%Align%alignCenterButton" Shortcuts="AAC" Paths="Add-Ins&gt;Align" />
+  <ShortcutItem CommandName="Align Right" CommandId="CustomCtrl_%CustomCtrl_%Add-Ins%Align%alignRightButton" Shortcuts="AAR" Paths="Add-Ins&gt;Align" />
+  <ShortcutItem CommandName="Align Top" CommandId="CustomCtrl_%CustomCtrl_%Add-Ins%Align%alignTopButton" Shortcuts="AAT" Paths="Add-Ins&gt;Align" />
+  <ShortcutItem CommandName="Align Middle" CommandId="CustomCtrl_%CustomCtrl_%Add-Ins%Align%alignMiddleButton" Shortcuts="AAM" Paths="Add-Ins&gt;Align" />
+  <ShortcutItem CommandName="Align Bottom" CommandId="CustomCtrl_%CustomCtrl_%Add-Ins%Align%alignBottomButton" Shortcuts="AAB" Paths="Add-Ins&gt;Align" />
   <ShortcutItem CommandName="DistributeHorizontally" CommandId="CustomCtrl_%CustomCtrl_%Add-Ins%Align%distributeHorizontallyButton" Paths="Add-Ins&gt;Align" />
   <ShortcutItem CommandName="DistributeVertically" CommandId="CustomCtrl_%CustomCtrl_%Add-Ins%Align%distributeVerticallyButton" Paths="Add-Ins&gt;Align" />
   <ShortcutItem CommandName="ArrangeTags" CommandId="CustomCtrl_%CustomCtrl_%Add-Ins%Align%ArrangeButton" Paths="Add-Ins&gt;Align" />
@@ -212,7 +204,7 @@
   <ShortcutItem CommandName="Views" CommandId="CustomCtrl_%CustomCtrl_%RTV Tools%RTV Xporter Export Shortcuts%Views" Paths="RTV Tools&gt;Export Shortcuts" />
   <ShortcutItem CommandName="Paste; Paste from Clipboard" CommandId="ID_EDIT_PASTE" Paths="Modify&gt;Clipboard" />
   <ShortcutItem CommandName="Paste:Aligned to Selected Levels" CommandId="ID_EDIT_PASTE_ALIGNED_LEVEL_BY_NAME" Shortcuts="VL" Paths="Modify&gt;Clipboard" />
-  <ShortcutItem CommandName="Paste:Aligned to Selected Views" CommandId="ID_EDIT_PASTE_ALIGNED_VIEWS_BY_NAME" Paths="Modify&gt;Clipboard" />
+  <ShortcutItem CommandName="Paste:Aligned to Selected Views" CommandId="ID_EDIT_PASTE_ALIGNED_VIEWS_BY_NAME" Shortcuts="VAV" Paths="Modify&gt;Clipboard" />
   <ShortcutItem CommandName="Paste:Aligned to Current View" CommandId="ID_EDIT_PASTE_ALIGNED" Shortcuts="Ctrl+Shift+V" Paths="Modify&gt;Clipboard" />
   <ShortcutItem CommandName="Paste:Aligned to Same Place" CommandId="ID_EDIT_PASTE_ALIGNED_SAME_PLACE" Shortcuts="Ctrl+Shift+Alt+V" Paths="Modify&gt;Clipboard" />
   <ShortcutItem CommandName="Paste:Aligned to Picked Level" CommandId="ID_EDIT_PASTE_ALIGNED_PICK_LEVEL" Paths="Modify&gt;Clipboard" />
@@ -241,7 +233,7 @@
   <ShortcutItem CommandName="Array" CommandId="ID_EDIT_CREATE_PATTERN" Shortcuts="AR" Paths="Modify&gt;Modify" />
   <ShortcutItem CommandName="Trim/Extend Single Element" CommandId="ID_TRIM_EXTEND_SINGLE" Shortcuts="TT" Paths="Modify&gt;Modify" />
   <ShortcutItem CommandName="Split with Gap" CommandId="ID_SPLIT_WITH_GAP" Paths="Modify&gt;Modify" />
-  <ShortcutItem CommandName="Scale" CommandId="ID_EDIT_SCALE" Shortcuts="RE" Paths="Modify&gt;Modify" />
+  <ShortcutItem CommandName="Scale" CommandId="ID_EDIT_SCALE" Paths="Modify&gt;Modify" />
   <ShortcutItem CommandName="Trim/Extend Multiple Elements" CommandId="ID_TRIM_EXTEND_MULTIPLE" Paths="Modify&gt;Modify" />
   <ShortcutItem CommandName="Unpin" CommandId="ID_UNLOCK_ELEMENTS" Shortcuts="UP" Paths="Modify&gt;Modify" />
   <ShortcutItem CommandName="Pin" CommandId="ID_LOCK_ELEMENTS" Shortcuts="PN" Paths="Modify&gt;Modify" />
@@ -279,7 +271,7 @@
   <ShortcutItem CommandName="Door" CommandId="ID_OBJECTS_DOOR" Shortcuts="DR" Paths="Architecture&gt;Build" />
   <ShortcutItem CommandName="Window" CommandId="ID_OBJECTS_WINDOW" Shortcuts="WN" Paths="Architecture&gt;Build" />
   <ShortcutItem CommandName="Component:Model In-Place" CommandId="ID_INPLACE_COMPONENT" Paths="Architecture&gt;Build; Structure&gt;Model; Systems&gt;Model" />
-  <ShortcutItem CommandName="Column; Structural Column" CommandId="ID_OBJECTS_STRUCTURAL_COLUMN" Shortcuts="CL" Paths="Architecture&gt;Build; Structure&gt;Structure" />
+  <ShortcutItem CommandName="Column; Structural Column" CommandId="ID_OBJECTS_STRUCTURAL_COLUMN" Paths="Architecture&gt;Build; Structure&gt;Structure" />
   <ShortcutItem CommandName="Column:Column: Architectural" CommandId="ID_OBJECTS_COLUMN" Paths="Architecture&gt;Build" />
   <ShortcutItem CommandName="Roof; Roof by Footprint" CommandId="ID_ROOF_FOOTPRINT" Paths="Architecture&gt;Build" />
   <ShortcutItem CommandName="Roof:Roof by Extrusion" CommandId="ID_ROOF_EXTRUSION" Paths="Architecture&gt;Build" />
@@ -374,7 +366,7 @@
   <ShortcutItem CommandName="P&amp;ID Modeler" CommandId="ID_MEP_PNID_MODELER" Paths="Systems&gt;P&amp;ID Collaboration" />
   <ShortcutItem CommandName="Mechanical Equipment" CommandId="ID_RBS_MECHANICAL_EQUIPMENT" Shortcuts="ME" Paths="Systems&gt;Mechanical" />
   <ShortcutItem CommandName="Mechanical Control Device" CommandId="ID_RBS_MECHANICAL_CONTROL_DEVICE" Paths="Systems&gt;Mechanical" />
-  <ShortcutItem CommandName="Pipe" CommandId="ID_RBS_PIPE_PIPE" Shortcuts="PI" Paths="Systems&gt;Plumbing &amp; Piping" />
+  <ShortcutItem CommandName="Pipe" CommandId="ID_RBS_PIPE_PIPE" Paths="Systems&gt;Plumbing &amp; Piping" />
   <ShortcutItem CommandName="Pipe Placeholder" CommandId="ID_PIPE_1LINE_PATH" Paths="Systems&gt;Plumbing &amp; Piping" />
   <ShortcutItem CommandName="Parallel Pipes" CommandId="ID_PARALLEL_PIPES" Paths="Systems&gt;Plumbing &amp; Piping" />
   <ShortcutItem CommandName="Pipe Fitting" CommandId="ID_RBS_PIPE_FITTING" Shortcuts="PF" Paths="Systems&gt;Plumbing &amp; Piping" />
@@ -578,8 +570,8 @@
   <ShortcutItem CommandName="Create Study" CommandId="ID_GENERATIVE_DESIGN_CREATE_STUDY" Paths="Manage&gt;Generative Design" />
   <ShortcutItem CommandName="Explore Outcomes" CommandId="ID_GENERATIVE_DESIGN_EXPLORE_OUTCOMES" Paths="Manage&gt;Generative Design" />
   <ShortcutItem CommandName="Phases" CommandId="ID_SETTINGS_PHASES" Paths="Manage&gt;Phasing" />
-  <ShortcutItem CommandName="Save Selection" CommandId="ID_FILTERS_SELECTION_SAVE" Paths="Manage&gt;Selection; Contextual Tabs&gt;Selection" />
-  <ShortcutItem CommandName="Load Selection" CommandId="ID_RETRIEVE_FILTERS" Paths="Manage&gt;Selection; Contextual Tabs&gt;Selection" />
+  <ShortcutItem CommandName="Save Selection" CommandId="ID_FILTERS_SELECTION_SAVE" Shortcuts="XS" Paths="Manage&gt;Selection; Contextual Tabs&gt;Selection" />
+  <ShortcutItem CommandName="Load Selection" CommandId="ID_RETRIEVE_FILTERS" Shortcuts="XL" Paths="Manage&gt;Selection; Contextual Tabs&gt;Selection" />
   <ShortcutItem CommandName="Edit Selection" CommandId="ID_EDIT_SELECTIONS" Paths="Manage&gt;Selection; Contextual Tabs&gt;Selection" />
   <ShortcutItem CommandName="Join:Switch Join Order" CommandId="ID_SWITCH_JOIN_ORDER_EDITOR" Paths="Modify&gt;Geometry" />
   <ShortcutItem CommandName="Join/Unjoin Roof" CommandId="ID_JOIN_ROOF" Paths="Modify&gt;Geometry" />
@@ -631,7 +623,7 @@
   <ShortcutItem CommandName="Cancel" CommandId="ID_DISPLACEMENT_CANCEL_EDIT" Paths="Contextual Tabs&gt;Edit Displacement Set" />
   <ShortcutItem CommandName="Edit Base" CommandId="ID_EDIT_BLEND_BASE" Paths="Contextual Tabs&gt;Mode" />
   <ShortcutItem CommandName="Edit Vertices" CommandId="ID_EDIT_VERTEX_CONNECTIONS" Paths="Contextual Tabs&gt;Mode; Contextual Tabs&gt;Sweep; Contextual Tabs&gt;Swept Blend" />
-  <ShortcutItem CommandName="Pick New Host; Pick New Host" CommandId="ID_RAILING_SET_HOST" Paths="Contextual Tabs&gt;Tools" />
+  <ShortcutItem CommandName="Pick New Host; Pick New Host" CommandId="ID_RAILING_SET_HOST" Shortcuts="PI" Paths="Contextual Tabs&gt;Tools" />
   <ShortcutItem CommandName="Edit  Joins" CommandId="ID_RAILING_EDIT_JOINS" Paths="Contextual Tabs&gt;Tools" />
   <ShortcutItem CommandName="Preview" CommandId="ID_RAILING_EDIT_MODE_TOGGLE_PREVIEW" Paths="Contextual Tabs&gt;Options" />
   <ShortcutItem CommandName="Cancel Edit Mode" CommandId="ID_RAILPATH_EDITMODE_QUIT" Paths="Contextual Tabs&gt;Mode" />
@@ -853,8 +845,8 @@
   <ShortcutItem CommandName="Reset Shape" CommandId="ID_OBJECTS_PARTS_RESET" Paths="Contextual Tabs&gt;Part" />
   <ShortcutItem CommandName="Divide Parts" CommandId="ID_OBJECTS_DIVIDE" Paths="Contextual Tabs&gt;Part" />
   <ShortcutItem CommandName="Merge Parts" CommandId="ID_OBJECTS_MERGE" Paths="Contextual Tabs&gt;Part" />
-  <ShortcutItem CommandName="Select Host" CommandId="ID_SELECT_HOST" Paths="Contextual Tabs&gt;Host" />
-  <ShortcutItem CommandName="Pick New Host" CommandId="ID_PICK_HOST_IND_TAG" Paths="Contextual Tabs&gt;Host" />
+  <ShortcutItem CommandName="Select Host" CommandId="ID_SELECT_HOST" Shortcuts="SH" Paths="Contextual Tabs&gt;Host" />
+  <ShortcutItem CommandName="Pick New Host" CommandId="ID_PICK_HOST_IND_TAG" Shortcuts="PI" Paths="Contextual Tabs&gt;Host" />
   <ShortcutItem CommandName="Divide Surface" CommandId="ID_OBJECTS_DIVIDED_SURFACE" Shortcuts="//" Paths="Contextual Tabs&gt;Divide" />
   <ShortcutItem CommandName="Divide Path" CommandId="ID_DIVIDE_PATH" Paths="Contextual Tabs&gt;Divide" />
   <ShortcutItem CommandName="Edit Rail" CommandId="ID_EDIT_CONTINUOUS_RAIL" Paths="Contextual Tabs&gt;Continuous Rail" />
@@ -930,7 +922,7 @@
   <ShortcutItem CommandName="Align Right" CommandId="ID_ALIGN_RIGHT" Paths="Contextual Tabs&gt;Alignment" />
   <ShortcutItem CommandName="Show border when editing" CommandId="ID_TEXTEDITOR_SHOWBORDER" Paths="Contextual Tabs&gt;Text; Contextual Tabs&gt;Edit Text; Text Editor" />
   <ShortcutItem CommandName="Show opaque background when editing" CommandId="ID_TEXTEDITOR_SHOWOPAQUEBK" Paths="Contextual Tabs&gt;Text; Contextual Tabs&gt;Edit Text; Text Editor" />
-  <ShortcutItem CommandName="Pick New Host" CommandId="ID_CONNECTOR_PICK_HOST" Paths="Contextual Tabs&gt;Host" />
+  <ShortcutItem CommandName="Pick New Host" CommandId="ID_CONNECTOR_PICK_HOST" Shortcuts="PI" Paths="Contextual Tabs&gt;Host" />
   <ShortcutItem CommandName="Edit System" CommandId="ID_MECHANICAL_EQUIPMENT_SET_EDIT_SYSTEM" Paths="Contextual Tabs&gt;System Tools" />
   <ShortcutItem CommandName="Add Separation" CommandId="ID_MEP_HYDRAULIC_SEPARATION" Paths="Contextual Tabs&gt;Hydraulic Separation" />
   <ShortcutItem CommandName="Remove Separation" CommandId="ID_REMOVE_HYDRAULIC_SEPARATION" Paths="Contextual Tabs&gt;Hydraulic Separation" />
@@ -974,8 +966,8 @@
   <ShortcutItem CommandName="Tag Rebar" CommandId="ID_BENDING_DETAIL_TAG_REBAR" Paths="Contextual Tabs&gt;Tag" />
   <ShortcutItem CommandName="Align to Bar" CommandId="ID_BENDING_DETAIL_ORTHO_PLACEMENT" Paths="Contextual Tabs&gt;Mode" />
   <ShortcutItem CommandName="Parallel To View" CommandId="ID_BENDING_DETAIL_PARALLEL_TO_VIEW" Paths="Contextual Tabs&gt;Mode" />
-  <ShortcutItem CommandName="Select Host" CommandId="ID_BENDING_DETAIL_SELECT_HOST" Paths="Contextual Tabs&gt;Host" />
-  <ShortcutItem CommandName="Pick New Host" CommandId="ID_BENDING_DETAIL_PICK_HOST" Paths="Contextual Tabs&gt;Host" />
+  <ShortcutItem CommandName="Select Host" CommandId="ID_BENDING_DETAIL_SELECT_HOST" Shortcuts="SH" Paths="Contextual Tabs&gt;Host" />
+  <ShortcutItem CommandName="Pick New Host" CommandId="ID_BENDING_DETAIL_PICK_HOST" Shortcuts="PI" Paths="Contextual Tabs&gt;Host" />
   <ShortcutItem CommandName="Select Multiple" CommandId="ID_BENDING_DETAIL_SELECT_MULTIPLE" Paths="Contextual Tabs&gt;Multiple Selection" />
   <ShortcutItem CommandName="Clear Selection" CommandId="ID_BENDING_DETAIL_CLEAR_SELECTION" Paths="Contextual Tabs&gt;Multiple Selection" />
   <ShortcutItem CommandName="Create Details" CommandId="ID_BENDING_DETAIL_CREATE_MULTIPLE" Paths="Contextual Tabs&gt;Multiple Selection" />
@@ -1121,7 +1113,7 @@
   <ShortcutItem CommandName="Place on Face" CommandId="Dialog_Essentials_RbsConnectorPlacementBar:Control_Essentials_PlaceByXface" Paths="Contextual Tabs&gt;Placement" />
   <ShortcutItem CommandName="Place on Work Plane" CommandId="Dialog_Essentials_RbsConnectorPlacementBar:Control_Essentials_PlaceByWorkplane" Paths="Contextual Tabs&gt;Placement" />
   <ShortcutItem CommandName="Coordination Review" CommandId="ID_RECONCILE_CURRENT_LINK" Paths="Contextual Tabs&gt;Monitor" />
-  <ShortcutItem CommandName="Pick New Host" CommandId="ID_POINTELEMENT_REHOST" Paths="Contextual Tabs&gt;Host" />
+  <ShortcutItem CommandName="Pick New Host" CommandId="ID_POINTELEMENT_REHOST" Shortcuts="PI" Paths="Contextual Tabs&gt;Host" />
   <ShortcutItem CommandName="Bind Link" CommandId="ID_BIND_LINK_AS_GROUP" Paths="Contextual Tabs&gt;Link" />
   <ShortcutItem CommandName="Split Segment" CommandId="Dialog_Essentials_SectionBar:Control_Essentials_SplitSectionSegment" Paths="Contextual Tabs&gt;Section" />
   <ShortcutItem CommandName="Edit Sketch; Edit Boundary; Edit Footprint; Edit Path; Edit Pattern Boundary" CommandId="Dialog_Essentials_SketchEdit:Control_Essentials_EditSketch" Paths="Contextual Tabs&gt;Mode" />
@@ -1137,13 +1129,13 @@
   <ShortcutItem CommandName="Controls on Base" CommandId="IDC_VTX_CTRL_ON_LOOP_0" Paths="Contextual Tabs&gt;Vertex Connect" />
   <ShortcutItem CommandName="Controls on Top" CommandId="IDC_VTX_CTRL_ON_LOOP_1" Paths="Contextual Tabs&gt;Vertex Connect" />
   <ShortcutItem CommandName="Finish Walkthrough" CommandId="ID_CANCEL_EDITOR" Shortcuts="FS" Paths="Contextual Tabs&gt;Walkthrough" />
-  <ShortcutItem CommandName="Pick New Host" CommandId="ID_EDIT_INSERT_REHOST" Paths="Contextual Tabs&gt;Host" />
+  <ShortcutItem CommandName="Pick New Host" CommandId="ID_EDIT_INSERT_REHOST" Shortcuts="PI" Paths="Contextual Tabs&gt;Host" />
   <ShortcutItem CommandName="Edit In-Place" CommandId="ID_EDIT_INPLACE_FAMILY" Paths="Contextual Tabs&gt;Model" />
   <ShortcutItem CommandName="Edit In-Place RvtLink" CommandId="Dialog_Family_FamInstDbarRvtLink:Control_Family_EditInplaceFamRvtLink" Paths="Contextual Tabs&gt;Model1" />
   <ShortcutItem CommandName="Pick New Work Plane" CommandId="Dialog_Family_FamInstGridDbar:Control_Family_PickHost" Paths="Contextual Tabs&gt;Work Plane" />
   <ShortcutItem CommandName="Add Leader" CommandId="ID_FAMINST_ADDLEADER" Paths="Contextual Tabs&gt;Leader" />
   <ShortcutItem CommandName="Remove Leader" CommandId="ID_FAMINST_RMVLEADER" Paths="Contextual Tabs&gt;Leader" />
-  <ShortcutItem CommandName="Pick New Host" CommandId="Dialog_Family_FamInstOffsetDbar:Control_Family_PickHost" Paths="Contextual Tabs&gt;Host" />
+  <ShortcutItem CommandName="Pick New Host" CommandId="Dialog_Family_FamInstOffsetDbar:Control_Family_PickHost" Shortcuts="PI" Paths="Contextual Tabs&gt;Host" />
   <ShortcutItem CommandName="Model In-place" CommandId="Dialog_Family_ManyInstDbar:Control_Family_NewInplaceAny" Paths="Contextual Tabs&gt;Mode" />
   <ShortcutItem CommandName="At Grid Intersection" CommandId="ID_CREATE_FOOTING_BY_GRID_INTERSECTION" Paths="Contextual Tabs&gt;Multiple" />
   <ShortcutItem CommandName="At Structural Column" CommandId="ID_CREATE_FOOTING_FROM_STRUCTURAL_COLUMN" Paths="Contextual Tabs&gt;Multiple" />
@@ -1180,7 +1172,7 @@
   <ShortcutItem CommandName="Horizontal" CommandId="IDC_MITER_HORIZONTAL" Paths="Contextual Tabs&gt;Mitering" />
   <ShortcutItem CommandName="Perpendicular" CommandId="IDC_MITER_NORMAL_TO_PATH" Paths="Contextual Tabs&gt;Mitering" />
   <ShortcutItem CommandName="Edit Sketch" CommandId="Dialog_HostObj_OpeningDbar:Control_HostObj_EditSketch" Paths="Contextual Tabs&gt;Opening" />
-  <ShortcutItem CommandName="Pick New Host" CommandId="ID_PICK_HOST" Paths="Contextual Tabs&gt;Host" />
+  <ShortcutItem CommandName="Pick New Host" CommandId="ID_PICK_HOST" Shortcuts="PI" Paths="Contextual Tabs&gt;Host" />
   <ShortcutItem CommandName="Update to Face" CommandId="Dialog_HostObj_RedoFaceBased:Control_HostObj_RedoFaceBased" Paths="Contextual Tabs&gt;Model by Face" />
   <ShortcutItem CommandName="Clear Selection" CommandId="Dialog_HostObj_RoofByFaceEditDbar:Control_HostObj_CancelMultiPickDbar" Paths="Contextual Tabs&gt;Multiple Selection" />
   <ShortcutItem CommandName="Recreate Roof" CommandId="Dialog_HostObj_RoofByFaceEditDbar:Control_HostObj_FinishMultiPickDbar" Paths="Contextual Tabs&gt;Multiple Selection" />
@@ -1226,8 +1218,8 @@
   <ShortcutItem CommandName="Place on Current Work Plane" CommandId="Dialog_Rebar_RebarPlacementPlaneDbar:Control_Rebar_RebarOnCurrentWorkPlane" Paths="Contextual Tabs&gt;Placement Plane" />
   <ShortcutItem CommandName="Place on Near Cover Reference" CommandId="Dialog_Rebar_RebarPlacementPlaneDbar:Control_Rebar_RebarOnNearCover" Paths="Contextual Tabs&gt;Placement Plane" />
   <ShortcutItem CommandName="Place on Far Cover Reference" CommandId="Dialog_Rebar_RebarPlacementPlaneDbar:Control_Rebar_RebarOnFarCover" Paths="Contextual Tabs&gt;Placement Plane" />
-  <ShortcutItem CommandName="Select Host" CommandId="IDC_REINFORCEMENT_SELECT_HOST" Paths="Contextual Tabs&gt;Host" />
-  <ShortcutItem CommandName="Pick New Host" CommandId="IDC_REBAR_REHOST" Paths="Contextual Tabs&gt;Host" />
+  <ShortcutItem CommandName="Select Host" CommandId="IDC_REINFORCEMENT_SELECT_HOST" Shortcuts="SH" Paths="Contextual Tabs&gt;Host" />
+  <ShortcutItem CommandName="Pick New Host" CommandId="IDC_REBAR_REHOST" Shortcuts="PI" Paths="Contextual Tabs&gt;Host" />
   <ShortcutItem CommandName="Show all Rebars in Rebar Set" CommandId="ID_REBAR_PRESENTATION_ALL" Paths="Contextual Tabs&gt;Presentation" />
   <ShortcutItem CommandName="Select Rebars in Rebar Set to Show" CommandId="ID_REBAR_PRESENTATION_SELECT" Paths="Contextual Tabs&gt;Presentation" />
   <ShortcutItem CommandName="Show Middle Rebar in Rebar Set" CommandId="ID_REBAR_PRESENTATION_MIDDLE" Paths="Contextual Tabs&gt;Presentation" />
@@ -1325,7 +1317,7 @@
   <ShortcutItem CommandName="Place Rooms Automatically" CommandId="Dialog_RoomAreaPlan_RoomTagDlgBar:Control_RoomAreaPlan_FindAllRooms" Paths="Contextual Tabs&gt;Room" />
   <ShortcutItem CommandName="Highlight Boundaries" CommandId="Dialog_RoomAreaPlan_RoomTagDlgBar:Control_RoomAreaPlan_ShowAllRoomBounds" Paths="Contextual Tabs&gt;Room; Contextual Tabs&gt;Spaces" />
   <ShortcutItem CommandName="Tag on Placement" CommandId="Dialog_RoomAreaPlan_RoomTagDlgBar:Control_RoomAreaPlan_TagRoomOnPlacement" Paths="Contextual Tabs&gt;Tag" />
-  <ShortcutItem CommandName="Pick New Host" CommandId="ID_PICK_HOST_ROOM_TAG" Paths="Contextual Tabs&gt;Host" />
+  <ShortcutItem CommandName="Pick New Host" CommandId="ID_PICK_HOST_ROOM_TAG" Shortcuts="PI" Paths="Contextual Tabs&gt;Host" />
   <ShortcutItem CommandName="Place Spaces Automatically" CommandId="Dialog_RoomAreaPlan_RoomTagDlgBar:Control_RoomAreaPlan_FindAllSpaces" Paths="Contextual Tabs&gt;Spaces" />
   <ShortcutItem CommandName="Sketch Ceiling" CommandId="ID_SKETCH_CEILING" Paths="Contextual Tabs&gt;Ceiling" />
   <ShortcutItem CommandName="Edit Profile" CommandId="Dialog_Sculpting_FormElementEditDlgbar:Control_Sculpting_FormElementSketchEdit" Paths="Contextual Tabs&gt;Mode" />
@@ -1333,7 +1325,7 @@
   <ShortcutItem CommandName="Add Edge" CommandId="Dialog_Sculpting_FormElementEditDlgbar:Control_Sculpting_FormElemSplitButton" Paths="Contextual Tabs&gt;Form Element" />
   <ShortcutItem CommandName="Add Profile" CommandId="Dialog_Sculpting_FormElementEditDlgbar:Control_Sculpting_FormElemCleaveButton" Paths="Contextual Tabs&gt;Form Element" />
   <ShortcutItem CommandName="Dissolve" CommandId="Dialog_Sculpting_FormElementEditDlgbar:Control_Sculpting_FormElemDissolveButton" Paths="Contextual Tabs&gt;Form Element" />
-  <ShortcutItem CommandName="Pick New Host" CommandId="Dialog_Sculpting_FormElementEditDlgbar:Control_Sculpting_FormElemRehost" Paths="Contextual Tabs&gt;Form Element" />
+  <ShortcutItem CommandName="Pick New Host" CommandId="Dialog_Sculpting_FormElementEditDlgbar:Control_Sculpting_FormElemRehost" Shortcuts="PI" Paths="Contextual Tabs&gt;Form Element" />
   <ShortcutItem CommandName="Lock Profiles" CommandId="Dialog_Sculpting_FormElementEditDlgbar:Control_Sculpting_FormElementConstrainProfile" Paths="Contextual Tabs&gt;Form Element" />
   <ShortcutItem CommandName="Unlock Profiles" CommandId="Dialog_Sculpting_FormElementEditDlgbar:Control_Sculpting_FormElementUnconstrainProfile" Paths="Contextual Tabs&gt;Form Element" />
   <ShortcutItem CommandName="Edit Table" CommandId="ID_PROPERTYLINE_EDIT_TABLE" Paths="Contextual Tabs&gt;Property Lines" />
@@ -1415,7 +1407,7 @@
   <ShortcutItem CommandName="Path" CommandId="ID_DIVIDED_PATH_SHOW_PATH" Paths="Contextual Tabs&gt;Path Representation" />
   <ShortcutItem CommandName="Component" CommandId="ID_DIVIDED_PATH_SHOW_COMP" Paths="Contextual Tabs&gt;Path Representation" />
   <ShortcutItem CommandName="Edit Family" CommandId="ID_EDIT_REBAR_ELEMENT_SHAPE_FAMILY" Paths="Contextual Tabs&gt;Mode" />
-  <ShortcutItem CommandName="Pick New Host" CommandId="ID_LOAD_BC_REHOST" Paths="Contextual Tabs&gt;Host" />
+  <ShortcutItem CommandName="Pick New Host" CommandId="ID_LOAD_BC_REHOST" Shortcuts="PI" Paths="Contextual Tabs&gt;Host" />
   <ShortcutItem CommandName="Treads" CommandId="ID_OBJECTS_RAILING_ON_TREADS" Paths="Contextual Tabs&gt;Position" />
   <ShortcutItem CommandName="Stringer" CommandId="ID_OBJECTS_RAILING_ON_STRINGER" Paths="Contextual Tabs&gt;Position" />
   <ShortcutItem CommandName="Edit Stairs" CommandId="ID_STAIRS_EDIT_STAIRS" Paths="Contextual Tabs&gt;Edit" />
@@ -1424,7 +1416,7 @@
   <ShortcutItem CommandName="Reset" CommandId="ID_DISPLACEMENT_RESET" Paths="Contextual Tabs&gt;Displacement Set" />
   <ShortcutItem CommandName="Path" CommandId="ID_DISPLACEMENT_PATH" Paths="Contextual Tabs&gt;Displacement Set" />
   <ShortcutItem CommandName="Sketch Bending Line on Work Plane" CommandId="ID_FABRIC_SKETCH_BENDING" Paths="Contextual Tabs&gt;Mode" />
-  <ShortcutItem CommandName="Pick New Host" CommandId="IDC_FABRIC_REHOST" Paths="Contextual Tabs&gt;Host" />
+  <ShortcutItem CommandName="Pick New Host" CommandId="IDC_FABRIC_REHOST" Shortcuts="PI" Paths="Contextual Tabs&gt;Host" />
   <ShortcutItem CommandName="Modify Parameters" CommandId="IDR_STRUCT_CONNECTION_MODIFY_PARAMETERS" Paths="Contextual Tabs&gt;Connection" />
   <ShortcutItem CommandName="Customize" CommandId="ID_STRUCT_CONNECTION_CUSTOMIZE" Paths="Contextual Tabs&gt;Connection" />
   <ShortcutItem CommandName="Break" CommandId="IDR_STRUCT_CONNECTION_BREAK" Paths="Contextual Tabs&gt;Connection" />
@@ -1559,7 +1551,7 @@
   <ShortcutItem CommandName="Default:Inscribed Polygon" CommandId="IDC_RADIO_INSCRIBED_POLYGON" Paths="Contextual Tabs&gt;Draw" />
   <ShortcutItem CommandName="Grid:Start-End-Radius Arc" CommandId="ID_GRID_ARC_THREE_PNT" Paths="Contextual Tabs&gt;Draw" />
   <ShortcutItem CommandName="StairRun:Line" CommandId="ID_RUN_LINE" Paths="Contextual Tabs&gt;Draw" />
-  <ShortcutItem CommandName="Realistic" CommandId="ID_IMAGE_REALISTIC" Paths="View Control Bar" />
+  <ShortcutItem CommandName="Realistic" CommandId="ID_IMAGE_REALISTIC" Shortcuts="RE" Paths="View Control Bar" />
   <ShortcutItem CommandName="Create Rectangular Bolt Pattern" CommandId="ID_EXT_ENTITY_HOLE_RECT" />
   <ShortcutItem CommandName="Create Analytical Panel - Rectangle" CommandId="ID_ANALYTICAL_MODEL_PANEL_RECT" />
   <ShortcutItem CommandName="Zoom All to Fit" CommandId="ID_ZOOM_ALL_ALL" Shortcuts="ZA" Paths="Navigation Bar" />

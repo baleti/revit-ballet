@@ -8,7 +8,7 @@
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>scripts</RootNamespace>
-    <AssemblyName>scripts</AssemblyName>
+    <AssemblyName>revit-scripts</AssemblyName>
     <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <Deterministic>true</Deterministic>
@@ -208,7 +208,7 @@
     <Compile Include="revit-scripts\InvokeAddinCommand.cs" />
     <Compile Include="revit-scripts\InvokeRevitCommand.cs" />
     <Compile Include="revit-scripts\ListChildViews.cs" />
-    <Compile Include="revit-scripts\ListElements.cs" />
+    <Compile Include="revit-scripts\FilterSelectedElements.cs" />
     <Compile Include="revit-scripts\ImportViewTemplatesFromRvt.cs" />
     <Compile Include="revit-scripts\ListFamilyTypes.cs" />
     <Compile Include="revit-scripts\LogViewChanges.cs" />
