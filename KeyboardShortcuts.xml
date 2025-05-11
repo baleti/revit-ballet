@@ -878,7 +878,7 @@
   <ShortcutItem CommandName="Next Key Frame" CommandId="ID_SOLAR_STUDY_NEXT_KEY_FRAME" Paths="Contextual Tabs&gt;Preview and Play" />
   <ShortcutItem CommandName="Play Preview" CommandId="ID_SOLAR_STUDY_PLAY" Paths="Contextual Tabs&gt;Preview and Play" />
   <ShortcutItem CommandName="Play in Loop" CommandId="ID_SOLAR_STUDY_TOGGLE_SIMULATION" Paths="Contextual Tabs&gt;Preview and Play" />
-  <ShortcutItem CommandName="Edit Part" CommandId="ID_FABRICATION_PART_TAKEOFF_DIALOG" Shortcuts="EP" Paths="Contextual Tabs&gt;Options; Contextual Tabs&gt;Edit" />
+  <ShortcutItem CommandName="Edit Part" CommandId="ID_FABRICATION_PART_TAKEOFF_DIALOG" Paths="Contextual Tabs&gt;Options; Contextual Tabs&gt;Edit" />
   <ShortcutItem CommandName="Rotate Part" CommandId="ID_FABRICATION_PART_PRE_ROTATE" Paths="Contextual Tabs&gt;Options" />
   <ShortcutItem CommandName="Toggle Connector" CommandId="ID_FABRICATION_PART_TOGGLE_CONNECTOR" Paths="Contextual Tabs&gt;Options" />
   <ShortcutItem CommandName="Insert Part" CommandId="ID_FABRICATION_PART_INSERT" Paths="Contextual Tabs&gt;Options" />

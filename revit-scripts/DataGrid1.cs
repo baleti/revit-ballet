@@ -1,372 +1,270 @@
-﻿using System.Collections.Generic;
-using System.Windows.Forms;
+﻿using Autodesk.Revit.UI;            // for TaskDialog
 using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Windows.Forms;
 
 public partial class CustomGUIs
 {
-    public static List<T> DataGrid<T>(List<T> entries, List<string> propertyNames, List<int> initialSelectionIndices = null, string Title = null)
+    public static List<T> DataGrid<T>(List<T> entries,
+                                      List<string> propertyNames,
+                                      List<int> initialSelectionIndices = null,
+                                      string Title = null)
     {
-        List<T> filteredEntries = new List<T>();
-        var form = new Form();
-        form.StartPosition = FormStartPosition.CenterScreen;
-
-        // Add title to form if not null
-        if (Title != null)
-            form.Text = Title;
-
-        // DataGridView
-        var dataGridView = new DataGridView();
-        dataGridView.Dock = DockStyle.Fill;
-        dataGridView.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
-        dataGridView.MultiSelect = true;
-        dataGridView.ReadOnly = true;
-        dataGridView.AutoGenerateColumns = false;
-        dataGridView.AllowUserToAddRows = false;
-
-        // Set up columns
-        // Use "Programmatic" sort mode so we can manually control the sorting.
-        foreach (var propertyName in propertyNames)
+        // ─────────────────────────────────────
+        // 1. Early-out: nothing to display
+        // ─────────────────────────────────────
+        if (entries == null || entries.Count == 0)
         {
-            var column = new DataGridViewTextBoxColumn
-            {
-                HeaderText = propertyName,
-                DataPropertyName = propertyName,
-                SortMode = DataGridViewColumnSortMode.Programmatic
-            };
-            dataGridView.Columns.Add(column);
+            TaskDialog.Show(Title ?? "Selection", "There were 0 elements.");
+            return new List<T>();
         }
 
-        // Keep track of the last sorted column & direction to reapply after a search
-        string lastSortedProperty = null;
-        SortOrder lastSortOrder = SortOrder.None;
+        var filteredEntries = new List<T>();
 
-        // This list will store the currently displayed rows (filtered + sorted).
-        // Start by showing all entries (i.e., no filter yet).
+        // ─────────────────────────────────────
+        // 2. Build form & grid
+        // ─────────────────────────────────────
+        var form = new Form { StartPosition = FormStartPosition.CenterScreen };
+        if (!string.IsNullOrEmpty(Title)) form.Text = Title;
+
+        var dataGridView = new DataGridView
+        {
+            Dock = DockStyle.Fill,
+            SelectionMode = DataGridViewSelectionMode.FullRowSelect,
+            MultiSelect = true,
+            ReadOnly = true,
+            AutoGenerateColumns = false,
+            AllowUserToAddRows = false
+        };
+
+        foreach (var propertyName in propertyNames)
+        {
+            dataGridView.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                HeaderText   = propertyName,
+                DataPropertyName = propertyName,
+                SortMode     = DataGridViewColumnSortMode.Programmatic
+            });
+        }
+
+        // Sorting helpers
+        string    lastSortedProperty = null;
+        SortOrder lastSortOrder      = SortOrder.None;
         var _entries = new List<T>(entries);
 
-        // Function to apply the active sort, if any, to _entries
         void ApplySort()
         {
             if (!string.IsNullOrEmpty(lastSortedProperty) && _entries.Count > 0)
             {
-                if (lastSortOrder == SortOrder.Ascending)
-                {
-                    _entries = _entries
-                        .OrderBy(x => x.GetType().GetProperty(lastSortedProperty)?.GetValue(x, null))
-                        .ToList();
-                }
-                else if (lastSortOrder == SortOrder.Descending)
-                {
-                    _entries = _entries
-                        .OrderByDescending(x => x.GetType().GetProperty(lastSortedProperty)?.GetValue(x, null))
-                        .ToList();
-                }
+                _entries = (lastSortOrder == SortOrder.Ascending)
+                           ? _entries.OrderBy(o => o.GetType().GetProperty(lastSortedProperty)?.GetValue(o, null)).ToList()
+                           : _entries.OrderByDescending(o => o.GetType().GetProperty(lastSortedProperty)?.GetValue(o, null)).ToList();
             }
         }
 
-        // Bind _entries to the grid
         void RebindData()
         {
             dataGridView.DataSource = null;
             dataGridView.DataSource = _entries;
         }
 
-        // Initially bind all entries
         RebindData();
         dataGridView.AutoResizeColumns(DataGridViewAutoSizeColumnsMode.AllCells);
 
-        // ColumnHeaderMouseClick event to sort the grid
-        dataGridView.ColumnHeaderMouseClick += (sender, e) =>
+        // ── Column-header click to sort ─────────────────────────
+        dataGridView.ColumnHeaderMouseClick += (s, e) =>
         {
-            // Which column did the user click?
-            var column = dataGridView.Columns[e.ColumnIndex];
-            string propertyName = column.DataPropertyName;
-            if (string.IsNullOrEmpty(propertyName)) return;
+            var col  = dataGridView.Columns[e.ColumnIndex];
+            var prop = col.DataPropertyName;
+            if (string.IsNullOrEmpty(prop)) return;
 
-            // Toggle sort order for this column
-            if (lastSortedProperty == propertyName)
-            {
-                // If clicking the same column, flip Ascending <-> Descending
-                if (lastSortOrder == SortOrder.Ascending)
-                {
-                    lastSortOrder = SortOrder.Descending;
-                }
-                else
-                {
-                    lastSortOrder = SortOrder.Ascending;
-                }
-            }
-            else
-            {
-                // If clicking a new column, default to ascending
-                lastSortedProperty = propertyName;
-                lastSortOrder = SortOrder.Ascending;
-            }
+            lastSortOrder      = (prop == lastSortedProperty && lastSortOrder == SortOrder.Ascending)
+                                 ? SortOrder.Descending
+                                 : SortOrder.Ascending;
+            lastSortedProperty = prop;
 
-            // Clear sort glyphs on all columns first
-            foreach (DataGridViewColumn col in dataGridView.Columns)
-            {
-                col.HeaderCell.SortGlyphDirection = SortOrder.None;
-            }
-            // Show the sort glyph on the clicked column
-            column.HeaderCell.SortGlyphDirection = lastSortOrder;
+            foreach (DataGridViewColumn c in dataGridView.Columns)
+                c.HeaderCell.SortGlyphDirection = SortOrder.None;
+            col.HeaderCell.SortGlyphDirection = lastSortOrder;
 
-            // Re-sort _entries
             ApplySort();
             RebindData();
         };
 
-        dataGridView.DataBindingComplete += (sender, e) =>
+        // ── Maintain initial selection ─────────────────────────
+        dataGridView.DataBindingComplete += (s, e) =>
         {
-            // Clear existing selections to avoid any unwanted selected rows.
             dataGridView.ClearSelection();
-
-            // Check if initialSelectionIndices is not null and has elements
-            if (initialSelectionIndices != null && initialSelectionIndices.Any())
+            if (initialSelectionIndices != null)
             {
-                foreach (int index in initialSelectionIndices)
+                foreach (var i in initialSelectionIndices.Where(i => i >= 0 && i < dataGridView.Rows.Count))
                 {
-                    if (index >= 0 && index < dataGridView.Rows.Count)
-                    {
-                        dataGridView.Rows[index].Selected = true;
-                        dataGridView.CurrentCell = dataGridView.Rows[index].Cells[0]; // Optionally set focus
-                    }
+                    dataGridView.Rows[i].Selected = true;
+                    dataGridView.CurrentCell      = dataGridView.Rows[i].Cells[0];
                 }
             }
         };
 
-        // Search box
-        var searchBox = new TextBox();
-        searchBox.Dock = DockStyle.Top;
-        searchBox.TextChanged += (sender, e) =>
+        // ─────────────────────────────────────
+        // 3. Search box (qualified to avoid clash)
+        // ─────────────────────────────────────
+        var searchBox = new System.Windows.Forms.TextBox { Dock = DockStyle.Top };
+        searchBox.TextChanged += (s, e) =>
         {
-            // Split on "|" for OR blocks, then each block splits on spaces for AND logic
             string searchText = searchBox.Text.ToLower();
-            var searchTerms = searchText.Split(new[] { '|' }, StringSplitOptions.RemoveEmptyEntries)
-                                        .Select(query => query.Trim().Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries));
+            var clauses = searchText.Split(new[] { '|' }, StringSplitOptions.RemoveEmptyEntries)
+                                    .Select(cl => cl.Trim().Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries));
 
-            // Filter from the *original* entries each time, then re-sort if needed
             _entries = entries.Where(entry =>
             {
-                // For each "OR block"
-                foreach (var orQuery in searchTerms)
+                foreach (var orBlock in clauses)
                 {
-                    bool orQueryMatched = true;
-                    // For each term in that block (AND)
-                    foreach (var term in orQuery)
+                    bool matchesOr = true;
+                    foreach (var term in orBlock)
                     {
-                        bool isNegation = term.StartsWith("!");
-                        string actualTerm = isNegation ? term.Substring(1) : term;
-                        bool termFound = false;
+                        bool   neg    = term.StartsWith("!");
+                        string actual = neg ? term.Substring(1) : term;   // ← C# 7-friendly
 
-                        foreach (var propertyName in propertyNames)
+                        bool found = propertyNames.Any(p =>
                         {
-                            var propertyValue = entry.GetType()
-                                                     .GetProperty(propertyName)
-                                                     ?.GetValue(entry, null)
-                                                     ?.ToString();
-                            if (propertyValue != null &&
-                                propertyValue.IndexOf(actualTerm, StringComparison.OrdinalIgnoreCase) >= 0)
-                            {
-                                termFound = true;
-                                break; // Found this term in at least one property
-                            }
-                        }
+                            var val = entry.GetType().GetProperty(p)?.GetValue(entry, null)?.ToString();
+                            return val != null && val.IndexOf(actual, StringComparison.OrdinalIgnoreCase) >= 0;
+                        });
 
-                        // If it's a negation term and we found it, then it's not a match
-                        // If it's a normal term and we didn't find it, also not a match
-                        if (isNegation ? termFound : !termFound)
+                        if (neg ? found : !found)
                         {
-                            orQueryMatched = false;
+                            matchesOr = false;
                             break;
                         }
                     }
-
-                    // If the OR block matched, no need to check others
-                    if (orQueryMatched)
-                        return true;
+                    if (matchesOr) return true;
                 }
-
-                // If no OR block matched, exclude
                 return false;
             }).ToList();
 
-            // Re-apply sort
             ApplySort();
             RebindData();
         };
 
-        // CellDoubleClick event handling
-        dataGridView.CellDoubleClick += (sender, e) =>
+        // ── Double-click / key shortcuts ───────────────────────
+        dataGridView.CellDoubleClick += (s, e) =>
         {
-            if (e.RowIndex >= 0) // Ensure the double-click is on a valid row
-            {
-                foreach (DataGridViewRow selectedRow in dataGridView.SelectedRows)
-                {
-                    T selectedItem = (T)selectedRow.DataBoundItem;
-                    filteredEntries.Add(selectedItem);
-                }
-                form.Close(); // Close the form after action
-            }
+            if (e.RowIndex < 0) return;
+            foreach (DataGridViewRow row in dataGridView.SelectedRows)
+                filteredEntries.Add((T)row.DataBoundItem);
+            form.Close();
         };
 
-        // KeyDown event handling for dataGridView
-        dataGridView.KeyDown += (sender, e) =>
+        dataGridView.KeyDown += (s, e) =>
         {
-            if (e.KeyCode == Keys.Escape)
-            {
-                form.Close();
-            }
+            if (e.KeyCode == Keys.Escape) form.Close();
             else if (e.KeyCode == Keys.Enter)
             {
-                foreach (DataGridViewRow selectedRow in dataGridView.SelectedRows)
-                {
-                    T selectedItem = (T)selectedRow.DataBoundItem;
-                    filteredEntries.Add(selectedItem);
-                }
+                foreach (DataGridViewRow row in dataGridView.SelectedRows)
+                    filteredEntries.Add((T)row.DataBoundItem);
                 form.Close();
             }
             else if (e.KeyCode == Keys.Tab)
-            {
                 searchBox.Focus();
-            }
         };
 
-        // KeyDown event handling for searchBox
-        searchBox.KeyDown += (sender, e) =>
+        searchBox.KeyDown += (s, e) =>
         {
-            if (e.KeyCode == Keys.Escape)
-            {
-                form.Close();
-            }
+            if (e.KeyCode == Keys.Escape) form.Close();
             else if (e.KeyCode == Keys.Down || e.KeyCode == Keys.Up)
             {
-                // Set focus to dataGridView
                 dataGridView.Focus();
-                if (dataGridView.CurrentRow != null)
+                if (dataGridView.CurrentRow == null && dataGridView.Rows.Count > 0)
                 {
-                    int rowCount = dataGridView.Rows.Count;
-                    int currentIndex = dataGridView.CurrentRow.Index;
-                    int nextIndex = (e.KeyCode == Keys.Down)
-                        ? (currentIndex + 1) % rowCount
-                        : (currentIndex - 1 + rowCount) % rowCount;
-
-                    dataGridView.CurrentCell = dataGridView.Rows[nextIndex].Cells[0];
-                    dataGridView.Rows[nextIndex].Selected = true;
-                }
-                else
-                {
-                    // If no row is selected, select the first row
-                    if (dataGridView.Rows.Count > 0)
-                    {
-                        dataGridView.CurrentCell = dataGridView.Rows[0].Cells[0];
-                        dataGridView.Rows[0].Selected = true;
-                    }
+                    dataGridView.CurrentCell = dataGridView.Rows[0].Cells[0];
+                    dataGridView.Rows[0].Selected = true;
                 }
             }
-            else if (e.KeyCode == Keys.Enter)
+            else if (e.KeyCode == Keys.Enter && dataGridView.Rows.Count > 0)
             {
-                if (dataGridView.Rows.Count > 0)
+                if (dataGridView.SelectedRows.Count == 0)
                 {
-                    if (dataGridView.SelectedRows.Count == 0)
-                    {
-                        dataGridView.Rows[0].Selected = true;
-                        dataGridView.CurrentCell = dataGridView.Rows[0].Cells[0];
-                    }
-                    foreach (DataGridViewRow selectedRow in dataGridView.SelectedRows)
-                    {
-                        T selectedItem = (T)selectedRow.DataBoundItem;
-                        filteredEntries.Add(selectedItem);
-                    }
-                    form.Close();
+                    dataGridView.Rows[0].Selected = true;
+                    dataGridView.CurrentCell      = dataGridView.Rows[0].Cells[0];
                 }
+                foreach (DataGridViewRow row in dataGridView.SelectedRows)
+                    filteredEntries.Add((T)row.DataBoundItem);
+                form.Close();
             }
-            // Press space immediately after window is opened to return the next row
             else if (e.KeyCode == Keys.Space && string.IsNullOrWhiteSpace(searchBox.Text))
             {
-                int rowCount = dataGridView.Rows.Count;
-                if (rowCount > 0)
-                {
-                    int currentIndex = dataGridView.CurrentRow?.Index ?? -1;
-                    int nextIndex;
-                    if (e.Shift)
-                        nextIndex = (currentIndex - 1 + rowCount) % rowCount; // previous row
-                    else
-                        nextIndex = (currentIndex + 1) % rowCount; // next row
+                int count = dataGridView.Rows.Count;
+                if (count == 0) return;
 
-                    dataGridView.ClearSelection();
-                    dataGridView.CurrentCell = dataGridView.Rows[nextIndex].Cells[0];
-                    dataGridView.Rows[nextIndex].Selected = true;
+                int cur  = dataGridView.CurrentRow?.Index ?? -1;
+                int next = e.Shift ? (cur - 1 + count) % count : (cur + 1) % count;
 
-                    T selectedItem = (T)dataGridView.Rows[nextIndex].DataBoundItem;
-                    filteredEntries.Add(selectedItem);
-                    form.Close();
-                }
+                dataGridView.ClearSelection();
+                dataGridView.CurrentCell           = dataGridView.Rows[next].Cells[0];
+                dataGridView.Rows[next].Selected   = true;
+
+                filteredEntries.Add((T)dataGridView.Rows[next].DataBoundItem);
+                form.Close();
             }
         };
 
-        // Form load: Adjust form size
-        form.Load += (sender, e) =>
+        // ─────────────────────────────────────
+        // 4. Defensive sizing – no Rows[0] assumption
+        // ─────────────────────────────────────
+        form.Load += (s, e) =>
         {
-            int totalRowHeight = dataGridView.Rows.GetRowsHeight(DataGridViewElementStates.Visible);
-            int requiredHeight = totalRowHeight
-                + dataGridView.ColumnHeadersHeight
-                + 2 * dataGridView.Rows[0].Height
-                + SystemInformation.HorizontalScrollBarHeight;
-            form.Height = requiredHeight;
+            int oneRowHeight = dataGridView.RowTemplate.Height;
+            if (dataGridView.Rows.Count > 0)
+                oneRowHeight = dataGridView.Rows[0].Height;
 
-            // Fit form inside working area
-            if (requiredHeight > Screen.PrimaryScreen.WorkingArea.Height)
+            int totalRows  = dataGridView.Rows.GetRowsHeight(DataGridViewElementStates.Visible);
+            int heightNeed = totalRows
+                             + dataGridView.ColumnHeadersHeight
+                             + 2 * oneRowHeight
+                             + SystemInformation.HorizontalScrollBarHeight;
+
+            form.Height = heightNeed;
+
+            if (heightNeed > Screen.PrimaryScreen.WorkingArea.Height)
             {
                 form.StartPosition = FormStartPosition.Manual;
-                form.Top = 10;
-                form.Height = Screen.PrimaryScreen.WorkingArea.Height - 10;
+                form.Top           = 10;
+                form.Height        = Screen.PrimaryScreen.WorkingArea.Height - 10;
             }
-            else if (requiredHeight > Screen.PrimaryScreen.WorkingArea.Height / 2)
+            else if (heightNeed > Screen.PrimaryScreen.WorkingArea.Height / 2)
             {
                 form.StartPosition = FormStartPosition.Manual;
-                form.Top = 10;
-            }
-            else
-            {
-                form.StartPosition = FormStartPosition.CenterScreen;
+                form.Top           = 10;
             }
 
-            // Calculate and set column widths
             int formMaxWidth = 0;
-            foreach (DataGridViewColumn column in dataGridView.Columns)
+            foreach (DataGridViewColumn col in dataGridView.Columns)
             {
-                int maxWidth = 0;
-                // Calculate maximum width of header text
-                int headerWidth = TextRenderer.MeasureText(column.HeaderText, dataGridView.ColumnHeadersDefaultCellStyle.Font).Width;
-
-                // Calculate maximum width of cell content
+                int headerW = TextRenderer.MeasureText(col.HeaderText,
+                                                        dataGridView.ColumnHeadersDefaultCellStyle.Font).Width;
+                int cellW   = 0;
                 foreach (DataGridViewRow row in dataGridView.Rows)
                 {
-                    if (row.Cells[column.Index].Value != null)
-                    {
-                        int cellWidth = TextRenderer.MeasureText(
-                            row.Cells[column.Index].Value.ToString(),
-                            dataGridView.DefaultCellStyle.Font).Width;
-                        maxWidth = Math.Max(maxWidth, cellWidth);
-                    }
+                    var v = row.Cells[col.Index].Value?.ToString();
+                    if (v != null)
+                        cellW = Math.Max(cellW,
+                                         TextRenderer.MeasureText(v, dataGridView.DefaultCellStyle.Font).Width);
                 }
-
-                // Set column width to the maximum of header text width and cell content width
-                column.Width = Math.Max(headerWidth, maxWidth) + 10;
-                formMaxWidth += column.Width;
+                col.Width    = Math.Max(headerW, cellW) + 10;
+                formMaxWidth += col.Width;
             }
-            // Add scrollbar + window frame offsets
             form.Width = formMaxWidth + SystemInformation.VerticalScrollBarWidth + 59;
         };
 
-        // Add controls to form and show it
+        // ─────────────────────────────────────
+        // 5. Show the dialog
+        // ─────────────────────────────────────
         form.Controls.Add(dataGridView);
         form.Controls.Add(searchBox);
         searchBox.Select();
-        form.ShowDialog();
 
+        form.ShowDialog();
         return filteredEntries;
     }
 }
