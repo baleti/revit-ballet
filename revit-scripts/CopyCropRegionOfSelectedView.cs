@@ -20,7 +20,7 @@ public class CopyCropRegionOfSelectedView : IExternalCommand
         // Check if exactly one element is selected
         if (selectedIds.Count != 1)
         {
-            message = "Please select exactly one view or viewport to copy the crop region from.";
+            TaskDialog.Show("Error", "Please select exactly one view or viewport to copy the crop region from.");
             return Result.Failed;
         }
 
