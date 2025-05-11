@@ -1,0 +1,156 @@
+<RevitAddIns>
+    <AddIn Type="Command">
+        <Name>scripts</Name>
+        <Assembly>revit-scripts.dll</Assembly>
+        <FullClassName>SwitchPhase</FullClassName>
+        <AddInId>E38B4B7B-5A67-49AF-B819-ECAA9752578E</AddInId>
+        <VendorId>scripts</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>scripts</Name>
+        <Assembly>revit-scripts.dll</Assembly>
+        <FullClassName>SwitchToLastPhase</FullClassName>
+        <AddInId>E38B4B7B-6A67-49AF-B819-ECAA9752578E</AddInId>
+        <VendorId>scripts</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>scripts</Name>
+        <Assembly>revit-scripts.dll</Assembly>
+        <FullClassName>SwitchToLastView</FullClassName>
+        <AddInId>E19B084B-4A63-10AF-A876-EC308252335E</AddInId>
+        <VendorId>scripts</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>scripts</Name>
+        <Assembly>revit-scripts.dll</Assembly>
+        <FullClassName>SwitchViewByHistory</FullClassName>
+        <AddInId>E19B084B-4A63-94AF-A876-EC308252335E</AddInId>
+        <VendorId>scripts</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>scripts</Name>
+        <Assembly>revit-scripts.dll</Assembly>
+        <FullClassName>SwitchView</FullClassName>
+        <AddInId>E19B084B-4A63-84AF-A876-EC308252335E</AddInId>
+        <VendorId>scripts</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>scripts</Name>
+        <Assembly>revit-scripts.dll</Assembly>
+        <FullClassName>CloseCurrentView</FullClassName>
+        <AddInId>E19B494B-4A63-44AF-A876-EC308252335E</AddInId>
+        <VendorId>scripts</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>scripts</Name>
+        <Assembly>revit-scripts.dll</Assembly>
+        <FullClassName>CloseViews</FullClassName>
+        <AddInId>E19B494B-4A63-47AF-A876-EC308252335E</AddInId>
+        <VendorId>scripts</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>scripts</Name>
+        <Assembly>revit-scripts.dll</Assembly>
+        <FullClassName>SelectAllElementsInView</FullClassName>
+        <AddInId>E39B494B-4A63-45AF-B876-EC508252535E</AddInId>
+        <VendorId>scripts</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>scripts</Name>
+        <Assembly>revit-scripts.dll</Assembly>
+        <FullClassName>SelectAllElementsInViewAndInGroups</FullClassName>
+        <AddInId>E39B494B-4A63-45AF-B876-EC50875257BE</AddInId>
+        <VendorId>scripts</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>scripts</Name>
+        <Assembly>revit-scripts.dll</Assembly>
+        <FullClassName>SelectCategoriesInProject</FullClassName>
+        <AddInId>E39B499B-4A63-45AF-B876-EA508752535E</AddInId>
+        <VendorId>scripts</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>scripts</Name>
+        <Assembly>revit-scripts.dll</Assembly>
+        <FullClassName>SelectCategoriesInView</FullClassName>
+        <AddInId>E39B494B-4A63-45AF-B876-EA508752535E</AddInId>
+        <VendorId>scripts</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>scripts</Name>
+        <Assembly>revit-scripts.dll</Assembly>
+        <FullClassName>OpenViews</FullClassName>
+        <AddInId>E39B494B-4A63-45AF-B876-EC508752575E</AddInId>
+        <VendorId>scripts</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>scripts</Name>
+        <Assembly>revit-scripts.dll</Assembly>
+        <FullClassName>FilterSelectedElements</FullClassName>
+        <AddInId>E39B494B-4A63-451F-B876-EC508752578F</AddInId>
+        <VendorId>scripts</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>scripts</Name>
+        <Assembly>revit-scripts.dll</Assembly>
+        <FullClassName>FilterSelectedElementsSpanAllScreens</FullClassName>
+        <AddInId>E39B494B-4A63-45AF-B871-EC508752578E</AddInId>
+        <VendorId>scripts</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>scripts</Name>
+        <Assembly>revit-scripts.dll</Assembly>
+        <FullClassName>ZoomSelected</FullClassName>
+        <AddInId>E39B4B4B-4A63-45AF-B879-EC5A8752578E</AddInId>
+        <VendorId>scripts</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>scripts</Name>
+        <Assembly>revit-scripts.dll</Assembly>
+        <FullClassName>InvokeAddinCommand</FullClassName>
+        <AddInId>E39B4B4B-4A63-48AF-B879-EC5A8752578E</AddInId>
+        <VendorId>scripts</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>scripts</Name>
+        <Assembly>revit-scripts.dll</Assembly>
+        <FullClassName>InvokeRevitCommand</FullClassName>
+        <AddInId>E39B4B4B-4A67-48AF-B879-EC5A8752578E</AddInId>
+        <VendorId>scripts</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>scripts</Name>
+        <Assembly>revit-scripts.dll</Assembly>
+        <FullClassName>InvokeLastAddinCommand</FullClassName>
+        <AddInId>E39B4B4B-4A67-48AF-B879-EC5A9752578E</AddInId>
+        <VendorId>scripts</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>scripts</Name>
+        <Assembly>revit-scripts.dll</Assembly>
+        <FullClassName>OpenSheet</FullClassName>
+        <AddInId>E39B4B4B-4A68-48AF-B879-EC5A9752578E</AddInId>
+        <VendorId>scripts</VendorId>
+    </AddIn>
+    <AddIn Type="Application">
+        <Name>scripts</Name>
+        <Assembly>revit-scripts.dll</Assembly>
+        <FullClassName>LogViewChanges</FullClassName>
+        <AddInId>E38B4B7B-4A67-48AF-B819-ECAA9752578E</AddInId>
+        <VendorId>scripts</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>scripts</Name>
+        <Assembly>revit-scripts.dll</Assembly>
+        <FullClassName>SelectViews</FullClassName>
+        <AddInId>E38B4B7B-4A67-49AF-BA19-ECAA9752578E</AddInId>
+        <VendorId>scripts</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>scripts</Name>
+        <Assembly>revit-scripts.dll</Assembly>
+        <FullClassName>revit-scripts/SelectViewTemplates</FullClassName>
+        <AddInId>F38B4B7B-4A67-49AF-BA19-ECAA9752578E</AddInId>
+        <VendorId>scripts</VendorId>
+    </AddIn>
+</RevitAddIns>

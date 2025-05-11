@@ -171,6 +171,7 @@
   <ShortcutItem CommandName="External Tools:InvokeLastAddinCommand" CommandId="e39b4b4b-4a67-48af-b879-ec5a9752578e" Shortcuts="QQ`" Paths="Add-Ins&gt;External" />
   <ShortcutItem CommandName="External Tools:OpenSheet" CommandId="e39b4b4b-4a68-48af-b879-ec5a9752578e" Paths="Add-Ins&gt;External" />
   <ShortcutItem CommandName="External Tools:SelectViews" CommandId="e38b4b7b-4a67-49af-ba19-ecaa9752578e" Shortcuts="VS" Paths="Add-Ins&gt;External" />
+  <ShortcutItem CommandName="External Tools:SelectViewTemplatesOfSelectedViews" CommandId="f38b4b7b-4a67-49af-ba19-ecaa9752578e" Shortcuts="VT" Paths="Add-Ins&gt;External" />
   <ShortcutItem CommandName="Align Left" CommandId="CustomCtrl_%CustomCtrl_%Add-Ins%Align%alignLeftButton" Shortcuts="AAL" Paths="Add-Ins&gt;Align" />
   <ShortcutItem CommandName="Align Center" CommandId="CustomCtrl_%CustomCtrl_%Add-Ins%Align%alignCenterButton" Shortcuts="AAC" Paths="Add-Ins&gt;Align" />
   <ShortcutItem CommandName="Align Right" CommandId="CustomCtrl_%CustomCtrl_%Add-Ins%Align%alignRightButton" Shortcuts="AAR" Paths="Add-Ins&gt;Align" />
