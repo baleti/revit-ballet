@@ -16,15 +16,14 @@ public class SelectViewTemplatesOfSelectedViews : IExternalCommand
         Document     doc    = uidoc.Document;
 
         // ───────────────────────────────────────────────────────────────
-        // 1. Get whatever the user has selected in Revit.
+        // 1. Get the user’s current selection (views or viewports).
+        //    If nothing is selected, fall back to the active view.
         // ───────────────────────────────────────────────────────────────
         ICollection<ElementId> pickedIds = uidoc.Selection.GetElementIds();
 
         if (pickedIds == null || !pickedIds.Any())
         {
-            TaskDialog.Show("Select View Templates",
-                            "Please select one or more views or viewports first.");
-            return Result.Cancelled;
+            pickedIds = new List<ElementId> { uidoc.ActiveView.Id };
         }
 
         // ───────────────────────────────────────────────────────────────
@@ -35,21 +34,15 @@ public class SelectViewTemplatesOfSelectedViews : IExternalCommand
 
         foreach (ElementId id in pickedIds)
         {
+            if (id == ElementId.InvalidElementId) continue;
+
             Element element = doc.GetElement(id);
             if (element == null) continue;
 
-            View view = null;
+            View view = element as View;
 
-            switch (element)
-            {
-                case View v:
-                    view = v;
-                    break;
-
-                case Viewport vp:
-                    view = doc.GetElement(vp.ViewId) as View;
-                    break;
-            }
+            if (view == null && element is Viewport vp)
+                view = doc.GetElement(vp.ViewId) as View;
 
             if (view == null) continue;
 
@@ -68,7 +61,7 @@ public class SelectViewTemplatesOfSelectedViews : IExternalCommand
         }
 
         TaskDialog.Show("Select View Templates",
-                        "None of the selected views or viewports use a view template.");
+                        "No view template was found on the selected items or the active view.");
         return Result.Cancelled;
     }
 }
