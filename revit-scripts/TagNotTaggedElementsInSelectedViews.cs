@@ -6,6 +6,17 @@ using System.Collections.Generic;
 using System.Linq;
 using System.IO;
 using System.Globalization;
+using WinForms = System.Windows.Forms;  // Alias for Windows Forms
+
+// Enum for tag anchor choices.
+public enum TagAnchor
+{
+    Center,
+    Top,
+    Bottom,
+    Left,
+    Right
+}
 
 [Transaction(TransactionMode.Manual)]
 public class TagNotTaggedElementsInSelectedViews : IExternalCommand
@@ -21,18 +32,18 @@ public class TagNotTaggedElementsInSelectedViews : IExternalCommand
         if (selectedIds.Count == 0)
             return Result.Failed;
 
-        List<View> selectedViews = new List<View>();
+        List<Autodesk.Revit.DB.View> selectedViews = new List<Autodesk.Revit.DB.View>();
         foreach (ElementId id in selectedIds)
         {
             Element element = doc.GetElement(id);
             if (element is Viewport viewport)
             {
                 ElementId viewId = viewport.ViewId;
-                View view = doc.GetElement(viewId) as View;
+                Autodesk.Revit.DB.View view = doc.GetElement(viewId) as Autodesk.Revit.DB.View;
                 if (view != null && !(view is ViewSchedule) && view.ViewType != ViewType.DrawingSheet)
                     selectedViews.Add(view);
             }
-            else if (element is View view && !(view is ViewSchedule) && view.ViewType != ViewType.DrawingSheet)
+            else if (element is Autodesk.Revit.DB.View view && !(view is ViewSchedule) && view.ViewType != ViewType.DrawingSheet)
             {
                 selectedViews.Add(view);
             }
@@ -44,7 +55,7 @@ public class TagNotTaggedElementsInSelectedViews : IExternalCommand
         Dictionary<ElementId, (string CategoryName, string FamilyName, string TypeName)> familyTypes =
             new Dictionary<ElementId, (string, string, string)>();
 
-        foreach (View view in selectedViews)
+        foreach (Autodesk.Revit.DB.View view in selectedViews)
         {
             var elementsInView = new FilteredElementCollector(doc, view.Id)
                 .WhereElementIsNotElementType()
@@ -70,18 +81,16 @@ public class TagNotTaggedElementsInSelectedViews : IExternalCommand
             return Result.Failed;
         }
 
-        // --- PATCHED SECTION: Compute counts for each family type using a fast estimate ---
+        // Compute counts for each family type (fast estimate).
         Dictionary<ElementId, int> totalCounts = new Dictionary<ElementId, int>();
         Dictionary<ElementId, int> taggedCounts = new Dictionary<ElementId, int>();
 
-        foreach (View view in selectedViews)
+        foreach (Autodesk.Revit.DB.View view in selectedViews)
         {
-            // Get all taggable elements in the view that belong to a known family type.
             var collector = new FilteredElementCollector(doc, view.Id)
                 .WhereElementIsNotElementType()
                 .Where(e => e.Category != null && e.CanBeTagged(view) && familyTypes.ContainsKey(e.GetTypeId()));
 
-            // Group by element type and sum counts.
             foreach (var group in collector.GroupBy(e => e.GetTypeId()))
             {
                 if (!totalCounts.ContainsKey(group.Key))
@@ -89,7 +98,6 @@ public class TagNotTaggedElementsInSelectedViews : IExternalCommand
                 totalCounts[group.Key] += group.Count();
             }
 
-            // Get tagged elements in this view.
             var taggedIds = new FilteredElementCollector(doc, view.Id)
                 .OfClass(typeof(IndependentTag))
                 .Cast<IndependentTag>()
@@ -98,7 +106,6 @@ public class TagNotTaggedElementsInSelectedViews : IExternalCommand
                                       .Select(linkId => linkId.HostElementId))
                 .ToHashSet();
 
-            // Group again to count tagged elements.
             foreach (var group in collector.GroupBy(e => e.GetTypeId()))
             {
                 int countTagged = group.Count(e => taggedIds.Contains(e.Id));
@@ -133,7 +140,7 @@ public class TagNotTaggedElementsInSelectedViews : IExternalCommand
         }
 
         List<string> propertyNames = new List<string> { "Category", "Family", "Type", "Tagged (Estimate)", "Untagged (Estimate)" };
-        // Display the DataGrid (this is assumed to be a custom UI helper).
+        // Display the DataGrid (assumed to be a custom UI helper).
         List<Dictionary<string, object>> selectedEntries =
             CustomGUIs.DataGrid(entries, propertyNames, spanAllScreens: false);
         if (selectedEntries == null || selectedEntries.Count == 0)
@@ -149,19 +156,20 @@ public class TagNotTaggedElementsInSelectedViews : IExternalCommand
                                                   kv.Value.FamilyName == e["Family"].ToString() &&
                                                   kv.Value.TypeName == e["Type"].ToString()).Key));
 
-        // Now prompt the user for offset factors and whether to orient the tag to the object.
+        // Prompt the user for offset factors, orientation, and tag anchor.
         using (OffsetInputDialog offsetDialog = new OffsetInputDialog())
         {
-            if (offsetDialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
+            if (offsetDialog.ShowDialog() != WinForms.DialogResult.OK)
             {
-                System.Windows.Forms.MessageBox.Show("Operation cancelled by the user.", "Cancelled");
+                WinForms.MessageBox.Show("Operation cancelled by the user.", "Cancelled");
                 return Result.Failed;
             }
             double userOffsetFactorX = offsetDialog.OffsetX;
             double userOffsetFactorY = offsetDialog.OffsetY;
             bool orientToObject = offsetDialog.OrientToObject;
+            TagAnchor tagAnchorOption = offsetDialog.SelectedTagAnchor;
 
-            // Define conversion factor from millimeters to feet.
+            // Conversion factor from millimeters to feet.
             const double mmToFeet = 1.0 / 304.8;
 
             // Begin transaction to create tags.
@@ -171,9 +179,8 @@ public class TagNotTaggedElementsInSelectedViews : IExternalCommand
                 try
                 {
                     int tagNumber = 1;
-                    foreach (View view in selectedViews)
+                    foreach (Autodesk.Revit.DB.View view in selectedViews)
                     {
-                        // Get existing tags in the view.
                         var existingTags = new FilteredElementCollector(doc, view.Id)
                             .OfClass(typeof(IndependentTag))
                             .Cast<IndependentTag>()
@@ -183,7 +190,6 @@ public class TagNotTaggedElementsInSelectedViews : IExternalCommand
                                 .Where(linkId => linkId.LinkInstanceId == ElementId.InvalidElementId)
                                 .Select(linkId => linkId.HostElementId)));
 
-                        // Retrieve (and cache) the crop region curves once per view.
                         IList<CurveLoop> cropLoops = null;
                         if (view.CropBoxActive && view.CropBox != null)
                         {
@@ -191,7 +197,6 @@ public class TagNotTaggedElementsInSelectedViews : IExternalCommand
                             cropLoops = cropManager.GetCropShape();
                         }
 
-                        // Collect taggable elements that match the selected family types and are not already tagged.
                         var elementsToTag = new FilteredElementCollector(doc, view.Id)
                             .WhereElementIsNotElementType()
                             .Where(e => e.Category != null && e.CanBeTagged(view) && selectedTypeIds.Contains(e.GetTypeId()))
@@ -200,19 +205,15 @@ public class TagNotTaggedElementsInSelectedViews : IExternalCommand
 
                         foreach (Element element in elementsToTag)
                         {
-                            // Process only elements with a LocationPoint.
                             LocationPoint location = element.Location as LocationPoint;
                             if (location == null)
                                 continue;
 
-                            // Retrieve the element's bounding box.
                             BoundingBoxXYZ bbox = element.get_BoundingBox(null);
                             if (bbox == null)
                                 continue;
 
                             // --- Crop Region Bounding Box Check ---
-                            // Ensure that all four corners of the element's bounding box (projected onto the crop plane)
-                            // lie completely within the crop region.
                             if (cropLoops != null && cropLoops.Count > 0)
                             {
                                 Transform invTransform = view.CropBox.Transform.Inverse;
@@ -221,13 +222,11 @@ public class TagNotTaggedElementsInSelectedViews : IExternalCommand
                                 XYZ pMin = bbox.Min;
                                 XYZ pMax = bbox.Max;
 
-                                // Project the bounding box corners onto the crop plane using the crop box transform.
                                 XYZ corner1 = ProjectPointToCropPlane(new XYZ(pMin.X, pMin.Y, pMin.Z), view.CropBox.Transform);
                                 XYZ corner2 = ProjectPointToCropPlane(new XYZ(pMax.X, pMin.Y, pMin.Z), view.CropBox.Transform);
                                 XYZ corner3 = ProjectPointToCropPlane(new XYZ(pMax.X, pMax.Y, pMax.Z), view.CropBox.Transform);
                                 XYZ corner4 = ProjectPointToCropPlane(new XYZ(pMin.X, pMax.Y, pMax.Z), view.CropBox.Transform);
 
-                                // Transform each corner into crop region space.
                                 XYZ cp1 = invTransform.OfPoint(corner1);
                                 XYZ cp2 = invTransform.OfPoint(corner2);
                                 XYZ cp3 = invTransform.OfPoint(corner3);
@@ -241,13 +240,11 @@ public class TagNotTaggedElementsInSelectedViews : IExternalCommand
                                 bool bboxInside = true;
                                 foreach (UV uv in new List<UV> { uv1, uv2, uv3, uv4 })
                                 {
-                                    // Each corner must be inside the outer crop polygon.
                                     if (!IsPointInsidePolygon(uv, outerPolygon))
                                     {
                                         bboxInside = false;
                                         break;
                                     }
-                                    // Also, if the crop region has holes, the corner must not lie inside any hole.
                                     if (cropLoops.Count > 1)
                                     {
                                         for (int i = 1; i < cropLoops.Count; i++)
@@ -264,28 +261,64 @@ public class TagNotTaggedElementsInSelectedViews : IExternalCommand
                                     }
                                 }
                                 if (!bboxInside)
-                                    continue; // Skip element if its bounding box is not completely within the crop region.
+                                    continue;
                             }
                             // --- End Crop Region Check ---
 
-                            // Determine tag position based on user input.
                             XYZ tagPosition = null;
                             if (!orientToObject)
                             {
-                                // When orientation is off, use the center of the bounding box.
+                                // Non-orienting branch – compute tag anchor based on the selected option.
+                                XYZ anchorPoint;
+                                if (tagAnchorOption == TagAnchor.Center)
+                                {
+                                    anchorPoint = (bbox.Min + bbox.Max) / 2.0;
+                                }
+                                else
+                                {
+                                    Transform cropTransform = view.CropBox.Transform;
+                                    Transform invT = cropTransform.Inverse;
+                                    XYZ projMin = ProjectPointToCropPlane(bbox.Min, cropTransform);
+                                    XYZ projMax = ProjectPointToCropPlane(bbox.Max, cropTransform);
+                                    XYZ bboxMinView = invT.OfPoint(projMin);
+                                    XYZ bboxMaxView = invT.OfPoint(projMax);
+                                    double xCenter = (bboxMinView.X + bboxMaxView.X) / 2.0;
+                                    double yCenter = (bboxMinView.Y + bboxMaxView.Y) / 2.0;
+                                    XYZ anchorView;
+                                    switch (tagAnchorOption)
+                                    {
+                                        case TagAnchor.Top:
+                                            anchorView = new XYZ(xCenter, bboxMaxView.Y, 0);
+                                            break;
+                                        case TagAnchor.Bottom:
+                                            anchorView = new XYZ(xCenter, bboxMinView.Y, 0);
+                                            break;
+                                        case TagAnchor.Left:
+                                            anchorView = new XYZ(bboxMinView.X, yCenter, 0);
+                                            break;
+                                        case TagAnchor.Right:
+                                            anchorView = new XYZ(bboxMaxView.X, yCenter, 0);
+                                            break;
+                                        default:
+                                            anchorView = new XYZ(xCenter, yCenter, 0);
+                                            break;
+                                    }
+                                    XYZ anchorModel = cropTransform.OfPoint(anchorView);
+                                    double z = (bbox.Min.Z + bbox.Max.Z) / 2.0;
+                                    anchorPoint = new XYZ(anchorModel.X, anchorModel.Y, z);
+                                }
                                 double offsetX = userOffsetFactorX * mmToFeet;
                                 double offsetY = userOffsetFactorY * mmToFeet;
-                                XYZ centerPoint = (bbox.Min + bbox.Max) / 2.0;
-                                tagPosition = new XYZ(centerPoint.X + offsetX, centerPoint.Y + offsetY, centerPoint.Z);
+                                tagPosition = new XYZ(anchorPoint.X + offsetX, anchorPoint.Y + offsetY, anchorPoint.Z);
                             }
                             else
                             {
-                                // When orientation is on, apply the offsets along the element's facing and left directions.
+                                // Orient-to-object branch remains unchanged.
                                 double offsetX = userOffsetFactorX * mmToFeet;
                                 double offsetY = userOffsetFactorY * mmToFeet;
                                 XYZ basePoint = (bbox.Min + bbox.Max) / 2.0;
-                                XYZ facing = XYZ.BasisY; // default if no orientation available.
-                                if (element is Autodesk.Revit.DB.FamilyInstance fi)
+                                XYZ facing = XYZ.BasisY;
+                                if (element is FamilyInstance fi)
                                 {
                                     facing = fi.FacingOrientation;
                                     if (facing.IsAlmostEqualTo(XYZ.Zero))
@@ -345,7 +378,7 @@ public class TagNotTaggedElementsInSelectedViews : IExternalCommand
     }
 
     /// <summary>
-    /// Helper method: Projects a 3D point onto the crop plane defined by the crop transform.
+    /// Projects a 3D point onto the crop plane defined by the crop transform.
     /// </summary>
     private static XYZ ProjectPointToCropPlane(XYZ point, Transform cropTransform)
     {
@@ -356,22 +389,20 @@ public class TagNotTaggedElementsInSelectedViews : IExternalCommand
     }
 
     /// <summary>
-    /// Helper method: Determines if a given 2D point (UV) lies inside a polygon defined by a list of UV points.
-    /// Points exactly on a polygon edge (within a small tolerance) are considered inside.
+    /// Determines if a given 2D point (UV) lies inside a polygon defined by a list of UV points.
+    /// Points on an edge (within a small tolerance) are considered inside.
     /// Uses the ray-casting algorithm.
     /// </summary>
     private static bool IsPointInsidePolygon(UV point, List<UV> polygon)
     {
         double tol = 1e-6;
         int count = polygon.Count;
-        // Check if the point lies exactly on any edge.
         for (int i = 0; i < count; i++)
         {
             int j = (i + 1) % count;
             if (IsPointOnLineSegment(point, polygon[i], polygon[j], tol))
                 return true;
         }
-
         bool inside = false;
         for (int i = 0, j = count - 1; i < count; j = i++)
         {
@@ -385,7 +416,7 @@ public class TagNotTaggedElementsInSelectedViews : IExternalCommand
     }
 
     /// <summary>
-    /// Helper method: Determines if a point p lies on the line segment between a and b, within a tolerance.
+    /// Determines if a point lies on the line segment between two points, within a tolerance.
     /// </summary>
     private static bool IsPointOnLineSegment(UV p, UV a, UV b, double tol = 1e-6)
     {
@@ -405,7 +436,7 @@ public class TagNotTaggedElementsInSelectedViews : IExternalCommand
 // Extension method for checking whether an element can be tagged in a view.
 public static class ElementExtensions
 {
-    public static bool CanBeTagged(this Element element, View view)
+    public static bool CanBeTagged(this Element element, Autodesk.Revit.DB.View view)
     {
         return element.Category != null &&
                element.Category.HasMaterialQuantities &&
@@ -414,26 +445,26 @@ public static class ElementExtensions
     }
 }
 
-// A dialog form for entering offset factors and whether to orient tags to objects.
-public class OffsetInputDialog : System.Windows.Forms.Form
+// A dialog form for entering offset factors, orientation, and tag anchor.
+public class OffsetInputDialog : WinForms.Form
 {
-    private System.Windows.Forms.Label labelX;
-    private System.Windows.Forms.Label labelY;
-    private System.Windows.Forms.TextBox textBoxX;
-    private System.Windows.Forms.TextBox textBoxY;
-    private System.Windows.Forms.CheckBox checkBoxOrient;
-    private System.Windows.Forms.Button okButton;
-    private System.Windows.Forms.Button cancelButton;
+    private WinForms.Label labelX;
+    private WinForms.Label labelY;
+    private WinForms.TextBox textBoxX;
+    private WinForms.TextBox textBoxY;
+    private WinForms.CheckBox checkBoxOrient;
+    private WinForms.Label labelTagAnchor;
+    private WinForms.ComboBox comboBoxTagAnchor;
+    private WinForms.Button okButton;
+    private WinForms.Button cancelButton;
 
     public double OffsetX { get; private set; }
     public double OffsetY { get; private set; }
-    /// <summary>
-    /// When true, tag placement will be aligned to each element's orientation.
-    /// </summary>
     public bool OrientToObject
     {
         get { return checkBoxOrient.Checked; }
     }
+    public TagAnchor SelectedTagAnchor { get; private set; }
 
     public OffsetInputDialog()
     {
@@ -443,45 +474,52 @@ public class OffsetInputDialog : System.Windows.Forms.Form
 
     private void InitializeComponent()
     {
-        this.labelX = new System.Windows.Forms.Label();
-        this.labelY = new System.Windows.Forms.Label();
-        this.textBoxX = new System.Windows.Forms.TextBox();
-        this.textBoxY = new System.Windows.Forms.TextBox();
-        this.checkBoxOrient = new System.Windows.Forms.CheckBox();
-        this.okButton = new System.Windows.Forms.Button();
-        this.cancelButton = new System.Windows.Forms.Button();
-
+        this.labelX = new WinForms.Label();
+        this.labelY = new WinForms.Label();
+        this.textBoxX = new WinForms.TextBox();
+        this.textBoxY = new WinForms.TextBox();
+        this.checkBoxOrient = new WinForms.CheckBox();
+        this.labelTagAnchor = new WinForms.Label();
+        this.comboBoxTagAnchor = new WinForms.ComboBox();
+        this.okButton = new WinForms.Button();
+        this.cancelButton = new WinForms.Button();
+        // 
         // labelX
+        // 
         this.labelX.AutoSize = true;
         this.labelX.Location = new System.Drawing.Point(12, 15);
         this.labelX.Name = "labelX";
         this.labelX.Size = new System.Drawing.Size(70, 13);
         this.labelX.TabIndex = 0;
         this.labelX.Text = "Offset X (mm):";
-
+        // 
         // textBoxX
+        // 
         this.textBoxX.Location = new System.Drawing.Point(100, 12);
         this.textBoxX.Name = "textBoxX";
         this.textBoxX.Size = new System.Drawing.Size(100, 20);
         this.textBoxX.TabIndex = 1;
-        this.textBoxX.Text = "10"; // default value in millimeters
-
+        this.textBoxX.Text = "10";
+        // 
         // labelY
+        // 
         this.labelY.AutoSize = true;
         this.labelY.Location = new System.Drawing.Point(12, 45);
         this.labelY.Name = "labelY";
         this.labelY.Size = new System.Drawing.Size(70, 13);
         this.labelY.TabIndex = 2;
         this.labelY.Text = "Offset Y (mm):";
-
+        // 
         // textBoxY
+        // 
         this.textBoxY.Location = new System.Drawing.Point(100, 42);
         this.textBoxY.Name = "textBoxY";
         this.textBoxY.Size = new System.Drawing.Size(100, 20);
         this.textBoxY.TabIndex = 3;
-        this.textBoxY.Text = "10"; // default value in millimeters
-
+        this.textBoxY.Text = "10";
+        // 
         // checkBoxOrient
+        // 
         this.checkBoxOrient.AutoSize = true;
         this.checkBoxOrient.Location = new System.Drawing.Point(12, 75);
         this.checkBoxOrient.Name = "checkBoxOrient";
@@ -489,42 +527,71 @@ public class OffsetInputDialog : System.Windows.Forms.Form
         this.checkBoxOrient.TabIndex = 4;
         this.checkBoxOrient.Text = "Orient to object";
         this.checkBoxOrient.UseVisualStyleBackColor = true;
-        this.checkBoxOrient.Checked = false;  // off by default
-
+        this.checkBoxOrient.Checked = false;
+        // 
+        // labelTagAnchor
+        // 
+        this.labelTagAnchor.AutoSize = true;
+        this.labelTagAnchor.Location = new System.Drawing.Point(12, 105);
+        this.labelTagAnchor.Name = "labelTagAnchor";
+        this.labelTagAnchor.Size = new System.Drawing.Size(67, 13);
+        this.labelTagAnchor.TabIndex = 5;
+        this.labelTagAnchor.Text = "Tag Anchor:";
+        // 
+        // comboBoxTagAnchor
+        // 
+        this.comboBoxTagAnchor.DropDownStyle = WinForms.ComboBoxStyle.DropDownList;
+        this.comboBoxTagAnchor.FormattingEnabled = true;
+        this.comboBoxTagAnchor.Items.AddRange(new object[] {
+            "Center",
+            "Top",
+            "Bottom",
+            "Left",
+            "Right"});
+        this.comboBoxTagAnchor.Location = new System.Drawing.Point(100, 102);
+        this.comboBoxTagAnchor.Name = "comboBoxTagAnchor";
+        this.comboBoxTagAnchor.Size = new System.Drawing.Size(100, 21);
+        this.comboBoxTagAnchor.TabIndex = 6;
+        this.comboBoxTagAnchor.SelectedIndex = 0;
+        // 
         // okButton
-        this.okButton.Location = new System.Drawing.Point(30, 110);
+        // 
+        this.okButton.Location = new System.Drawing.Point(30, 140);
         this.okButton.Name = "okButton";
         this.okButton.Size = new System.Drawing.Size(75, 23);
-        this.okButton.TabIndex = 5;
+        this.okButton.TabIndex = 7;
         this.okButton.Text = "OK";
         this.okButton.UseVisualStyleBackColor = true;
         this.okButton.Click += new System.EventHandler(this.OkButton_Click);
-
+        // 
         // cancelButton
-        this.cancelButton.Location = new System.Drawing.Point(115, 110);
+        // 
+        this.cancelButton.Location = new System.Drawing.Point(115, 140);
         this.cancelButton.Name = "cancelButton";
         this.cancelButton.Size = new System.Drawing.Size(75, 23);
-        this.cancelButton.TabIndex = 6;
+        this.cancelButton.TabIndex = 8;
         this.cancelButton.Text = "Cancel";
         this.cancelButton.UseVisualStyleBackColor = true;
         this.cancelButton.Click += new System.EventHandler(this.CancelButton_Click);
-
+        // 
+        // OffsetInputDialog
+        // 
         this.AcceptButton = this.okButton;
         this.CancelButton = this.cancelButton;
-        this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
-        this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-        this.ClientSize = new System.Drawing.Size(220, 150);
+        this.ClientSize = new System.Drawing.Size(220, 180);
         this.Controls.Add(this.labelX);
         this.Controls.Add(this.textBoxX);
         this.Controls.Add(this.labelY);
         this.Controls.Add(this.textBoxY);
         this.Controls.Add(this.checkBoxOrient);
+        this.Controls.Add(this.labelTagAnchor);
+        this.Controls.Add(this.comboBoxTagAnchor);
         this.Controls.Add(this.okButton);
         this.Controls.Add(this.cancelButton);
-        this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedDialog;
+        this.FormBorderStyle = WinForms.FormBorderStyle.FixedDialog;
         this.MaximizeBox = false;
         this.MinimizeBox = false;
-        this.StartPosition = System.Windows.Forms.FormStartPosition.CenterParent;
+        this.StartPosition = WinForms.FormStartPosition.CenterParent;
         this.Text = "Enter Offset Factors";
     }
 
@@ -535,22 +602,40 @@ public class OffsetInputDialog : System.Windows.Forms.Form
         {
             this.OffsetX = offsetX;
             this.OffsetY = offsetY;
+            switch (this.comboBoxTagAnchor.SelectedItem.ToString())
+            {
+                case "Top":
+                    SelectedTagAnchor = TagAnchor.Top;
+                    break;
+                case "Bottom":
+                    SelectedTagAnchor = TagAnchor.Bottom;
+                    break;
+                case "Left":
+                    SelectedTagAnchor = TagAnchor.Left;
+                    break;
+                case "Right":
+                    SelectedTagAnchor = TagAnchor.Right;
+                    break;
+                default:
+                    SelectedTagAnchor = TagAnchor.Center;
+                    break;
+            }
             SaveLastOffsets(offsetX, offsetY);
-            this.DialogResult = System.Windows.Forms.DialogResult.OK;
+            this.DialogResult = WinForms.DialogResult.OK;
             this.Close();
         }
         else
         {
-            System.Windows.Forms.MessageBox.Show("Please enter valid numeric values for the offsets.",
-                                                  "Invalid Input",
-                                                  System.Windows.Forms.MessageBoxButtons.OK,
-                                                  System.Windows.Forms.MessageBoxIcon.Error);
+            WinForms.MessageBox.Show("Please enter valid numeric values for the offsets.",
+                            "Invalid Input",
+                            WinForms.MessageBoxButtons.OK,
+                            WinForms.MessageBoxIcon.Error);
         }
     }
 
     private void CancelButton_Click(object sender, EventArgs e)
     {
-        this.DialogResult = System.Windows.Forms.DialogResult.Cancel;
+        this.DialogResult = WinForms.DialogResult.Cancel;
         this.Close();
     }
 
@@ -582,6 +667,14 @@ public class OffsetInputDialog : System.Windows.Forms.Form
                         this.checkBoxOrient.Checked = lastOrient;
                     }
                 }
+                if (lines.Length >= 4)
+                {
+                    string lastAnchor = lines[3];
+                    if (!string.IsNullOrEmpty(lastAnchor))
+                    {
+                        this.comboBoxTagAnchor.SelectedItem = lastAnchor;
+                    }
+                }
             }
         }
         catch
@@ -599,10 +692,11 @@ public class OffsetInputDialog : System.Windows.Forms.Form
             if (!Directory.Exists(folderPath))
                 Directory.CreateDirectory(folderPath);
             string filePath = Path.Combine(folderPath, "TagElementsInSelectedViews-last-offsets");
-            string[] lines = new string[3];
+            string[] lines = new string[4];
             lines[0] = offsetX.ToString(CultureInfo.InvariantCulture);
             lines[1] = offsetY.ToString(CultureInfo.InvariantCulture);
             lines[2] = checkBoxOrient.Checked.ToString();
+            lines[3] = this.comboBoxTagAnchor.SelectedItem.ToString();
             File.WriteAllLines(filePath, lines);
         }
         catch
