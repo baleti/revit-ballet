@@ -27,7 +27,7 @@ namespace RevitCommands
     /// </summary>
     [Transaction(TransactionMode.Manual)]
     [Regeneration(RegenerationOption.Manual)]
-    public class SynchronizeSelectedViewsRobust : IExternalCommand
+    public class SynchronizeSelectedViews : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
         {
