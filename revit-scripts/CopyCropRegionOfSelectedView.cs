@@ -191,6 +191,9 @@ public class CopyCropRegionOfSelectedView : IExternalCommand
                     {
                         try
                         {
+                            // Store the original crop visibility state
+                            bool originalCropVisibility = targetView.CropBoxVisible;
+
                             // Activate crop box on target view
                             targetView.CropBoxActive = true;
 
@@ -215,8 +218,8 @@ public class CopyCropRegionOfSelectedView : IExternalCommand
                                 targetView.CropBox = sourceBBox;
                             }
 
-                            // Make crop region visible
-                            targetView.CropBoxVisible = true;
+                            // Restore original crop visibility state
+                            targetView.CropBoxVisible = originalCropVisibility;
                             successCount++;
                         }
                         catch (Exception ex)
@@ -228,6 +231,7 @@ public class CopyCropRegionOfSelectedView : IExternalCommand
                 }
 
                 trans.Commit();
+                
             }
 
             return Result.Succeeded;
