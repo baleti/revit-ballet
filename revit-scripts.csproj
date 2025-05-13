@@ -101,6 +101,7 @@
     <Compile Include="revit-scripts\OutlineSelectedElementsInCurrentViewWithDetailLines.cs" />
     <Compile Include="revit-scripts\PlaceSelectedViewsOnSheets.cs" />
     <Compile Include="revit-scripts\RenameSelectedTexts.cs" />
+    <Compile Include="revit-scripts\SelectByWorksetInView.cs" />
     <Compile Include="revit-scripts\SelectHostsOfSelectedElements.cs" />
     <Compile Include="revit-scripts\SelectLevels.cs" />
     <Compile Include="revit-scripts\OffsetLinesFromTheirWorkplane.cs" />
@@ -119,7 +120,6 @@
     <Compile Include="revit-scripts\SwitchPhase.cs" />
     <Compile Include="revit-scripts\SwitchToLastPhase.cs" />
     <Compile Include="revit-scripts\RehostToJoinedWalls.cs" />
-    <Compile Include="revit-scripts\LabelAreasOfSelectedViews.cs" />
     <Compile Include="revit-scripts\ResetTitlesOfSelectedViewports.cs" />
     <Compile Include="revit-scripts\ToggleLevelBubblesInSelectedViews.cs">
       <SubType>Form</SubType>
