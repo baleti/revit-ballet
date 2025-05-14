@@ -32,12 +32,11 @@ public class OpenViews : IExternalCommand
 
         // ─────────────────────────────────────────────────────────────
         // 2. Prepare data for the grid
-        //    • one Dictionary per row
-        //    • map title → view so we can open it later
         // ─────────────────────────────────────────────────────────────
         List<Dictionary<string, object>> gridData =
             new List<Dictionary<string, object>>();
-        Dictionary<string, View> titleToView = new Dictionary<string, View>();
+        Dictionary<string, View> titleToView =
+            new Dictionary<string, View>();
 
         foreach (View v in allViews)
         {
@@ -50,33 +49,64 @@ public class OpenViews : IExternalCommand
                 { "SheetFolder", sheetFolder }
             });
 
-            // (assumes titles are unique; adjust if your projects break that rule)
+            // (assumes titles are unique; adjust if needed)
             titleToView[v.Title] = v;
         }
 
-        // Column headers in the order you want them shown
+        // Column headers (order determines column order)
         List<string> columns = new List<string> { "Title", "SheetFolder" };
 
         // ─────────────────────────────────────────────────────────────
-        // 3. Show the grid.  (false = do NOT span across all screens)
+        // 3. Figure out which row should be pre-selected
+        // ─────────────────────────────────────────────────────────────
+        int selectedIndex = -1;
+
+        if (activeView is ViewSheet)
+        {
+            selectedIndex = allViews.FindIndex(v => v.Id == activeView.Id);
+        }
+        else
+        {
+            Viewport vp = new FilteredElementCollector(doc)
+                            .OfClass(typeof(Viewport))
+                            .Cast<Viewport>()
+                            .FirstOrDefault(vpt => vpt.ViewId == activeView.Id);
+
+            if (vp != null)
+            {
+                ViewSheet containingSheet = doc.GetElement(vp.SheetId) as ViewSheet;
+                if (containingSheet != null)
+                    selectedIndex = allViews.FindIndex(v => v.Id == containingSheet.Id);
+            }
+
+            if (selectedIndex == -1) // not on a sheet
+                selectedIndex = allViews.FindIndex(v => v.Id == activeView.Id);
+        }
+
+        List<int> initialSelectionIndices = selectedIndex >= 0
+            ? new List<int> { selectedIndex }
+            : new List<int>();
+
+        // ─────────────────────────────────────────────────────────────
+        // 4. Show the grid
         // ─────────────────────────────────────────────────────────────
         List<Dictionary<string, object>> selectedRows =
-            CustomGUIs.DataGrid(gridData, columns, false);
+            CustomGUIs.DataGrid(gridData, columns, spanAllScreens: false, initialSelectionIndices);
 
+        // ─────────────────────────────────────────────────────────────
+        // 5. Open every selected view (sheet or model view)
+        // ─────────────────────────────────────────────────────────────
         if (selectedRows != null && selectedRows.Any())
         {
-            // Open every selected view (sheet or model view)
             foreach (Dictionary<string, object> row in selectedRows)
             {
                 string title = row["Title"].ToString();
-                if (titleToView.TryGetValue(title, out View view))
-                {
+                View view;
+                if (titleToView.TryGetValue(title, out view))
                     uidoc.RequestViewChange(view);
-                }
             }
         }
 
-        // match original behaviour – always return Succeeded
         return Result.Succeeded;
     }
 }

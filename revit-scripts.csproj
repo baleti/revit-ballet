@@ -101,7 +101,7 @@
     <Compile Include="revit-scripts\OutlineSelectedElementsInCurrentViewWithDetailLines.cs" />
     <Compile Include="revit-scripts\PlaceSelectedViewsOnSheets.cs" />
     <Compile Include="revit-scripts\RenameSelectedTexts.cs" />
-    <Compile Include="revit-scripts\SelectByWorksetInView.cs" />
+    <Compile Include="revit-scripts\SelectByWorksetsInView.cs" />
     <Compile Include="revit-scripts\SelectHostsOfSelectedElements.cs" />
     <Compile Include="revit-scripts\SelectLevels.cs" />
     <Compile Include="revit-scripts\OffsetLinesFromTheirWorkplane.cs" />
