@@ -114,6 +114,7 @@
     <Compile Include="revit-scripts\SelectViewsByViewTemplates.cs" />
     <Compile Include="revit-scripts\SelectViewTemplates.cs" />
     <Compile Include="revit-scripts\SelectViewTemplatesOfSelectedViews.cs" />
+    <Compile Include="revit-scripts\SetRevisionToSelectedSheets.cs" />
     <Compile Include="revit-scripts\ShowGeoegraphicData.cs" />
     <Compile Include="revit-scripts\ShowHideWorksetsInView.cs" />
     <Compile Include="revit-scripts\StretchLevelsToCropRegion.cs" />
