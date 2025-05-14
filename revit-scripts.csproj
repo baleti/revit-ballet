@@ -107,6 +107,7 @@
     <Compile Include="revit-scripts\OffsetLinesFromTheirWorkplane.cs" />
     <Compile Include="revit-scripts\RenameFamilies.cs" />
     <Compile Include="revit-scripts\SelectAssociatedElementsFromSelectedDimensions.cs" />
+    <Compile Include="revit-scripts\SelectOpenedViews.cs" />
     <Compile Include="revit-scripts\SelectSheetsBySelectedTitleBlocks.cs" />
     <Compile Include="revit-scripts\SelectViewportsOfViews.cs" />
     <Compile Include="revit-scripts\SelectViewsByViewTemplates.cs" />
