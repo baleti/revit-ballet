@@ -51,13 +51,6 @@
     <AddIn Type="Command">
         <Name>scripts</Name>
         <Assembly>revit-scripts.dll</Assembly>
-        <FullClassName>SelectAllElementsInView</FullClassName>
-        <AddInId>E39B494B-4A63-45AF-B876-EC508252535E</AddInId>
-        <VendorId>scripts</VendorId>
-    </AddIn>
-    <AddIn Type="Command">
-        <Name>scripts</Name>
-        <Assembly>revit-scripts.dll</Assembly>
         <FullClassName>SelectAllElementsInViewAndInGroups</FullClassName>
         <AddInId>E39B494B-4A63-45AF-B876-EC50875257BE</AddInId>
         <VendorId>scripts</VendorId>
