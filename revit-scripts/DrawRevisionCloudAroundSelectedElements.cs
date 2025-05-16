@@ -1,232 +1,356 @@
-﻿using Autodesk.Revit.Attributes;
+﻿#region Namespaces
+using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+#endregion
 
-[Transaction(TransactionMode.Manual)]
-public class DrawRevisionCloudsAroundSelectedElements : IExternalCommand
+namespace MyCompany.RevitCommands
 {
+  [Transaction(TransactionMode.Manual)]
+  public class DrawRevisionCloudAroundSelectedElements : IExternalCommand
+  {
+    private const double OFFSET_MODEL = 0.20; // ft – halo in MODEL space
+
     public Result Execute(
-        ExternalCommandData commandData,
-        ref string message,
-        ElementSet elements)
+      ExternalCommandData cd,
+      ref string message,
+      ElementSet elements)
     {
-        UIApplication uiapp = commandData.Application;
-        UIDocument uidoc = uiapp.ActiveUIDocument;
-        Document doc = uidoc.Document;
+      UIDocument uiDoc = cd.Application.ActiveUIDocument;
+      Document   doc   = uiDoc.Document;
 
-        // Get the active view and selected elements
-        View activeView = doc.ActiveView;
-        ICollection<ElementId> selectedElementIds = uidoc.Selection.GetElementIds();
+      //------------------------------------------------------------------
+      // 0) Collect the selection
+      //------------------------------------------------------------------
+      ICollection<ElementId> selIds = uiDoc.Selection.GetElementIds();
+      if (selIds.Count == 0)
+      {
+        TaskDialog.Show("Revision Clouds",
+          "Nothing is selected. Select one or more elements and run again.");
+        return Result.Cancelled;
+      }
 
-        if (!selectedElementIds.Any())
+      //------------------------------------------------------------------
+      // 1) Sheet discovery: auto vs. prompt
+      //------------------------------------------------------------------
+      bool allViewDependent = selIds.All(id =>
+      {
+        Element e = doc.GetElement(id);
+        return e != null && e.OwnerViewId != ElementId.InvalidElementId;
+      });
+
+      // Cache all view placements once
+      var viewToViewports = new Dictionary<ElementId, List<(ViewSheet, Viewport)>>();
+
+      foreach (ViewSheet sh in new FilteredElementCollector(doc)
+                                 .OfClass(typeof(ViewSheet))
+                                 .Cast<ViewSheet>())
+      {
+        foreach (ElementId vpid in sh.GetAllViewports())
         {
-            message = "Please select one or more elements in the active view.";
-            return Result.Failed;
-        }
-
-        // Get the sheet that contains the active view
-        ViewSheet currentSheet = null;
-        Viewport activeViewport = null;
-
-        FilteredElementCollector sheetCollector = new FilteredElementCollector(doc)
-            .OfClass(typeof(ViewSheet));
-
-        foreach (ViewSheet sheet in sheetCollector)
-        {
-            ICollection<ElementId> viewports = sheet.GetAllViewports();
-            foreach (ElementId viewportId in viewports)
+          if (doc.GetElement(vpid) is Viewport vp)
+          {
+            if (!viewToViewports.TryGetValue(vp.ViewId, out var list))
             {
-                Viewport viewport = doc.GetElement(viewportId) as Viewport;
-                if (viewport != null && viewport.ViewId == activeView.Id)
-                {
-                    currentSheet = sheet;
-                    activeViewport = viewport;
-                    break;
-                }
+              list = new List<(ViewSheet, Viewport)>();
+              viewToViewports[vp.ViewId] = list;
             }
-            if (currentSheet != null)
-                break;
+            list.Add((sh, vp));
+          }
         }
+      }
 
-        if (currentSheet == null)
+      HashSet<ElementId> chosenSheetIds = new HashSet<ElementId>();
+
+      if (allViewDependent)
+      {
+        // --- AUTO mode -------------------------------------------------
+        foreach (ElementId elId in selIds)
         {
-            message = "Could not find the sheet that contains the active view.";
-            return Result.Failed;
+          Element   el   = doc.GetElement(elId);
+          ElementId vId  = el.OwnerViewId;
+          if (viewToViewports.TryGetValue(vId, out var vps))
+            foreach (var pair in vps)
+              chosenSheetIds.Add(pair.Item1.Id);
         }
 
-        // Ensure the view has an active crop box
-        if (!activeView.CropBoxActive || activeView.CropBox == null)
+        if (chosenSheetIds.Count == 0)
         {
-            message = "The active view must have an active crop box.";
-            return Result.Failed;
+          message = "Selected annotation elements are not placed on any sheet.";
+          return Result.Failed;
+        }
+      }
+      else
+      {
+        // --- PROMPT mode (DataGrid) ------------------------------------
+        IList<ViewSheet> sheetsForPrompt = viewToViewports
+                                           .SelectMany(kv => kv.Value)
+                                           .Select(p => p.Item1)
+                                           .Distinct()
+                                           .OrderBy(sh => sh.SheetNumber)
+                                           .ToList();
+
+        if (sheetsForPrompt.Count == 0)
+        {
+          message = "No sheets in the model contain viewports.";
+          return Result.Failed;
         }
 
-        // Offset distance to apply around each element (in model units)
-        double offset = 0.2;  // Adjust as needed (in feet)
+        var columns = new List<string>
+        {
+          "Sheet Number", "Sheet Title",
+          "Revision Sequence", "Revision Date",
+          "Revision Description", "Issued To", "Issued By"
+        };
 
-        // Get the transformation from view to sheet coordinates
-        Transform transform;
+        var gridData        = new List<Dictionary<string, object>>();
+        var sheetNumToIdMap = new Dictionary<string, ElementId>();
+
+        foreach (ViewSheet vs in sheetsForPrompt)
+        {
+          IList<ElementId> revIds = vs.GetAllRevisionIds();
+
+          var seq   = new List<string>();
+          var date  = new List<string>();
+          var desc  = new List<string>();
+          var to    = new List<string>();
+          var by    = new List<string>();
+
+          foreach (ElementId rid in revIds)
+          {
+            if (doc.GetElement(rid) is Revision rv)
+            {
+              seq .Add(rv.SequenceNumber.ToString());
+              date.Add(rv.RevisionDate ?? string.Empty);
+              desc.Add(rv.Description  ?? string.Empty);
+              to  .Add(rv.IssuedTo     ?? string.Empty);
+              by  .Add(rv.IssuedBy     ?? string.Empty);
+            }
+          }
+
+          gridData.Add(new Dictionary<string, object>
+          {
+            ["Sheet Number"]         = vs.SheetNumber,
+            ["Sheet Title"]          = vs.Name,
+            ["Revision Sequence"]    = string.Join(", ", seq),
+            ["Revision Date"]        = string.Join(", ", date),
+            ["Revision Description"] = string.Join(", ", desc),
+            ["Issued To"]            = string.Join(", ", to),
+            ["Issued By"]            = string.Join(", ", by)
+          });
+
+          sheetNumToIdMap[vs.SheetNumber] = vs.Id;
+        }
+
+        List<Dictionary<string, object>> chosen =
+          CustomGUIs.DataGrid(gridData, columns, spanAllScreens: false);
+
+        if (chosen == null || chosen.Count == 0)
+          return Result.Cancelled;
+
+        foreach (var row in chosen)
+        {
+          string sn = row["Sheet Number"].ToString();
+          if (sheetNumToIdMap.TryGetValue(sn, out ElementId id))
+            chosenSheetIds.Add(id);
+        }
+
+        if (chosenSheetIds.Count == 0)
+          return Result.Cancelled;
+      }
+
+      //------------------------------------------------------------------
+      // 2) Ask the user which revision to assign the clouds to
+      //------------------------------------------------------------------
+      IList<Revision> allRevs = new FilteredElementCollector(doc)
+                                .OfClass(typeof(Revision))
+                                .Cast<Revision>()
+                                .Where(r => r.Visibility != RevisionVisibility.Hidden)
+                                .OrderBy(r => r.SequenceNumber)
+                                .ToList();
+
+      Revision chosenRevision = null;
+
+      if (allRevs.Count == 0)
+      {
+        // Create one silently
+        using (Transaction t = new Transaction(doc, "Create Revision"))
+        {
+          t.Start();
+          chosenRevision = Revision.Create(doc);
+          t.Commit();
+        }
+      }
+      else
+      {
+        var revCols = new List<string>
+        {
+          "Revision Sequence", "Revision Date",
+          "Revision Description", "Issued To", "Issued By"
+        };
+
+        var revRows = allRevs.Select(rv => new Dictionary<string, object>
+        {
+          ["Revision Sequence"]    = rv.SequenceNumber,
+          ["Revision Date"]        = rv.RevisionDate,
+          ["Revision Description"] = rv.Description,
+          ["Issued To"]            = rv.IssuedTo,
+          ["Issued By"]            = rv.IssuedBy
+        }).ToList();
+
+        List<Dictionary<string, object>> revChosen =
+          CustomGUIs.DataGrid(revRows, revCols, false,
+                              new List<int> { revRows.Count - 1 });
+
+        if (revChosen == null || revChosen.Count == 0)
+          return Result.Cancelled;
+
+        int seq = Convert.ToInt32(revChosen[0]["Revision Sequence"]);
+        chosenRevision = allRevs.First(rv => rv.SequenceNumber == seq);
+      }
+
+      //------------------------------------------------------------------
+      // 3) Transform cache with **fallback for 2-D views**
+      //------------------------------------------------------------------
+      var xformCache = new Dictionary<(ElementId, ElementId), Transform>();
+
+      Transform GetModelToSheetXform(View v, Viewport vp, ElementId sheetId)
+      {
+        var key = (sheetId, v.Id);
+        if (xformCache.TryGetValue(key, out Transform xf))
+          return xf;
+
+        Transform projToSheet = vp.GetProjectionToSheetTransform();
+
         try
         {
-            transform = GetViewToSheetTransform(activeViewport, doc);
+          IList<TransformWithBoundary> list = v.GetModelToProjectionTransforms();
+          if (list.Count > 0)
+            xf = projToSheet.Multiply(list[0].GetModelToProjectionTransform());
+          else
+            xf = projToSheet; // 2-D view returns no transforms
         }
-        catch (InvalidOperationException ex)
+        catch (Autodesk.Revit.Exceptions.InvalidOperationException)
         {
-            message = ex.Message;
-            return Result.Failed;
+          xf = projToSheet;   // drafting / legend view
         }
 
-        // List to store all curves from all loops
-        List<Curve> allCurves = new List<Curve>();
+        xformCache[key] = xf;
+        return xf;
+      }
 
-        // Iterate through each selected element and create curves around it
-        foreach (ElementId id in selectedElementIds)
+      //------------------------------------------------------------------
+      // 4) For every sheet build the rectangles
+      //------------------------------------------------------------------
+      var curvesBySheet = new Dictionary<ElementId, List<Curve>>();
+
+      XYZ[] delta =
+      {
+        new XYZ(0,0,0), new XYZ(0,0,1), new XYZ(0,1,0), new XYZ(0,1,1),
+        new XYZ(1,0,0), new XYZ(1,0,1), new XYZ(1,1,0), new XYZ(1,1,1)
+      };
+
+      foreach (ElementId sheetId in chosenSheetIds)
+      {
+        ViewSheet sheet = doc.GetElement(sheetId) as ViewSheet;
+        if (sheet == null) continue;
+
+        var vports = sheet.GetAllViewports()
+                          .Select(id => doc.GetElement(id) as Viewport)
+                          .Where(vp => vp != null)
+                          .ToList();
+
+        foreach (ElementId elId in selIds)
         {
-            Element element = doc.GetElement(id);
-            BoundingBoxXYZ elementBB = element.get_BoundingBox(activeView);
+          Element el = doc.GetElement(elId);
+          if (el == null) continue;
 
-            if (elementBB != null)
+          bool viewDep = el.OwnerViewId != ElementId.InvalidElementId;
+
+          foreach (Viewport vp in vports)
+          {
+            if (viewDep && vp.ViewId != el.OwnerViewId) continue;
+
+            View v = doc.GetElement(vp.ViewId) as View;
+            if (v == null) continue;
+
+            BoundingBoxXYZ bb = el.get_BoundingBox(v);
+            if (bb == null) continue;
+
+            XYZ min = bb.Min - new XYZ(OFFSET_MODEL, OFFSET_MODEL, OFFSET_MODEL);
+            XYZ max = bb.Max + new XYZ(OFFSET_MODEL, OFFSET_MODEL, OFFSET_MODEL);
+
+            double sxMin = double.PositiveInfinity, syMin = double.PositiveInfinity;
+            double sxMax = double.NegativeInfinity, syMax = double.NegativeInfinity;
+
+            Transform modelToSheet = GetModelToSheetXform(v, vp, sheetId);
+
+            foreach (XYZ d in delta)
             {
-                // Expand the bounding box by the offset in model coordinates
-                XYZ minPoint = new XYZ(elementBB.Min.X - offset, elementBB.Min.Y - offset, elementBB.Min.Z);
-                XYZ maxPoint = new XYZ(elementBB.Max.X + offset, elementBB.Max.Y + offset, elementBB.Max.Z);
+              XYZ mc = new XYZ(
+                d.X == 0 ? min.X : max.X,
+                d.Y == 0 ? min.Y : max.Y,
+                d.Z == 0 ? min.Z : max.Z);
 
-                // Transform expanded bounding box to sheet space
-                XYZ minInSheet = transform.OfPoint(minPoint);
-                XYZ maxInSheet = transform.OfPoint(maxPoint);
+              XYZ sp = modelToSheet.OfPoint(bb.Transform.OfPoint(mc));
 
-                // Create curves for the bounding box in sheet coordinates
-                // Ensure each loop is properly closed by connecting the last point to the first
-                allCurves.Add(Line.CreateBound(new XYZ(minInSheet.X, minInSheet.Y, 0), new XYZ(minInSheet.X, maxInSheet.Y, 0)));
-                allCurves.Add(Line.CreateBound(new XYZ(minInSheet.X, maxInSheet.Y, 0), new XYZ(maxInSheet.X, maxInSheet.Y, 0)));
-                allCurves.Add(Line.CreateBound(new XYZ(maxInSheet.X, maxInSheet.Y, 0), new XYZ(maxInSheet.X, minInSheet.Y, 0)));
-                allCurves.Add(Line.CreateBound(new XYZ(maxInSheet.X, minInSheet.Y, 0), new XYZ(minInSheet.X, minInSheet.Y, 0)));
+              sxMin = Math.Min(sxMin, sp.X);
+              syMin = Math.Min(syMin, sp.Y);
+              sxMax = Math.Max(sxMax, sp.X);
+              syMax = Math.Max(syMax, sp.Y);
             }
-        }
 
-        if (!allCurves.Any())
-        {
-            message = "Could not determine the bounding boxes of the selected elements.";
-            return Result.Failed;
-        }
+            // rectangle in sheet space
+            XYZ bl = new XYZ(sxMin, syMin, 0);
+            XYZ tl = new XYZ(sxMin, syMax, 0);
+            XYZ tr = new XYZ(sxMax, syMax, 0);
+            XYZ br = new XYZ(sxMax, syMin, 0);
 
-        // Find the latest revision available on the sheet
-        Revision latestRevision = GetLatestRevision(doc);
-
-        // If no revisions are found, create a new one
-        if (latestRevision == null)
-        {
-            using (Transaction t = new Transaction(doc, "Create Revision"))
+            if (!curvesBySheet.TryGetValue(sheetId, out var list))
             {
-                t.Start();
-                latestRevision = Revision.Create(doc);
-                t.Commit();
+              list = new List<Curve>();
+              curvesBySheet[sheetId] = list;
             }
-        }
 
-        // Start a transaction to create the revision cloud
-        using (Transaction t = new Transaction(doc, "Create Revision Cloud"))
+            list.Add(Line.CreateBound(bl, tl));
+            list.Add(Line.CreateBound(tl, tr));
+            list.Add(Line.CreateBound(tr, br));
+            list.Add(Line.CreateBound(br, bl));
+
+            if (viewDep) break; // only one viewport needed
+          }
+        }
+      }
+
+      if (curvesBySheet.Count == 0)
+      {
+        message = "Selected elements are not visible in the chosen / detected sheets.";
+        return Result.Failed;
+      }
+
+      //------------------------------------------------------------------
+      // 5) Create clouds – one per sheet – with chosen revision
+      //------------------------------------------------------------------
+      using (Transaction t = new Transaction(doc, "Revision Clouds"))
+      {
+        t.Start();
+
+        foreach (var kv in curvesBySheet)
         {
-            t.Start();
-
-            // Create a new revision cloud using all the curves
-            RevisionCloud cloud = RevisionCloud.Create(doc, currentSheet, latestRevision.Id, allCurves);
-
-            t.Commit();
+          if (kv.Value.Count > 0)
+          {
+            ViewSheet sh = doc.GetElement(kv.Key) as ViewSheet;
+            RevisionCloud.Create(doc, sh, chosenRevision.Id, kv.Value);
+          }
         }
 
-        return Result.Succeeded;
+        t.Commit();
+      }
+
+      return Result.Succeeded;
     }
-
-    private Transform GetViewToSheetTransform(Viewport viewport, Document doc)
-    {
-        // Get the view associated with the viewport
-        View view = doc.GetElement(viewport.ViewId) as View;
-
-        // Get the view's crop box
-        BoundingBoxXYZ cropBox = view.CropBox;
-        if (cropBox == null)
-            throw new InvalidOperationException("View does not have a valid crop box.");
-
-        // Get the crop box transform (accounts for view rotation)
-        Transform cropTransform = cropBox.Transform;
-
-        // Center of the crop box in model coordinates
-        XYZ cropMin = cropBox.Min;
-        XYZ cropMax = cropBox.Max;
-        XYZ viewCenterInModel = (cropMin + cropMax) / 2.0;
-        viewCenterInModel = cropTransform.OfPoint(viewCenterInModel);
-
-        // Get the viewport's center on the sheet
-        XYZ viewportCenterOnSheet = viewport.GetBoxCenter();
-
-        // Get the rotation angle of the viewport
-        double rotationAngle = 0.0;
-        switch (viewport.Rotation)
-        {
-            case ViewportRotation.None:
-                rotationAngle = 0.0;
-                break;
-            case ViewportRotation.Clockwise:
-                rotationAngle = -0.5 * Math.PI;
-                break;
-            case ViewportRotation.Counterclockwise:
-                rotationAngle = 0.5 * Math.PI;
-                break;
-            default:
-                throw new InvalidOperationException("Viewport rotation is not supported.");
-        }
-
-        // Create rotation transform (around the origin)
-        Transform rotationTransform = Transform.CreateRotation(XYZ.BasisZ, rotationAngle);
-
-        // Create scaling transform (around the origin)
-        double scale = 1.0 / view.Scale; // Convert view scale to scaling factor
-
-        Transform scalingTransform = Transform.Identity;
-        scalingTransform.BasisX = scalingTransform.BasisX.Multiply(scale);
-        scalingTransform.BasisY = scalingTransform.BasisY.Multiply(scale);
-
-        // Combine scaling and rotation
-        Transform srTransform = rotationTransform.Multiply(scalingTransform);
-
-        // Final transform includes translation
-        Transform finalTransform = Transform.Identity;
-        finalTransform.BasisX = srTransform.BasisX;
-        finalTransform.BasisY = srTransform.BasisY;
-        finalTransform.BasisZ = srTransform.BasisZ;
-
-        // Set origin so that the transformed view center maps to the viewport center
-        XYZ transformedViewCenter = srTransform.OfPoint(viewCenterInModel);
-        finalTransform.Origin = viewportCenterOnSheet - transformedViewCenter;
-
-        return finalTransform;
-    }
-
-    private Revision GetLatestRevision(Document doc)
-    {
-        // Collect all revisions in the document
-        FilteredElementCollector revCollector = new FilteredElementCollector(doc)
-            .OfClass(typeof(Revision));
-
-        // Filter revisions that are visible (not hidden)
-        List<Revision> visibleRevisions = revCollector
-            .Cast<Revision>()
-            .Where(r => r.Visibility != RevisionVisibility.Hidden)
-            .ToList();
-
-        // If there are no visible revisions, return null
-        if (!visibleRevisions.Any())
-            return null;
-
-        // Find the revision with the highest sequence number
-        Revision latestRevision = visibleRevisions
-            .OrderByDescending(r => r.SequenceNumber)
-            .FirstOrDefault();
-
-        return latestRevision;
-    }
+  }
 }
