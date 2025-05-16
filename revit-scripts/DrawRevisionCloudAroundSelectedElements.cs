@@ -12,7 +12,11 @@ namespace MyCompany.RevitCommands
   [Transaction(TransactionMode.Manual)]
   public class DrawRevisionCloudAroundSelectedElements : IExternalCommand
   {
-    private const double OFFSET_MODEL = 0.20; // ft – halo in MODEL space
+    private const double OFFSET_MODEL = 0.20;        // ft – halo in MODEL space
+
+    private static bool IsTransformableView(View v) =>
+      v.ViewType != ViewType.DraftingView &&
+      v.ViewType != ViewType.Legend;
 
     public Result Execute(
       ExternalCommandData cd,
@@ -23,7 +27,7 @@ namespace MyCompany.RevitCommands
       Document   doc   = uiDoc.Document;
 
       //------------------------------------------------------------------
-      // 0) Collect the selection
+      // 0) Ensure a selection
       //------------------------------------------------------------------
       ICollection<ElementId> selIds = uiDoc.Selection.GetElementIds();
       if (selIds.Count == 0)
@@ -34,16 +38,9 @@ namespace MyCompany.RevitCommands
       }
 
       //------------------------------------------------------------------
-      // 1) Sheet discovery: auto vs. prompt
+      // 1) Build a map: viewId → (sheet, viewport) pairs
       //------------------------------------------------------------------
-      bool allViewDependent = selIds.All(id =>
-      {
-        Element e = doc.GetElement(id);
-        return e != null && e.OwnerViewId != ElementId.InvalidElementId;
-      });
-
-      // Cache all view placements once
-      var viewToViewports = new Dictionary<ElementId, List<(ViewSheet, Viewport)>>();
+      var viewToVports = new Dictionary<ElementId, List<(ViewSheet, Viewport)>>();
 
       foreach (ViewSheet sh in new FilteredElementCollector(doc)
                                  .OfClass(typeof(ViewSheet))
@@ -53,197 +50,162 @@ namespace MyCompany.RevitCommands
         {
           if (doc.GetElement(vpid) is Viewport vp)
           {
-            if (!viewToViewports.TryGetValue(vp.ViewId, out var list))
+            if (!viewToVports.TryGetValue(vp.ViewId, out var list))
             {
               list = new List<(ViewSheet, Viewport)>();
-              viewToViewports[vp.ViewId] = list;
+              viewToVports[vp.ViewId] = list;
             }
             list.Add((sh, vp));
           }
         }
       }
 
+      //------------------------------------------------------------------
+      // 2) Decide sheets: auto vs. DataGrid
+      //------------------------------------------------------------------
+      bool allViewDependent = selIds.All(id =>
+      {
+        Element e = doc.GetElement(id);
+        return e != null && e.OwnerViewId != ElementId.InvalidElementId;
+      });
+
       HashSet<ElementId> chosenSheetIds = new HashSet<ElementId>();
+      int skippedCount = 0;               // anything we’ll ignore
 
       if (allViewDependent)
       {
-        // --- AUTO mode -------------------------------------------------
+        // ---------- auto-detect sheets ----------
         foreach (ElementId elId in selIds)
         {
-          Element   el   = doc.GetElement(elId);
-          ElementId vId  = el.OwnerViewId;
-          if (viewToViewports.TryGetValue(vId, out var vps))
-            foreach (var pair in vps)
-              chosenSheetIds.Add(pair.Item1.Id);
-        }
+          Element   el  = doc.GetElement(elId);
+          ElementId vid = el.OwnerViewId;
+          if (!viewToVports.TryGetValue(vid, out var vps))
+          {
+            skippedCount++;                // view not on a sheet (drafting/legend)
+            continue;
+          }
 
-        if (chosenSheetIds.Count == 0)
-        {
-          message = "Selected annotation elements are not placed on any sheet.";
-          return Result.Failed;
+          foreach (var pair in vps)
+            chosenSheetIds.Add(pair.Item1.Id);
         }
       }
       else
       {
-        // --- PROMPT mode (DataGrid) ------------------------------------
-        IList<ViewSheet> sheetsForPrompt = viewToViewports
-                                           .SelectMany(kv => kv.Value)
-                                           .Select(p => p.Item1)
-                                           .Distinct()
-                                           .OrderBy(sh => sh.SheetNumber)
-                                           .ToList();
+        // ---------- DataGrid prompt ----------
+        IList<ViewSheet> allSheets = viewToVports
+                                     .SelectMany(kv => kv.Value)
+                                     .Select(p => p.Item1)
+                                     .Distinct()
+                                     .OrderBy(sh => sh.SheetNumber)
+                                     .ToList();
 
-        if (sheetsForPrompt.Count == 0)
+        if (allSheets.Count == 0)
         {
-          message = "No sheets in the model contain viewports.";
-          return Result.Failed;
+          TaskDialog.Show("Revision Clouds",
+            "This project has no sheets with viewports.");
+          return Result.Cancelled;
         }
 
-        var columns = new List<string>
+        var cols = new List<string>
         {
           "Sheet Number", "Sheet Title",
           "Revision Sequence", "Revision Date",
           "Revision Description", "Issued To", "Issued By"
         };
 
-        var gridData        = new List<Dictionary<string, object>>();
-        var sheetNumToIdMap = new Dictionary<string, ElementId>();
+        var gridRows = new List<Dictionary<string, object>>();
+        var numToId  = new Dictionary<string, ElementId>();
 
-        foreach (ViewSheet vs in sheetsForPrompt)
+        foreach (ViewSheet vs in allSheets)
         {
           IList<ElementId> revIds = vs.GetAllRevisionIds();
 
-          var seq   = new List<string>();
-          var date  = new List<string>();
-          var desc  = new List<string>();
-          var to    = new List<string>();
-          var by    = new List<string>();
+          var seq = new List<string>();
+          var dat = new List<string>();
+          var des = new List<string>();
+          var to  = new List<string>();
+          var by  = new List<string>();
 
           foreach (ElementId rid in revIds)
-          {
             if (doc.GetElement(rid) is Revision rv)
             {
-              seq .Add(rv.SequenceNumber.ToString());
-              date.Add(rv.RevisionDate ?? string.Empty);
-              desc.Add(rv.Description  ?? string.Empty);
-              to  .Add(rv.IssuedTo     ?? string.Empty);
-              by  .Add(rv.IssuedBy     ?? string.Empty);
+              seq.Add(rv.SequenceNumber.ToString());
+              dat.Add(rv.RevisionDate ?? string.Empty);
+              des.Add(rv.Description  ?? string.Empty);
+              to .Add(rv.IssuedTo     ?? string.Empty);
+              by .Add(rv.IssuedBy     ?? string.Empty);
             }
-          }
 
-          gridData.Add(new Dictionary<string, object>
+          gridRows.Add(new Dictionary<string, object>
           {
             ["Sheet Number"]         = vs.SheetNumber,
             ["Sheet Title"]          = vs.Name,
             ["Revision Sequence"]    = string.Join(", ", seq),
-            ["Revision Date"]        = string.Join(", ", date),
-            ["Revision Description"] = string.Join(", ", desc),
+            ["Revision Date"]        = string.Join(", ", dat),
+            ["Revision Description"] = string.Join(", ", des),
             ["Issued To"]            = string.Join(", ", to),
             ["Issued By"]            = string.Join(", ", by)
           });
 
-          sheetNumToIdMap[vs.SheetNumber] = vs.Id;
+          numToId[vs.SheetNumber] = vs.Id;
         }
 
-        List<Dictionary<string, object>> chosen =
-          CustomGUIs.DataGrid(gridData, columns, spanAllScreens: false);
-
-        if (chosen == null || chosen.Count == 0)
+        var picked = CustomGUIs.DataGrid(gridRows, cols, spanAllScreens:false);
+        if (picked == null || picked.Count == 0)
           return Result.Cancelled;
 
-        foreach (var row in chosen)
+        foreach (var row in picked)
         {
           string sn = row["Sheet Number"].ToString();
-          if (sheetNumToIdMap.TryGetValue(sn, out ElementId id))
+          if (numToId.TryGetValue(sn, out ElementId id))
             chosenSheetIds.Add(id);
         }
-
-        if (chosenSheetIds.Count == 0)
-          return Result.Cancelled;
       }
 
-      //------------------------------------------------------------------
-      // 2) Ask the user which revision to assign the clouds to
-      //------------------------------------------------------------------
-      IList<Revision> allRevs = new FilteredElementCollector(doc)
-                                .OfClass(typeof(Revision))
-                                .Cast<Revision>()
-                                .Where(r => r.Visibility != RevisionVisibility.Hidden)
-                                .OrderBy(r => r.SequenceNumber)
-                                .ToList();
-
-      Revision chosenRevision = null;
-
-      if (allRevs.Count == 0)
+      // If nothing left to do, notify & exit
+      if (chosenSheetIds.Count == 0)
       {
-        // Create one silently
-        using (Transaction t = new Transaction(doc, "Create Revision"))
-        {
-          t.Start();
-          chosenRevision = Revision.Create(doc);
-          t.Commit();
-        }
-      }
-      else
-      {
-        var revCols = new List<string>
-        {
-          "Revision Sequence", "Revision Date",
-          "Revision Description", "Issued To", "Issued By"
-        };
-
-        var revRows = allRevs.Select(rv => new Dictionary<string, object>
-        {
-          ["Revision Sequence"]    = rv.SequenceNumber,
-          ["Revision Date"]        = rv.RevisionDate,
-          ["Revision Description"] = rv.Description,
-          ["Issued To"]            = rv.IssuedTo,
-          ["Issued By"]            = rv.IssuedBy
-        }).ToList();
-
-        List<Dictionary<string, object>> revChosen =
-          CustomGUIs.DataGrid(revRows, revCols, false,
-                              new List<int> { revRows.Count - 1 });
-
-        if (revChosen == null || revChosen.Count == 0)
-          return Result.Cancelled;
-
-        int seq = Convert.ToInt32(revChosen[0]["Revision Sequence"]);
-        chosenRevision = allRevs.First(rv => rv.SequenceNumber == seq);
+        TaskDialog.Show("Revision Clouds",
+          $"{skippedCount} selected element(s) are in Drafting or Legend views " +
+          "that cannot be placed on sheets, therefore no revision clouds were created.");
+        return Result.Cancelled;
       }
 
       //------------------------------------------------------------------
-      // 3) Transform cache with **fallback for 2-D views**
+      // 3) Ask which revision to assign clouds to
+      //------------------------------------------------------------------
+      Revision rev = PickRevision(doc);
+      if (rev == null) return Result.Cancelled;   // user cancelled picker
+
+      //------------------------------------------------------------------
+      // 4) Transform cache
       //------------------------------------------------------------------
       var xformCache = new Dictionary<(ElementId, ElementId), Transform>();
 
-      Transform GetModelToSheetXform(View v, Viewport vp, ElementId sheetId)
+      Transform GetXform(View v, Viewport vp, ElementId shId)
       {
-        var key = (sheetId, v.Id);
+        if (!IsTransformableView(v)) return null;
+
+        var key = (shId, v.Id);
         if (xformCache.TryGetValue(key, out Transform xf))
           return xf;
 
-        Transform projToSheet = vp.GetProjectionToSheetTransform();
-
         try
         {
-          IList<TransformWithBoundary> list = v.GetModelToProjectionTransforms();
-          if (list.Count > 0)
-            xf = projToSheet.Multiply(list[0].GetModelToProjectionTransform());
-          else
-            xf = projToSheet; // 2-D view returns no transforms
+          xf = vp.GetProjectionToSheetTransform()
+                 .Multiply(v.GetModelToProjectionTransforms()[0]
+                             .GetModelToProjectionTransform());
+          xformCache[key] = xf;
+          return xf;
         }
-        catch (Autodesk.Revit.Exceptions.InvalidOperationException)
+        catch
         {
-          xf = projToSheet;   // drafting / legend view
+          return null;  // drafting / legend returns null
         }
-
-        xformCache[key] = xf;
-        return xf;
       }
 
       //------------------------------------------------------------------
-      // 4) For every sheet build the rectangles
+      // 5) Build rectangles per sheet
       //------------------------------------------------------------------
       var curvesBySheet = new Dictionary<ElementId, List<Curve>>();
 
@@ -253,9 +215,9 @@ namespace MyCompany.RevitCommands
         new XYZ(1,0,0), new XYZ(1,0,1), new XYZ(1,1,0), new XYZ(1,1,1)
       };
 
-      foreach (ElementId sheetId in chosenSheetIds)
+      foreach (ElementId shId in chosenSheetIds)
       {
-        ViewSheet sheet = doc.GetElement(sheetId) as ViewSheet;
+        ViewSheet sheet = doc.GetElement(shId) as ViewSheet;
         if (sheet == null) continue;
 
         var vports = sheet.GetAllViewports()
@@ -269,6 +231,7 @@ namespace MyCompany.RevitCommands
           if (el == null) continue;
 
           bool viewDep = el.OwnerViewId != ElementId.InvalidElementId;
+          bool added   = false;
 
           foreach (Viewport vp in vports)
           {
@@ -277,16 +240,18 @@ namespace MyCompany.RevitCommands
             View v = doc.GetElement(vp.ViewId) as View;
             if (v == null) continue;
 
-            BoundingBoxXYZ bb = el.get_BoundingBox(v);
-            if (bb == null) continue;
+            Transform xform = GetXform(v, vp, shId);
+            if (xform == null) continue;           // drafting / legend
 
+            BoundingBoxXYZ bb = el.get_BoundingBox(v);
+            if (bb == null) continue;              // outside crop, hidden, ...
+
+            // expand + project
             XYZ min = bb.Min - new XYZ(OFFSET_MODEL, OFFSET_MODEL, OFFSET_MODEL);
             XYZ max = bb.Max + new XYZ(OFFSET_MODEL, OFFSET_MODEL, OFFSET_MODEL);
 
             double sxMin = double.PositiveInfinity, syMin = double.PositiveInfinity;
             double sxMax = double.NegativeInfinity, syMax = double.NegativeInfinity;
-
-            Transform modelToSheet = GetModelToSheetXform(v, vp, sheetId);
 
             foreach (XYZ d in delta)
             {
@@ -295,7 +260,7 @@ namespace MyCompany.RevitCommands
                 d.Y == 0 ? min.Y : max.Y,
                 d.Z == 0 ? min.Z : max.Z);
 
-              XYZ sp = modelToSheet.OfPoint(bb.Transform.OfPoint(mc));
+              XYZ sp = xform.OfPoint(bb.Transform.OfPoint(mc));
 
               sxMin = Math.Min(sxMin, sp.X);
               syMin = Math.Min(syMin, sp.Y);
@@ -303,16 +268,15 @@ namespace MyCompany.RevitCommands
               syMax = Math.Max(syMax, sp.Y);
             }
 
-            // rectangle in sheet space
             XYZ bl = new XYZ(sxMin, syMin, 0);
             XYZ tl = new XYZ(sxMin, syMax, 0);
             XYZ tr = new XYZ(sxMax, syMax, 0);
             XYZ br = new XYZ(sxMax, syMin, 0);
 
-            if (!curvesBySheet.TryGetValue(sheetId, out var list))
+            if (!curvesBySheet.TryGetValue(shId, out var list))
             {
               list = new List<Curve>();
-              curvesBySheet[sheetId] = list;
+              curvesBySheet[shId] = list;
             }
 
             list.Add(Line.CreateBound(bl, tl));
@@ -320,37 +284,95 @@ namespace MyCompany.RevitCommands
             list.Add(Line.CreateBound(tr, br));
             list.Add(Line.CreateBound(br, bl));
 
-            if (viewDep) break; // only one viewport needed
+            added = true;
+            if (viewDep) break;
           }
+
+          if (!added) skippedCount++;
         }
       }
 
+      //------------------------------------------------------------------
+      // 6) Create clouds
+      //------------------------------------------------------------------
       if (curvesBySheet.Count == 0)
       {
-        message = "Selected elements are not visible in the chosen / detected sheets.";
-        return Result.Failed;
+        TaskDialog.Show("Revision Clouds",
+          "No revision clouds were created – every selected element " +
+          "is either in a drafting/legend view or not visible in the chosen sheets.");
+        return Result.Cancelled;
       }
 
-      //------------------------------------------------------------------
-      // 5) Create clouds – one per sheet – with chosen revision
-      //------------------------------------------------------------------
       using (Transaction t = new Transaction(doc, "Revision Clouds"))
       {
         t.Start();
-
         foreach (var kv in curvesBySheet)
         {
           if (kv.Value.Count > 0)
-          {
-            ViewSheet sh = doc.GetElement(kv.Key) as ViewSheet;
-            RevisionCloud.Create(doc, sh, chosenRevision.Id, kv.Value);
-          }
+            RevisionCloud.Create(doc, doc.GetElement(kv.Key) as ViewSheet,
+                                 rev.Id, kv.Value);
         }
-
         t.Commit();
       }
 
+      //------------------------------------------------------------------
+      // 7) Report skipped items, if any
+      //------------------------------------------------------------------
+      if (skippedCount > 0)
+      {
+        TaskDialog.Show("Revision Clouds",
+          $"{skippedCount} selected element(s) are in Drafting or Legend views " +
+          "or not visible in the chosen sheets, so no revision clouds were created for them.");
+      }
+
       return Result.Succeeded;
+    }
+
+    //--------------------------------------------------------------------
+    // Helper: pick or create a visible revision
+    //--------------------------------------------------------------------
+    private static Revision PickRevision(Document doc)
+    {
+      IList<Revision> revs = new FilteredElementCollector(doc)
+                             .OfClass(typeof(Revision))
+                             .Cast<Revision>()
+                             .Where(r => r.Visibility != RevisionVisibility.Hidden)
+                             .OrderBy(r => r.SequenceNumber)
+                             .ToList();
+
+      if (revs.Count == 0)
+      {
+        using (Transaction t = new Transaction(doc, "Create Revision"))
+        {
+          t.Start();
+          Revision r = Revision.Create(doc);
+          t.Commit();
+          return r;
+        }
+      }
+
+      var cols = new List<string>
+      {
+        "Revision Sequence", "Revision Date",
+        "Revision Description", "Issued To", "Issued By"
+      };
+
+      var rows = revs.Select(rv => new Dictionary<string, object>
+      {
+        ["Revision Sequence"]    = rv.SequenceNumber,
+        ["Revision Date"]        = rv.RevisionDate,
+        ["Revision Description"] = rv.Description,
+        ["Issued To"]            = rv.IssuedTo,
+        ["Issued By"]            = rv.IssuedBy
+      }).ToList();
+
+      var pick = CustomGUIs.DataGrid(rows, cols, false,
+                                     new List<int>{ rows.Count-1 });
+
+      if (pick == null || pick.Count == 0) return null;
+
+      int seq = Convert.ToInt32(pick[0]["Revision Sequence"]);
+      return revs.First(rv => rv.SequenceNumber == seq);
     }
   }
 }
