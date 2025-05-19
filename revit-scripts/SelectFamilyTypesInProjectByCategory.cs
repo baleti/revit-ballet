@@ -9,21 +9,6 @@ using System.Linq;
 
 namespace YourCompany.YourAddIn
 {
-    /// <summary>
-    /// Lightweight wrapper so the DataGrid can show a list of categories.
-    /// </summary>
-    public class CategoryWrapper
-    {
-        public ElementId Id  { get; }
-        public string    Name { get; }
-
-        public CategoryWrapper(ElementId id, string name)
-        {
-            Id   = id;
-            Name = name;
-        }
-    }
-
     [Transaction(TransactionMode.Manual)]
     public class SelectFamilyTypesInProjectByCategory : IExternalCommand
     {
@@ -36,89 +21,103 @@ namespace YourCompany.YourAddIn
             Document   doc   = uidoc.Document;
 
             /* ------------------------------------------------------------------
-             * 1.  Show a DataGrid with every category that has at least
-             *     one ElementType in the project.
+             * 1. Collect every ElementType in the project and build
+             *    one Dictionary-row per distinct category.
              * -----------------------------------------------------------------*/
 
-            // Collect every ElementType first (we need them later anyway).
             List<ElementType> allElementTypes = new FilteredElementCollector(doc)
                                                 .OfClass(typeof(ElementType))
                                                 .Cast<ElementType>()
                                                 .ToList();
 
-            // Build a unique list of those categories.
-            List<CategoryWrapper> categoryWrappers =
-                allElementTypes
-                    .Where(t => t.Category != null)
-                    .Select(t => new CategoryWrapper(t.Category.Id, t.Category.Name))
-                    .GroupBy(cw => cw.Id.IntegerValue)      // ensure uniqueness
-                    .Select(g => g.First())
-                    .OrderBy(cw => cw.Name)                 // nice to sort alphabetically
-                    .ToList();
+            var categoryRows = new List<Dictionary<string, object>>();
+            var seenIds      = new HashSet<int>();
 
-            // Let the user pick the categories.
-            List<CategoryWrapper> selectedCategories =
-                CustomGUIs.DataGrid<CategoryWrapper>(
-                    categoryWrappers,
-                    new List<string> { "Name" }            // which property columns to show
-                    );
+            foreach (ElementType et in allElementTypes)
+            {
+                Category cat = et.Category;
+                if (cat == null) continue;
 
-            if (selectedCategories.Count == 0)
-                return Result.Cancelled;                    // user hit Cancel / closed box
+                if (seenIds.Add(cat.Id.IntegerValue))          // only once per category
+                {
+                    categoryRows.Add(new Dictionary<string, object>
+                    {
+                        { "Id",   cat.Id },                      // keep the ElementId!
+                        { "Name", cat.Name }
+                    });
+                }
+            }
+
+            // Show the category DataGrid.  --- NOTE: keep "Id" so it returns!
+            var categoryColumns = new List<string> { "Name", "Id" };
+
+            List<Dictionary<string, object>> selectedCatRows =
+                CustomGUIs.DataGrid(
+                    categoryRows,
+                    categoryColumns,
+                    spanAllScreens: false);
+
+            if (selectedCatRows.Count == 0)
+                return Result.Cancelled;
 
             /* ------------------------------------------------------------------
-             * 2.  Filter the previously-collected ElementTypes so we keep only
-             *     those whose Category.Id is in the user’s selection.
+             * 2. Filter the ElementTypes so we keep only those whose category
+             *    matches the user’s selection.
              * -----------------------------------------------------------------*/
 
             HashSet<ElementId> allowedCategoryIds =
-                selectedCategories
-                    .Select(cw => cw.Id)
+                selectedCatRows
+                    .Select(r => (ElementId)r["Id"])
                     .ToHashSet();
 
             List<ElementType> filteredTypes =
                 allElementTypes
-                    .Where(t => t.Category != null && allowedCategoryIds.Contains(t.Category.Id))
+                    .Where(t => t.Category != null &&
+                                allowedCategoryIds.Contains(t.Category.Id))
                     .ToList();
 
             if (filteredTypes.Count == 0)
             {
-                TaskDialog.Show("Select Types", "No family or system types exist for the selected categories.");
+                TaskDialog.Show("Select Types",
+                                "No family or system types exist for the selected categories.");
                 return Result.Cancelled;
             }
 
             /* ------------------------------------------------------------------
-             * 3.  Build the rows for the second DataGrid (Type  | Family | Category)
-             *     and keep a map so we can retrieve the ElementId later.
+             * 3. Build the rows for the second DataGrid (Type | Family | Category)
+             *    and keep a map so we can retrieve the ElementId later.
              * -----------------------------------------------------------------*/
 
-            var typeRows       = new List<Dictionary<string, object>>();
-            var keyToElemType  = new Dictionary<string, ElementType>();
+            var typeRows      = new List<Dictionary<string, object>>();
+            var keyToElemType = new Dictionary<string, ElementType>();
 
             foreach (ElementType et in filteredTypes)
             {
                 string familyName;
                 string categoryName = et.Category?.Name ?? "N/A";
 
-                if (et is FamilySymbol fs)                  // loaded family type
+                if (et is FamilySymbol fs)
                 {
-                    familyName = fs.Family.Name;
+                    familyName = fs.Family.Name;               // loaded family type
                 }
-                else                                        // system type (wall, floor, etc.)
+                else
                 {
-                    Parameter p = et.get_Parameter(BuiltInParameter.SYMBOL_FAMILY_NAME_PARAM);
-                    familyName  = (p != null && !string.IsNullOrEmpty(p.AsString())) ? p.AsString() : "System Type";
+                    Parameter p = et.get_Parameter(
+                        BuiltInParameter.SYMBOL_FAMILY_NAME_PARAM);
+                    familyName = (!string.IsNullOrEmpty(p?.AsString()))
+                                 ? p.AsString()
+                                 : "System Type";
                 }
 
                 var row = new Dictionary<string, object>
                 {
-                    { "Type Name",  et.Name },
-                    { "Family",     familyName },
-                    { "Category",   categoryName }
+                    { "Type Name", et.Name },
+                    { "Family",    familyName },
+                    { "Category",  categoryName }
                 };
                 typeRows.Add(row);
 
-                // key = Family:Type; add suffix if duplicate
+                // Unique key = Family:Type  (add suffix if duplicate)
                 string key = $"{familyName}:{et.Name}";
                 int    i   = 1;
                 while (keyToElemType.ContainsKey(key))
@@ -128,30 +127,29 @@ namespace YourCompany.YourAddIn
             }
 
             /* ------------------------------------------------------------------
-             * 4.  Show the second grid so the user can pick the types.
+             * 4. Show the family-/system-type grid.
              * -----------------------------------------------------------------*/
-            var propertyNames = new List<string> { "Type Name", "Family", "Category" };
 
-            var selectedRows = CustomGUIs.DataGrid(
-                                   typeRows,
-                                   propertyNames,
-                                   spanAllScreens: false);
+            var typeColumns = new List<string> { "Type Name", "Family", "Category" };
 
-            if (selectedRows.Count == 0)
+            var selectedTypeRows = CustomGUIs.DataGrid(
+                                       typeRows,
+                                       typeColumns,
+                                       spanAllScreens: false);
+
+            if (selectedTypeRows.Count == 0)
                 return Result.Cancelled;
 
             /* ------------------------------------------------------------------
-             * 5.  Turn the selected rows into ElementIds and select them in Revit.
+             * 5. Convert the selected rows into ElementIds and select them.
              * -----------------------------------------------------------------*/
-            List<ElementId> idsToSelect = selectedRows
+            List<ElementId> idsToSelect = selectedTypeRows
                 .Select(r =>
                 {
                     string key = $"{r["Family"]}:{r["Type Name"]}";
                     if (!keyToElemType.ContainsKey(key))
-                    {
-                        // handle “_1” / “_2” duplicates
-                        key = keyToElemType.Keys.FirstOrDefault(k => k.StartsWith($"{r["Family"]}:{r["Type Name"]}"));
-                    }
+                        key = keyToElemType.Keys.FirstOrDefault(
+                                  k => k.StartsWith($"{r["Family"]}:{r["Type Name"]}"));
                     return key != null ? keyToElemType[key].Id : null;
                 })
                 .Where(id => id != null)
