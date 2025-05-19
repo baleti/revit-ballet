@@ -91,11 +91,10 @@ namespace YourNamespace
             var columns = new List<string> { "Type", "Category" };
 
             // *** 3rd arg = true → allow multi-row selection ***
-            var selectedRows = CustomGUIs.DataGrid(rows, columns, true);
+            var selectedRows = CustomGUIs.DataGrid(rows, columns, false);
 
             if (selectedRows == null || selectedRows.Count == 0)
             {
-                TaskDialog.Show("Select Hosts", "No host type was selected.");
                 return Result.Cancelled;
             }
 
