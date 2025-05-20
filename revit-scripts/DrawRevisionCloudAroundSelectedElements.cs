@@ -12,7 +12,7 @@ namespace MyCompany.RevitCommands
   [Transaction(TransactionMode.Manual)]
   public class DrawRevisionCloudAroundSelectedElements : IExternalCommand
   {
-    private const double OFFSET_MODEL = 0.20;        // ft – halo in MODEL space
+    private const double OFFSET_MODEL = 0.20;      // ft – halo in MODEL space
 
     private static bool IsTransformableView(View v) =>
       v.ViewType != ViewType.DraftingView &&
@@ -47,7 +47,6 @@ namespace MyCompany.RevitCommands
                                  .Cast<ViewSheet>())
       {
         foreach (ElementId vpid in sh.GetAllViewports())
-        {
           if (doc.GetElement(vpid) is Viewport vp)
           {
             if (!viewToVports.TryGetValue(vp.ViewId, out var list))
@@ -57,7 +56,6 @@ namespace MyCompany.RevitCommands
             }
             list.Add((sh, vp));
           }
-        }
       }
 
       //------------------------------------------------------------------
@@ -70,7 +68,7 @@ namespace MyCompany.RevitCommands
       });
 
       HashSet<ElementId> chosenSheetIds = new HashSet<ElementId>();
-      int skippedCount = 0;               // anything we’ll ignore
+      var failedElems = new HashSet<ElementId>();   // elements that never get a cloud
 
       if (allViewDependent)
       {
@@ -79,9 +77,10 @@ namespace MyCompany.RevitCommands
         {
           Element   el  = doc.GetElement(elId);
           ElementId vid = el.OwnerViewId;
+
           if (!viewToVports.TryGetValue(vid, out var vps))
           {
-            skippedCount++;                // view not on a sheet (drafting/legend)
+            failedElems.Add(elId);          // owner view is not placed on a sheet
             continue;
           }
 
@@ -166,7 +165,7 @@ namespace MyCompany.RevitCommands
       if (chosenSheetIds.Count == 0)
       {
         TaskDialog.Show("Revision Clouds",
-          $"{skippedCount} selected element(s) are in Drafting or Legend views " +
+          "The selected element(s) are in Drafting or Legend views " +
           "that cannot be placed on sheets, therefore no revision clouds were created.");
         return Result.Cancelled;
       }
@@ -205,7 +204,7 @@ namespace MyCompany.RevitCommands
       }
 
       //------------------------------------------------------------------
-      // 5) Build rectangles per sheet
+      // 5) Build rectangles per sheet – ELEMENT-FIRST
       //------------------------------------------------------------------
       var curvesBySheet = new Dictionary<ElementId, List<Curve>>();
 
@@ -215,23 +214,42 @@ namespace MyCompany.RevitCommands
         new XYZ(1,0,0), new XYZ(1,0,1), new XYZ(1,1,0), new XYZ(1,1,1)
       };
 
-      foreach (ElementId shId in chosenSheetIds)
+      foreach (ElementId elId in selIds)
       {
-        ViewSheet sheet = doc.GetElement(shId) as ViewSheet;
-        if (sheet == null) continue;
+        Element el = doc.GetElement(elId);
+        if (el == null) { failedElems.Add(elId); continue; }
 
-        var vports = sheet.GetAllViewports()
-                          .Select(id => doc.GetElement(id) as Viewport)
-                          .Where(vp => vp != null)
-                          .ToList();
+        bool viewDep   = el.OwnerViewId != ElementId.InvalidElementId;
+        bool addedAny  = false;
 
-        foreach (ElementId elId in selIds)
+        IEnumerable<ElementId> candidateSheets;
+
+        if (viewDep)
         {
-          Element el = doc.GetElement(elId);
-          if (el == null) continue;
+          // Only sheets that host the element’s owning view
+          if (!viewToVports.TryGetValue(el.OwnerViewId, out var vps))
+          {
+            failedElems.Add(elId);            // view not on any sheet
+            continue;
+          }
+          candidateSheets = vps
+                           .Select(p => p.Item1.Id)
+                           .Where(id => chosenSheetIds.Contains(id));
+        }
+        else
+        {
+          candidateSheets = chosenSheetIds;
+        }
 
-          bool viewDep = el.OwnerViewId != ElementId.InvalidElementId;
-          bool added   = false;
+        foreach (ElementId shId in candidateSheets)
+        {
+          ViewSheet sheet = doc.GetElement(shId) as ViewSheet;
+          if (sheet == null) continue;
+
+          var vports = sheet.GetAllViewports()
+                            .Select(id => doc.GetElement(id) as Viewport)
+                            .Where(vp => vp != null)
+                            .ToList();
 
           foreach (Viewport vp in vports)
           {
@@ -241,10 +259,10 @@ namespace MyCompany.RevitCommands
             if (v == null) continue;
 
             Transform xform = GetXform(v, vp, shId);
-            if (xform == null) continue;           // drafting / legend
+            if (xform == null) continue;         // drafting / legend
 
             BoundingBoxXYZ bb = el.get_BoundingBox(v);
-            if (bb == null) continue;              // outside crop, hidden, ...
+            if (bb == null) continue;            // outside crop, hidden, ...
 
             // expand + project
             XYZ min = bb.Min - new XYZ(OFFSET_MODEL, OFFSET_MODEL, OFFSET_MODEL);
@@ -284,12 +302,13 @@ namespace MyCompany.RevitCommands
             list.Add(Line.CreateBound(tr, br));
             list.Add(Line.CreateBound(br, bl));
 
-            added = true;
-            if (viewDep) break;
+            addedAny = true;
+            break;                        // once is enough for this sheet
           }
-
-          if (!added) skippedCount++;
         }
+
+        if (!addedAny)
+          failedElems.Add(elId);          // not visible on any chosen sheet
       }
 
       //------------------------------------------------------------------
@@ -298,8 +317,8 @@ namespace MyCompany.RevitCommands
       if (curvesBySheet.Count == 0)
       {
         TaskDialog.Show("Revision Clouds",
-          "No revision clouds were created – every selected element " +
-          "is either in a drafting/legend view or not visible in the chosen sheets.");
+          "No revision clouds were created – none of the selected elements " +
+          "are visible on the chosen sheets.");
         return Result.Cancelled;
       }
 
@@ -318,11 +337,12 @@ namespace MyCompany.RevitCommands
       //------------------------------------------------------------------
       // 7) Report skipped items, if any
       //------------------------------------------------------------------
-      if (skippedCount > 0)
+      if (failedElems.Count > 0)
       {
         TaskDialog.Show("Revision Clouds",
-          $"{skippedCount} selected element(s) are in Drafting or Legend views " +
-          "or not visible in the chosen sheets, so no revision clouds were created for them.");
+          $"{failedElems.Count} of {selIds.Count} selected element(s) " +
+          "are in Drafting/Legend views or not visible on any chosen sheet, " +
+          "so no revision clouds were created for them.");
       }
 
       return Result.Succeeded;
