@@ -14,10 +14,62 @@ namespace MyCompany.RevitCommands
   {
     private const double OFFSET_MODEL = 0.20;      // ft – halo in MODEL space
 
+    // ------------------------------------------------------------------
+    // Small helpers
+    // ------------------------------------------------------------------
     private static bool IsTransformableView(View v) =>
       v.ViewType != ViewType.DraftingView &&
       v.ViewType != ViewType.Legend;
 
+    private static bool IsVisibleInView(Document doc, View v, ElementId id) =>
+      new FilteredElementCollector(doc, v.Id).WhereElementIsNotElementType()
+                                             .Any(e => e.Id == id);
+
+    // ------------------------------------------------------------------
+    // 2-D rectangle helper used for Boolean union
+    // ------------------------------------------------------------------
+    private class Rect2D
+    {
+      public double Xmin, Ymin, Xmax, Ymax;
+
+      public Rect2D(double xmin, double ymin, double xmax, double ymax)
+      {
+        Xmin = xmin; Ymin = ymin; Xmax = xmax; Ymax = ymax;
+      }
+
+      public bool IntersectsOrTouches(Rect2D other) =>
+        !(other.Xmin > Xmax || other.Xmax < Xmin
+       || other.Ymin > Ymax || other.Ymax < Ymin);
+
+      public void UnionWith(Rect2D other)
+      {
+        Xmin = Math.Min(Xmin, other.Xmin);
+        Ymin = Math.Min(Ymin, other.Ymin);
+        Xmax = Math.Max(Xmax, other.Xmax);
+        Ymax = Math.Max(Ymax, other.Ymax);
+      }
+    }
+
+    // merge-or-add, keeps the list free of overlapping rectangles
+    private static void MergeOrAddRect(List<Rect2D> list, Rect2D r)
+    {
+      for (int i = 0; i < list.Count; )
+      {
+        if (list[i].IntersectsOrTouches(r))
+        {
+          r.UnionWith(list[i]);
+          list.RemoveAt(i);       // absorbed; restart scan
+          i = 0;
+        }
+        else
+          ++i;
+      }
+      list.Add(r);
+    }
+
+    // ==================================================================
+    // MAIN EXECUTE
+    // ==================================================================
     public Result Execute(
       ExternalCommandData cd,
       ref string message,
@@ -204,26 +256,9 @@ namespace MyCompany.RevitCommands
       }
 
       //------------------------------------------------------------------
-      // 4½) Visibility-in-view cache + helper
-      //------------------------------------------------------------------
-      var visCache = new Dictionary<ElementId, HashSet<ElementId>>();
-
-      bool IsElementVisibleInView(View v, ElementId eid)
-      {
-        if (!visCache.TryGetValue(v.Id, out var set))
-        {
-          set = new FilteredElementCollector(doc, v.Id)
-                  .ToElementIds()
-                  .ToHashSet();
-          visCache[v.Id] = set;
-        }
-        return set.Contains(eid);
-      }
-
-      //------------------------------------------------------------------
       // 5) Build rectangles per sheet – ELEMENT-FIRST
       //------------------------------------------------------------------
-      var curvesBySheet = new Dictionary<ElementId, List<Curve>>();
+      var rectsBySheet = new Dictionary<ElementId, List<Rect2D>>();
 
       XYZ[] delta =
       {
@@ -275,14 +310,13 @@ namespace MyCompany.RevitCommands
             View v = doc.GetElement(vp.ViewId) as View;
             if (v == null) continue;
 
-            // ---- NEW visibility test ----
-            if (!IsElementVisibleInView(v, el.Id)) continue;
+            if (!IsVisibleInView(doc, v, el.Id)) continue;
 
             Transform xform = GetXform(v, vp, shId);
             if (xform == null) continue;         // drafting / legend
 
             BoundingBoxXYZ bb = el.get_BoundingBox(v);
-            if (bb == null) continue;            // e.g. outside crop region
+            if (bb == null) continue;            // hidden by crop, filters, etc.
 
             // expand + project
             XYZ min = bb.Min - new XYZ(OFFSET_MODEL, OFFSET_MODEL, OFFSET_MODEL);
@@ -300,41 +334,34 @@ namespace MyCompany.RevitCommands
 
               XYZ sp = xform.OfPoint(bb.Transform.OfPoint(mc));
 
-              sxMin = Math.Min(sxMin,  sp.X);
-              syMin = Math.Min(syMin,  sp.Y);
-              sxMax = Math.Max(sxMax,  sp.X);
-              syMax = Math.Max(syMax,  sp.Y);
+              sxMin = Math.Min(sxMin, sp.X);
+              syMin = Math.Min(syMin, sp.Y);
+              sxMax = Math.Max(sxMax, sp.X);
+              syMax = Math.Max(syMax, sp.Y);
             }
 
-            XYZ bl = new XYZ(sxMin, syMin, 0);
-            XYZ tl = new XYZ(sxMin, syMax, 0);
-            XYZ tr = new XYZ(sxMax, syMax, 0);
-            XYZ br = new XYZ(sxMax, syMin, 0);
+            var r = new Rect2D(sxMin, syMin, sxMax, syMax);
 
-            if (!curvesBySheet.TryGetValue(shId, out var list))
+            if (!rectsBySheet.TryGetValue(shId, out var list))
             {
-              list = new List<Curve>();
-              curvesBySheet[shId] = list;
+              list = new List<Rect2D>();
+              rectsBySheet[shId] = list;
             }
 
-            list.Add(Line.CreateBound(bl, tl));
-            list.Add(Line.CreateBound(tl, tr));
-            list.Add(Line.CreateBound(tr, br));
-            list.Add(Line.CreateBound(br, bl));
-
+            MergeOrAddRect(list, r);  // **BOOLEAN UNION HERE**
             addedAny = true;
-            break;                        // once is enough for this sheet
+            break;                    // once is enough for this sheet
           }
         }
 
         if (!addedAny)
-          failedElems.Add(elId);          // not visible on any chosen sheet
+          failedElems.Add(elId);      // not visible on any chosen sheet
       }
 
       //------------------------------------------------------------------
-      // 6) Create clouds
+      // 6) Create clouds – one per sheet with merged rectangles
       //------------------------------------------------------------------
-      if (curvesBySheet.Count == 0)
+      if (rectsBySheet.Count == 0)
       {
         TaskDialog.Show("Revision Clouds",
           "No revision clouds were created – none of the selected elements " +
@@ -345,11 +372,30 @@ namespace MyCompany.RevitCommands
       using (Transaction t = new Transaction(doc, "Revision Clouds"))
       {
         t.Start();
-        foreach (var kv in curvesBySheet)
+        foreach (var kv in rectsBySheet)        // kv.Key = sheetId
         {
-          if (kv.Value.Count > 0)
-            RevisionCloud.Create(doc, doc.GetElement(kv.Key) as ViewSheet,
-                                 rev.Id, kv.Value);
+          var rects = kv.Value;
+          if (rects.Count == 0) continue;
+
+          List<Curve> curves = new List<Curve>();
+
+          foreach (Rect2D r in rects)
+          {
+            XYZ bl = new XYZ(r.Xmin, r.Ymin, 0);
+            XYZ tl = new XYZ(r.Xmin, r.Ymax, 0);
+            XYZ tr = new XYZ(r.Xmax, r.Ymax, 0);
+            XYZ br = new XYZ(r.Xmax, r.Ymin, 0);
+
+            curves.Add(Line.CreateBound(bl, tl));
+            curves.Add(Line.CreateBound(tl, tr));
+            curves.Add(Line.CreateBound(tr, br));
+            curves.Add(Line.CreateBound(br, bl));
+          }
+
+          RevisionCloud.Create(doc,
+                               doc.GetElement(kv.Key) as ViewSheet,
+                               rev.Id,
+                               curves);
         }
         t.Commit();
       }
