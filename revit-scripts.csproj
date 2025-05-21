@@ -96,6 +96,7 @@
     <Compile Include="revit-scripts\DuplicateViewsToSheets.cs" />
     <Compile Include="revit-scripts\FilterPosition.cs" />
     <Compile Include="revit-scripts\FilterDimensions.cs" />
+    <Compile Include="revit-scripts\FilterRevisionClouds.cs" />
     <Compile Include="revit-scripts\FilterSheets.cs" />
     <Compile Include="revit-scripts\InvokeLastAddinCommand.cs" />
     <Compile Include="revit-scripts\MoveSelectedToCentroid.cs" />
