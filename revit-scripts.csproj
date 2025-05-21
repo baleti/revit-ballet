@@ -264,6 +264,7 @@
     <Compile Include="revit-scripts\TraceRooms.cs" />
     <Compile Include="revit-scripts\TransformSelectedElements.cs" />
     <Compile Include="revit-scripts\UnpinSelectedElements.cs" />
+    <Compile Include="revit-scripts\UnsetRevisionToSelectedSheets.cs" />
     <Compile Include="revit-scripts\ZoomSelected.cs" />
   </ItemGroup>
   <ItemGroup>
