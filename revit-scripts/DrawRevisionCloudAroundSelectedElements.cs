@@ -204,6 +204,23 @@ namespace MyCompany.RevitCommands
       }
 
       //------------------------------------------------------------------
+      // 4½) Visibility-in-view cache + helper
+      //------------------------------------------------------------------
+      var visCache = new Dictionary<ElementId, HashSet<ElementId>>();
+
+      bool IsElementVisibleInView(View v, ElementId eid)
+      {
+        if (!visCache.TryGetValue(v.Id, out var set))
+        {
+          set = new FilteredElementCollector(doc, v.Id)
+                  .ToElementIds()
+                  .ToHashSet();
+          visCache[v.Id] = set;
+        }
+        return set.Contains(eid);
+      }
+
+      //------------------------------------------------------------------
       // 5) Build rectangles per sheet – ELEMENT-FIRST
       //------------------------------------------------------------------
       var curvesBySheet = new Dictionary<ElementId, List<Curve>>();
@@ -258,11 +275,14 @@ namespace MyCompany.RevitCommands
             View v = doc.GetElement(vp.ViewId) as View;
             if (v == null) continue;
 
+            // ---- NEW visibility test ----
+            if (!IsElementVisibleInView(v, el.Id)) continue;
+
             Transform xform = GetXform(v, vp, shId);
             if (xform == null) continue;         // drafting / legend
 
             BoundingBoxXYZ bb = el.get_BoundingBox(v);
-            if (bb == null) continue;            // outside crop, hidden, ...
+            if (bb == null) continue;            // e.g. outside crop region
 
             // expand + project
             XYZ min = bb.Min - new XYZ(OFFSET_MODEL, OFFSET_MODEL, OFFSET_MODEL);
@@ -280,10 +300,10 @@ namespace MyCompany.RevitCommands
 
               XYZ sp = xform.OfPoint(bb.Transform.OfPoint(mc));
 
-              sxMin = Math.Min(sxMin, sp.X);
-              syMin = Math.Min(syMin, sp.Y);
-              sxMax = Math.Max(sxMax, sp.X);
-              syMax = Math.Max(syMax, sp.Y);
+              sxMin = Math.Min(sxMin,  sp.X);
+              syMin = Math.Min(syMin,  sp.Y);
+              sxMax = Math.Max(sxMax,  sp.X);
+              syMax = Math.Max(syMax,  sp.Y);
             }
 
             XYZ bl = new XYZ(sxMin, syMin, 0);

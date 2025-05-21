@@ -106,6 +106,7 @@
     <Compile Include="revit-scripts\SelectByWorksetsInView.cs" />
     <Compile Include="revit-scripts\SelectFamilyTypesInProjectByCategory.cs" />
     <Compile Include="revit-scripts\SelectHostsOfSelectedElements.cs" />
+    <Compile Include="revit-scripts\SelectLast50CreatedElements.cs" />
     <Compile Include="revit-scripts\SelectLevels.cs" />
     <Compile Include="revit-scripts\OffsetLinesFromTheirWorkplane.cs" />
     <Compile Include="revit-scripts\RenameFamilies.cs" />

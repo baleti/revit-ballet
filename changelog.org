@@ -931,3 +931,14 @@ for example changing "by linked view" setting across floors
 *** 16
 **** =09:47= still can't get DrawRevisionCloudAroundSelectedElements to work
 can't understand why transformation from "view-space" to "sheet-space" doesn't work
+*** 20
+**** =14:44= tried writing SelectLast50CreatedElements to test if order of Ids in Revit model corresponds (reliably) with order of creating elements
+it doesn't, some previous elements had higher Ids from newer elements
+https://chatgpt.com/share/682c876b-f5d4-800c-b148-6f1a143cf540
+may need to look deeper into format of .rvt file itself, if it stores any more hints
+otherwise it may become necessary to create a "live tracker of transcations" that would continuously store changes (hopefully not)
+*** 21
+**** =10:02= thought of trying to make datagrid writable
+for example it would be useful in FilterSelectedElements which lets you slice and dice revit data, but not change it
+  e.g. to match doors types names and type marks
+wondering if "write mode" could be triggered without changing current view
