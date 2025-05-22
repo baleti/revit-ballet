@@ -52,7 +52,8 @@ namespace MyCompany.RevitCommands
                 "Name",
                 "Revision Number",
                 "Revision Description",
-                "Cloud Count"
+                "Cloud Count",
+                "Longest Edge (mm)"
             };
 
             // --- build grid data + quick lookup map ------------------------------------------
@@ -98,16 +99,19 @@ namespace MyCompany.RevitCommands
                     cloudName = nameParam.AsString() ?? string.Empty;
                 }
 
-                // Count the number of separate cloud sketches in this revision cloud
+                // Analyze geometry to count clouds and find longest edge
                 int cloudCount = 1; // Default to 1 cloud
+                double longestEdgeLength = 0.0; // Default to 0
+                
                 try
                 {
-                    // Try to get the geometry and count separate pieces
+                    // Get the geometry and analyze curves
                     Options options = new Options();
                     GeometryElement geomElem = cloud.get_Geometry(options);
                     if (geomElem != null)
                     {
-                        int curveCount = 0;
+                        var allCurves = new List<Curve>();
+                        
                         foreach (GeometryObject geomObj in geomElem)
                         {
                             if (geomObj is GeometryInstance geomInst)
@@ -117,24 +121,35 @@ namespace MyCompany.RevitCommands
                                 {
                                     foreach (GeometryObject instObj in instGeom)
                                     {
-                                        if (instObj is Curve)
-                                            curveCount++;
+                                        if (instObj is Curve curve)
+                                            allCurves.Add(curve);
                                     }
                                 }
                             }
-                            else if (geomObj is Curve)
+                            else if (geomObj is Curve curve)
                             {
-                                curveCount++;
+                                allCurves.Add(curve);
                             }
                         }
-                        // Estimate cloud count based on curve count (rough approximation)
-                        cloudCount = Math.Max(1, curveCount / 10); // Adjust divisor as needed
+                        
+                        // Find the longest curve length
+                        if (allCurves.Count > 0)
+                        {
+                            longestEdgeLength = allCurves.Max(c => c.Length);
+                            
+                            // Convert from feet to millimeters (1 foot = 304.8 mm)
+                            longestEdgeLength = longestEdgeLength * 304.8;
+                            
+                            // Estimate cloud count based on curve count (rough approximation)
+                            cloudCount = Math.Max(1, allCurves.Count / 10); // Adjust divisor as needed
+                        }
                     }
                 }
                 catch
                 {
-                    // If geometry access fails, keep default of 1
+                    // If geometry access fails, keep defaults
                     cloudCount = 1;
+                    longestEdgeLength = 0.0;
                 }
 
                 // Create a unique key for this cloud using its ElementId
@@ -150,7 +165,8 @@ namespace MyCompany.RevitCommands
                     ["Name"] = cloudName,
                     ["Revision Number"] = revisionNumber,
                     ["Revision Description"] = revisionDescription,
-                    ["Cloud Count"] = cloudCount.ToString()
+                    ["Cloud Count"] = cloudCount.ToString(),
+                    ["Longest Edge (mm)"] = longestEdgeLength.ToString("F1")
                 });
 
                 // Remember the id for later
