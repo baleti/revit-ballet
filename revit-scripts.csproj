@@ -174,7 +174,7 @@
     <Compile Include="revit-scripts\SelectFamilyTypeInstancesInCurrentView.cs" />
     <Compile Include="revit-scripts\OpenSheets.cs" />
     <Compile Include="revit-scripts\ListSheetsWithAllParameters.cs" />
-    <Compile Include="revit-scripts\ListSheetsByRevisions.cs" />
+    <Compile Include="revit-scripts\SelectSheetsOrCloudsByRevisions.cs" />
     <Compile Include="revit-scripts\ListSheetsByRevisionsWhereRevisionIsByCloud.cs" />
     <Compile Include="revit-scripts\ListSheetsWithSelectedLegend.cs" />
     <Compile Include="revit-scripts\SelectFamilyTypeInstancesInProject.cs" />
