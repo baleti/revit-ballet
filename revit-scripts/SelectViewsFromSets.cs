@@ -92,11 +92,6 @@ public class SelectViewsFromSets : IExternalCommand
             // Update the selection with the combined set of elements
             uidoc.Selection.SetElementIds(newViewIds);
             
-            // Show confirmation message
-            int totalViewsAdded = newViewIds.Count - currentSelectionIds.Count;
-            string resultMessage = $"Added {totalViewsAdded} views from {selectedViewSets.Count} view set(s) to selection.";
-            TaskDialog.Show("Selection Updated", resultMessage);
-            
             return Result.Succeeded;
         }
 
