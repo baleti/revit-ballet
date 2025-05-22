@@ -84,24 +84,31 @@ public class SelectSheetsOrCloudsByRevisions : IExternalCommand
         // Add sheet entries
         foreach (var sheet in sheetsWithRevisions)
         {
-            // Get all revisions for this sheet and find the latest one
+            // Get all revisions for this sheet
             var sheetRevisionIds = sheet.GetAllRevisionIds();
             var sheetRevisions = sheetRevisionIds
                 .Select(revId => doc.GetElement(revId) as Revision)
                 .Where(rev => rev != null)
-                .OrderByDescending(rev => rev.SequenceNumber)
+                .OrderBy(rev => rev.SequenceNumber)
                 .ToList();
 
-            var latestRevision = sheetRevisions.FirstOrDefault();
+            // Create comma-delimited strings for all revision data
+            string allRevNums = string.Join(", ", sheetRevisions.Select(r => r.SequenceNumber.ToString()));
+            string allRevDates = string.Join(", ", sheetRevisions.Select(r => r.RevisionDate ?? "N/A"));
+            string allRevDescriptions = string.Join(", ", sheetRevisions.Select(r => r.Description ?? "N/A"));
+            string allIssuedTo = string.Join(", ", sheetRevisions.Select(r => r.IssuedTo ?? "N/A"));
+            string allIssuedBy = string.Join(", ", sheetRevisions.Select(r => r.IssuedBy ?? "N/A"));
             
             elementEntries.Add(new Dictionary<string, object>
             {
                 { "Element Type", "Sheet" },
                 { "Sheet Name", sheet.Title },
                 { "Sheet Number", sheet.SheetNumber },
-                { "Latest Rev Num", latestRevision?.SequenceNumber ?? 0 },
-                { "Latest Rev Date", latestRevision?.RevisionDate ?? "N/A" },
-                { "Latest Rev Description", latestRevision?.Description ?? "N/A" },
+                { "All Rev Nums", allRevNums },
+                { "All Rev Dates", allRevDates },
+                { "All Rev Descriptions", allRevDescriptions },
+                { "All Issued To", allIssuedTo },
+                { "All Issued By", allIssuedBy },
                 { "Element ID", sheet.Id.IntegerValue }
             });
         }
@@ -150,14 +157,23 @@ public class SelectSheetsOrCloudsByRevisions : IExternalCommand
                 }
             }
             
+            // For revision clouds, we only have one revision, but format it consistently
+            string revNum = cloudRevision?.SequenceNumber.ToString() ?? "N/A";
+            string revDate = cloudRevision?.RevisionDate ?? "N/A";
+            string revDescription = cloudRevision?.Description ?? "N/A";
+            string issuedTo = cloudRevision?.IssuedTo ?? "N/A";
+            string issuedBy = cloudRevision?.IssuedBy ?? "N/A";
+            
             elementEntries.Add(new Dictionary<string, object>
             {
                 { "Element Type", "Revision Cloud" },
                 { "Sheet Name", sheetName },
                 { "Sheet Number", sheetNumber },
-                { "Latest Rev Num", cloudRevision?.SequenceNumber ?? 0 },
-                { "Latest Rev Date", cloudRevision?.RevisionDate ?? "N/A" },
-                { "Latest Rev Description", cloudRevision?.Description ?? "N/A" },
+                { "All Rev Nums", revNum },
+                { "All Rev Dates", revDate },
+                { "All Rev Descriptions", revDescription },
+                { "All Issued To", issuedTo },
+                { "All Issued By", issuedBy },
                 { "Element ID", cloud.Id.IntegerValue }
             });
         }
@@ -169,7 +185,7 @@ public class SelectSheetsOrCloudsByRevisions : IExternalCommand
             .ToList();
 
         // Display the elements and let the user select one or more
-        List<string> elementProperties = new List<string> { "Sheet Name", "Element Type", "Sheet Number", "Latest Rev Num", "Latest Rev Date", "Latest Rev Description", "Element ID" };
+        List<string> elementProperties = new List<string> { "Sheet Name", "Element Type", "Sheet Number", "All Rev Nums", "All Rev Dates", "All Rev Descriptions", "All Issued To", "All Issued By", "Element ID" };
         List<Dictionary<string, object>> selectedElements = CustomGUIs.DataGrid(elementEntries, elementProperties, false);
 
         if (selectedElements.Count == 0)
