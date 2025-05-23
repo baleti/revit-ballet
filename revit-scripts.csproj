@@ -88,12 +88,14 @@
     <Compile Include="revit-scripts\AssignViewTemplateToSelectedViews.cs" />
     <Compile Include="revit-scripts\BooleanDifferenceFilledRegionsWithSelectedElements.cs" />
     <Compile Include="revit-scripts\ChangeLevelOfSelectedElements.cs" />
+    <Compile Include="revit-scripts\CombineViewSetsIntoANewSet.cs" />
     <Compile Include="revit-scripts\CopyCropRegionOfSelectedView.cs" />
     <Compile Include="revit-scripts\CreateFilledRegionsOfSelectedElementsInViews.cs" />
     <Compile Include="revit-scripts\DirectShapesFromVisibleRooms.cs" />
     <Compile Include="revit-scripts\DuplicateSheetWithViewsAsDraftingViews.cs" />
     <Compile Include="revit-scripts\DuplicateViewsAsDraftingViews.cs" />
     <Compile Include="revit-scripts\DuplicateViewsToSheets.cs" />
+    <Compile Include="revit-scripts\FilterDoorsPartM.cs" />
     <Compile Include="revit-scripts\FilterPosition.cs" />
     <Compile Include="revit-scripts\FilterDimensions.cs" />
     <Compile Include="revit-scripts\FilterRevisionClouds.cs" />

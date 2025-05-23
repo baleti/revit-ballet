@@ -942,3 +942,8 @@ otherwise it may become necessary to create a "live tracker of transcations" tha
 for example it would be useful in FilterSelectedElements which lets you slice and dice revit data, but not change it
   e.g. to match doors types names and type marks
 wondering if "write mode" could be triggered without changing current view
+*** 22
+**** =13:56= setting out plans seem to be automatable
+could be approached as generating different types of chains of dimensions
+1. segments along walls split at openings (windows/doors)
+2. segments between selected elements
