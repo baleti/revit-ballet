@@ -947,3 +947,8 @@ wondering if "write mode" could be triggered without changing current view
 could be approached as generating different types of chains of dimensions
 1. segments along walls split at openings (windows/doors)
 2. segments between selected elements
+*** 23
+**** =21:59= ReferenceIntersector technique in revit aka ray casting requires an opened 3d view
+that is very annoying, requiring user to have a 3d view opened or having to wait for it to open is a burden
+trying to perform measurements with a self-grown version of ray tracing
+[[autodesk docs][https://help.autodesk.com/view/RVT/2024/ESP/?guid=Revit_API_Revit_API_Developers_Guide_Revit_Geometric_Elements_Geometry_Finding_geometry_by_ray_projection_html]]

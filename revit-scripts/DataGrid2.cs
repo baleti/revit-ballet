@@ -16,7 +16,7 @@ public partial class CustomGUIs
     {
         public List<string> ColumnParts;   // column-header fragments to match
         public string       Value;         // value to look for in the cell
-        public bool         IsExclusion;   // true ⇒ “must NOT contain”
+        public bool         IsExclusion;   // true ⇒ "must NOT contain"
     }
 
     private class SortCriteria
@@ -25,7 +25,7 @@ public partial class CustomGUIs
         public ListSortDirection Direction { get; set; }
     }
 
-    /// <summary>A string comparer that sorts “A2” before “A10”.</summary>
+    /// <summary>A string comparer that sorts "A2" before "A10" and handles mixed numeric/text data.</summary>
     private sealed class NaturalComparer : IComparer<object>
     {
         public int Compare(object x, object y)
@@ -37,12 +37,49 @@ public partial class CustomGUIs
             string s1 = x.ToString();
             string s2 = y.ToString();
 
+            // Handle special non-numeric values that should be treated as text
+            bool s1IsNonNumeric = IsNonNumericValue(s1);
+            bool s2IsNonNumeric = IsNonNumericValue(s2);
+            
+            // If both are non-numeric, compare as strings
+            if (s1IsNonNumeric && s2IsNonNumeric)
+            {
+                return string.Compare(s1, s2, StringComparison.OrdinalIgnoreCase);
+            }
+            
+            // If one is non-numeric and one is numeric, non-numeric comes last
+            if (s1IsNonNumeric && !s2IsNonNumeric) return 1;
+            if (!s1IsNonNumeric && s2IsNonNumeric) return -1;
+
+            // Try to parse as numbers
             double numA, numB;
             bool aIsNum = double.TryParse(s1, out numA);
             bool bIsNum = double.TryParse(s2, out numB);
+            
             if (aIsNum && bIsNum) return numA.CompareTo(numB);
 
+            // Fall back to natural string comparison
             return CompareNatural(s1, s2);
+        }
+
+        /// <summary>Checks if a value should be treated as non-numeric text (like "-", "N/A", etc.)</summary>
+        private static bool IsNonNumericValue(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return true;
+            
+            // Single dash or common placeholder values
+            if (value == "-" || 
+                value.Equals("N/A", StringComparison.OrdinalIgnoreCase) ||
+                value.Equals("NULL", StringComparison.OrdinalIgnoreCase) ||
+                value.Equals("NONE", StringComparison.OrdinalIgnoreCase) ||
+                value.Equals("--", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+            
+            // If it can't be parsed as a number, treat as non-numeric
+            double dummy;
+            return !double.TryParse(value, out dummy);
         }
 
         private static int CompareNatural(string a, string b)
@@ -117,14 +154,23 @@ public partial class CustomGUIs
         grid.AllowUserToResizeRows = false;
         grid.BackgroundColor     = Color.White;
         grid.RowTemplate.Height  = 25;
+        
+        // Disable built-in sorting to prevent the exception
+        grid.SortCompare += (sender, e) =>
+        {
+            e.Handled = true; // Prevent default sorting
+            e.SortResult = naturalComparer.Compare(e.CellValue1, e.CellValue2);
+        };
 
         foreach (string col in propertyNames)
         {
-            grid.Columns.Add(new DataGridViewTextBoxColumn
+            var column = new DataGridViewTextBoxColumn
             {
                 HeaderText      = col,
-                DataPropertyName = col
-            });
+                DataPropertyName = col,
+                SortMode = DataGridViewColumnSortMode.Programmatic // Use custom sorting
+            };
+            grid.Columns.Add(column);
         }
 
         TextBox searchBox = new TextBox { Dock = DockStyle.Top };
@@ -384,7 +430,7 @@ public partial class CustomGUIs
                     sortCriteria = sortCriteria.Take(3).ToList();
             }
 
-            // resort
+            // resort using our custom logic
             UpdateFilteredGrid();
         }
 
@@ -480,7 +526,7 @@ public partial class CustomGUIs
         // ---------------- initial layout -------
         form.Load += delegate
         {
-            grid.Sort(grid.Columns[0], ListSortDirection.Ascending);
+            // Don't use built-in sort - we'll handle it ourselves
             grid.AutoResizeColumns();
 
             int padding = 20;
