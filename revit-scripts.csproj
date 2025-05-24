@@ -95,7 +95,7 @@
     <Compile Include="revit-scripts\DuplicateSheetWithViewsAsDraftingViews.cs" />
     <Compile Include="revit-scripts\DuplicateViewsAsDraftingViews.cs" />
     <Compile Include="revit-scripts\DuplicateViewsToSheets.cs" />
-    <Compile Include="revit-scripts\FilterDoorsPartM.cs" />
+    <Compile Include="revit-scripts\FilterDoorsWallOffsets.cs" />
     <Compile Include="revit-scripts\FilterPosition.cs" />
     <Compile Include="revit-scripts\FilterDimensions.cs" />
     <Compile Include="revit-scripts\FilterRevisionClouds.cs" />
@@ -250,7 +250,6 @@
     <Compile Include="revit-scripts\TagSelectedElements.cs" />
     <Compile Include="revit-scripts\TagNotTaggedElementsInSelectedViews.cs" />
     <Compile Include="revit-scripts\test.cs" />
-    <Compile Include="revit-scripts\test10.cs" />
     <Compile Include="revit-scripts\FilterDoors.cs" />
     <Compile Include="revit-scripts\DeleteSavedSelections.cs" />
     <Compile Include="revit-scripts\test2.cs" />

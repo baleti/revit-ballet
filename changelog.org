@@ -952,3 +952,17 @@ could be approached as generating different types of chains of dimensions
 that is very annoying, requiring user to have a 3d view opened or having to wait for it to open is a burden
 trying to perform measurements with a self-grown version of ray tracing
 [[autodesk docs][https://help.autodesk.com/view/RVT/2024/ESP/?guid=Revit_API_Revit_API_Developers_Guide_Revit_Geometric_Elements_Geometry_Finding_geometry_by_ray_projection_html]]
+*** 24
+**** =12:00= making FilterDoorsPartM
+***** =13:00= improved performance of adjacent wall selections to "usable"
+collected all corresponding walls of about 1000 doors in 18 seconds
+****** =14:00= gemini seems to have got it down even more, but not all walls were collected
+suspicious, but worth investigating
+***** =16:30= first time I got dimensions drawn via revit api
+starting to hit ai limits on major platforms, many difficult problems are cropping up
+drawing dimensions proves, as somewhat expected, to be a challenge and ai isn't great at finding geometric reference planes
+***** =16:37= managed to get dimensions snap in the right places for doors and walls
+***** =17:58= dimensions now snap correctly on all sides and corresponding columns are shown in datagrid
+***** =23:40= because of the size of the file progress became difficult
+on the last breath managed to generate code that irons out a few edge cases I noticed
+tried refactoring code into 4 separate files, which did help speed up maintenance
