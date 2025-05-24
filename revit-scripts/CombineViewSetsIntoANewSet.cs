@@ -6,6 +6,7 @@ using Autodesk.Revit.Attributes;
 using WinForms = System.Windows.Forms;
 using DB       = Autodesk.Revit.DB;
 
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -21,7 +22,7 @@ public class CombineViewSetsIntoANewSet : IExternalCommand
         UIDocument    uidoc = uiapp.ActiveUIDocument;
         DB.Document   doc   = uidoc.Document;
 
-        // 1️⃣ grab ALL view-sheet sets in the document
+        // 1️⃣ all stored view-sheet sets
         List<DB.ViewSheetSet> allSets =
             new DB.FilteredElementCollector(doc)
                   .OfClass(typeof(DB.ViewSheetSet))
@@ -35,7 +36,7 @@ public class CombineViewSetsIntoANewSet : IExternalCommand
             return Result.Cancelled;
         }
 
-        // 2️⃣ build rows for your CustomGUIs.DataGrid
+        // 2️⃣ grid rows for CustomGUIs.DataGrid
         var rows = new List<Dictionary<string, object>>();
 
         foreach (DB.ViewSheetSet set in allSets)
@@ -58,9 +59,9 @@ public class CombineViewSetsIntoANewSet : IExternalCommand
             CustomGUIs.DataGrid(rows, cols, false);
 
         if (picked == null || picked.Count == 0)
-            return Result.Cancelled;          // user hit Cancel / closed grid
+            return Result.Cancelled;  // user aborted
 
-        // 3️⃣ ask for the new set name with a tiny WinForms dialog
+        // 3️⃣ tiny WinForms dialog for the new-set name
         string newSetName;
         using (var dlg = new NewSetNameForm())
         {
@@ -75,25 +76,42 @@ public class CombineViewSetsIntoANewSet : IExternalCommand
             message = "You must supply a name for the new view-sheet set.";
             return Result.Failed;
         }
-        if (allSets.Any(s => s.Name.Equals(newSetName,
-                                           StringComparison.OrdinalIgnoreCase)))
+
+        // 3 b️⃣ check for name clash
+        DB.ViewSheetSet existingSet =
+            allSets.FirstOrDefault(s => s.Name.Equals(newSetName,
+                                                      StringComparison.OrdinalIgnoreCase));
+
+        bool overwriteExisting = false;
+        if (existingSet != null)
         {
-            message = $"A set named “{newSetName}” already exists.";
-            return Result.Failed;
+            WinForms.DialogResult res =
+                WinForms.MessageBox.Show(
+                    $"A set named \"{newSetName}\" already exists.\n\n" +
+                    "Do you want to overwrite it?",
+                    "Overwrite Existing Set?",
+                    WinForms.MessageBoxButtons.YesNo,
+                    WinForms.MessageBoxIcon.Question,
+                    WinForms.MessageBoxDefaultButton.Button2);
+
+            if (res != WinForms.DialogResult.Yes)
+                return Result.Cancelled;
+
+            overwriteExisting = true;
         }
 
         // 4️⃣ build a combined ViewSet (no duplicates)
-        DB.ViewSet combined = new DB.ViewSet();
-        HashSet<DB.ElementId> added = new HashSet<DB.ElementId>();
+        DB.ViewSet combined           = new DB.ViewSet();
+        HashSet<DB.ElementId> addedId = new HashSet<DB.ElementId>();
 
         foreach (var row in picked)
         {
-            string name = row["Name"].ToString();
-            DB.ViewSheetSet src = allSets.First(s => s.Name == name);
+            string name          = row["Name"].ToString();
+            DB.ViewSheetSet src  = allSets.First(s => s.Name == name);
 
             foreach (DB.View v in src.Views)
             {
-                if (added.Add(v.Id))          // HashSet stops duplicates
+                if (addedId.Add(v.Id))
                     combined.Insert(v);
             }
         }
@@ -104,20 +122,33 @@ public class CombineViewSetsIntoANewSet : IExternalCommand
             return Result.Failed;
         }
 
-        // 5️⃣ create the new set in a transaction
+        // 5️⃣ create or update inside ONE transaction
         using (DB.Transaction tx = new DB.Transaction(doc,
-                                   "Create combined view-sheet set"))
+                                  overwriteExisting
+                                      ? "Overwrite view-sheet set"
+                                      : "Create combined view-sheet set"))
         {
             tx.Start();
 
             DB.PrintManager pm = doc.PrintManager;
+            pm.PrintRange = DB.PrintRange.Select;                 // required for ViewSheetSetting :contentReference[oaicite:0]{index=0}
             pm.PrintSetup.CurrentPrintSetting = pm.PrintSetup.InSession;
 
             DB.ViewSheetSetting vss = pm.ViewSheetSetting;
-            // NOTE: ViewSheetSetting doesn't expose Views directly;
-            //       we assign to its *CurrentViewSheetSet* first
-            vss.CurrentViewSheetSet.Views = combined;
-            vss.SaveAs(newSetName);
+
+            if (overwriteExisting)
+            {
+                // make the old one current so we can edit & save it
+                vss.CurrentViewSheetSet = existingSet;            // settable :contentReference[oaicite:1]{index=1}
+                vss.CurrentViewSheetSet.Views = combined;
+                vss.Save();                                       // updates in-place
+            }
+            else
+            {
+                // work on the In-Session set and save with a new name
+                vss.CurrentViewSheetSet.Views = combined;
+                vss.SaveAs(newSetName);                           // creates new set
+            }
 
             tx.Commit();
         }
