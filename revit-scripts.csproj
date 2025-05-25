@@ -98,11 +98,11 @@
     <Compile Include="revit-scripts\DuplicateSheetWithViewsAsDraftingViews.cs" />
     <Compile Include="revit-scripts\DuplicateViewsAsDraftingViews.cs" />
     <Compile Include="revit-scripts\DuplicateViewsToSheets.cs" />
-    <Compile Include="revit-scripts\FilterDoorsWallOffsets_Command.cs" />
-    <Compile Include="revit-scripts\FilterDoorsWallOffsets_Diagnostics.cs" />
-    <Compile Include="revit-scripts\FilterDoorsWallOffsets_Dimensioning.cs" />
-    <Compile Include="revit-scripts\FilterDoorsWallOffsets_Models.cs" />
-    <Compile Include="revit-scripts\FilterDoorsWallOffsets_WallFinding.cs" />
+    <Compile Include="revit-scripts\FilterDoorsWithWallOffsets_Command.cs" />
+    <Compile Include="revit-scripts\FilterDoorsWithWallOffsets_Diagnostics.cs" />
+    <Compile Include="revit-scripts\FilterDoorsWithWallOffsets_Dimensioning.cs" />
+    <Compile Include="revit-scripts\FilterDoorsWithWallOffsets_Models.cs" />
+    <Compile Include="revit-scripts\FilterDoorsWithWallOffsets_WallFinding.cs" />
     <Compile Include="revit-scripts\FilterPosition.cs" />
     <Compile Include="revit-scripts\FilterDimensions.cs" />
     <Compile Include="revit-scripts\FilterRevisionClouds.cs" />

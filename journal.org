@@ -981,3 +981,16 @@ still need to add more robust optional diagnostics as expecting future complicat
 also need to find a way to designate "push" and "pull" sides of door
 ***** =22:06= not sure how to code door orientiation
 most other coding seems to be complete or close to being complete now
+****** =22:45= the way it was coded already accounts for door orientation
+[[https://raw.githubusercontent.com/baleti/revit-scripts-docs/refs/heads/main/FilterDoorsWallOffsets-Door-Orientations.png]]
+orientation understood as combinations of HandFlips and FacingFlips
+it doesn't stop the family from setting it differently
+  that's why I called them Left, Right, Left Reverse, Right Reverse rather than leading/following edge, push/pull side, key side
+  there doesn't seem to be a reliable way to ensure that Left side will always correspond to nib of leading edge and left reverse to nib of following edge
+  it appears to be the case in most instances, but likely need to be checked on a family by family basis
+besides "local orientation" of doors architecture likely has to also account for direction of travel to establish orientation (handing: left/right/left-reverse/right-reverse)
+command also isn't trying to account for door frame thickness as there doesn't seem to be a reliable way to code it
+  revit door usually also seem to set "temporary  dimensions" to door opening rather than trying to snap to user-made door frame 
+***** =23:25= spotted one situation where a wall wasn't correctly excluded as occluded
+overall it was an exception, prevailing majority of selected door/wall situations were measured correctly
+maybe I will address it later (if manage to reproduce)
