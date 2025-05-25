@@ -65,6 +65,208 @@ namespace FilterDoorsWallOffsets
             return result;
         }
 
+        public static List<AdjacentWallInfo> FindAdjacentWallsWithDiagnostics(
+            FamilyInstance doorInst,
+            Wall hostWall,
+            DoorOrientation orientation,
+            List<WallData> wallsToCheck,
+            Document doc,
+            out List<WallDiagnosticInfo> diagnostics)
+        {
+            diagnostics = new List<WallDiagnosticInfo>();
+            List<AdjacentWallInfo> adjacentWalls = new List<AdjacentWallInfo>();
+
+            double searchDistance = 1.0 / 0.3048; // 1 meter in feet
+            BoundingBoxXYZ doorBB = doorInst.get_BoundingBox(doc.ActiveView);
+            if (doorBB == null) doorBB = doorInst.get_BoundingBox(null);
+
+            XYZ min = new XYZ(
+                doorBB.Min.X - searchDistance, doorBB.Min.Y - searchDistance, doorBB.Min.Z - 0.5);
+            XYZ max = new XYZ(
+                doorBB.Max.X + searchDistance, doorBB.Max.Y + searchDistance, doorBB.Max.Z + 0.5);
+
+            double doorWidth = orientation.DoorWidth;
+            double extendedWidthSearch = doorWidth + searchDistance;
+
+            // STEP 1: Filter walls within search area
+            List<WallData> wallsInSearchArea = new List<WallData>();
+            foreach (WallData wallData in wallsToCheck)
+            {
+                if (wallData.WallId == hostWall.Id) 
+                    continue; // Skip host wall, but don't add to diagnostics
+
+                var diagnostic = Diagnostics.CreateWallDiagnosticInfo(wallData, doorInst);
+                
+                bool withinSearchArea = true;
+                if (wallData.BoundingBox != null)
+                {
+                    withinSearchArea = !(wallData.BoundingBox.Max.X < min.X || wallData.BoundingBox.Min.X > max.X ||
+                                        wallData.BoundingBox.Max.Y < min.Y || wallData.BoundingBox.Min.Y > max.Y ||
+                                        wallData.BoundingBox.Max.Z < min.Z || wallData.BoundingBox.Min.Z > max.Z);
+                }
+
+                if (withinSearchArea)
+                {
+                    wallsInSearchArea.Add(wallData);
+                    diagnostics.Add(diagnostic); // Only add walls within search area to diagnostics
+                }
+            }
+
+            foreach (WallData wallData in wallsInSearchArea)
+            {
+                var diagnostic = diagnostics.FirstOrDefault(d => d.WallId == wallData.WallId);
+                if (diagnostic == null) continue;
+
+                // STEP 2: Check perpendicularity
+                XYZ wallDir = GetWallDirection(wallData.Wall);
+                double perpendicularityDotProduct = Math.Abs(wallDir.DotProduct(orientation.WallDirection));
+                bool isPerpendicularToHost = perpendicularityDotProduct < 0.3;
+
+                if (!isPerpendicularToHost)
+                {
+                    diagnostic.SetRejected(WallProcessingResult.RejectedNotPerpendicular, 
+                        $"Dot product: {perpendicularityDotProduct:F3} (threshold: 0.3)");
+                    continue;
+                }
+
+                // STEP 3: Check if wall endpoints are too far in front/behind the door
+                if (AreWallEndpointsTooFarFromDoor(wallData, orientation))
+                {
+                    diagnostic.SetRejected(WallProcessingResult.RejectedEndpointsTooFar, 
+                        "Both endpoints >500mm from door front/back");
+                    continue;
+                }
+
+                // STEP 4: Check if wall is problematically positioned directly in front of or behind the door
+                if (IsWallDirectlyInFrontOrBehindDoor(wallData, orientation))
+                {
+                    diagnostic.SetRejected(WallProcessingResult.RejectedDirectlyInFrontOrBehind, 
+                        "Wall directly in front/behind door opening");
+                    continue;
+                }
+
+                // STEP 5: OCCLUSION CHECK
+                if (IsWallOccluded(wallData, orientation.DoorPoint, wallsInSearchArea, hostWall.Id, doc))
+                {
+                    diagnostic.SetRejected(WallProcessingResult.RejectedOccluded, 
+                        "Wall hidden behind other walls");
+                    continue;
+                }
+
+                // STEP 6: Analyze wall sides and position
+                XYZ wallStart = wallData.Curve.GetEndPoint(0);
+                XYZ wallEnd = wallData.Curve.GetEndPoint(1);
+                WallEndpointSide startSideInfo = AnalyzeWallEndpointSide(wallStart, orientation);
+                WallEndpointSide endSideInfo = AnalyzeWallEndpointSide(wallEnd, orientation);
+
+                HashSet<WallSide> determinedWallSides = new HashSet<WallSide>();
+                bool requiresBothSides = (startSideInfo.IsInFront && endSideInfo.IsInBack) || (startSideInfo.IsInBack && endSideInfo.IsInFront);
+
+                if (requiresBothSides)
+                {
+                    determinedWallSides.Add(WallSide.Front);
+                    determinedWallSides.Add(WallSide.Back);
+                }
+                else if (startSideInfo.IsInFront || endSideInfo.IsInFront)
+                {
+                    determinedWallSides.Add(WallSide.Front);
+                }
+                else if (startSideInfo.IsInBack || endSideInfo.IsInBack)
+                {
+                    determinedWallSides.Add(WallSide.Back);
+                }
+
+                if (!determinedWallSides.Any())
+                {
+                    diagnostic.SetRejected(WallProcessingResult.RejectedNoValidSides, 
+                        "No valid wall sides determined");
+                    continue;
+                }
+
+                // STEP 7: Calculate position and distance
+                IntersectionResult wallProjectResult = wallData.Curve.Project(orientation.DoorPoint);
+                XYZ closestPointOnWallCurve = wallProjectResult.XYZPoint;
+                XYZ doorToWallVector = closestPointOnWallCurve - orientation.DoorPoint;
+
+                XYZ normalizedDoorHand = orientation.DoorHand.IsUnitLength() ? orientation.DoorHand : orientation.DoorHand.Normalize();
+                double projectionAlongDoorHand = doorToWallVector.DotProduct(normalizedDoorHand);
+
+                WallPosition position;
+                double distanceToEdge;
+                double edgeTolerance = 0.1;
+
+                if (projectionAlongDoorHand < -edgeTolerance)
+                {
+                    position = WallPosition.Left;
+                    distanceToEdge = wallData.Curve.Distance(orientation.LeftEdge);
+                }
+                else if (projectionAlongDoorHand > (orientation.DoorWidth + edgeTolerance))
+                {
+                    position = WallPosition.Right;
+                    distanceToEdge = wallData.Curve.Distance(orientation.RightEdge);
+                }
+                else
+                {
+                    position = WallPosition.Front;
+                    double distToLeft = wallData.Curve.Distance(orientation.LeftEdge);
+                    double distToRight = wallData.Curve.Distance(orientation.RightEdge);
+                    distanceToEdge = Math.Min(distToLeft, distToRight);
+                }
+
+                // STEP 8: Check distance threshold
+                if (distanceToEdge > extendedWidthSearch)
+                {
+                    diagnostic.SetRejected(WallProcessingResult.RejectedTooFarFromEdge, 
+                        $"Distance: {distanceToEdge:F3} ft > threshold: {extendedWidthSearch:F3} ft");
+                    continue;
+                }
+
+                // STEP 9: Get face reference
+                Reference closestFaceRef = GetClosestFaceReference(wallData.Wall, orientation.DoorPoint, doc);
+                if (closestFaceRef == null)
+                {
+                    diagnostic.SetRejected(WallProcessingResult.RejectedNoFaceReference, 
+                        "Could not obtain wall face reference");
+                    continue;
+                }
+
+                // Update distance with face reference if available
+                XYZ facePoint = GetFaceReferencePoint(wallData.Wall, closestFaceRef, doc);
+                if (facePoint != null)
+                {
+                    if (position == WallPosition.Left)
+                    {
+                        distanceToEdge = orientation.LeftEdge.DistanceTo(facePoint);
+                    }
+                    else if (position == WallPosition.Right)
+                    {
+                        distanceToEdge = orientation.RightEdge.DistanceTo(facePoint);
+                    }
+                    else // Front
+                    {
+                        distanceToEdge = Math.Min(orientation.LeftEdge.DistanceTo(facePoint), orientation.RightEdge.DistanceTo(facePoint));
+                    }
+                }
+
+                // STEP 10: Accept the wall
+                diagnostic.SetAccepted(position, determinedWallSides.ToList());
+
+                AdjacentWallInfo wallInfo = new AdjacentWallInfo
+                {
+                    WallId = wallData.WallId,
+                    Wall = wallData.Wall,
+                    Position = position,
+                    Distance = distanceToEdge,
+                    WallSides = determinedWallSides.ToList(),
+                    RequiresBothSides = requiresBothSides,
+                    ClosestFaceReference = closestFaceRef
+                };
+                adjacentWalls.Add(wallInfo);
+            }
+
+            return adjacentWalls;
+        }
+
         public static List<AdjacentWallInfo> FindAdjacentWallsParallel(
             FamilyInstance doorInst,
             Wall hostWall,
@@ -90,7 +292,7 @@ namespace FilterDoorsWallOffsets
             List<WallData> wallsInSearchArea = wallsToCheck.Where(wallData =>
             {
                 if (wallData.WallId == hostWall.Id) return false;
-                
+
                 if (wallData.BoundingBox != null)
                 {
                     return !(wallData.BoundingBox.Max.X < min.X || wallData.BoundingBox.Min.X > max.X ||
@@ -225,39 +427,39 @@ namespace FilterDoorsWallOffsets
                 // Get target wall face reference for more accurate positioning
                 Reference targetFaceRef = GetClosestFaceReference(targetWall.Wall, doorPoint, doc);
                 if (targetFaceRef == null) return false;
-                
+
                 XYZ targetPoint = GetFaceReferencePoint(targetWall.Wall, targetFaceRef, doc);
                 if (targetPoint == null) return false;
-                
+
                 // Create a ray from door to target wall face
                 XYZ rayDirection = (targetPoint - doorPoint);
                 double rayLength = rayDirection.GetLength();
-                
+
                 if (rayLength < 0.1) return false; // Too close
                 rayDirection = rayDirection.Normalize();
-                
+
                 // Use a more generous tolerance for wall thickness
                 double tolerance = 0.3; // ~10cm tolerance for wall thickness
                 double minDistanceForOcclusion = tolerance;
                 double maxDistanceForOcclusion = rayLength - tolerance;
-                
+
                 if (maxDistanceForOcclusion <= minDistanceForOcclusion)
                     return false; // Target wall is too close to be occluded
-                
+
                 // Check each other wall for intersection with the ray
                 foreach (WallData otherWall in allWallsInArea)
                 {
                     // Skip the target wall itself and the host wall
                     if (otherWall.WallId == targetWall.WallId || otherWall.WallId == hostWallId)
                         continue;
-                    
+
                     // Quick bounding box check first for performance
                     if (!DoesRayIntersectBoundingBox(doorPoint, rayDirection, rayLength, otherWall.BoundingBox))
                         continue;
-                    
+
                     // Check intersection with wall geometry (both faces)
                     double intersectionDistance = GetRayWallGeometryIntersectionDistance(otherWall.Wall, doorPoint, rayDirection, rayLength);
-                    
+
                     // If intersection is between door and target wall, then target is occluded
                     if (intersectionDistance > minDistanceForOcclusion && intersectionDistance < maxDistanceForOcclusion)
                     {
@@ -265,7 +467,7 @@ namespace FilterDoorsWallOffsets
                         return true; // Target wall is occluded by this other wall
                     }
                 }
-                
+
                 return false; // No occlusion found
             }
             catch (Exception ex)
@@ -281,22 +483,22 @@ namespace FilterDoorsWallOffsets
         private static bool DoesRayIntersectBoundingBox(XYZ rayStart, XYZ rayDirection, double rayLength, BoundingBoxXYZ bbox)
         {
             if (bbox == null) return true; // If no bounding box, assume potential intersection
-            
+
             XYZ rayEnd = rayStart + rayDirection * rayLength;
-            
+
             // Simple AABB vs line segment test
             XYZ min = bbox.Min;
             XYZ max = bbox.Max;
-            
+
             // Check if either ray start or end is inside the bounding box
             if (IsPointInBoundingBox(rayStart, min, max) || IsPointInBoundingBox(rayEnd, min, max))
                 return true;
-            
+
             // Check if ray passes through the bounding box (simplified check)
             bool intersectsX = (rayStart.X <= max.X && rayEnd.X >= min.X) || (rayStart.X >= min.X && rayEnd.X <= max.X);
             bool intersectsY = (rayStart.Y <= max.Y && rayEnd.Y >= min.Y) || (rayStart.Y >= min.Y && rayEnd.Y <= max.Y);
             bool intersectsZ = (rayStart.Z <= max.Z && rayEnd.Z >= min.Z) || (rayStart.Z >= min.Z && rayEnd.Z <= max.Z);
-            
+
             return intersectsX && intersectsY && intersectsZ;
         }
 
@@ -318,13 +520,13 @@ namespace FilterDoorsWallOffsets
                 // Get both exterior and interior faces of the wall
                 IList<Reference> exteriorFaces = HostObjectUtils.GetSideFaces(wall, ShellLayerType.Exterior);
                 IList<Reference> interiorFaces = HostObjectUtils.GetSideFaces(wall, ShellLayerType.Interior);
-                
+
                 List<Reference> allFaces = new List<Reference>();
                 if (exteriorFaces != null) allFaces.AddRange(exteriorFaces);
                 if (interiorFaces != null) allFaces.AddRange(interiorFaces);
-                
+
                 double closestIntersection = -1;
-                
+
                 // Check intersection with each face
                 foreach (Reference faceRef in allFaces)
                 {
@@ -346,7 +548,7 @@ namespace FilterDoorsWallOffsets
                         continue;
                     }
                 }
-                
+
                 // If no face intersection found, fall back to curve-based check with wall thickness
                 if (closestIntersection < 0)
                 {
@@ -363,7 +565,7 @@ namespace FilterDoorsWallOffsets
                         }
                     }
                 }
-                
+
                 return closestIntersection;
             }
             catch (Exception ex)
@@ -383,22 +585,22 @@ namespace FilterDoorsWallOffsets
                 // Get face normal and origin
                 XYZ faceNormal = face.FaceNormal;
                 XYZ faceOrigin = face.Origin;
-                
+
                 // Calculate ray-plane intersection
                 double denominator = rayDirection.DotProduct(faceNormal);
                 if (Math.Abs(denominator) < 1e-10)
                     return -1; // Ray is parallel to face
-                
+
                 XYZ originToRayStart = rayStart - faceOrigin;
                 double t = -originToRayStart.DotProduct(faceNormal) / denominator;
-                
+
                 // Check if intersection is in forward direction and within max distance
                 if (t <= 0 || t > maxRayLength)
                     return -1;
-                
+
                 // Calculate intersection point
                 XYZ intersectionPoint = rayStart + rayDirection * t;
-                
+
                 // Check if intersection point is within the face bounds
                 IntersectionResult uvResult = face.Project(intersectionPoint);
                 if (uvResult != null && uvResult.Distance < 0.1) // Small tolerance for point-on-face
@@ -408,7 +610,7 @@ namespace FilterDoorsWallOffsets
                     {
                         UV intersectionUV = uvResult.UVPoint;
                         BoundingBoxUV faceBounds = face.GetBoundingBox();
-                        
+
                         if (intersectionUV.U >= faceBounds.Min.U && intersectionUV.U <= faceBounds.Max.U &&
                             intersectionUV.V >= faceBounds.Min.V && intersectionUV.V <= faceBounds.Max.V)
                         {
@@ -421,7 +623,7 @@ namespace FilterDoorsWallOffsets
                         return t;
                     }
                 }
-                
+
                 return -1;
             }
             catch (Exception ex)
@@ -442,45 +644,45 @@ namespace FilterDoorsWallOffsets
                 // For 2D intersection (most walls are vertical), we'll work in the XY plane
                 XYZ rayStart2D = new XYZ(rayStart.X, rayStart.Y, 0);
                 XYZ rayDirection2D = new XYZ(rayDirection.X, rayDirection.Y, 0).Normalize();
-                
+
                 if (rayDirection2D.IsZeroLength())
                     return -1; // Ray is vertical, no 2D intersection
-                
+
                 // Convert wall curve to 2D
                 XYZ wallStart = wallCurve.GetEndPoint(0);
                 XYZ wallEnd = wallCurve.GetEndPoint(1);
                 XYZ wallStart2D = new XYZ(wallStart.X, wallStart.Y, 0);
                 XYZ wallEnd2D = new XYZ(wallEnd.X, wallEnd.Y, 0);
-                
+
                 // Line-line intersection in 2D
                 XYZ wallDirection2D = (wallEnd2D - wallStart2D);
                 if (wallDirection2D.IsZeroLength())
                     return -1; // Wall has no length
-                
+
                 wallDirection2D = wallDirection2D.Normalize();
-                
+
                 // Use parametric line intersection
                 // Ray: P = rayStart2D + t * rayDirection2D
                 // Wall: Q = wallStart2D + s * wallDirection2D
                 // Solve: rayStart2D + t * rayDirection2D = wallStart2D + s * wallDirection2D
-                
+
                 double denominator = rayDirection2D.X * wallDirection2D.Y - rayDirection2D.Y * wallDirection2D.X;
                 if (Math.Abs(denominator) < 1e-10)
                     return -1; // Lines are parallel
-                
+
                 XYZ startDiff = wallStart2D - rayStart2D;
                 double t = (startDiff.X * wallDirection2D.Y - startDiff.Y * wallDirection2D.X) / denominator;
                 double s = (startDiff.X * rayDirection2D.Y - startDiff.Y * rayDirection2D.X) / denominator;
-                
+
                 // Check if intersection is within the wall segment (s should be between 0 and wall length)
                 double wallLength2D = wallStart2D.DistanceTo(wallEnd2D);
                 if (s < 0 || s > wallLength2D)
                     return -1; // Intersection is outside wall segment
-                
+
                 // Check if intersection is in the forward direction of the ray
                 if (t < 0)
                     return -1; // Intersection is behind the ray start
-                
+
                 return t; // Return distance along ray to intersection
             }
             catch (Exception ex)
@@ -528,25 +730,25 @@ namespace FilterDoorsWallOffsets
             {
                 XYZ wallStart = wallData.Curve.GetEndPoint(0);
                 XYZ wallEnd = wallData.Curve.GetEndPoint(1);
-                
+
                 XYZ normalizedDoorFacing = orientation.DoorFacing.IsUnitLength() ? orientation.DoorFacing : orientation.DoorFacing.Normalize();
-                
+
                 // Calculate projection of each endpoint along door facing direction
                 XYZ doorToStart = wallStart - orientation.DoorPoint;
                 XYZ doorToEnd = wallEnd - orientation.DoorPoint;
-                
+
                 double startProjection = doorToStart.DotProduct(normalizedDoorFacing);
                 double endProjection = doorToEnd.DotProduct(normalizedDoorFacing);
-                
+
                 // Convert 500mm to feet
                 double maxDistanceFeet = 500.0 / 304.8;
-                
+
                 // Check if both endpoints are too far in front (positive projection)
                 bool bothTooFarInFront = startProjection > maxDistanceFeet && endProjection > maxDistanceFeet;
-                
+
                 // Check if both endpoints are too far behind (negative projection)
                 bool bothTooFarBehind = startProjection < -maxDistanceFeet && endProjection < -maxDistanceFeet;
-                
+
                 return bothTooFarInFront || bothTooFarBehind;
             }
             catch (Exception ex)
@@ -582,7 +784,7 @@ namespace FilterDoorsWallOffsets
 
                 // Check if wall is directly in front (existing logic)
                 bool isProblematicallyInFront = projectionAlongFacing > minOffsetForFiltering;
-                
+
                 // Check if wall is directly behind (new logic)
                 bool isProblematicallyBehind = projectionAlongFacing < -minOffsetForFiltering;
 

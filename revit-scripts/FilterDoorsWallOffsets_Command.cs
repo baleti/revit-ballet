@@ -21,6 +21,7 @@ namespace FilterDoorsWallOffsets
         // Updated configuration file path and name
         private const string ConfigFileName = "FilterDoorsWallOffsets"; // File name itself
         private const string ConfigKeyDrawDimensions = "draw_dimensions";
+        private const string ConfigKeyDiagnostics = "diagnostics";
         private static readonly string ConfigFolderPath = Path.Combine( // Parent folder
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "revit-scripts");
@@ -37,7 +38,19 @@ namespace FilterDoorsWallOffsets
 
                 if (!File.Exists(ConfigFilePath))
                 {
-                    File.WriteAllText(ConfigFilePath, $"{ConfigKeyDrawDimensions}: false\n");
+                    File.WriteAllText(ConfigFilePath, $"{ConfigKeyDrawDimensions}: false\n{ConfigKeyDiagnostics}: false\n");
+                }
+                else
+                {
+                    // Check if diagnostics option exists, if not add it
+                    var lines = File.ReadAllLines(ConfigFilePath).ToList();
+                    bool hasDiagnostics = lines.Any(line => line.Trim().StartsWith(ConfigKeyDiagnostics, StringComparison.OrdinalIgnoreCase));
+                    
+                    if (!hasDiagnostics)
+                    {
+                        lines.Add($"{ConfigKeyDiagnostics}: false");
+                        File.WriteAllLines(ConfigFilePath, lines);
+                    }
                 }
             }
             catch (Exception ex)
@@ -46,7 +59,7 @@ namespace FilterDoorsWallOffsets
             }
         }
 
-        private static bool ShouldDrawDimensions()
+        private static bool GetConfigValue(string key)
         {
             EnsureConfigFileExists();
             try
@@ -54,7 +67,7 @@ namespace FilterDoorsWallOffsets
                 var lines = File.ReadAllLines(ConfigFilePath);
                 foreach (var line in lines)
                 {
-                    if (line.Trim().StartsWith(ConfigKeyDrawDimensions, StringComparison.OrdinalIgnoreCase))
+                    if (line.Trim().StartsWith(key, StringComparison.OrdinalIgnoreCase))
                     {
                         var parts = line.Split(':');
                         if (parts.Length > 1)
@@ -72,6 +85,16 @@ namespace FilterDoorsWallOffsets
             return false; // Default to false if not found or error
         }
 
+        private static bool ShouldDrawDimensions()
+        {
+            return GetConfigValue(ConfigKeyDrawDimensions);
+        }
+
+        private static bool ShouldShowDiagnostics()
+        {
+            return GetConfigValue(ConfigKeyDiagnostics);
+        }
+
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
         {
             UIApplication uiapp = commandData.Application;
@@ -79,6 +102,7 @@ namespace FilterDoorsWallOffsets
             Document doc = uidoc.Document;
 
             bool drawDimensionsEnabled = ShouldDrawDimensions();
+            bool diagnosticsEnabled = ShouldShowDiagnostics();
 
             try
             {
@@ -148,6 +172,7 @@ namespace FilterDoorsWallOffsets
                     .ToList();
 
                 ConcurrentBag<DoorProcessingResult> doorResults = new ConcurrentBag<DoorProcessingResult>();
+                ConcurrentBag<List<WallDiagnosticInfo>> allDiagnostics = new ConcurrentBag<List<WallDiagnosticInfo>>();
 
                 Parallel.ForEach(selectedDoors, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, doorInst =>
                 {
@@ -155,6 +180,8 @@ namespace FilterDoorsWallOffsets
                     {
                         Door = doorInst,
                     };
+
+                    List<WallDiagnosticInfo> doorDiagnostics = new List<WallDiagnosticInfo>();
 
                     try
                     {
@@ -172,8 +199,17 @@ namespace FilterDoorsWallOffsets
                                 wallsToCheck.AddRange(wallsByLevel[doorInst.LevelId]);
                             }
                             wallsToCheck.AddRange(wallsWithoutLevel);
-                            doorResult.AdjacentWalls = WallFinding.FindAdjacentWallsParallel(
-                                doorInst, hostWall, doorOrientation, wallsToCheck, doc);
+
+                            if (diagnosticsEnabled)
+                            {
+                                doorResult.AdjacentWalls = WallFinding.FindAdjacentWallsWithDiagnostics(
+                                    doorInst, hostWall, doorOrientation, wallsToCheck, doc, out doorDiagnostics);
+                            }
+                            else
+                            {
+                                doorResult.AdjacentWalls = WallFinding.FindAdjacentWallsParallel(
+                                    doorInst, hostWall, doorOrientation, wallsToCheck, doc);
+                            }
                         }
                     }
                     catch (Exception ex)
@@ -181,6 +217,11 @@ namespace FilterDoorsWallOffsets
                         doorResult.Error = ex.Message;
                     }
                     doorResults.Add(doorResult);
+                    
+                    if (diagnosticsEnabled)
+                    {
+                        allDiagnostics.Add(doorDiagnostics);
+                    }
                 });
 
                 // Always calculate distances for all doors, regardless of whether we're drawing dimensions
@@ -235,6 +276,19 @@ namespace FilterDoorsWallOffsets
                     }
                 }
 
+                // Show diagnostics if enabled
+                if (diagnosticsEnabled && allDiagnostics.Any())
+                {
+                    var diagnosticsList = allDiagnostics.ToList();
+                    for (int i = 0; i < selectedDoors.Count && i < diagnosticsList.Count; i++)
+                    {
+                        if (diagnosticsList[i].Any())
+                        {
+                            Diagnostics.ShowDiagnosticsDialog(diagnosticsList[i], selectedDoors[i]);
+                        }
+                    }
+                }
+
                 ShowResults(doc, uidoc, selectedDoors, doorResults, doorDistances, !drawDimensionsEnabled);
 
                 return Result.Succeeded;
@@ -278,7 +332,7 @@ namespace FilterDoorsWallOffsets
             // Then the descriptive columns
             propertyNames.AddRange(new[] { "Group", "Room From", "Room To" });
 
-            // “Mark” column
+            // "Mark" column
             propertyNames.Add("Mark");
 
             // (Wall-ID columns removed)
