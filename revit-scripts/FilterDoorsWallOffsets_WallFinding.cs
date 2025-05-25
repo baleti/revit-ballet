@@ -435,13 +435,16 @@ namespace FilterDoorsWallOffsets
                 XYZ rayDirection = (targetPoint - doorPoint);
                 double rayLength = rayDirection.GetLength();
 
-                if (rayLength < 0.1) return false; // Too close
+                // If target wall is very close to door (less than 8 feet), don't consider it occluded
+                // This handles cases where walls are adjacent to the door area
+                if (rayLength < 8.0) return false;
+
                 rayDirection = rayDirection.Normalize();
 
-                // Use a more generous tolerance for wall thickness
-                double tolerance = 0.3; // ~10cm tolerance for wall thickness
-                double minDistanceForOcclusion = tolerance;
-                double maxDistanceForOcclusion = rayLength - tolerance;
+                // Use more realistic tolerances for wall thickness and clearance
+                double wallThicknessTolerance = 1.0; // ~30cm tolerance for wall thickness variations
+                double minDistanceForOcclusion = wallThicknessTolerance;
+                double maxDistanceForOcclusion = rayLength - wallThicknessTolerance;
 
                 if (maxDistanceForOcclusion <= minDistanceForOcclusion)
                     return false; // Target wall is too close to be occluded
@@ -451,6 +454,11 @@ namespace FilterDoorsWallOffsets
                 {
                     // Skip the target wall itself and the host wall
                     if (otherWall.WallId == targetWall.WallId || otherWall.WallId == hostWallId)
+                        continue;
+
+                    // Skip walls that are very close to the target wall (likely adjacent/parallel)
+                    double distanceBetweenWalls = GetDistanceBetweenWalls(targetWall, otherWall);
+                    if (distanceBetweenWalls < 2.0) // If walls are less than 2 feet apart, they're likely adjacent
                         continue;
 
                     // Quick bounding box check first for performance
@@ -463,8 +471,13 @@ namespace FilterDoorsWallOffsets
                     // If intersection is between door and target wall, then target is occluded
                     if (intersectionDistance > minDistanceForOcclusion && intersectionDistance < maxDistanceForOcclusion)
                     {
-                        System.Diagnostics.Debug.WriteLine($"Wall {targetWall.WallId} is occluded by wall {otherWall.WallId} at distance {intersectionDistance:F3}");
-                        return true; // Target wall is occluded by this other wall
+                        // Additional check: ensure the intersection is not just a grazing hit
+                        // by verifying the intersection point is significantly inside the wall geometry
+                        if (IsSignificantWallIntersection(otherWall.Wall, doorPoint, rayDirection, intersectionDistance, doc))
+                        {
+                            System.Diagnostics.Debug.WriteLine($"Wall {targetWall.WallId} is occluded by wall {otherWall.WallId} at distance {intersectionDistance:F3}");
+                            return true; // Target wall is occluded by this other wall
+                        }
                     }
                 }
 
@@ -474,6 +487,134 @@ namespace FilterDoorsWallOffsets
             {
                 System.Diagnostics.Debug.WriteLine($"Error in occlusion check for wall {targetWall.WallId}: {ex.Message}");
                 return false; // If there's an error, assume not occluded to be safe
+            }
+        }
+
+        /// <summary>
+        /// Calculates the minimum distance between two walls
+        /// </summary>
+        private static double GetDistanceBetweenWalls(WallData wall1, WallData wall2)
+        {
+            try
+            {
+                // Sample points along both curves to find minimum distance
+                Curve curve1 = wall1.Curve;
+                Curve curve2 = wall2.Curve;
+
+                double minDistance = double.MaxValue;
+
+                // Sample multiple points along curve1 and find closest distance to curve2
+                int sampleCount = 10;
+                for (int i = 0; i <= sampleCount; i++)
+                {
+                    double param = i / (double)sampleCount;
+                    
+                    XYZ point1;
+                    if (curve1.IsBound)
+                    {
+                        double actualParam = curve1.GetEndParameter(0) + param * (curve1.GetEndParameter(1) - curve1.GetEndParameter(0));
+                        point1 = curve1.Evaluate(actualParam, false);
+                    }
+                    else
+                    {
+                        point1 = curve1.Evaluate(param, true);
+                    }
+
+                    double distanceToCurve2 = curve2.Distance(point1);
+                    if (distanceToCurve2 < minDistance)
+                    {
+                        minDistance = distanceToCurve2;
+                    }
+                }
+
+                // Also sample points along curve2 and find closest distance to curve1
+                for (int i = 0; i <= sampleCount; i++)
+                {
+                    double param = i / (double)sampleCount;
+                    
+                    XYZ point2;
+                    if (curve2.IsBound)
+                    {
+                        double actualParam = curve2.GetEndParameter(0) + param * (curve2.GetEndParameter(1) - curve2.GetEndParameter(0));
+                        point2 = curve2.Evaluate(actualParam, false);
+                    }
+                    else
+                    {
+                        point2 = curve2.Evaluate(param, true);
+                    }
+
+                    double distanceToCurve1 = curve1.Distance(point2);
+                    if (distanceToCurve1 < minDistance)
+                    {
+                        minDistance = distanceToCurve1;
+                    }
+                }
+
+                // Also check endpoint distances for extra accuracy
+                XYZ start1 = curve1.GetEndPoint(0);
+                XYZ end1 = curve1.GetEndPoint(1);
+                XYZ start2 = curve2.GetEndPoint(0);
+                XYZ end2 = curve2.GetEndPoint(1);
+
+                double[] endpointDistances = {
+                    curve2.Distance(start1),
+                    curve2.Distance(end1),
+                    curve1.Distance(start2),
+                    curve1.Distance(end2)
+                };
+
+                foreach (double dist in endpointDistances)
+                {
+                    if (dist < minDistance)
+                    {
+                        minDistance = dist;
+                    }
+                }
+
+                return minDistance;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error calculating distance between walls: {ex.Message}");
+                return double.MaxValue; // Return large value if calculation fails
+            }
+        }
+
+        /// <summary>
+        /// Checks if the ray intersection with a wall is significant (not just a grazing hit)
+        /// </summary>
+        private static bool IsSignificantWallIntersection(Wall wall, XYZ rayStart, XYZ rayDirection, double intersectionDistance, Document doc)
+        {
+            try
+            {
+                XYZ intersectionPoint = rayStart + rayDirection * intersectionDistance;
+
+                // Get wall thickness for comparison
+                Parameter widthParam = wall.get_Parameter(BuiltInParameter.WALL_ATTR_WIDTH_PARAM);
+                double wallThickness = widthParam?.AsDouble() ?? 0.5; // Default to 6 inches if not found
+
+                // Check if intersection point is well within the wall geometry
+                // by testing points slightly offset from the intersection
+                XYZ testPoint1 = intersectionPoint + rayDirection * (wallThickness * 0.3);
+                XYZ testPoint2 = intersectionPoint - rayDirection * (wallThickness * 0.3);
+
+                // If both test points are still close to the wall, it's a significant intersection
+                LocationCurve locCurve = wall.Location as LocationCurve;
+                if (locCurve?.Curve != null)
+                {
+                    double dist1 = locCurve.Curve.Distance(testPoint1);
+                    double dist2 = locCurve.Curve.Distance(testPoint2);
+
+                    // If both points are within wall thickness distance, it's a real intersection
+                    return (dist1 < wallThickness && dist2 < wallThickness);
+                }
+
+                return true; // Default to true if we can't verify
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error checking intersection significance: {ex.Message}");
+                return true; // Default to true if calculation fails
             }
         }
 

@@ -312,8 +312,24 @@ namespace FilterDoorsWallOffsets
             var allOrientationLabels = doorDistances.Values
                 .SelectMany(dims => dims.Select(d => d.OrientationLabel))
                 .Distinct()
+                .ToList();
+
+            // Custom ordering: Offset Left, Offset Right, Offset Left Reverse, Offset Right Reverse
+            var orderedOrientationLabels = new List<string>();
+            
+            // First add non-reverse labels
+            var nonReverseLabels = allOrientationLabels
+                .Where(label => !label.Contains("Reverse"))
                 .OrderBy(label => label)
                 .ToList();
+            orderedOrientationLabels.AddRange(nonReverseLabels);
+            
+            // Then add reverse labels
+            var reverseLabels = allOrientationLabels
+                .Where(label => label.Contains("Reverse"))
+                .OrderBy(label => label)
+                .ToList();
+            orderedOrientationLabels.AddRange(reverseLabels);
 
             // ─── column setup ────────────────────────────────────────────
             List<string> propertyNames = new List<string>
@@ -324,7 +340,7 @@ namespace FilterDoorsWallOffsets
             };
 
             // Offset-distance columns now directly follow "Adjacent Walls Count"
-            foreach (string orientationLabel in allOrientationLabels)
+            foreach (string orientationLabel in orderedOrientationLabels)
             {
                 propertyNames.Add($"{orientationLabel} (mm)");
             }
@@ -379,7 +395,7 @@ namespace FilterDoorsWallOffsets
                 doorProperties["Adjacent Walls Count"] = dimensionedAdjacentWallsCount;
 
                 // Initialise distance columns
-                foreach (string orientationLabel in allOrientationLabels)
+                foreach (string orientationLabel in orderedOrientationLabels)
                 {
                     doorProperties[$"{orientationLabel} (mm)"] = "-";
                 }
