@@ -183,35 +183,59 @@ namespace FilterDoorsWallOffsets
                     doorResults.Add(doorResult);
                 });
 
-                Dictionary<int, List<DimensionInfo>> doorDimensions = new Dictionary<int, List<DimensionInfo>>();
-
-                if (drawDimensionsEnabled)
+                // Always calculate distances for all doors, regardless of whether we're drawing dimensions
+                Dictionary<int, List<DimensionInfo>> doorDistances = new Dictionary<int, List<DimensionInfo>>();
+                
+                // We need a transaction to create temporary dimensions for accurate measurement
+                using (Transaction tx = new Transaction(doc, drawDimensionsEnabled ? "Create Door-Wall Dimensions" : "Calculate Door Distances"))
                 {
-                    using (Transaction tx = new Transaction(doc, "Create Door-Wall Dimensions"))
+                    tx.Start();
+                    
+                    foreach (var result in doorResults.Where(r => !r.NoHostWall && string.IsNullOrEmpty(r.Error) && r.AdjacentWalls.Any()))
                     {
-                        tx.Start();
-                        foreach (var result in doorResults.Where(r => !r.NoHostWall && string.IsNullOrEmpty(r.Error) && r.AdjacentWalls.Any()))
+                        try
+                        {
+                            List<DimensionInfo> calculatedDistances = Dimensioning.CalculateDistancesForDoor(
+                                doc, uidoc, result.Door, result.AdjacentWalls);
+                            if (calculatedDistances.Any())
+                            {
+                                doorDistances[result.Door.Id.IntegerValue] = calculatedDistances;
+                            }
+                        }
+                        catch (Exception exCalc)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"Error calculating distances for door {result.Door.Id}: {exCalc.Message}");
+                            continue;
+                        }
+                    }
+
+                    // If dimensions should be drawn, create them now
+                    if (drawDimensionsEnabled)
+                    {
+                        foreach (var kvp in doorDistances)
                         {
                             try
                             {
-                                List<DimensionInfo> dimensionsCreated = Dimensioning.CreateDimensionsForDoor(
-                                    doc, uidoc, result.Door, result.AdjacentWalls);
-                                if (dimensionsCreated.Any())
-                                {
-                                    doorDimensions[result.Door.Id.IntegerValue] = dimensionsCreated;
-                                }
+                                // Create dimensions based on the calculated distances
+                                Dimensioning.CreateDimensionsFromCalculatedDistances(
+                                    doc, uidoc, kvp.Value);
                             }
                             catch (Exception exDim)
                             {
-                                System.Diagnostics.Debug.WriteLine($"Error creating dimension for door {result.Door.Id}: {exDim.Message}");
+                                System.Diagnostics.Debug.WriteLine($"Error creating dimension for door {kvp.Key}: {exDim.Message}");
                                 continue;
                             }
                         }
                         tx.Commit();
                     }
+                    else
+                    {
+                        // Roll back the transaction so temporary dimensions are not kept
+                        tx.RollBack();
+                    }
                 }
 
-                ShowResults(doc, uidoc, selectedDoors, doorResults, doorDimensions, !drawDimensionsEnabled && !doorDimensions.Any());
+                ShowResults(doc, uidoc, selectedDoors, doorResults, doorDistances, !drawDimensionsEnabled);
 
                 return Result.Succeeded;
             }
@@ -228,10 +252,10 @@ namespace FilterDoorsWallOffsets
             UIDocument uidoc,
             List<FamilyInstance> selectedDoors,
             ConcurrentBag<DoorProcessingResult> doorResults,
-            Dictionary<int, List<DimensionInfo>> doorDimensions,
+            Dictionary<int, List<DimensionInfo>> doorDistances,
             bool dimensionsSkippedBySetting)
         {
-            var allOrientationLabels = doorDimensions.Values
+            var allOrientationLabels = doorDistances.Values
                 .SelectMany(dims => dims.Select(d => d.OrientationLabel))
                 .Distinct()
                 .OrderBy(label => label)
@@ -274,14 +298,14 @@ namespace FilterDoorsWallOffsets
                 doorProperties["Height (mm)"] = Math.Round(doorHeightParam * 304.8);
 
                 int dimensionedAdjacentWallsCount = 0;
-                if (doorDimensions.TryGetValue(result.Door.Id.IntegerValue, out List<DimensionInfo> dimsForThisDoorInGrid))
+                if (doorDistances.TryGetValue(result.Door.Id.IntegerValue, out List<DimensionInfo> dimsForThisDoorInGrid))
                 {
                     dimensionedAdjacentWallsCount = dimsForThisDoorInGrid.Select(d => d.WallId).Distinct().Count();
                 }
                 doorProperties["Adjacent Walls Count"] = dimensionedAdjacentWallsCount;
 
-                List<DimensionInfo> dimensions = doorDimensions.ContainsKey(result.Door.Id.IntegerValue)
-                    ? doorDimensions[result.Door.Id.IntegerValue]
+                List<DimensionInfo> distances = doorDistances.ContainsKey(result.Door.Id.IntegerValue)
+                    ? doorDistances[result.Door.Id.IntegerValue]
                     : new List<DimensionInfo>();
 
                 foreach (string orientationLabel in allOrientationLabels)
@@ -290,7 +314,7 @@ namespace FilterDoorsWallOffsets
                     doorProperties[$"Wall {orientationLabel.Replace("Offset ", "")} ID"] = "-";
                 }
 
-                foreach (var dim in dimensions)
+                foreach (var dim in distances)
                 {
                     double distanceInMm = Math.Round(dim.Value * 304.8);
                     doorProperties[$"{dim.OrientationLabel} (mm)"] = distanceInMm;
@@ -323,13 +347,14 @@ namespace FilterDoorsWallOffsets
             }
 
             List<string> dimensionResultsSummary = new List<string>();
-            if (doorDimensions.Any())
+            if (doorDistances.Any())
             {
-                foreach (var kvp in doorDimensions)
+                string dimensionStatus = dimensionsSkippedBySetting ? "calculated but not drawn" : "created";
+                foreach (var kvp in doorDistances)
                 {
                     var orientations = kvp.Value.Select(d => d.OrientationLabel).ToList();
                     var uniqueWallIdsInvolved = kvp.Value.Select(d => d.WallId).Distinct().Count();
-                    string summary = $"Door {kvp.Key}: {kvp.Value.Count} dimension(s) created to {uniqueWallIdsInvolved} unique wall(s). Orientations: ({string.Join(", ", orientations)})";
+                    string summary = $"Door {kvp.Key}: {kvp.Value.Count} dimension(s) {dimensionStatus} to {uniqueWallIdsInvolved} unique wall(s). Orientations: ({string.Join(", ", orientations)})";
 
                     int requiresBothSidesCount = kvp.Value.Where(d => d.RequiresBothSides).Select(d => d.WallId).Distinct().Count();
                     if (requiresBothSidesCount > 0)

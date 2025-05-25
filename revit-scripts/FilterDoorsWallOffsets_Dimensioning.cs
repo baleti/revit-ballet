@@ -9,13 +9,17 @@ namespace FilterDoorsWallOffsets
 {
     public static class Dimensioning
     {
-        public static List<DimensionInfo> CreateDimensionsForDoor(
+        /// <summary>
+        /// Calculates distances between door and adjacent walls by creating temporary dimensions.
+        /// Must be called within a transaction.
+        /// </summary>
+        public static List<DimensionInfo> CalculateDistancesForDoor(
             Document doc,
             UIDocument uidoc,
             FamilyInstance door,
             List<AdjacentWallInfo> adjacentWalls)
         {
-            List<DimensionInfo> createdDimensions = new List<DimensionInfo>();
+            List<DimensionInfo> calculatedDistances = new List<DimensionInfo>();
 
             Reference doorLeft = door.GetReferences(FamilyInstanceReferenceType.Left)?.FirstOrDefault();
             Reference doorRight = door.GetReferences(FamilyInstanceReferenceType.Right)?.FirstOrDefault();
@@ -30,17 +34,17 @@ namespace FilterDoorsWallOffsets
                 }
                 else
                 {
-                    return createdDimensions;
+                    return calculatedDistances;
                 }
             }
 
             Wall hostWall = door.Host as Wall;
-            if (hostWall == null) return createdDimensions;
+            if (hostWall == null) return calculatedDistances;
 
             // Get door orientation data which includes DoorFacing
             DoorOrientation doorOrientation = WallFinding.GetDoorOrientation(door, hostWall);
             // Get host wall direction for orienting the dimension line itself (parallel to host wall)
-            XYZ hostWallDir = doorOrientation.WallDirection; // Or WallFinding.GetWallDirection(hostWall); they should be consistent
+            XYZ hostWallDir = doorOrientation.WallDirection;
 
             // This is the primary direction for offsetting the dimension line "in front" of the door.
             XYZ primaryOffsetDirection = doorOrientation.DoorFacing.Normalize();
@@ -133,51 +137,52 @@ namespace FilterDoorsWallOffsets
                             dimensionLineMidPoint - normalizedHostWallDir * dimLineHalfLength,
                             dimensionLineMidPoint + normalizedHostWallDir * dimLineHalfLength);
 
-                        Dimension dimension = null;
+                        // Create a temporary dimension to get the accurate value
+                        double dimensionValue = 0.0;
                         try
                         {
-                            if (uidoc.ActiveView == null) continue; // Should not happen in a command
-                            dimension = doc.Create.NewDimension(uidoc.ActiveView, dimLine, refArray);
+                            if (uidoc.ActiveView != null)
+                            {
+                                Dimension tempDim = doc.Create.NewDimension(uidoc.ActiveView, dimLine, refArray);
+                                if (tempDim != null)
+                                {
+                                    if (tempDim.Value.HasValue)
+                                    {
+                                        dimensionValue = tempDim.Value.Value;
+                                    }
+                                    else if (tempDim.Segments.Size > 0 && (tempDim.Segments.get_Item(0) is DimensionSegment segment) && segment.Value.HasValue)
+                                    {
+                                        dimensionValue = segment.Value.Value;
+                                    }
+                                    // Delete the temporary dimension
+                                    doc.Delete(tempDim.Id);
+                                }
+                            }
                         }
-                        catch (Autodesk.Revit.Exceptions.InvalidOperationException ex)
+                        catch (Exception ex)
                         {
-                            System.Diagnostics.Debug.WriteLine($"Dimension creation failed for door {door.Id}, wall {wallInfo.WallId} ({orientationLabel}): {ex.Message}");
-                            continue;
-                        }
-                        catch (Exception exAll) // Catch any other potential errors during dimension creation
-                        {
-                            System.Diagnostics.Debug.WriteLine($"Generic error creating dimension for door {door.Id}, wall {wallInfo.WallId} ({orientationLabel}): {exAll.Message}");
+                            System.Diagnostics.Debug.WriteLine($"Error creating temp dimension: {ex.Message}");
                             continue;
                         }
 
-                        double dimensionValue = 0.0;
-                        if (dimension != null)
+                        if (dimensionValue > 0)
                         {
-                            if (dimension.Value.HasValue)
+                            calculatedDistances.Add(new DimensionInfo
                             {
-                                dimensionValue = dimension.Value.Value;
-                            }
-                            else if (dimension.Segments.Size > 0 && (dimension.Segments.get_Item(0) is DimensionSegment segment) && segment.Value.HasValue)
-                            {
-                                dimensionValue = segment.Value.Value;
-                            }
+                                Dimension = null, // No dimension element created yet
+                                Value = dimensionValue,
+                                OrientationLabel = orientationLabel,
+                                WallId = wallInfo.WallId,
+                                IsInFront = sideInfo == WallSide.Front,
+                                RequiresBothSides = wallInfo.RequiresBothSides,
+                                DoorReference = doorRefToUse,
+                                WallReference = wallRef,
+                                DoorPoint = doorRefPointForDimLine,
+                                WallPoint = wallRefPointForDimLine,
+                                HostWallDirection = hostWallDir,
+                                DoorFacing = doorOrientation.DoorFacing
+                            });
                         }
-                        else // If dimension creation failed and dimension is null
-                        {
-                            // We continued, so this part might not be reached unless we change the continue logic.
-                            // For now, if dimension is null, we don't add to createdDimensions.
-                            continue;
-                        }
-
-                        createdDimensions.Add(new DimensionInfo
-                        {
-                            Dimension = dimension,
-                            Value = dimensionValue,
-                            OrientationLabel = orientationLabel,
-                            WallId = wallInfo.WallId,
-                            IsInFront = sideInfo == WallSide.Front, // This reflects the wall feature's side
-                            RequiresBothSides = wallInfo.RequiresBothSides
-                        });
                     }
                 }
                 catch (Exception ex)
@@ -186,7 +191,96 @@ namespace FilterDoorsWallOffsets
                     continue;
                 }
             }
-            return createdDimensions;
+            return calculatedDistances;
+        }
+
+        /// <summary>
+        /// Creates dimension elements based on pre-calculated distances
+        /// </summary>
+        public static void CreateDimensionsFromCalculatedDistances(
+            Document doc,
+            UIDocument uidoc,
+            List<DimensionInfo> calculatedDistances)
+        {
+            foreach (var dimInfo in calculatedDistances)
+            {
+                try
+                {
+                    if (dimInfo.DoorReference == null || dimInfo.WallReference == null)
+                        continue;
+
+                    var refArray = new ReferenceArray();
+                    refArray.Append(dimInfo.DoorReference);
+                    refArray.Append(dimInfo.WallReference);
+
+                    XYZ midPointBetweenRefs = (dimInfo.DoorPoint + dimInfo.WallPoint) * 0.5;
+                    double offsetMagnitude = 3.0; // Desired offset magnitude for the dimension line (e.g., 3 feet)
+
+                    XYZ primaryOffsetDirection = dimInfo.DoorFacing.Normalize();
+                    XYZ dimensionLineOffsetVector;
+                    
+                    if (dimInfo.IsInFront)
+                    {
+                        // For "Front" dimensions (e.g., "Offset Left"), place dim line in primary offset direction
+                        dimensionLineOffsetVector = primaryOffsetDirection * offsetMagnitude;
+                    }
+                    else // Back dimensions
+                    {
+                        // For "Back" dimensions (e.g., "Offset Left Reverse"), place dim line in opposite direction
+                        dimensionLineOffsetVector = -primaryOffsetDirection * offsetMagnitude;
+                    }
+
+                    XYZ dimensionLineMidPoint = midPointBetweenRefs + dimensionLineOffsetVector;
+
+                    // Dimension line extends parallel to the host wall
+                    // Ensure hostWallDir is normalized for consistent extension length
+                    XYZ normalizedHostWallDir = dimInfo.HostWallDirection.IsUnitLength() ? dimInfo.HostWallDirection : dimInfo.HostWallDirection.Normalize();
+                    double dimLineHalfLength = 5.0; // Extend 5 feet in each direction from midpoint
+
+                    Line dimLine = Line.CreateBound(
+                        dimensionLineMidPoint - normalizedHostWallDir * dimLineHalfLength,
+                        dimensionLineMidPoint + normalizedHostWallDir * dimLineHalfLength);
+
+                    Dimension dimension = null;
+                    try
+                    {
+                        if (uidoc.ActiveView == null) continue; // Should not happen in a command
+                        dimension = doc.Create.NewDimension(uidoc.ActiveView, dimLine, refArray);
+                        dimInfo.Dimension = dimension; // Store the created dimension
+                    }
+                    catch (Autodesk.Revit.Exceptions.InvalidOperationException ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Dimension creation failed for {dimInfo.OrientationLabel}: {ex.Message}");
+                        continue;
+                    }
+                    catch (Exception exAll)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Generic error creating dimension for {dimInfo.OrientationLabel}: {exAll.Message}");
+                        continue;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Error creating dimension: {ex.Message}");
+                    continue;
+                }
+            }
+        }
+
+        [Obsolete("Use CalculateDistancesForDoor and CreateDimensionsFromCalculatedDistances instead. Note: Must be called within a transaction.")]
+        public static List<DimensionInfo> CreateDimensionsForDoor(
+            Document doc,
+            UIDocument uidoc,
+            FamilyInstance door,
+            List<AdjacentWallInfo> adjacentWalls)
+        {
+            // Calculate distances first
+            var distances = CalculateDistancesForDoor(doc, uidoc, door, adjacentWalls);
+            
+            // Then create dimensions
+            CreateDimensionsFromCalculatedDistances(doc, uidoc, distances);
+            
+            return distances;
         }
 
         private static XYZ GetReferencePoint(Document doc, Reference reference)

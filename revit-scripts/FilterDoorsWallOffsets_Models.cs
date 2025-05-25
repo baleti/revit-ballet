@@ -69,6 +69,14 @@ namespace FilterDoorsWallOffsets
         public ElementId WallId { get; set; }
         public bool IsInFront { get; set; }
         public bool RequiresBothSides { get; set; }
+        
+        // Additional properties for storing calculation data
+        public Reference DoorReference { get; set; }
+        public Reference WallReference { get; set; }
+        public XYZ DoorPoint { get; set; }
+        public XYZ WallPoint { get; set; }
+        public XYZ HostWallDirection { get; set; }
+        public XYZ DoorFacing { get; set; }
     }
 
     public enum WallPosition
