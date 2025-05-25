@@ -185,12 +185,12 @@ namespace FilterDoorsWallOffsets
 
                 // Always calculate distances for all doors, regardless of whether we're drawing dimensions
                 Dictionary<int, List<DimensionInfo>> doorDistances = new Dictionary<int, List<DimensionInfo>>();
-                
+
                 // We need a transaction to create temporary dimensions for accurate measurement
                 using (Transaction tx = new Transaction(doc, drawDimensionsEnabled ? "Create Door-Wall Dimensions" : "Calculate Door Distances"))
                 {
                     tx.Start();
-                    
+
                     foreach (var result in doorResults.Where(r => !r.NoHostWall && string.IsNullOrEmpty(r.Error) && r.AdjacentWalls.Any()))
                     {
                         try
@@ -261,21 +261,30 @@ namespace FilterDoorsWallOffsets
                 .OrderBy(label => label)
                 .ToList();
 
+            // ─── column setup ────────────────────────────────────────────
             List<string> propertyNames = new List<string>
             {
-                "Family Name", "Type Name", "Level", "Mark",
+                "Family Name", "Type Name", "Level",
+                "FacingFlipped", "HandFlipped",
                 "Width (mm)", "Height (mm)", "Adjacent Walls Count"
             };
 
+            // Offset-distance columns now directly follow "Adjacent Walls Count"
             foreach (string orientationLabel in allOrientationLabels)
             {
                 propertyNames.Add($"{orientationLabel} (mm)");
             }
-            foreach (string orientationLabel in allOrientationLabels)
-            {
-                propertyNames.Add($"Wall {orientationLabel.Replace("Offset ", "")} ID");
-            }
+
+            // Then the descriptive columns
+            propertyNames.AddRange(new[] { "Group", "Room From", "Room To" });
+
+            // “Mark” column
+            propertyNames.Add("Mark");
+
+            // (Wall-ID columns removed)
+
             propertyNames.Add("Door Element Id");
+            // ─────────────────────────────────────────────────────────────
 
             List<Dictionary<string, object>> doorData = new List<Dictionary<string, object>>();
 
@@ -290,13 +299,24 @@ namespace FilterDoorsWallOffsets
                 doorProperties["Family Name"] = doorType?.FamilyName ?? "";
                 doorProperties["Type Name"] = doorType?.Name ?? "";
                 doorProperties["Level"] = doc.GetElement(result.Door.LevelId)?.Name ?? "";
-                doorProperties["Mark"] = result.Door.get_Parameter(BuiltInParameter.ALL_MODEL_MARK)?.AsString() ?? "";
+
+                // Flip flags
+                doorProperties["FacingFlipped"] = result.Door.FacingFlipped;
+                doorProperties["HandFlipped"] = result.Door.HandFlipped;
 
                 double doorWidthParam = doorType?.get_Parameter(BuiltInParameter.DOOR_WIDTH)?.AsDouble() ?? 0.0;
                 double doorHeightParam = doorType?.get_Parameter(BuiltInParameter.DOOR_HEIGHT)?.AsDouble() ?? 0.0;
                 doorProperties["Width (mm)"] = Math.Round(doorWidthParam * 304.8);
                 doorProperties["Height (mm)"] = Math.Round(doorHeightParam * 304.8);
 
+                // Group / room info
+                doorProperties["Group"] = result.Door.GroupId != ElementId.InvalidElementId
+                    ? doc.GetElement(result.Door.GroupId)?.Name ?? ""
+                    : "";
+                doorProperties["Room From"] = result.Door.FromRoom?.Name ?? "";
+                doorProperties["Room To"] = result.Door.ToRoom?.Name ?? "";
+
+                // Adjacent walls count
                 int dimensionedAdjacentWallsCount = 0;
                 if (doorDistances.TryGetValue(result.Door.Id.IntegerValue, out List<DimensionInfo> dimsForThisDoorInGrid))
                 {
@@ -304,22 +324,25 @@ namespace FilterDoorsWallOffsets
                 }
                 doorProperties["Adjacent Walls Count"] = dimensionedAdjacentWallsCount;
 
-                List<DimensionInfo> distances = doorDistances.ContainsKey(result.Door.Id.IntegerValue)
-                    ? doorDistances[result.Door.Id.IntegerValue]
-                    : new List<DimensionInfo>();
-
+                // Initialise distance columns
                 foreach (string orientationLabel in allOrientationLabels)
                 {
                     doorProperties[$"{orientationLabel} (mm)"] = "-";
-                    doorProperties[$"Wall {orientationLabel.Replace("Offset ", "")} ID"] = "-";
                 }
 
-                foreach (var dim in distances)
+                // Fill actual distances
+                if (doorDistances.TryGetValue(result.Door.Id.IntegerValue, out var distances))
                 {
-                    double distanceInMm = Math.Round(dim.Value * 304.8);
-                    doorProperties[$"{dim.OrientationLabel} (mm)"] = distanceInMm;
-                    doorProperties[$"Wall {dim.OrientationLabel.Replace("Offset ", "")} ID"] = dim.WallId.IntegerValue;
+                    foreach (var dim in distances)
+                    {
+                        double distanceInMm = Math.Round(dim.Value * 304.8);
+                        doorProperties[$"{dim.OrientationLabel} (mm)"] = distanceInMm;
+                    }
                 }
+
+                // Mark
+                doorProperties["Mark"] = result.Door.get_Parameter(BuiltInParameter.ALL_MODEL_MARK)?.AsString() ?? "";
+
                 doorProperties["Door Element Id"] = result.Door.Id.IntegerValue;
                 doorData.Add(doorProperties);
             }
@@ -346,6 +369,7 @@ namespace FilterDoorsWallOffsets
                 TaskDialog.Show("Result", "No doors with adjacent walls suitable for dimensioning were found, or no dimensions were created.");
             }
 
+            // summary tracing unchanged …
             List<string> dimensionResultsSummary = new List<string>();
             if (doorDistances.Any())
             {

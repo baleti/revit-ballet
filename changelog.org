@@ -975,3 +975,7 @@ run out of claude credits in no time, finished fixes with gemini
 seemingly getting close to finishing it
 ***** =14:31= doubling searchDistance from 0.5 to 1.0 didn't have much negative impact on performance
 for 1000 doors changed only from 22.5s to 25.5s
+***** =19:32= progress is steady although slow and highly dependent on claude
+claude proves to be the only model to comprehend tasks at hand
+still need to add more robust optional diagnostics as expecting future complications in various rules in wallFinding logic
+also need to find a way to designate "push" and "pull" sides of door
