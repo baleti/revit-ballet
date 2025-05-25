@@ -95,7 +95,10 @@
     <Compile Include="revit-scripts\DuplicateSheetWithViewsAsDraftingViews.cs" />
     <Compile Include="revit-scripts\DuplicateViewsAsDraftingViews.cs" />
     <Compile Include="revit-scripts\DuplicateViewsToSheets.cs" />
-    <Compile Include="revit-scripts\FilterDoorsWallOffsets.cs" />
+    <Compile Include="revit-scripts\FilterDoorsWallOffsets_Command.cs" />
+    <Compile Include="revit-scripts\FilterDoorsWallOffsets_Dimensioning.cs" />
+    <Compile Include="revit-scripts\FilterDoorsWallOffsets_Models.cs" />
+    <Compile Include="revit-scripts\FilterDoorsWallOffsets_WallFinding.cs" />
     <Compile Include="revit-scripts\FilterPosition.cs" />
     <Compile Include="revit-scripts\FilterDimensions.cs" />
     <Compile Include="revit-scripts\FilterRevisionClouds.cs" />
@@ -110,7 +113,7 @@
     <Compile Include="revit-scripts\SelectByWorksetsInView.cs" />
     <Compile Include="revit-scripts\SelectFamilyTypesInProjectByCategory.cs" />
     <Compile Include="revit-scripts\SelectHostsOfSelectedElements.cs" />
-    <Compile Include="revit-scripts\SelectLast50CreatedElements.cs" />
+    <Compile Include="revit-scripts\SelectLast300CreatedElements.cs" />
     <Compile Include="revit-scripts\SelectLevels.cs" />
     <Compile Include="revit-scripts\OffsetLinesFromTheirWorkplane.cs" />
     <Compile Include="revit-scripts\RenameFamilies.cs" />

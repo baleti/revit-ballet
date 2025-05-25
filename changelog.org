@@ -966,3 +966,12 @@ drawing dimensions proves, as somewhat expected, to be a challenge and ai isn't 
 ***** =23:40= because of the size of the file progress became difficult
 on the last breath managed to generate code that irons out a few edge cases I noticed
 tried refactoring code into 4 separate files, which did help speed up maintenance
+*** 25
+**** =13:00= making FilterDoorsPartM
+***** =13:42= ironed out remaining issues with wall selection
+surprisingly speed has improved at some point, now able to perform these calculations on 400 doors through various floors only in 10 seconds
+run out of claude credits in no time, finished fixes with gemini
+***** =14:25= removed debugging code and sorted positions of dimensions
+seemingly getting close to finishing it
+***** =14:31= doubling searchDistance from 0.5 to 1.0 didn't have much negative impact on performance
+for 1000 doors changed only from 22.5s to 25.5s
