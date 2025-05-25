@@ -979,3 +979,5 @@ for 1000 doors changed only from 22.5s to 25.5s
 claude proves to be the only model to comprehend tasks at hand
 still need to add more robust optional diagnostics as expecting future complications in various rules in wallFinding logic
 also need to find a way to designate "push" and "pull" sides of door
+***** =22:06= not sure how to code door orientiation
+most other coding seems to be complete or close to being complete now
