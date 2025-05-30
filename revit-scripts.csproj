@@ -112,11 +112,12 @@
     <Compile Include="revit-scripts\OutlineSelectedElementsInCurrentViewWithDetailLines.cs" />
     <Compile Include="revit-scripts\PlaceSelectedViewsOnSheets.cs" />
     <Compile Include="revit-scripts\RenameSelectedTexts.cs" />
-    <Compile Include="revit-scripts\SelectAllInstancesInProjectInLinkedModels.cs" />
+    <Compile Include="revit-scripts\SelectElementsOfSameTypeInLinkedModelsInProject.cs" />
     <Compile Include="revit-scripts\SelectAllRevisionCloudsInProject.cs" />
     <Compile Include="revit-scripts\SelectAllVisibleRevisionCloudsInProject.cs" />
     <Compile Include="revit-scripts\SelectByWorksetsInView.cs" />
     <Compile Include="revit-scripts\SelectCategoriesInLinkedModels.cs" />
+    <Compile Include="revit-scripts\SelectElementsOfSameTypeInLinkedModelsInView.cs" />
     <Compile Include="revit-scripts\SelectFamilyTypesInProjectByCategory.cs" />
     <Compile Include="revit-scripts\SelectHostsOfSelectedElements.cs" />
     <Compile Include="revit-scripts\SelectLast300CreatedElements.cs" />
