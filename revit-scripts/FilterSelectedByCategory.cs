@@ -54,7 +54,6 @@ public class FilterSelectedByCategory : IExternalCommand
 
         if (!selectedEntries.Any())
         {
-            TaskDialog.Show("Filter Categories", "No categories were selected.");
             return Result.Cancelled;
         }
 
