@@ -112,6 +112,7 @@
     <Compile Include="revit-scripts\OutlineSelectedElementsInCurrentViewWithDetailLines.cs" />
     <Compile Include="revit-scripts\PlaceSelectedViewsOnSheets.cs" />
     <Compile Include="revit-scripts\RenameSelectedTexts.cs" />
+    <Compile Include="revit-scripts\SelectAllInstancesInProjectInLinkedModels.cs" />
     <Compile Include="revit-scripts\SelectAllRevisionCloudsInProject.cs" />
     <Compile Include="revit-scripts\SelectAllVisibleRevisionCloudsInProject.cs" />
     <Compile Include="revit-scripts\SelectByWorksetsInView.cs" />
@@ -140,7 +141,6 @@
     <Compile Include="revit-scripts\SwitchToLastPhase.cs" />
     <Compile Include="revit-scripts\RehostToJoinedWalls.cs" />
     <Compile Include="revit-scripts\ResetTitlesOfSelectedViewports.cs" />
-    <Compile Include="revit-scripts\test37.cs" />
     <Compile Include="revit-scripts\ToggleLevelBubblesInSelectedViews.cs">
       <SubType>Form</SubType>
     </Compile>

@@ -118,15 +118,8 @@ public static class ElementDataHelper
             ["_LinkReference"] = linkReference // Store reference for linked elements
         };
         
-        // Add display name that includes link info
-        if (!string.IsNullOrEmpty(linkName))
-        {
-            data["DisplayName"] = $"{element.Name} [{linkName}]";
-        }
-        else
-        {
-            data["DisplayName"] = element.Name;
-        }
+        // Use just the element name for DisplayName, regardless of whether it's linked
+        data["DisplayName"] = element.Name;
         
         // Include parameters if requested
         if (includeParameters)
