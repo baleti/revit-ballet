@@ -257,9 +257,15 @@ namespace FilterDoorsWithWallOffsets
                         {
                             try
                             {
-                                // Create dimensions based on the calculated distances
+                                // FILTER: Keep only the closest dimension for each orientation label
+                                var closestDimensionsByOrientation = kvp.Value
+                                    .GroupBy(d => d.OrientationLabel)
+                                    .Select(g => g.OrderBy(d => d.Value).First()) // Take the one with smallest distance
+                                    .ToList();
+
+                                // Create dimensions based on the FILTERED calculated distances
                                 Dimensioning.CreateDimensionsFromCalculatedDistances(
-                                    doc, uidoc, kvp.Value);
+                                    doc, uidoc, closestDimensionsByOrientation);
                             }
                             catch (Exception exDim)
                             {
@@ -400,14 +406,24 @@ namespace FilterDoorsWithWallOffsets
                     doorProperties[$"{orientationLabel} (mm)"] = "-";
                 }
 
-                // Fill actual distances
+                // Fill actual distances - FIXED: Keep only the closest dimension for each orientation label
                 if (doorDistances.TryGetValue(result.Door.Id.IntegerValue, out var distances))
                 {
-                    foreach (var dim in distances)
+                    // Group dimensions by orientation label and keep only the closest one for each
+                    var closestDimensionsByOrientation = distances
+                        .GroupBy(d => d.OrientationLabel)
+                        .Select(g => g.OrderBy(d => d.Value).First()) // Take the one with smallest distance
+                        .ToList();
+
+                    foreach (var dim in closestDimensionsByOrientation)
                     {
                         double distanceInMm = Math.Round(dim.Value * 304.8);
                         doorProperties[$"{dim.OrientationLabel} (mm)"] = distanceInMm;
                     }
+
+                    // Update the dimensioned adjacent walls count to reflect filtered dimensions
+                    dimensionedAdjacentWallsCount = closestDimensionsByOrientation.Select(d => d.WallId).Distinct().Count();
+                    doorProperties["Adjacent Walls Count"] = dimensionedAdjacentWallsCount;
                 }
 
                 // Mark
@@ -439,22 +455,36 @@ namespace FilterDoorsWithWallOffsets
                 TaskDialog.Show("Result", "No doors with adjacent walls suitable for dimensioning were found, or no dimensions were created.");
             }
 
-            // summary tracing unchanged …
+            // summary tracing updated to reflect filtered dimensions
             List<string> dimensionResultsSummary = new List<string>();
             if (doorDistances.Any())
             {
                 string dimensionStatus = dimensionsSkippedBySetting ? "calculated but not drawn" : "created";
                 foreach (var kvp in doorDistances)
                 {
-                    var orientations = kvp.Value.Select(d => d.OrientationLabel).ToList();
-                    var uniqueWallIdsInvolved = kvp.Value.Select(d => d.WallId).Distinct().Count();
-                    string summary = $"Door {kvp.Key}: {kvp.Value.Count} dimension(s) {dimensionStatus} to {uniqueWallIdsInvolved} unique wall(s). Orientations: ({string.Join(", ", orientations)})";
+                    // Group by orientation and show only closest
+                    var closestByOrientation = kvp.Value
+                        .GroupBy(d => d.OrientationLabel)
+                        .Select(g => g.OrderBy(d => d.Value).First())
+                        .ToList();
+                        
+                    var orientations = closestByOrientation.Select(d => d.OrientationLabel).ToList();
+                    var uniqueWallIdsInvolved = closestByOrientation.Select(d => d.WallId).Distinct().Count();
+                    string summary = $"Door {kvp.Key}: {closestByOrientation.Count} dimension(s) {dimensionStatus} to {uniqueWallIdsInvolved} unique wall(s). Orientations: ({string.Join(", ", orientations)})";
 
-                    int requiresBothSidesCount = kvp.Value.Where(d => d.RequiresBothSides).Select(d => d.WallId).Distinct().Count();
+                    int requiresBothSidesCount = closestByOrientation.Where(d => d.RequiresBothSides).Select(d => d.WallId).Distinct().Count();
                     if (requiresBothSidesCount > 0)
                     {
                         summary += $" - {requiresBothSidesCount} wall(s) spanned both sides (front/back relative to door).";
                     }
+                    
+                    // Add info about filtered walls
+                    int filteredCount = kvp.Value.Count - closestByOrientation.Count;
+                    if (filteredCount > 0)
+                    {
+                        summary += $" ({filteredCount} further wall(s) with duplicate orientations were filtered out)";
+                    }
+                    
                     dimensionResultsSummary.Add(summary);
                 }
             }
