@@ -45,7 +45,7 @@ namespace FilterDoorsWithWallOffsets
                     // Check if diagnostics option exists, if not add it
                     var lines = File.ReadAllLines(ConfigFilePath).ToList();
                     bool hasDiagnostics = lines.Any(line => line.Trim().StartsWith(ConfigKeyDiagnostics, StringComparison.OrdinalIgnoreCase));
-                    
+
                     if (!hasDiagnostics)
                     {
                         lines.Add($"{ConfigKeyDiagnostics}: false");
@@ -217,7 +217,7 @@ namespace FilterDoorsWithWallOffsets
                         doorResult.Error = ex.Message;
                     }
                     doorResults.Add(doorResult);
-                    
+
                     if (diagnosticsEnabled)
                     {
                         allDiagnostics.Add(doorDiagnostics);
@@ -314,22 +314,22 @@ namespace FilterDoorsWithWallOffsets
                 .Distinct()
                 .ToList();
 
-            // Custom ordering: Offset Left, Offset Right, Offset Left Reverse, Offset Right Reverse
+            // Ordering: Offset Left, Offset Left Reverse, Offset Right, Offset Right Reverse
             var orderedOrientationLabels = new List<string>();
-            
-            // First add non-reverse labels
-            var nonReverseLabels = allOrientationLabels
-                .Where(label => !label.Contains("Reverse"))
-                .OrderBy(label => label)
+
+            // First add all Left labels (non-reverse then reverse)
+            var leftLabels = allOrientationLabels
+                .Where(label => label.Contains("Left"))
+                .OrderBy(label => label.Contains("Reverse") ? 1 : 0) // Non-reverse first
                 .ToList();
-            orderedOrientationLabels.AddRange(nonReverseLabels);
-            
-            // Then add reverse labels
-            var reverseLabels = allOrientationLabels
-                .Where(label => label.Contains("Reverse"))
-                .OrderBy(label => label)
+            orderedOrientationLabels.AddRange(leftLabels);
+
+            // Then add all Right labels (non-reverse then reverse)
+            var rightLabels = allOrientationLabels
+                .Where(label => label.Contains("Right"))
+                .OrderBy(label => label.Contains("Reverse") ? 1 : 0) // Non-reverse first
                 .ToList();
-            orderedOrientationLabels.AddRange(reverseLabels);
+            orderedOrientationLabels.AddRange(rightLabels);
 
             // ─── column setup ────────────────────────────────────────────
             List<string> propertyNames = new List<string>
