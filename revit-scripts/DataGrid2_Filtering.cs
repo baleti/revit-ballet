@@ -9,7 +9,7 @@ public partial class CustomGUIs
     // ──────────────────────────────────────────────────────────────
     //  Filtering Logic
     // ──────────────────────────────────────────────────────────────
-    
+
     /// <summary>Applies all filters to the data and returns filtered result</summary>
     private static List<Dictionary<string, object>> ApplyFilters(
         List<Dictionary<string, object>> entries,
@@ -55,7 +55,7 @@ public partial class CustomGUIs
             // plain (general) token
             if (!token.StartsWith("$"))
             {
-                generalFilters.Add(isExcl ? "!" + StripQuotes(token) : StripQuotes(token));
+                generalFilters.Add(isExcl ? "!" + StripQuotes(token).ToLowerInvariant() : StripQuotes(token).ToLowerInvariant());
                 continue;
             }
 
@@ -162,7 +162,7 @@ public partial class CustomGUIs
                                 matchFound = true;
                             else if (f.Operator == ComparisonOperator.LessThan && val < f.Value)
                                 matchFound = true;
-                            
+
                             if (matchFound) break;
                         }
                     }
@@ -178,14 +178,14 @@ public partial class CustomGUIs
                     foreach (string col in matchCols)
                     {
                         object v;
-                        if (entry.TryGetValue(col, out v) && v != null && 
+                        if (entry.TryGetValue(col, out v) && v != null &&
                             TryParseDouble(v.ToString(), out double val))
                         {
                             if (f.Operator == ComparisonOperator.GreaterThan && val > f.Value)
                                 matchFound = true;
                             else if (f.Operator == ComparisonOperator.LessThan && val < f.Value)
                                 matchFound = true;
-                            
+
                             if (matchFound) break;
                         }
                     }
@@ -228,10 +228,10 @@ public partial class CustomGUIs
     {
         result = 0;
         if (string.IsNullOrWhiteSpace(s)) return false;
-        
+
         // Remove common formatting characters
         s = s.Replace(",", "").Replace("$", "").Trim();
-        
+
         // Check if it's a percentage
         if (s.EndsWith("%"))
         {
@@ -242,7 +242,7 @@ public partial class CustomGUIs
                 return true;
             }
         }
-        
+
         return double.TryParse(s, out result);
     }
 }
