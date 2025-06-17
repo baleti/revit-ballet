@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
 
@@ -17,22 +18,109 @@ public partial class CustomGUIs
         string searchText,
         DataGridView grid)
     {
-        // (1) split into tokens - updated regex to handle comparison operators
+        // First, split by || to get OR groups
+        List<string> orGroups = SplitByOrOperator(searchText);
+        
+        // Process each OR group independently
+        List<FilterGroup> filterGroups = new List<FilterGroup>();
+        
+        foreach (string orGroup in orGroups)
+        {
+            FilterGroup group = ParseFilterGroup(orGroup.Trim());
+            filterGroups.Add(group);
+        }
+        
+        // Apply column visibility based on ALL groups (union of all column filters)
+        HashSet<List<string>> allColVisibilityFilters = new HashSet<List<string>>(
+            filterGroups.SelectMany(g => g.ColVisibilityFilters),
+            new ListStringComparer());
+        
+        foreach (DataGridViewColumn col in grid.Columns)
+        {
+            string colName = col.HeaderText.ToLowerInvariant();
+            bool show = allColVisibilityFilters.Count == 0 ||
+                        allColVisibilityFilters.Any(parts =>
+                            parts.All(p => colName.Contains(p)));
+            col.Visible = show;
+        }
+
+        // Filter rows - a row passes if it matches ANY of the OR groups
+        List<Dictionary<string, object>> filtered = entries.Where(entry =>
+        {
+            // Check if entry matches ANY of the OR groups
+            foreach (FilterGroup group in filterGroups)
+            {
+                if (EntryMatchesFilterGroup(entry, group, propertyNames))
+                {
+                    return true; // Entry matches this OR group
+                }
+            }
+            return false; // Entry doesn't match any OR group
+        }).ToList();
+
+        return filtered;
+    }
+
+    /// <summary>Split search text by || operator, respecting quotes</summary>
+    private static List<string> SplitByOrOperator(string searchText)
+    {
+        List<string> groups = new List<string>();
+        StringBuilder current = new StringBuilder();
+        bool inQuotes = false;
+        
+        for (int i = 0; i < searchText.Length; i++)
+        {
+            char c = searchText[i];
+            
+            if (c == '"' && (i == 0 || searchText[i - 1] != '\\'))
+            {
+                inQuotes = !inQuotes;
+                current.Append(c);
+            }
+            else if (!inQuotes && i < searchText.Length - 1 && 
+                     c == '|' && searchText[i + 1] == '|')
+            {
+                // Found || outside quotes
+                groups.Add(current.ToString());
+                current.Clear();
+                i++; // Skip the second |
+            }
+            else
+            {
+                current.Append(c);
+            }
+        }
+        
+        // Add the last group
+        if (current.Length > 0)
+        {
+            groups.Add(current.ToString());
+        }
+        
+        // If no || found, return the whole text as a single group
+        if (groups.Count == 0)
+        {
+            groups.Add(searchText);
+        }
+        
+        return groups;
+    }
+
+    /// <summary>Parse a single filter group (AND logic within the group)</summary>
+    private static FilterGroup ParseFilterGroup(string groupText)
+    {
+        FilterGroup group = new FilterGroup();
+        
+        // Split into tokens - updated regex to handle comparison operators
         List<string> tokens = Regex.Matches(
-                searchText,
+                groupText,
                 @"(\$""[^""]+?""::""[^""]+?""|\$""[^""]+?""\:\:[^ ]+|\$[^ ]+?::""[^""]+?""|\$[^ ]+?::[^ ]+|\$""[^""]+?""\:[^ ]+|\$[^ ]+?:[^ ]+|\$""[^""]+?""|\$[^ ]+|[<>]\d+\.?\d*|""[^""]+""|\S+)")
             .Cast<Match>()
             .Select(m => m.Value.Trim())
             .Where(t => t.Length > 0)
             .ToList();
 
-        // buckets for the parsed filters
-        List<List<string>> colVisibilityFilters = new List<List<string>>();
-        List<ColumnValueFilter> colValueFilters = new List<ColumnValueFilter>();
-        List<string> generalFilters = new List<string>();
-        List<ComparisonFilter> comparisonFilters = new List<ComparisonFilter>();
-
-        // (2) parse
+        // Parse each token
         foreach (string rawToken in tokens)
         {
             bool isExcl = rawToken.StartsWith("!");
@@ -42,7 +130,7 @@ public partial class CustomGUIs
             var compMatch = Regex.Match(token, @"^([<>])(\d+\.?\d*)$");
             if (compMatch.Success)
             {
-                comparisonFilters.Add(new ComparisonFilter
+                group.ComparisonFilters.Add(new ComparisonFilter
                 {
                     Operator = compMatch.Groups[1].Value == ">" ? ComparisonOperator.GreaterThan : ComparisonOperator.LessThan,
                     Value = double.Parse(compMatch.Groups[2].Value),
@@ -55,7 +143,7 @@ public partial class CustomGUIs
             // plain (general) token
             if (!token.StartsWith("$"))
             {
-                generalFilters.Add(isExcl ? "!" + StripQuotes(token).ToLowerInvariant() : StripQuotes(token).ToLowerInvariant());
+                group.GeneralFilters.Add(isExcl ? "!" + StripQuotes(token).ToLowerInvariant() : StripQuotes(token).ToLowerInvariant());
                 continue;
             }
 
@@ -80,16 +168,16 @@ public partial class CustomGUIs
 
             if (colPieces.Count == 0) continue;
 
-            // (2a) column visibility
-            colVisibilityFilters.Add(colPieces);
+            // Column visibility
+            group.ColVisibilityFilters.Add(colPieces);
 
-            // (2b) check if value part has comparison operator
+            // Check if value part has comparison operator
             if (!string.IsNullOrWhiteSpace(valPart))
             {
                 var valCompMatch = Regex.Match(valPart, @"^([<>])(\d+\.?\d*)$");
                 if (valCompMatch.Success)
                 {
-                    comparisonFilters.Add(new ComparisonFilter
+                    group.ComparisonFilters.Add(new ComparisonFilter
                     {
                         Operator = valCompMatch.Groups[1].Value == ">" ? ComparisonOperator.GreaterThan : ComparisonOperator.LessThan,
                         Value = double.Parse(valCompMatch.Groups[2].Value),
@@ -106,121 +194,114 @@ public partial class CustomGUIs
                         Value = StripQuotes(valPart).ToLowerInvariant(),
                         IsExclusion = isExcl
                     };
-                    colValueFilters.Add(f);
+                    group.ColValueFilters.Add(f);
                 }
             }
         }
+        
+        return group;
+    }
 
-        // (3) hide / show columns
-        foreach (DataGridViewColumn col in grid.Columns)
+    /// <summary>Check if an entry matches all filters in a group (AND logic)</summary>
+    private static bool EntryMatchesFilterGroup(
+        Dictionary<string, object> entry,
+        FilterGroup group,
+        List<string> propertyNames)
+    {
+        // Check column-qualified value filters
+        foreach (ColumnValueFilter f in group.ColValueFilters)
         {
-            string colName = col.HeaderText.ToLowerInvariant();
-            bool show = colVisibilityFilters.Count == 0 ||
-                        colVisibilityFilters.Any(parts =>
-                            parts.All(p => colName.Contains(p)));
-            col.Visible = show;
+            List<string> matchCols = propertyNames
+                .Where(p => f.ColumnParts.All(part =>
+                            p.ToLowerInvariant().Contains(part)))
+                .ToList();
+
+            if (matchCols.Count == 0) continue;
+
+            bool valuePresent = matchCols.Any(c =>
+            {
+                object v;
+                return entry.TryGetValue(c, out v) &&
+                       v != null &&
+                       v.ToString().ToLowerInvariant().Contains(f.Value);
+            });
+
+            if (!f.IsExclusion && !valuePresent) return false;
+            if (f.IsExclusion && valuePresent) return false;
         }
 
-        // (4) filter the rows
-        List<Dictionary<string, object>> filtered = entries.Where(entry =>
+        // Check comparison filters
+        foreach (ComparisonFilter f in group.ComparisonFilters)
         {
-            // 4-a column-qualified value filters
-            foreach (ColumnValueFilter f in colValueFilters)
+            bool matchFound = false;
+
+            if (f.ColumnParts == null)
             {
+                // Check all columns
+                foreach (var kvp in entry)
+                {
+                    if (kvp.Value != null && TryParseDouble(kvp.Value.ToString(), out double val))
+                    {
+                        if (f.Operator == ComparisonOperator.GreaterThan && val > f.Value)
+                            matchFound = true;
+                        else if (f.Operator == ComparisonOperator.LessThan && val < f.Value)
+                            matchFound = true;
+
+                        if (matchFound) break;
+                    }
+                }
+            }
+            else
+            {
+                // Check specific columns
                 List<string> matchCols = propertyNames
                     .Where(p => f.ColumnParts.All(part =>
                                 p.ToLowerInvariant().Contains(part)))
                     .ToList();
 
-                if (matchCols.Count == 0) continue;
-
-                bool valuePresent = matchCols.Any(c =>
+                foreach (string col in matchCols)
                 {
                     object v;
-                    return entry.TryGetValue(c, out v) &&
-                           v != null &&
-                           v.ToString().ToLowerInvariant().Contains(f.Value);
-                });
-
-                if (!f.IsExclusion && !valuePresent) return false;
-                if (f.IsExclusion && valuePresent) return false;
-            }
-
-            // 4-b comparison filters
-            foreach (ComparisonFilter f in comparisonFilters)
-            {
-                bool matchFound = false;
-
-                if (f.ColumnParts == null)
-                {
-                    // Check all columns
-                    foreach (var kvp in entry)
+                    if (entry.TryGetValue(col, out v) && v != null &&
+                        TryParseDouble(v.ToString(), out double val))
                     {
-                        if (kvp.Value != null && TryParseDouble(kvp.Value.ToString(), out double val))
-                        {
-                            if (f.Operator == ComparisonOperator.GreaterThan && val > f.Value)
-                                matchFound = true;
-                            else if (f.Operator == ComparisonOperator.LessThan && val < f.Value)
-                                matchFound = true;
+                        if (f.Operator == ComparisonOperator.GreaterThan && val > f.Value)
+                            matchFound = true;
+                        else if (f.Operator == ComparisonOperator.LessThan && val < f.Value)
+                            matchFound = true;
 
-                            if (matchFound) break;
-                        }
+                        if (matchFound) break;
                     }
                 }
-                else
-                {
-                    // Check specific columns
-                    List<string> matchCols = propertyNames
-                        .Where(p => f.ColumnParts.All(part =>
-                                    p.ToLowerInvariant().Contains(part)))
-                        .ToList();
-
-                    foreach (string col in matchCols)
-                    {
-                        object v;
-                        if (entry.TryGetValue(col, out v) && v != null &&
-                            TryParseDouble(v.ToString(), out double val))
-                        {
-                            if (f.Operator == ComparisonOperator.GreaterThan && val > f.Value)
-                                matchFound = true;
-                            else if (f.Operator == ComparisonOperator.LessThan && val < f.Value)
-                                matchFound = true;
-
-                            if (matchFound) break;
-                        }
-                    }
-                }
-
-                if (!f.IsExclusion && !matchFound) return false;
-                if (f.IsExclusion && matchFound) return false;
             }
 
-            // 4-c general include / exclude
-            if (generalFilters.Count > 0)
-            {
-                string allValues = string.Join(" ",
-                    entry.Values.Where(v => v != null)
-                                .Select(v => v.ToString().ToLowerInvariant()));
+            if (!f.IsExclusion && !matchFound) return false;
+            if (f.IsExclusion && matchFound) return false;
+        }
 
-                bool anyInc = generalFilters.Any(g => !g.StartsWith("!"));
-                bool anyExc = generalFilters.Any(g => g.StartsWith("!"));
+        // Check general include/exclude filters
+        if (group.GeneralFilters.Count > 0)
+        {
+            string allValues = string.Join(" ",
+                entry.Values.Where(v => v != null)
+                            .Select(v => v.ToString().ToLowerInvariant()));
 
-                if (anyInc &&
-                    !generalFilters.Where(g => !g.StartsWith("!"))
-                                   .All(inc => allValues.Contains(inc)))
-                    return false;
+            bool anyInc = group.GeneralFilters.Any(g => !g.StartsWith("!"));
+            bool anyExc = group.GeneralFilters.Any(g => g.StartsWith("!"));
 
-                if (anyExc &&
-                    generalFilters.Where(g => g.StartsWith("!"))
-                                   .Select(ex => ex.Substring(1))
-                                   .Any(ex => allValues.Contains(ex)))
-                    return false;
-            }
+            if (anyInc &&
+                !group.GeneralFilters.Where(g => !g.StartsWith("!"))
+                               .All(inc => allValues.Contains(inc)))
+                return false;
 
-            return true;
-        }).ToList();
+            if (anyExc &&
+                group.GeneralFilters.Where(g => g.StartsWith("!"))
+                               .Select(ex => ex.Substring(1))
+                               .Any(ex => allValues.Contains(ex)))
+                return false;
+        }
 
-        return filtered;
+        return true;
     }
 
     /// <summary>Try to parse a string as a double, handling common formats</summary>
