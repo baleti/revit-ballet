@@ -11,27 +11,31 @@ public static class ElementDataHelper
     {
         Document doc = uiDoc.Document;
         var elementData = new List<Dictionary<string, object>>();
-        
+
         if (selectedOnly)
         {
             // Handle both regular elements and linked elements (via References)
             var selectedIds = uiDoc.Selection.GetElementIds();
             var selectedRefs = uiDoc.Selection.GetReferences();
-            
+
             if (!selectedIds.Any() && !selectedRefs.Any())
                 throw new InvalidOperationException("No elements are selected.");
-            
+
+            // Keep track of processed elements to avoid duplicates
+            var processedElements = new HashSet<ElementId>();
+
             // Process regular elements from current document
             foreach (var id in selectedIds)
             {
                 Element element = doc.GetElement(id);
                 if (element != null)
                 {
+                    processedElements.Add(id);
                     var data = GetElementDataDictionary(element, doc, null, null, includeParameters);
                     elementData.Add(data);
                 }
             }
-            
+
             // Process linked elements via References
             foreach (var reference in selectedRefs)
             {
@@ -60,11 +64,16 @@ public static class ElementDataHelper
                     else
                     {
                         // This might be a regular element selected via reference
-                        Element element = doc.GetElement(reference);
-                        if (element != null)
+                        // Only process if we haven't already processed it via selectedIds
+                        if (!processedElements.Contains(reference.ElementId))
                         {
-                            var data = GetElementDataDictionary(element, doc, null, null, includeParameters);
-                            elementData.Add(data);
+                            Element element = doc.GetElement(reference);
+                            if (element != null)
+                            {
+                                processedElements.Add(reference.ElementId);
+                                var data = GetElementDataDictionary(element, doc, null, null, includeParameters);
+                                elementData.Add(data);
+                            }
                         }
                     }
                 }
@@ -85,10 +94,10 @@ public static class ElementDataHelper
                 }
             }
         }
-        
+
         return elementData;
     }
-    
+
     private static Dictionary<string, object> GetElementDataDictionary(Element element, Document elementDoc, string linkName, Reference linkReference, bool includeParameters = false)
     {
         string groupName = string.Empty;
@@ -97,14 +106,14 @@ public static class ElementDataHelper
             if (elementDoc.GetElement(element.GroupId) is Group g)
                 groupName = g.Name;
         }
-        
+
         string ownerViewName = string.Empty;
         if (element.OwnerViewId != null && element.OwnerViewId != ElementId.InvalidElementId)
         {
             if (elementDoc.GetElement(element.OwnerViewId) is View v)
                 ownerViewName = v.Name;
         }
-        
+
         var data = new Dictionary<string, object>
         {
             ["Name"] = element.Name,
@@ -117,10 +126,10 @@ public static class ElementDataHelper
             ["_ElementId"] = element.Id, // Store full ElementId for selection
             ["_LinkReference"] = linkReference // Store reference for linked elements
         };
-        
+
         // Use just the element name for DisplayName, regardless of whether it's linked
         data["DisplayName"] = element.Name;
-        
+
         // Include parameters if requested
         if (includeParameters)
         {
@@ -130,7 +139,7 @@ public static class ElementDataHelper
                 {
                     string pName = p.Definition.Name;
                     string pValue = p.AsValueString() ?? p.AsString() ?? "None";
-                    
+
                     // Avoid conflicts with existing keys
                     if (!data.ContainsKey(pName))
                     {
@@ -145,7 +154,7 @@ public static class ElementDataHelper
                 catch { /* Skip problematic parameters */ }
             }
         }
-        
+
         return data;
     }
 }
@@ -159,40 +168,40 @@ public abstract class FilterElementsBase : IExternalCommand
     public abstract bool SpanAllScreens { get; }
     public abstract bool UseSelectedElements { get; }
     public abstract bool IncludeParameters { get; }
-    
+
     public Result Execute(ExternalCommandData cData, ref string message, ElementSet elements)
     {
         try
         {
             var uiDoc = cData.Application.ActiveUIDocument;
             var elementData = ElementDataHelper.GetElementData(uiDoc, UseSelectedElements, IncludeParameters);
-            
+
             if (!elementData.Any())
             {
                 TaskDialog.Show("Info", "No elements found.");
                 return Result.Cancelled;
             }
-            
+
             // Get property names, but exclude internal fields starting with _
             var propertyNames = elementData.First().Keys
                 .Where(k => !k.StartsWith("_"))
                 .ToList();
-            
+
             // Reorder to put most useful columns first
             var orderedProps = new List<string> { "DisplayName", "Category", "LinkName", "Group", "OwnerView", "Id" };
             var remainingProps = propertyNames.Except(orderedProps).OrderBy(p => p);
             propertyNames = orderedProps.Where(p => propertyNames.Contains(p))
                 .Concat(remainingProps)
                 .ToList();
-            
+
             var chosenRows = CustomGUIs.DataGrid(elementData, propertyNames, SpanAllScreens);
             if (chosenRows.Count == 0)
                 return Result.Cancelled;
-            
+
             // Separate regular elements and linked elements
             var regularIds = new List<ElementId>();
             var linkedReferences = new List<Reference>();
-            
+
             foreach (var row in chosenRows)
             {
                 if (row.TryGetValue("_LinkReference", out var refObj) && refObj is Reference linkRef)
@@ -205,11 +214,13 @@ public abstract class FilterElementsBase : IExternalCommand
                     // This is a regular element
                     regularIds.Add(elemId);
                 }
+                // Handle backward compatibility - if someone stored just the integer ID
+                else if (row.TryGetValue("Id", out var intId) && intId is int id)
+                {
+                    regularIds.Add(new ElementId(id));
+                }
             }
-            
-            // Clear current selection
-            uiDoc.Selection.SetElementIds(new List<ElementId>());
-            
+
             // Set selection based on what we have
             if (linkedReferences.Any() && !regularIds.Any())
             {
@@ -223,17 +234,15 @@ public abstract class FilterElementsBase : IExternalCommand
             }
             else if (linkedReferences.Any() && regularIds.Any())
             {
-                // Mixed selection - need to handle this carefully
-                // First set regular elements
+                // Mixed selection - Revit doesn't support this well
+                // Try to select regular elements first as that's more reliable
                 uiDoc.Selection.SetElementIds(regularIds);
                 
-                // Then try to add linked references
-                // Note: Revit may not support mixed selection well
-                TaskDialog.Show("Mixed Selection", 
-                    $"Selected {regularIds.Count} regular elements and {linkedReferences.Count} linked elements.\n" +
-                    "Note: Revit may only show one type in the selection.");
+                TaskDialog.Show("Mixed Selection",
+                    $"Selected {regularIds.Count} regular elements.\n" +
+                    $"Note: {linkedReferences.Count} linked elements could not be selected together with regular elements due to Revit limitations.");
             }
-            
+
             return Result.Succeeded;
         }
         catch (InvalidOperationException ex)
@@ -248,6 +257,7 @@ public abstract class FilterElementsBase : IExternalCommand
         }
     }
 }
+
 #region Concrete commands
 
 [Transaction(TransactionMode.Manual)]
