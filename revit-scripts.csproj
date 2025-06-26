@@ -94,6 +94,7 @@
     <Compile Include="revit-scripts\DataGrid2_Filtering.cs" />
     <Compile Include="revit-scripts\DataGrid2_Helpers.cs" />
     <Compile Include="revit-scripts\DataGrid2_Sorting.cs" />
+    <Compile Include="revit-scripts\DataGrid2_VirtualMode.cs" />
     <Compile Include="revit-scripts\DirectShapesFromVisibleRooms.cs" />
     <Compile Include="revit-scripts\DuplicateSheetWithViewsAsDraftingViews.cs" />
     <Compile Include="revit-scripts\DuplicateViewsAsDraftingViews.cs" />
@@ -143,7 +144,6 @@
     <Compile Include="revit-scripts\SwitchToLastPhase.cs" />
     <Compile Include="revit-scripts\RehostToJoinedWalls.cs" />
     <Compile Include="revit-scripts\ResetTitlesOfSelectedViewports.cs" />
-    <Compile Include="revit-scripts\test34.cs" />
     <Compile Include="revit-scripts\ToggleLevelBubblesInSelectedViews.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -164,7 +164,7 @@
     <Compile Include="revit-scripts\CutWithIntersectingElements.cs" />
     <Compile Include="revit-scripts\DataGrid1.cs" />
     <Compile Include="revit-scripts\CutGeometryWithGroup.cs" />
-    <Compile Include="revit-scripts\DataGrid2.cs" />
+    <Compile Include="revit-scripts\DataGrid2_Main.cs" />
     <Compile Include="revit-scripts\DeleteFiltersFromProject.cs" />
     <Compile Include="revit-scripts\DeleteRevisionCloudsFromSheets.cs" />
     <Compile Include="revit-scripts\DeselectRandomly.cs" />

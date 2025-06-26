@@ -8,7 +8,7 @@ using System.Windows.Forms;
 public partial class CustomGUIs
 {
     // ──────────────────────────────────────────────────────────────
-    //  Filtering Logic
+    //  Filtering Logic (Optimized)
     // ──────────────────────────────────────────────────────────────
 
     /// <summary>Applies all filters to the data and returns filtered result</summary>
@@ -18,47 +18,213 @@ public partial class CustomGUIs
         string searchText,
         DataGridView grid)
     {
-        // First, split by || to get OR groups
+        // Quick return for empty filter
+        if (string.IsNullOrWhiteSpace(searchText))
+        {
+            UpdateColumnVisibilityOptimized(grid, new HashSet<List<string>>(new ListStringComparer()));
+            return entries;
+        }
+
+        // Parse filter groups once
         List<string> orGroups = SplitByOrOperator(searchText);
-        
-        // Process each OR group independently
         List<FilterGroup> filterGroups = new List<FilterGroup>();
-        
+
         foreach (string orGroup in orGroups)
         {
             FilterGroup group = ParseFilterGroup(orGroup.Trim());
             filterGroups.Add(group);
         }
-        
-        // Apply column visibility based on ALL groups (union of all column filters)
+
+        // Update column visibility (optimized)
         HashSet<List<string>> allColVisibilityFilters = new HashSet<List<string>>(
             filterGroups.SelectMany(g => g.ColVisibilityFilters),
             new ListStringComparer());
+
+        UpdateColumnVisibilityOptimized(grid, allColVisibilityFilters);
+
+        // Use optimized row filtering
+        List<Dictionary<string, object>> filtered = FilterRowsOptimized(entries, filterGroups, propertyNames);
+
+        return filtered;
+    }
+
+    /// <summary>Optimized column visibility update - only updates when changed</summary>
+    private static void UpdateColumnVisibilityOptimized(DataGridView grid, HashSet<List<string>> filters)
+    {
+        // Create a key for the current filter state
+        string filterKey = string.Join("|", filters.Select(f => string.Join(",", f)));
         
+        // Skip if nothing changed
+        if (filterKey == _lastColumnVisibilityFilter)
+            return;
+
+        _lastColumnVisibilityFilter = filterKey;
+        var newVisible = new HashSet<string>();
+
         foreach (DataGridViewColumn col in grid.Columns)
         {
             string colName = col.HeaderText.ToLowerInvariant();
-            bool show = allColVisibilityFilters.Count == 0 ||
-                        allColVisibilityFilters.Any(parts =>
-                            parts.All(p => colName.Contains(p)));
-            col.Visible = show;
+            bool show = filters.Count == 0 ||
+                        filters.Any(parts => parts.All(p => colName.Contains(p)));
+            
+            if (show) newVisible.Add(col.Name);
         }
 
-        // Filter rows - a row passes if it matches ANY of the OR groups
-        List<Dictionary<string, object>> filtered = entries.Where(entry =>
+        // Only update DOM if visibility actually changed
+        if (!_lastVisibleColumns.SetEquals(newVisible))
+        {
+            grid.SuspendLayout(); // Prevent flicker
+            foreach (DataGridViewColumn col in grid.Columns)
+            {
+                col.Visible = newVisible.Contains(col.Name);
+            }
+            grid.ResumeLayout();
+            _lastVisibleColumns = newVisible;
+        }
+    }
+
+    /// <summary>Optimized row filtering using search index</summary>
+    private static List<Dictionary<string, object>> FilterRowsOptimized(
+        List<Dictionary<string, object>> entries,
+        List<FilterGroup> filterGroups,
+        List<string> propertyNames)
+    {
+        // Use indices for filtering
+        var matchingIndices = new List<int>();
+
+        for (int i = 0; i < entries.Count; i++)
         {
             // Check if entry matches ANY of the OR groups
             foreach (FilterGroup group in filterGroups)
             {
-                if (EntryMatchesFilterGroup(entry, group, propertyNames))
+                if (EntryMatchesFilterGroupOptimized(i, entries[i], group, propertyNames))
                 {
-                    return true; // Entry matches this OR group
+                    matchingIndices.Add(i);
+                    break; // Entry matches this OR group, no need to check others
                 }
             }
-            return false; // Entry doesn't match any OR group
-        }).ToList();
+        }
 
-        return filtered;
+        // Build result list
+        var result = new List<Dictionary<string, object>>(matchingIndices.Count);
+        foreach (int idx in matchingIndices)
+        {
+            result.Add(entries[idx]);
+        }
+
+        return result;
+    }
+
+    /// <summary>Optimized entry matching using search index</summary>
+    private static bool EntryMatchesFilterGroupOptimized(
+        int entryIndex,
+        Dictionary<string, object> entry,
+        FilterGroup group,
+        List<string> propertyNames)
+    {
+        // Check column-qualified value filters
+        foreach (ColumnValueFilter f in group.ColValueFilters)
+        {
+            List<string> matchCols = propertyNames
+                .Where(p => f.ColumnParts.All(part =>
+                            p.ToLowerInvariant().Contains(part)))
+                .ToList();
+
+            if (matchCols.Count == 0) continue;
+
+            bool valuePresent = matchCols.Any(c =>
+            {
+                if (_searchIndexByColumn != null && 
+                    _searchIndexByColumn.ContainsKey(c) &&
+                    _searchIndexByColumn[c].ContainsKey(entryIndex))
+                {
+                    return _searchIndexByColumn[c][entryIndex].Contains(f.Value);
+                }
+
+                // Fallback to direct lookup if index not available
+                object v;
+                return entry.TryGetValue(c, out v) &&
+                       v != null &&
+                       v.ToString().ToLowerInvariant().Contains(f.Value);
+            });
+
+            if (!f.IsExclusion && !valuePresent) return false;
+            if (f.IsExclusion && valuePresent) return false;
+        }
+
+        // Check comparison filters
+        foreach (ComparisonFilter f in group.ComparisonFilters)
+        {
+            bool matchFound = false;
+
+            if (f.ColumnParts == null)
+            {
+                // Check all columns
+                foreach (var kvp in entry)
+                {
+                    if (kvp.Value != null && TryParseDouble(kvp.Value.ToString(), out double val))
+                    {
+                        if (f.Operator == ComparisonOperator.GreaterThan && val > f.Value)
+                            matchFound = true;
+                        else if (f.Operator == ComparisonOperator.LessThan && val < f.Value)
+                            matchFound = true;
+
+                        if (matchFound) break;
+                    }
+                }
+            }
+            else
+            {
+                // Check specific columns
+                List<string> matchCols = propertyNames
+                    .Where(p => f.ColumnParts.All(part =>
+                                p.ToLowerInvariant().Contains(part)))
+                    .ToList();
+
+                foreach (string col in matchCols)
+                {
+                    object v;
+                    if (entry.TryGetValue(col, out v) && v != null &&
+                        TryParseDouble(v.ToString(), out double val))
+                    {
+                        if (f.Operator == ComparisonOperator.GreaterThan && val > f.Value)
+                            matchFound = true;
+                        else if (f.Operator == ComparisonOperator.LessThan && val < f.Value)
+                            matchFound = true;
+
+                        if (matchFound) break;
+                    }
+                }
+            }
+
+            if (!f.IsExclusion && !matchFound) return false;
+            if (f.IsExclusion && matchFound) return false;
+        }
+
+        // Check general include/exclude filters using index
+        if (group.GeneralFilters.Count > 0)
+        {
+            string allValues = _searchIndexAllColumns != null && _searchIndexAllColumns.ContainsKey(entryIndex)
+                ? _searchIndexAllColumns[entryIndex]
+                : string.Join(" ", entry.Values.Where(v => v != null)
+                                        .Select(v => v.ToString().ToLowerInvariant()));
+
+            bool anyInc = group.GeneralFilters.Any(g => !g.StartsWith("!"));
+            bool anyExc = group.GeneralFilters.Any(g => g.StartsWith("!"));
+
+            if (anyInc &&
+                !group.GeneralFilters.Where(g => !g.StartsWith("!"))
+                               .All(inc => allValues.Contains(inc)))
+                return false;
+
+            if (anyExc &&
+                group.GeneralFilters.Where(g => g.StartsWith("!"))
+                               .Select(ex => ex.Substring(1))
+                               .Any(ex => allValues.Contains(ex)))
+                return false;
+        }
+
+        return true;
     }
 
     /// <summary>Split search text by || operator, respecting quotes</summary>
@@ -67,17 +233,17 @@ public partial class CustomGUIs
         List<string> groups = new List<string>();
         StringBuilder current = new StringBuilder();
         bool inQuotes = false;
-        
+
         for (int i = 0; i < searchText.Length; i++)
         {
             char c = searchText[i];
-            
+
             if (c == '"' && (i == 0 || searchText[i - 1] != '\\'))
             {
                 inQuotes = !inQuotes;
                 current.Append(c);
             }
-            else if (!inQuotes && i < searchText.Length - 1 && 
+            else if (!inQuotes && i < searchText.Length - 1 &&
                      c == '|' && searchText[i + 1] == '|')
             {
                 // Found || outside quotes
@@ -90,19 +256,19 @@ public partial class CustomGUIs
                 current.Append(c);
             }
         }
-        
+
         // Add the last group
         if (current.Length > 0)
         {
             groups.Add(current.ToString());
         }
-        
+
         // If no || found, return the whole text as a single group
         if (groups.Count == 0)
         {
             groups.Add(searchText);
         }
-        
+
         return groups;
     }
 
@@ -110,7 +276,7 @@ public partial class CustomGUIs
     private static FilterGroup ParseFilterGroup(string groupText)
     {
         FilterGroup group = new FilterGroup();
-        
+
         // Split into tokens - updated regex to handle comparison operators
         List<string> tokens = Regex.Matches(
                 groupText,
@@ -198,110 +364,8 @@ public partial class CustomGUIs
                 }
             }
         }
-        
+
         return group;
-    }
-
-    /// <summary>Check if an entry matches all filters in a group (AND logic)</summary>
-    private static bool EntryMatchesFilterGroup(
-        Dictionary<string, object> entry,
-        FilterGroup group,
-        List<string> propertyNames)
-    {
-        // Check column-qualified value filters
-        foreach (ColumnValueFilter f in group.ColValueFilters)
-        {
-            List<string> matchCols = propertyNames
-                .Where(p => f.ColumnParts.All(part =>
-                            p.ToLowerInvariant().Contains(part)))
-                .ToList();
-
-            if (matchCols.Count == 0) continue;
-
-            bool valuePresent = matchCols.Any(c =>
-            {
-                object v;
-                return entry.TryGetValue(c, out v) &&
-                       v != null &&
-                       v.ToString().ToLowerInvariant().Contains(f.Value);
-            });
-
-            if (!f.IsExclusion && !valuePresent) return false;
-            if (f.IsExclusion && valuePresent) return false;
-        }
-
-        // Check comparison filters
-        foreach (ComparisonFilter f in group.ComparisonFilters)
-        {
-            bool matchFound = false;
-
-            if (f.ColumnParts == null)
-            {
-                // Check all columns
-                foreach (var kvp in entry)
-                {
-                    if (kvp.Value != null && TryParseDouble(kvp.Value.ToString(), out double val))
-                    {
-                        if (f.Operator == ComparisonOperator.GreaterThan && val > f.Value)
-                            matchFound = true;
-                        else if (f.Operator == ComparisonOperator.LessThan && val < f.Value)
-                            matchFound = true;
-
-                        if (matchFound) break;
-                    }
-                }
-            }
-            else
-            {
-                // Check specific columns
-                List<string> matchCols = propertyNames
-                    .Where(p => f.ColumnParts.All(part =>
-                                p.ToLowerInvariant().Contains(part)))
-                    .ToList();
-
-                foreach (string col in matchCols)
-                {
-                    object v;
-                    if (entry.TryGetValue(col, out v) && v != null &&
-                        TryParseDouble(v.ToString(), out double val))
-                    {
-                        if (f.Operator == ComparisonOperator.GreaterThan && val > f.Value)
-                            matchFound = true;
-                        else if (f.Operator == ComparisonOperator.LessThan && val < f.Value)
-                            matchFound = true;
-
-                        if (matchFound) break;
-                    }
-                }
-            }
-
-            if (!f.IsExclusion && !matchFound) return false;
-            if (f.IsExclusion && matchFound) return false;
-        }
-
-        // Check general include/exclude filters
-        if (group.GeneralFilters.Count > 0)
-        {
-            string allValues = string.Join(" ",
-                entry.Values.Where(v => v != null)
-                            .Select(v => v.ToString().ToLowerInvariant()));
-
-            bool anyInc = group.GeneralFilters.Any(g => !g.StartsWith("!"));
-            bool anyExc = group.GeneralFilters.Any(g => g.StartsWith("!"));
-
-            if (anyInc &&
-                !group.GeneralFilters.Where(g => !g.StartsWith("!"))
-                               .All(inc => allValues.Contains(inc)))
-                return false;
-
-            if (anyExc &&
-                group.GeneralFilters.Where(g => g.StartsWith("!"))
-                               .Select(ex => ex.Substring(1))
-                               .Any(ex => allValues.Contains(ex)))
-                return false;
-        }
-
-        return true;
     }
 
     /// <summary>Try to parse a string as a double, handling common formats</summary>
