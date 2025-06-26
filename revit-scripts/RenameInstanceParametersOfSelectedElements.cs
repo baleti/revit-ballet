@@ -97,7 +97,7 @@ namespace MyRevitAddin
                 m =>
                 {
                     if (!double.TryParse(m.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out double n))
-                        return m.Value;                           // shouldn’t happen
+                        return m.Value;                           // shouldn't happen
 
                     double res = ApplyMathOperation(n, mathOp);
 
@@ -134,9 +134,63 @@ namespace MyRevitAddin
 
         #endregion
 
+        #region Parameter value getter helper -----------------------------------------------------
+
+        /// <summary>Gets parameter value as string</summary>
+        private static string GetParameterValueAsString(Parameter p)
+        {
+            if (p == null) return string.Empty;
+            return (p.StorageType == StorageType.String)
+                ? (p.AsString() ?? string.Empty)
+                : (p.AsValueString() ?? string.Empty);
+        }
+
+        #endregion
+
+        #region Pattern parsing helper ------------------------------------------------------------
+
+        /// <summary>
+        /// Parses pattern string and replaces parameter references.
+        /// Supports: {} for current value, $"Parameter Name" or $ParameterName for other parameters
+        /// </summary>
+        private static string ParsePatternWithParameterReferences(string pattern, string currentValue, Element element)
+        {
+            if (string.IsNullOrEmpty(pattern))
+                return currentValue;
+
+            // First replace {} with current value
+            string result = pattern.Replace("{}", currentValue);
+
+            // Regex to match $"Parameter Name" or $ParameterNameWithoutSpaces
+            // This matches: $"anything in quotes" OR $word (alphanumeric and underscore)
+            var regex = new Regex(@"\$""([^""]+)""|(?<!\$)\$(\w+)");
+            
+            result = regex.Replace(result, match =>
+            {
+                // Get the parameter name from either the quoted group or the unquoted group
+                string paramName = !string.IsNullOrEmpty(match.Groups[1].Value) 
+                    ? match.Groups[1].Value 
+                    : match.Groups[2].Value;
+
+                // Look up the parameter on the element
+                Parameter param = element.LookupParameter(paramName);
+                if (param != null)
+                {
+                    return GetParameterValueAsString(param);
+                }
+                
+                // If parameter not found, return the original text
+                return match.Value;
+            });
+
+            return result;
+        }
+
+        #endregion
+
         #region Value transformation --------------------------------------------------------------
 
-        private static string TransformValue(string original, RenameParamForm form)
+        private static string TransformValue(string original, RenameParamForm form, Element element = null)
         {
             string value = original;
 
@@ -146,9 +200,20 @@ namespace MyRevitAddin
             else if (!string.IsNullOrEmpty(form.ReplaceText))
                 value = form.ReplaceText;
 
-            // 2. Pattern
+            // 2. Pattern (now with parameter reference support)
             if (!string.IsNullOrEmpty(form.PatternText))
-                value = form.PatternText.Replace("{}", value);
+            {
+                if (element != null)
+                {
+                    // Use the new pattern parser that supports parameter references
+                    value = ParsePatternWithParameterReferences(form.PatternText, value, element);
+                }
+                else
+                {
+                    // Fallback for preview mode (no element available)
+                    value = form.PatternText.Replace("{}", value);
+                }
+            }
 
             // 3. Math
             if (!string.IsNullOrEmpty(form.MathOperationText))
@@ -308,7 +373,8 @@ namespace MyRevitAddin
                     var updates = new List<(ParameterValueInfo Pv, string NewVal)>();
                     foreach (ParameterValueInfo pv in pVals)
                     {
-                        string newVal = TransformValue(pv.CurrentValue, form);
+                        // Pass the element to TransformValue for parameter reference support
+                        string newVal = TransformValue(pv.CurrentValue, form, pv.Element);
                         if (newVal != pv.CurrentValue)
                             updates.Add((pv, newVal));
                     }
@@ -427,7 +493,7 @@ namespace MyRevitAddin
             _txtPattern = MakeTextBox("{}");   // default
             grid.Controls.Add(_txtPattern, 1, 2);
 
-            grid.Controls.Add(MakeHint("Use {} to represent current value."), 1, 3);
+            grid.Controls.Add(MakeHint("Use {} for current value. Use $\"Parameter Name\" or $ParameterName to reference other parameters."), 1, 3);
 
             // Math
             grid.Controls.Add(MakeLabel("Math:"), 0, 4);
@@ -517,7 +583,13 @@ namespace MyRevitAddin
                     v = ReplaceText;
 
                 if (!string.IsNullOrEmpty(PatternText))
+                {
+                    // For preview, we can't access other parameters, so show placeholder
                     v = PatternText.Replace("{}", v);
+                    // Show parameter references as-is in preview
+                    var regex = new Regex(@"\$""([^""]+)""|(?<!\$)\$(\w+)");
+                    v = regex.Replace(v, match => "[" + match.Value + "]");
+                }
 
                 if (!string.IsNullOrEmpty(MathOperationText))
                 {

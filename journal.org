@@ -925,7 +925,7 @@ couldn't find any coordinate values when parsing .rvt file directly
 further research is needed
 ** May
 *** 11
-**** =22:55= very disappointingly [[revit link display settings are not available via api][https://forums.autodesk.com/t5/revit-ideas/api-for-rvt-link-display-settings/idc-p/13624379]]
+**** =22:55= very disappointingly it's not possible to change graphics settings of revit links via api [[revit link display settings are not available via api][https://forums.autodesk.com/t5/revit-ideas/api-for-rvt-link-display-settings/idc-p/13624379]]
 this makes working with revit links very difficult
 for example changing "by linked view" setting across floors
 *** 16
