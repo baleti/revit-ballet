@@ -1,69 +1,76 @@
 ﻿using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
+using Autodesk.Revit.DB.Architecture;
 using Autodesk.Revit.UI;
-using Autodesk.Revit.UI.Selection;
+using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 
 [Transaction(TransactionMode.Manual)]
 public class SelectAssociatedTagsOfSelectedElements : IExternalCommand
 {
-    public Result Execute(
-        ExternalCommandData commandData,
-        ref string message,
-        ElementSet elements)
+    public Result Execute(ExternalCommandData cData, ref string msg, ElementSet els)
     {
-        UIDocument uiDoc = commandData.Application.ActiveUIDocument;
-        Document doc = uiDoc.Document;
+        UIDocument  uiDoc = cData.Application.ActiveUIDocument;
+        Document       doc = uiDoc.Document;
+        ICollection<ElementId> picked = uiDoc.Selection.GetElementIds();
 
-        // Get the currently selected elements
-        ICollection<ElementId> selectedIds = uiDoc.Selection.GetElementIds();
-
-        // If no elements are selected, warn the user
-        if (!selectedIds.Any())
+        if (!picked.Any())
         {
-            message = "No elements selected. Please select one or more elements first.";
+            msg = "No elements selected.";
             return Result.Failed;
         }
 
-        // Collect all IndependentTag elements from the document
-        FilteredElementCollector tagCollector = new FilteredElementCollector(doc)
-            .OfClass(typeof(IndependentTag));
+        /* 1. Collect ALL tag types we care about in one shot */
+        var tagFilter = new LogicalOrFilter(
+            new ElementClassFilter(typeof(IndependentTag)),
+            new ElementClassFilter(typeof(SpatialElementTag)));
 
-        List<ElementId> tagsToSelect = new List<ElementId>();
+        List<ElementId> tagIds = new FilteredElementCollector(doc)
+                                 .WhereElementIsNotElementType()
+                                 .WherePasses(tagFilter)
+                                 .Where(t => TagReferencesSelection(t, picked))
+                                 .Select(t => t.Id)
+                                 .ToList();
 
-        // For each tag, check whether it references any of the selected elements in the *current* document
-        foreach (IndependentTag tag in tagCollector)
+        /* 2. Push the result back to Revit */
+        if (tagIds.Count == 0)
         {
-            // Get the LinkElementId objects that this tag references
-            ICollection<LinkElementId> linkElementIds = tag.GetTaggedElementIds();
-            
-            // Check if any of these LinkElementIds match the local selected IDs
-            bool tagReferencesSelection = linkElementIds.Any(linkElementId =>
-            {
-                // If LinkInstanceId is invalid, the element is local
-                if (linkElementId.LinkInstanceId == ElementId.InvalidElementId)
-                {
-                    ElementId localId = linkElementId.HostElementId;
-                    return selectedIds.Contains(localId);
-                }
-                else
-                {
-                    // If you need to handle linked elements, add logic here 
-                    // to match the linked document element Id if desired.
-                    return false;
-                }
-            });
-
-            if (tagReferencesSelection)
-            {
-                tagsToSelect.Add(tag.Id);
-            }
+            TaskDialog.Show("No Tags Found", "No tags were found for the selected elements.");
+            return Result.Succeeded;
         }
 
-        // Update the selection to include just the associated tags
-        uiDoc.Selection.SetElementIds(tagsToSelect);
-
+        uiDoc.Selection.SetElementIds(tagIds);
         return Result.Succeeded;
+    }
+
+    /// <summary>Does this tag point to *any* of the user-selected element IDs?</summary>
+    private static bool TagReferencesSelection(Element tag, ICollection<ElementId> picked)
+    {
+        switch (tag)
+        {
+            /* ---------- IndependentTag ---------- */
+            case IndependentTag it:
+                return it.GetTaggedElementIds()
+                         .Any(leId => leId.LinkInstanceId == ElementId.InvalidElementId &&
+                                      picked.Contains(leId.HostElementId));
+
+            /* ---------- Room & Area tags ---------- */
+            case RoomTag rt when rt.Room != null:
+                return picked.Contains(rt.Room.Id);
+
+            case AreaTag at when at.Area != null:
+                return picked.Contains(at.Area.Id);
+
+            /* ---------- SpaceTag (MEP) ---------- */
+            default:
+                // Avoid hard reference to MEP assembly – reflection once, cheap.
+                PropertyInfo spaceProp = tag.GetType().GetProperty("Space");
+                if (spaceProp?.GetValue(tag) is Element sp)
+                    return picked.Contains(sp.Id);
+
+                return false;
+        }
     }
 }
