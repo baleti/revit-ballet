@@ -12,6 +12,14 @@ public static class ElementDataHelper
         Document doc = uiDoc.Document;
         var elementData = new List<Dictionary<string, object>>();
 
+        // Get all scope boxes in the document upfront
+        var scopeBoxes = new FilteredElementCollector(doc)
+            .OfCategory(BuiltInCategory.OST_VolumeOfInterest)
+            .WhereElementIsNotElementType()
+            .Cast<Element>()
+            .Where(e => e.Name != null)
+            .ToList();
+
         if (selectedOnly)
         {
             // Handle both regular elements and linked elements (via References)
@@ -31,7 +39,7 @@ public static class ElementDataHelper
                 if (element != null)
                 {
                     processedElements.Add(id);
-                    var data = GetElementDataDictionary(element, doc, null, null, null, includeParameters);
+                    var data = GetElementDataDictionary(element, doc, null, null, null, includeParameters, scopeBoxes);
                     elementData.Add(data);
                 }
             }
@@ -56,7 +64,7 @@ public static class ElementDataHelper
                                 if (linkedElement != null)
                                 {
                                     // Store the linked instance and element ID for later reference creation
-                                    var data = GetElementDataDictionary(linkedElement, linkedDoc, linkedInstance.Name, linkedInstance, linkedElement.Id, includeParameters);
+                                    var data = GetElementDataDictionary(linkedElement, linkedDoc, linkedInstance.Name, linkedInstance, linkedElement.Id, includeParameters, scopeBoxes);
                                     elementData.Add(data);
                                 }
                             }
@@ -72,7 +80,7 @@ public static class ElementDataHelper
                             if (element != null)
                             {
                                 processedElements.Add(reference.ElementId);
-                                var data = GetElementDataDictionary(element, doc, null, null, null, includeParameters);
+                                var data = GetElementDataDictionary(element, doc, null, null, null, includeParameters, scopeBoxes);
                                 elementData.Add(data);
                             }
                         }
@@ -90,7 +98,7 @@ public static class ElementDataHelper
                 Element element = doc.GetElement(id);
                 if (element != null)
                 {
-                    var data = GetElementDataDictionary(element, doc, null, null, null, includeParameters);
+                    var data = GetElementDataDictionary(element, doc, null, null, null, includeParameters, scopeBoxes);
                     elementData.Add(data);
                 }
             }
@@ -99,7 +107,7 @@ public static class ElementDataHelper
         return elementData;
     }
 
-    private static Dictionary<string, object> GetElementDataDictionary(Element element, Document elementDoc, string linkName, RevitLinkInstance linkInstance, ElementId linkedElementId, bool includeParameters = false)
+    private static Dictionary<string, object> GetElementDataDictionary(Element element, Document elementDoc, string linkName, RevitLinkInstance linkInstance, ElementId linkedElementId, bool includeParameters, List<Element> scopeBoxes)
     {
         string groupName = string.Empty;
         if (element.GroupId != null && element.GroupId != ElementId.InvalidElementId && element.GroupId.IntegerValue != -1)
@@ -131,6 +139,47 @@ public static class ElementDataHelper
 
         data["DisplayName"] = element.Name;
 
+        // Add scope box information
+        var containingScopeBoxes = new List<string>();
+        try
+        {
+            // Get element's bounding box
+            BoundingBoxXYZ elementBB = element.get_BoundingBox(null);
+            if (elementBB == null)
+            {
+                // Try to get bounding box from geometry
+                var options = new Options();
+                var geom = element.get_Geometry(options);
+                if (geom != null)
+                {
+                    elementBB = geom.GetBoundingBox();
+                }
+            }
+
+            if (elementBB != null)
+            {
+                // For linked elements, transform the bounding box
+                if (linkInstance != null)
+                {
+                    Transform transform = linkInstance.GetTotalTransform();
+                    elementBB = TransformBoundingBox(elementBB, transform);
+                }
+
+                // Check each scope box
+                foreach (var scopeBox in scopeBoxes)
+                {
+                    BoundingBoxXYZ scopeBB = scopeBox.get_BoundingBox(null);
+                    if (scopeBB != null && DoesBoundingBoxIntersect(elementBB, scopeBB))
+                    {
+                        containingScopeBoxes.Add(scopeBox.Name);
+                    }
+                }
+            }
+        }
+        catch { /* Skip if we can't get bounding box */ }
+
+        data["ScopeBoxes"] = string.Join(", ", containingScopeBoxes.OrderBy(s => s));
+
         // Include parameters if requested
         if (includeParameters)
         {
@@ -158,11 +207,63 @@ public static class ElementDataHelper
 
         return data;
     }
+
+    /// <summary>
+    /// Transform a bounding box by a transform
+    /// </summary>
+    private static BoundingBoxXYZ TransformBoundingBox(BoundingBoxXYZ bb, Transform transform)
+    {
+        XYZ min = bb.Min;
+        XYZ max = bb.Max;
+        
+        // Get all 8 corners of the bounding box
+        var corners = new[]
+        {
+            new XYZ(min.X, min.Y, min.Z),
+            new XYZ(max.X, min.Y, min.Z),
+            new XYZ(min.X, max.Y, min.Z),
+            new XYZ(max.X, max.Y, min.Z),
+            new XYZ(min.X, min.Y, max.Z),
+            new XYZ(max.X, min.Y, max.Z),
+            new XYZ(min.X, max.Y, max.Z),
+            new XYZ(max.X, max.Y, max.Z)
+        };
+
+        // Transform all corners
+        var transformedCorners = corners.Select(c => transform.OfPoint(c)).ToArray();
+
+        // Find new min and max
+        double minX = transformedCorners.Min(p => p.X);
+        double minY = transformedCorners.Min(p => p.Y);
+        double minZ = transformedCorners.Min(p => p.Z);
+        double maxX = transformedCorners.Max(p => p.X);
+        double maxY = transformedCorners.Max(p => p.Y);
+        double maxZ = transformedCorners.Max(p => p.Z);
+
+        var result = new BoundingBoxXYZ();
+        result.Min = new XYZ(minX, minY, minZ);
+        result.Max = new XYZ(maxX, maxY, maxZ);
+        
+        return result;
+    }
+
+    /// <summary>
+    /// Check if two bounding boxes intersect
+    /// </summary>
+    private static bool DoesBoundingBoxIntersect(BoundingBoxXYZ bb1, BoundingBoxXYZ bb2)
+    {
+        // Check if bb1 is completely outside bb2 in any dimension
+        if (bb1.Max.X < bb2.Min.X || bb1.Min.X > bb2.Max.X) return false;
+        if (bb1.Max.Y < bb2.Min.Y || bb1.Min.Y > bb2.Max.Y) return false;
+        if (bb1.Max.Z < bb2.Min.Z || bb1.Min.Z > bb2.Max.Z) return false;
+        
+        return true;
+    }
 }
 
 /// <summary>
 /// Base class for commands that display Revit elements in a custom data‑grid for filtering and re‑selection.
-/// Now supports elements from linked models.
+/// Now supports elements from linked models and includes scope box information.
 /// </summary>
 public abstract class FilterElementsBase : IExternalCommand
 {
@@ -207,8 +308,8 @@ public abstract class FilterElementsBase : IExternalCommand
                 .Where(k => !k.EndsWith("Object"))
                 .ToList();
 
-            // Reorder to put most useful columns first
-            var orderedProps = new List<string> { "DisplayName", "Category", "LinkName", "Group", "OwnerView", "Id" };
+            // Reorder to put most useful columns first, with ScopeBoxes as second column
+            var orderedProps = new List<string> { "DisplayName", "ScopeBoxes", "Category", "LinkName", "Group", "OwnerView", "Id" };
             var remainingProps = propertyNames.Except(orderedProps).OrderBy(p => p);
             propertyNames = orderedProps.Where(p => propertyNames.Contains(p))
                 .Concat(remainingProps)
