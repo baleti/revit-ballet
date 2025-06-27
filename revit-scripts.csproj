@@ -145,6 +145,7 @@
     <Compile Include="revit-scripts\SwitchToLastPhase.cs" />
     <Compile Include="revit-scripts\RehostToJoinedWalls.cs" />
     <Compile Include="revit-scripts\ResetTitlesOfSelectedViewports.cs" />
+    <Compile Include="revit-scripts\test37.cs" />
     <Compile Include="revit-scripts\ToggleLevelBubblesInSelectedViews.cs">
       <SubType>Form</SubType>
     </Compile>

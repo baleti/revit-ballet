@@ -994,3 +994,28 @@ command also isn't trying to account for door frame thickness as there doesn't s
 ***** =23:25= spotted one situation where a wall wasn't correctly excluded as occluded
 overall it was an exception, prevailing majority of selected door/wall situations were measured correctly
 maybe I will address it later (if manage to reproduce)
+** June
+*** 27
+**** =19:00= thinking about graph structure of buildings
+***** graph comes up for the third time
+first when enumerating communal doors in hallways
+second when establishing direction (inside/outside orientation) of apartment doors
+now when assigning numbers to apartments
+***** assigning numbers to apartments
+****** custom logic
+clockwise
+from left to right
+both for each block and for each lobby
+****** automating this custom logic requires some global knowledge of the building
+what apartment does a selected room belong to
+what lobby does a selected apartment belong to
+what block does a selected lobby belong to
+****** implementation may be similar to previous commands
+SetInstanceParameterToNumberSequenceAlongX
+SetInstanceParameterToNumberSequenceClockwise
+command needs to build necessary portion of a graph and assess selected room accordingly
+****** =19:43= can't think of a way to distinguish communal hallways
+issue may arise in internal hallways (in apartments)
+can't think of a standard way to designate such spaces
+******* gave up
+going to look into streamlining existing selection methods instead
