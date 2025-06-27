@@ -95,6 +95,7 @@
     <Compile Include="revit-scripts\DataGrid2_Helpers.cs" />
     <Compile Include="revit-scripts\DataGrid2_Sorting.cs" />
     <Compile Include="revit-scripts\DataGrid2_VirtualMode.cs" />
+    <Compile Include="revit-scripts\DirectShapesFromSelectedRooms.cs" />
     <Compile Include="revit-scripts\DirectShapesFromVisibleRooms.cs" />
     <Compile Include="revit-scripts\DuplicateSheetWithViewsAsDraftingViews.cs" />
     <Compile Include="revit-scripts\DuplicateViewsAsDraftingViews.cs" />
