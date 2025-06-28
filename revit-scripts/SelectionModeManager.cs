@@ -5,6 +5,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Diagnostics;
+using System.Reflection;
 
 // Static class to manage selection mode using SelectionSets
 public static class SelectionModeManager
@@ -29,6 +31,110 @@ public static class SelectionModeManager
     {
         public int LinkInstanceId { get; set; }
         public int LinkedElementId { get; set; }
+    }
+    
+    // Get the name of the calling command using reflection
+    private static string GetCallingCommandName()
+    {
+        try
+        {
+            var stackTrace = new StackTrace();
+            var frames = stackTrace.GetFrames();
+            
+            // Collect all IExternalCommand types and their assemblies in the call stack
+            var commandTypes = new HashSet<Type>();
+            var assembliesInStack = new HashSet<Assembly>();
+            
+            foreach (var frame in frames)
+            {
+                var method = frame.GetMethod();
+                if (method != null && method.DeclaringType != null)
+                {
+                    var type = method.DeclaringType;
+                    assembliesInStack.Add(type.Assembly);
+                    
+                    // Check if this type implements IExternalCommand
+                    if (typeof(IExternalCommand).IsAssignableFrom(type) && 
+                        type != typeof(SelectionModeManager))
+                    {
+                        commandTypes.Add(type);
+                    }
+                }
+            }
+            
+            // For each abstract command type found, look for concrete implementations in the same assemblies
+            var additionalTypes = new HashSet<Type>();
+            foreach (var type in commandTypes.ToList())
+            {
+                if (type.IsAbstract)
+                {
+                    // Look for derived types in assemblies that are in the call stack
+                    foreach (var assembly in assembliesInStack)
+                    {
+                        try
+                        {
+                            foreach (var candidateType in assembly.GetTypes())
+                            {
+                                if (candidateType != type &&
+                                    type.IsAssignableFrom(candidateType) &&
+                                    typeof(IExternalCommand).IsAssignableFrom(candidateType) &&
+                                    !candidateType.IsAbstract &&
+                                    candidateType.GetCustomAttributes(typeof(TransactionAttribute), false).Any())
+                                {
+                                    additionalTypes.Add(candidateType);
+                                }
+                            }
+                        }
+                        catch { /* Skip assemblies we can't read */ }
+                    }
+                }
+            }
+            
+            // Add the additional types we found
+            foreach (var type in additionalTypes)
+            {
+                commandTypes.Add(type);
+            }
+            
+            // Remove utility commands
+            commandTypes.RemoveWhere(t => t.Name.StartsWith("Invoke") && t.Name.Contains("AddinCommand"));
+            
+            // Find the most specific concrete command type
+            Type mostDerivedType = null;
+            int maxInheritanceDepth = -1;
+            
+            foreach (var type in commandTypes)
+            {
+                // Skip abstract classes
+                if (type.IsAbstract) continue;
+                
+                // Calculate inheritance depth for IExternalCommand hierarchy
+                int depth = 0;
+                Type current = type;
+                while (current != null && current != typeof(object))
+                {
+                    if (typeof(IExternalCommand).IsAssignableFrom(current))
+                        depth++;
+                    current = current.BaseType;
+                }
+                
+                // Prefer types with Transaction attribute and greater inheritance depth
+                bool hasTransactionAttribute = type.GetCustomAttributes(typeof(TransactionAttribute), false).Any();
+                
+                if (mostDerivedType == null || 
+                    (hasTransactionAttribute && depth > maxInheritanceDepth) ||
+                    (!mostDerivedType.GetCustomAttributes(typeof(TransactionAttribute), false).Any() && hasTransactionAttribute))
+                {
+                    mostDerivedType = type;
+                    maxInheritanceDepth = depth;
+                }
+            }
+            
+            return mostDerivedType?.Name ?? "";
+        }
+        catch { }
+        
+        return ""; // Return empty string if no command found
     }
     
     static SelectionModeManager()
@@ -77,7 +183,11 @@ public static class SelectionModeManager
             else
             {
                 // No active transaction, create one
-                using (Transaction tx = new Transaction(doc, "Create Temp Selection Set"))
+                string commandName = GetCallingCommandName();
+                string transactionName = string.IsNullOrEmpty(commandName) 
+                    ? "Create Temp Selection Set" 
+                    : $"Create Temp Selection Set - {commandName}";
+                using (Transaction tx = new Transaction(doc, transactionName))
                 {
                     tx.Start();
                     tempSet = SelectionFilterElement.Create(doc, TempSelectionSetName);
@@ -163,7 +273,11 @@ public static class SelectionModeManager
             else
             {
                 // No active transaction, create one
-                using (Transaction tx = new Transaction(doc, "Update Temp Selection Set"))
+                string commandName = GetCallingCommandName();
+                string transactionName = string.IsNullOrEmpty(commandName) 
+                    ? "Update Temp Selection Set" 
+                    : $"Update Temp Selection Set - {commandName}";
+                using (Transaction tx = new Transaction(doc, transactionName))
                 {
                     tx.Start();
                     tempSet.SetElementIds(elementIds);
@@ -269,7 +383,11 @@ public static class SelectionModeManager
             else
             {
                 // No active transaction, create one
-                using (Transaction tx = new Transaction(doc, "Update Temp Selection Set"))
+                string commandName = GetCallingCommandName();
+                string transactionName = string.IsNullOrEmpty(commandName) 
+                    ? "Update Temp Selection Set" 
+                    : $"Update Temp Selection Set - {commandName}";
+                using (Transaction tx = new Transaction(doc, transactionName))
                 {
                     tx.Start();
                     tempSet.SetElementIds(regularElementIds);
@@ -312,7 +430,11 @@ public static class SelectionModeManager
         else
         {
             // No active transaction, create one
-            using (Transaction tx = new Transaction(doc, "Clear Temp Selection Set"))
+            string commandName = GetCallingCommandName();
+            string transactionName = string.IsNullOrEmpty(commandName) 
+                ? "Clear Temp Selection Set" 
+                : $"Clear Temp Selection Set - {commandName}";
+            using (Transaction tx = new Transaction(doc, transactionName))
             {
                 tx.Start();
                 tempSet.SetElementIds(new List<ElementId>());
@@ -346,6 +468,8 @@ public class ToggleSelectionMode : IExternalCommand
             var doc = commandData.Application.ActiveUIDocument.Document;
             SelectionModeManager.ClearTempSelectionSet(doc);
         }
+        
+        TaskDialog.Show("Selection Mode", $"Selection mode changed to: {newMode}");
         
         return Result.Succeeded;
     }
@@ -403,6 +527,8 @@ public class SwitchSelectionMode : IExternalCommand
                 var doc = commandData.Application.ActiveUIDocument.Document;
                 SelectionModeManager.ClearTempSelectionSet(doc);
             }
+            
+            TaskDialog.Show("Selection Mode", $"Selection mode changed to: {chosenMode}");
         }
         
         return Result.Succeeded;
