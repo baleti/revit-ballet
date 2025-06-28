@@ -177,11 +177,11 @@ public abstract class SelectCategoriesBase : IExternalCommand
         }
         
         // Merge with any currently selected elements.
-        ICollection<ElementId> currentSelection = uiDoc.Selection.GetElementIds();
+        ICollection<ElementId> currentSelection = uiDoc.GetSelectionIds();
         elementIds.AddRange(currentSelection);
         
         // Update the selection (using Distinct() to remove duplicates).
-        uiDoc.Selection.SetElementIds(elementIds.Distinct().ToList());
+        uiDoc.SetSelectionIds(elementIds.Distinct().ToList());
         
         return Result.Succeeded;
     }

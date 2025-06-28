@@ -23,8 +23,8 @@ public static class ElementDataHelper
         if (selectedOnly)
         {
             // Handle both regular elements and linked elements (via References)
-            var selectedIds = uiDoc.Selection.GetElementIds();
-            var selectedRefs = uiDoc.Selection.GetReferences();
+            var selectedIds = uiDoc.GetSelectionIds();
+            var selectedRefs = uiDoc.GetReferences();
 
             if (!selectedIds.Any() && !selectedRefs.Any())
                 throw new InvalidOperationException("No elements are selected.");
@@ -375,12 +375,12 @@ public abstract class FilterElementsBase : IExternalCommand
             if (linkedReferences.Any() && !regularIds.Any())
             {
                 // Only linked elements - use SetReferences
-                uiDoc.Selection.SetReferences(linkedReferences);
+                uiDoc.SetReferences(linkedReferences);
             }
             else if (!linkedReferences.Any() && regularIds.Any())
             {
                 // Only regular elements - use SetElementIds
-                uiDoc.Selection.SetElementIds(regularIds);
+                uiDoc.SetSelectionIds(regularIds);
             }
             else if (linkedReferences.Any() && regularIds.Any())
             {
@@ -409,12 +409,12 @@ public abstract class FilterElementsBase : IExternalCommand
                         catch { }
                     }
                     
-                    uiDoc.Selection.SetReferences(allReferences);
+                    uiDoc.SetReferences(allReferences);
                 }
                 else
                 {
                     // More regular elements - just select those
-                    uiDoc.Selection.SetElementIds(regularIds);
+                    uiDoc.SetSelectionIds(regularIds);
                     
                     TaskDialog.Show("Mixed Selection",
                         $"Selected {regularIds.Count} regular elements.\n" +
