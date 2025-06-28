@@ -1064,3 +1064,21 @@ strategy would be to subscribe to some events from revit and refresh the table o
 a caching mode should be added to force refresh on suspicion of cache incoherency
 events for view updates used for example by SwitchViews command work in ~99% cases, but that sometimes may not be enough
 also this might allow for faster rebuiliding of the tables (only rebuild elements that changed)
+**** =18:49= testing changes made by SelectionModeManager appears to be successful
+***** tested commands
+SelectViews, RenameInstanceParameters, FilterTags, FilterText, RenameGroups, ListViewsByDetailItemSelected, FilterPosition, FilterDoors, FilterSheets, RenameSelectedTexts, SelectAssociatedDimensions, SelectAssociatedTagsOfSelectedElements
+***** inexperience with git --amend command threw me off-guard in the middle of applying these complex changes
+I missed to observe SelectionModeManager.cs being removed upstream
+afterwards could only take modified history on trust
+****** later on was able to repeat this process and discover that git push --force "orphans" previous branch
+this reassured me that commits can be fairly flexibly rewritten (at a risk of 'rewriting history')
+this very journal entry has been amended two times in git history at least
+******* among other methods, on github "sibling" commits can be noticed by having the same parent
+for example: [[https://github.com/baleti/revit-scripts/commit/6213940238fd025598ff6e9ab628d839faaaf416][main]] and an [[https://github.com/baleti/revit-scripts/commit/6417db923afd574d45f540dd320c5461052a6b07][orphaned sibling]]
+******* therefore previous branch is still available to see on github
+  in this case it was: https://github.com/baleti/revit-scripts/commit/b976e20
+******* orphaned branches can be listed ~git fsck --unreachable --no-reflogs~
+an overcomplicated version that sorts by date and shows pretty colors
+#+begin_src bash
+git fsck --unreachable --no-reflogs | grep 'unreachable commit' | awk '{print $3}' | while read hash; do   printf "%s|%s\n" "$(git show --no-patch --format="%ad" --date=iso "$hash")" "$hash"; done | sort | cut -d'|' -f2 | while read hash; do   git show --no-patch --format="%C(yellow)%h%C(reset) %C(cyan)%ad%C(reset) %C(green)%an%C(reset): %s" --date=iso "$hash"; done
+#+end_src

@@ -69,11 +69,20 @@ public static class SelectionModeManager
         if (tempSet == null)
         {
             // Create new selection set
-            using (Transaction tx = new Transaction(doc, "Create Temp Selection Set"))
+            if (doc.IsModifiable)
             {
-                tx.Start();
+                // We're already in a transaction, just create directly
                 tempSet = SelectionFilterElement.Create(doc, TempSelectionSetName);
-                tx.Commit();
+            }
+            else
+            {
+                // No active transaction, create one
+                using (Transaction tx = new Transaction(doc, "Create Temp Selection Set"))
+                {
+                    tx.Start();
+                    tempSet = SelectionFilterElement.Create(doc, TempSelectionSetName);
+                    tx.Commit();
+                }
             }
         }
         
@@ -145,11 +154,21 @@ public static class SelectionModeManager
             var doc = uidoc.Document;
             var tempSet = GetOrCreateTempSelectionSet(doc);
             
-            using (Transaction tx = new Transaction(doc, "Update Temp Selection Set"))
+            // Check if we're already in a transaction
+            if (doc.IsModifiable)
             {
-                tx.Start();
+                // We're already in a transaction, just modify directly
                 tempSet.SetElementIds(elementIds);
-                tx.Commit();
+            }
+            else
+            {
+                // No active transaction, create one
+                using (Transaction tx = new Transaction(doc, "Update Temp Selection Set"))
+                {
+                    tx.Start();
+                    tempSet.SetElementIds(elementIds);
+                    tx.Commit();
+                }
             }
             
             // Clear linked references when setting only element IDs
@@ -240,11 +259,22 @@ public static class SelectionModeManager
             
             // Store regular elements in selection set
             var tempSet = GetOrCreateTempSelectionSet(doc);
-            using (Transaction tx = new Transaction(doc, "Update Temp Selection Set"))
+            
+            // Check if we're already in a transaction
+            if (doc.IsModifiable)
             {
-                tx.Start();
+                // We're already in a transaction, just modify directly
                 tempSet.SetElementIds(regularElementIds);
-                tx.Commit();
+            }
+            else
+            {
+                // No active transaction, create one
+                using (Transaction tx = new Transaction(doc, "Update Temp Selection Set"))
+                {
+                    tx.Start();
+                    tempSet.SetElementIds(regularElementIds);
+                    tx.Commit();
+                }
             }
             
             // Store linked references in file
@@ -272,11 +302,22 @@ public static class SelectionModeManager
     public static void ClearTempSelectionSet(Document doc)
     {
         var tempSet = GetOrCreateTempSelectionSet(doc);
-        using (Transaction tx = new Transaction(doc, "Clear Temp Selection Set"))
+        
+        // Check if we're already in a transaction
+        if (doc.IsModifiable)
         {
-            tx.Start();
+            // We're already in a transaction, just modify directly
             tempSet.SetElementIds(new List<ElementId>());
-            tx.Commit();
+        }
+        else
+        {
+            // No active transaction, create one
+            using (Transaction tx = new Transaction(doc, "Clear Temp Selection Set"))
+            {
+                tx.Start();
+                tempSet.SetElementIds(new List<ElementId>());
+                tx.Commit();
+            }
         }
         
         // Clear linked references file
