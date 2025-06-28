@@ -1045,7 +1045,7 @@ why not use cartesian distance instead
 ****** =00:34= assuming that if elements of stair category are in rooms, these rooms will have a vertical connection
 this simplifies room graph creation (previously assumed that a selection set with stair rooms will be necessary)
 hopefully other vertical circulation rooms won't be necessary
-****** [2025-06-28 Sat 16:15] an intermediate representation of a graphs should be provided
+****** [2025-06-28 Sat 16:15] an intermediate representation/interface of a graph should be provided
 ******* simplicity is important, engineering schematics may be a good reference
 graph will likely be broken in many places and manual and graphical ways of editing it would be useful
 like an electronic schematic
@@ -1058,6 +1058,9 @@ this seems congruent to what "revit expects"
 ******* this ensures that whatever "naming" used will be retained
 wouldn't require any new schema/parameters/state
 ******* if area not available then clean it up via a "schematic view"
+****** =21:31= realized that graph of areas may be a better approach than graph of rooms
+areas are the guiding principle, while rooms (and all other elements for that matter) should follow them
+depending on revit model quality however, both areas and room may need to be used
 *** 28
 **** =16:48= considering caching machanisms for tables from FilterSelectedElements
 strategy would be to subscribe to some events from revit and refresh the table only when selected elements have been changed

@@ -9,7 +9,7 @@ using System.Windows.Forms;
 namespace RevitCommands
 {
     [Transaction(TransactionMode.Manual)]
-    public class DeleteSavedSelections : IExternalCommand
+    public class DeleteSelectionSets : IExternalCommand
     {
         public class SavedSelection
         {

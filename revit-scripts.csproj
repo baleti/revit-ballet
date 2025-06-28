@@ -95,8 +95,11 @@
     <Compile Include="revit-scripts\DataGrid2_Helpers.cs" />
     <Compile Include="revit-scripts\DataGrid2_Sorting.cs" />
     <Compile Include="revit-scripts\DataGrid2_VirtualMode.cs" />
+    <Compile Include="revit-scripts\DirectShapesFromSelectedAreas.cs" />
     <Compile Include="revit-scripts\DirectShapesFromSelectedRooms.cs" />
+    <Compile Include="revit-scripts\DirectShapesFromVisibleAreas.cs" />
     <Compile Include="revit-scripts\DirectShapesFromVisibleRooms.cs" />
+    <Compile Include="revit-scripts\DuplicateSelectionSets.cs" />
     <Compile Include="revit-scripts\DuplicateSheetWithViewsAsDraftingViews.cs" />
     <Compile Include="revit-scripts\DuplicateViewsAsDraftingViews.cs" />
     <Compile Include="revit-scripts\DuplicateViewsToSheets.cs" />
@@ -266,7 +269,7 @@
     <Compile Include="revit-scripts\TagNotTaggedElementsInSelectedViews.cs" />
     <Compile Include="revit-scripts\test.cs" />
     <Compile Include="revit-scripts\FilterDoors.cs" />
-    <Compile Include="revit-scripts\DeleteSavedSelections.cs" />
+    <Compile Include="revit-scripts\DeleteSelectionSets.cs" />
     <Compile Include="revit-scripts\test2.cs" />
     <Compile Include="revit-scripts\test20.cs" />
     <Compile Include="revit-scripts\CreateReferenceCalloutsToSelectedElements.cs" />
