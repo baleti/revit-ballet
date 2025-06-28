@@ -123,6 +123,7 @@
     <Compile Include="revit-scripts\SelectElementsOfSameTypeInLinkedModelsInView.cs" />
     <Compile Include="revit-scripts\SelectFamilyTypesInProjectByCategory.cs" />
     <Compile Include="revit-scripts\SelectHostsOfSelectedElements.cs" />
+    <Compile Include="revit-scripts\SelectionModeManager.cs" />
     <Compile Include="revit-scripts\SelectLast300CreatedElements.cs" />
     <Compile Include="revit-scripts\SelectLevels.cs" />
     <Compile Include="revit-scripts\OffsetLinesFromTheirWorkplane.cs" />
