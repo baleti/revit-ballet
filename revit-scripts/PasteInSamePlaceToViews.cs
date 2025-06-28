@@ -18,7 +18,7 @@ public class PasteSelectedElementToViews : IExternalCommand
         Document doc = uidoc.Document;
 
         // Get the selected elements in the active view
-        ICollection<ElementId> selectedElementIds = uidoc.Selection.GetElementIds();
+        ICollection<ElementId> selectedElementIds = uidoc.GetSelectionIds();
         if (!selectedElementIds.Any())
         {
             TaskDialog.Show("Error","No elements selected. Please select elements to copy.");

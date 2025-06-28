@@ -19,7 +19,7 @@ public class ToggleWallsLocationLineFromFinishFaceExteriorToFinishFaceInterior :
         Selection sel = uidoc.Selection;
 
         // Get the selected elements
-        var selectedElementIds = sel.GetElementIds();
+        var selectedElementIds = uidoc.GetSelectionIds();
 
         // Filter the selected elements to get only walls
         var selectedWalls = selectedElementIds
@@ -62,7 +62,7 @@ public class ToggleWallsLocationLineFromFinishFaceExteriorToFinishFaceInterior :
             }
 
             // Re-select the walls (this ensures the same elements remain selected after the operation)
-            sel.SetElementIds(selectedWalls.Select(w => w.Id).ToList());
+            uidoc.SetSelectionIds(selectedWalls.Select(w => w.Id).ToList());
 
             return Result.Succeeded;
         }

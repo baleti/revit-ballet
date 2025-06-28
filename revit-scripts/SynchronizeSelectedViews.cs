@@ -146,7 +146,7 @@ namespace RevitCommands
             }
 
             // Pre‑selection
-            foreach (ElementId id in uiDoc.Selection.GetElementIds()) AddIfSheet(id);
+            foreach (ElementId id in uiDoc.GetSelectionIds()) AddIfSheet(id);
 
             // PickObjects if none pre‑selected
             if (list.Count == 0)

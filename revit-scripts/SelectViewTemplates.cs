@@ -72,7 +72,7 @@ public class SelectViewTemplates : IExternalCommand
         // ───────────────────────────────────────────────────────────────
         if (picked != null && picked.Any())
         {
-            ICollection<ElementId> currentSel = uidoc.Selection.GetElementIds();
+            ICollection<ElementId> currentSel = uidoc.GetSelectionIds();
 
             foreach (Dictionary<string, object> row in picked)
             {
@@ -81,7 +81,7 @@ public class SelectViewTemplates : IExternalCommand
                     currentSel.Add(id);
             }
 
-            uidoc.Selection.SetElementIds(currentSel);
+            uidoc.SetSelectionIds(currentSel);
             return Result.Succeeded;
         }
 

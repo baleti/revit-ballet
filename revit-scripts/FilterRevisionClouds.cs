@@ -20,7 +20,7 @@ namespace MyCompany.RevitCommands
             Document   doc   = uidoc.Document;
 
             // --- get the user's current selection -------------------------------------------
-            IList<ElementId> selIds = uidoc.Selection.GetElementIds().ToList();
+            IList<ElementId> selIds = uidoc.GetSelectionIds().ToList();
             if (selIds.Count == 0)
             {
                 TaskDialog.Show("FilterRevisionClouds",
@@ -200,7 +200,7 @@ namespace MyCompany.RevitCommands
                 return Result.Cancelled;   // should not happen, but play safe
 
             // --- REPLACE the selection with only the revision clouds the user checked --------
-            uidoc.Selection.SetElementIds(newIds);
+            uidoc.SetSelectionIds(newIds);
 
             return Result.Succeeded;
         }

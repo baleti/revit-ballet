@@ -18,7 +18,7 @@ public class SetParametersOfSelectedInstances : IExternalCommand
         Document doc = uidoc.Document;
 
         // Get currently selected elements
-        var selectedIds = uidoc.Selection.GetElementIds();
+        var selectedIds = uidoc.GetSelectionIds();
         if (!selectedIds.Any())
         {
             TaskDialog.Show("No Selection", "Please select one or more elements.");

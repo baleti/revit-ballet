@@ -24,7 +24,7 @@ public class RenameGroups : IExternalCommand
 
         try
         {
-            var selectedIds = uiDoc.Selection.GetElementIds();
+            var selectedIds = uiDoc.GetSelectionIds();
             if (selectedIds.Count == 0)
             {
                 TaskDialog.Show("Error", "Please select group instances first.");

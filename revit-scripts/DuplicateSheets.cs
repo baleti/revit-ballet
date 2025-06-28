@@ -354,7 +354,7 @@ namespace RevitAddin
         {
             UIDocument uiDoc = commandData.Application.ActiveUIDocument;
             Document   doc   = uiDoc.Document;
-            var selIds = uiDoc.Selection.GetElementIds();
+            var selIds = uiDoc.GetSelectionIds();
             var sheets = new List<ViewSheet>();
 
             foreach (ElementId id in selIds)

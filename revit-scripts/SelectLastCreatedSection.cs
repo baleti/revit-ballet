@@ -30,10 +30,10 @@ namespace RevitAPICommands
             }
 
             // Add the found section to the current selection.
-            ICollection<ElementId> currentSelection = uidoc.Selection.GetElementIds();
+            ICollection<ElementId> currentSelection = uidoc.GetSelectionIds();
             List<ElementId> newSelection = currentSelection.ToList();
             newSelection.Add(lastSection.Id);
-            uidoc.Selection.SetElementIds(newSelection);
+            uidoc.SetSelectionIds(newSelection);
 
             return Result.Succeeded;
         }

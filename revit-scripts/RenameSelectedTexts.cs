@@ -21,7 +21,7 @@ namespace MyRevitAddin
             Document doc = uiDoc.Document;
 
             // Only TextNotes
-            var textNotes = uiDoc.Selection.GetElementIds()
+            var textNotes = uiDoc.GetSelectionIds()
                               .Select(id => doc.GetElement(id) as TextNote)
                               .Where(tn => tn != null)
                               .ToList();

@@ -19,7 +19,7 @@ namespace RevitCommands
             UIDocument uidoc = commandData.Application.ActiveUIDocument;
             Document   doc   = uidoc.Document;
 
-            ICollection<ElementId> selIds = uidoc.Selection.GetElementIds();
+            ICollection<ElementId> selIds = uidoc.GetSelectionIds();
             if (selIds.Count == 0)
             {
                 TaskDialog.Show("Error", "Please select at least one element.");

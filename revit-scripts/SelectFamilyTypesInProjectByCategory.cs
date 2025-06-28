@@ -155,7 +155,7 @@ namespace YourCompany.YourAddIn
                 .Where(id => id != null)
                 .ToList();
 
-            uidoc.Selection.SetElementIds(idsToSelect);
+            uidoc.SetSelectionIds(idsToSelect);
 
             return Result.Succeeded;
         }

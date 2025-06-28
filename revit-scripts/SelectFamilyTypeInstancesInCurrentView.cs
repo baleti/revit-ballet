@@ -140,7 +140,7 @@ public class SelectFamilyTypeInstancesInCurrentView : IExternalCommand
             .ToList();
 
         // Combine with existing selection
-        ICollection<ElementId> currentSelection = uidoc.Selection.GetElementIds();
+        ICollection<ElementId> currentSelection = uidoc.GetSelectionIds();
         List<ElementId> combinedSelection = new List<ElementId>(currentSelection);
 
         foreach (var instanceId in selectedInstances)
@@ -153,7 +153,7 @@ public class SelectFamilyTypeInstancesInCurrentView : IExternalCommand
 
         if (combinedSelection.Any())
         {
-            uidoc.Selection.SetElementIds(combinedSelection);
+            uidoc.SetSelectionIds(combinedSelection);
         }
         else
         {

@@ -31,7 +31,7 @@ namespace YourCompany.YourAddin
              *-----------------------------------------------------------------*/
             HashSet<View> targetViews = new HashSet<View>();
 
-            foreach (ElementId id in uiDoc.Selection.GetElementIds())
+            foreach (ElementId id in uiDoc.GetSelectionIds())
             {
                 switch (doc.GetElement(id))
                 {

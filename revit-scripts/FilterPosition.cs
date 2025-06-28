@@ -15,7 +15,7 @@ public class FilterPosition : IExternalCommand
         Document doc = uidoc.Document;
 
         // Retrieve the current selection.
-        ICollection<ElementId> selectedIds = uidoc.Selection.GetElementIds();
+        ICollection<ElementId> selectedIds = uidoc.GetSelectionIds();
         if (selectedIds == null || !selectedIds.Any())
         {
             TaskDialog.Show("Warning", "Please select elements before running the command.");
@@ -130,7 +130,7 @@ public class FilterPosition : IExternalCommand
                 .Select(e => e.Id)
                 .ToList();
 
-            uidoc.Selection.SetElementIds(finalSelection);
+            uidoc.SetSelectionIds(finalSelection);
         }
 
         return Result.Succeeded;

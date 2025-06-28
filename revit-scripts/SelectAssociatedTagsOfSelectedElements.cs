@@ -14,7 +14,7 @@ public class SelectAssociatedTagsOfSelectedElements : IExternalCommand
     {
         UIDocument  uiDoc = cData.Application.ActiveUIDocument;
         Document       doc = uiDoc.Document;
-        ICollection<ElementId> picked = uiDoc.Selection.GetElementIds();
+        ICollection<ElementId> picked = uiDoc.GetSelectionIds();
 
         if (!picked.Any())
         {
@@ -41,7 +41,7 @@ public class SelectAssociatedTagsOfSelectedElements : IExternalCommand
             return Result.Succeeded;
         }
 
-        uiDoc.Selection.SetElementIds(tagIds);
+        uiDoc.SetSelectionIds(tagIds);
         return Result.Succeeded;
     }
 

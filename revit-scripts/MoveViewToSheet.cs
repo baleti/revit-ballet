@@ -102,7 +102,7 @@ public class MoveSelectedViewsToSheet : IExternalCommand
     private List<Viewport> GetSelectedViewports(UIDocument uidoc)
     {
         // Get selected elements
-        ICollection<ElementId> selectedIds = uidoc.Selection.GetElementIds();
+        ICollection<ElementId> selectedIds = uidoc.GetSelectionIds();
         List<Viewport> viewports = new List<Viewport>();
 
         foreach (ElementId id in selectedIds)

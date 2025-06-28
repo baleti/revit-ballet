@@ -201,7 +201,7 @@ namespace HideLevelBubbles
             Document doc = uiDoc.Document;
 
             // Retrieve the currently selected elements (views or viewports).
-            ICollection<ElementId> selIds = uiDoc.Selection.GetElementIds();
+            ICollection<ElementId> selIds = uiDoc.GetSelectionIds();
             List<Autodesk.Revit.DB.View> selectedViews = new List<Autodesk.Revit.DB.View>();
 
             foreach (ElementId id in selIds)

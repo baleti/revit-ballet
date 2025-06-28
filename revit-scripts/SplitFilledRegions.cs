@@ -17,7 +17,7 @@ namespace RevitCommands
             Selection sel = uidoc.Selection;
 
             // Get selected filled regions
-            ICollection<ElementId> selectedIds = sel.GetElementIds();
+            ICollection<ElementId> selectedIds = uidoc.GetSelectionIds();
             List<FilledRegion> selectedRegions = new List<FilledRegion>();
 
             foreach (ElementId id in selectedIds)

@@ -30,7 +30,7 @@ public class ListViewsByDetailItemSelected : IExternalCommand
         Document doc = uidoc.Document;
 
         // Get the selected element
-        ElementId selectedElementId = uidoc.Selection.GetElementIds().FirstOrDefault();
+        ElementId selectedElementId = uidoc.GetSelectionIds().FirstOrDefault();
 
         if (selectedElementId != null)
         {

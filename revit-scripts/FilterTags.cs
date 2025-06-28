@@ -18,7 +18,7 @@ public class FilterTags : IExternalCommand
         Document doc = uidoc.Document;
 
         // Get currently selected elements.
-        ICollection<ElementId> selectedIds = uidoc.Selection.GetElementIds();
+        ICollection<ElementId> selectedIds = uidoc.GetSelectionIds();
         if (!selectedIds.Any())
         {
             TaskDialog.Show("Filter Tags", "No elements selected.");
@@ -272,7 +272,7 @@ public class FilterTags : IExternalCommand
         using (var tx = new Transaction(doc, "Filter Tags Selection"))
         {
             tx.Start();
-            uidoc.Selection.SetElementIds(chosenIds);
+            uidoc.SetSelectionIds(chosenIds);
             tx.Commit();
         }
 

@@ -12,7 +12,7 @@ public class ZoomSelected : IExternalCommand
     {
         UIDocument uiDoc = commandData.Application.ActiveUIDocument;
         Document doc = uiDoc.Document;
-        ICollection<ElementId> selectedIds = uiDoc.Selection.GetElementIds();
+        ICollection<ElementId> selectedIds = uiDoc.GetSelectionIds();
 
         if (selectedIds.Count == 0)
         {

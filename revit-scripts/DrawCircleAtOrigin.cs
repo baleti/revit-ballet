@@ -38,7 +38,7 @@ public class DrawCircleAtOrigin : IExternalCommand
 
             // Set the detail curve as the active selection
             ICollection<ElementId> selectedIds = new List<ElementId> { detailCircle.Id };
-            uidoc.Selection.SetElementIds(selectedIds);
+            uidoc.SetSelectionIds(selectedIds);
         }
 
         return Result.Succeeded;

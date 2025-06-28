@@ -35,11 +35,11 @@ namespace RevitCommands
                 }
 
                 // Get current selection
-                ICollection<ElementId> selectedIds = uiDoc.Selection.GetElementIds();
+                ICollection<ElementId> selectedIds = uiDoc.GetSelectionIds();
                 
                 // For linked elements selected with TAB, we need to check the Selection's PickedBoxes
                 // This handles elements that don't show up in GetElementIds()
-                ICollection<Reference> selectedRefs = uiDoc.Selection.GetReferences();
+                ICollection<Reference> selectedRefs = uiDoc.GetReferences();
                 
                 if (selectedIds.Count == 0 && (selectedRefs == null || selectedRefs.Count == 0))
                 {

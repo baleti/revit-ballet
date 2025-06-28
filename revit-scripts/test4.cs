@@ -33,7 +33,7 @@ public class MapLinesToSheet : IExternalCommand
         }
 
         // Use the existing selection
-        ICollection<ElementId> selectedIds = uidoc.Selection.GetElementIds();
+        ICollection<ElementId> selectedIds = uidoc.GetSelectionIds();
         if (selectedIds.Count == 0)
         {
             message = "No elements selected. Please select some lines first.";

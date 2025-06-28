@@ -615,7 +615,7 @@ namespace MyRevitAddin
             UIDocument uiDoc = cData.Application.ActiveUIDocument;
             Document   doc   = uiDoc.Document;
 
-            IList<ElementId> selIds = uiDoc.Selection.GetElementIds().ToList();
+            IList<ElementId> selIds = uiDoc.GetSelectionIds().ToList();
             if (selIds.Count == 0)
             {
                 WinForms.MessageBox.Show("Please select elements first.");

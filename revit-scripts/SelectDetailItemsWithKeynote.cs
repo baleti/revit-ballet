@@ -37,7 +37,7 @@ public class SelectDetailItemsWithKeynote : IExternalCommand
         }
 
         // Select the elements in the Revit UI
-        uidoc.Selection.SetElementIds(detailItemsWithKeynote.Select(e => e.Id).ToList());
+        uidoc.SetSelectionIds(detailItemsWithKeynote.Select(e => e.Id).ToList());
 
         // Return success
         return Result.Succeeded;

@@ -123,7 +123,7 @@ public class SelectModelGroupsWithParameters : IExternalCommand
             })
             .ToList();
 
-        uidoc.Selection.SetElementIds(finalSelectedGroupIds);
+        uidoc.SetSelectionIds(finalSelectedGroupIds);
 
         return Result.Succeeded;
     }

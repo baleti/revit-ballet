@@ -17,7 +17,7 @@ public class ExportElementsToRvt : IExternalCommand
         Document doc = uiDoc.Document;
 
         // Get the selected elements
-        ICollection<ElementId> selectedIds = uiDoc.Selection.GetElementIds();
+        ICollection<ElementId> selectedIds = uiDoc.GetSelectionIds();
         if (selectedIds.Count == 0)
         {
             TaskDialog.Show("Error", "Please select at least one element to export.");

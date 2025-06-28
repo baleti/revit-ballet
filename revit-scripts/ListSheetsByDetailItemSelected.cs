@@ -21,7 +21,7 @@ public class ListSheetsByDetailItemSelected : IExternalCommand
         UIDocument uidoc = commandData.Application.ActiveUIDocument;
         Document doc = uidoc.Document;
 
-        ElementId selectedElementId = uidoc.Selection.GetElementIds().FirstOrDefault();
+        ElementId selectedElementId = uidoc.GetSelectionIds().FirstOrDefault();
         string currentSheetInfo = string.Empty;
         ElementId activeSheetId = null;
 

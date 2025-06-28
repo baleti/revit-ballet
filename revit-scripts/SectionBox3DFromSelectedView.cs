@@ -21,7 +21,7 @@ public class SectionBox3DFromSelectedView : IExternalCommand
         View targetView = null;
 
         // First, check if exactly one element is selected.
-        var selectedIds = uiDoc.Selection.GetElementIds();
+        var selectedIds = uiDoc.GetSelectionIds();
         if (selectedIds.Count == 1)
         {
             Element selElem = doc.GetElement(selectedIds.First());

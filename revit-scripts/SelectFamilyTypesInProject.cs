@@ -97,7 +97,7 @@ public class SelectFamilyTypesInProject : IExternalCommand
             .ToList();
 
         // Step 4: Set the selected ElementIds in the UIDocument, which selects them in the Revit UI.
-        uidoc.Selection.SetElementIds(selectedTypeIds);
+        uidoc.SetSelectionIds(selectedTypeIds);
 
         return Result.Succeeded;
     }

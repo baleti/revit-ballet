@@ -54,12 +54,12 @@ namespace MyRevitCommands
                 }
 
                 // 2. Merge with the user’s current selection.
-                ICollection<ElementId> current = uidoc.Selection.GetElementIds();
+                ICollection<ElementId> current = uidoc.GetSelectionIds();
                 HashSet<ElementId> merged      = new HashSet<ElementId>(current);
                 merged.UnionWith(visibleCloudIds);
 
                 // 3. Set the new selection.
-                uidoc.Selection.SetElementIds(merged.ToList());
+                uidoc.SetSelectionIds(merged.ToList());
 
                 return Result.Succeeded;
             }

@@ -14,7 +14,7 @@ public static class FamilyTypeParameterHelper
         
         if (selectedOnly)
         {
-            elementIds = uiDoc.Selection.GetElementIds();
+            elementIds = uiDoc.GetSelectionIds();
             if (!elementIds.Any())
             {
                 throw new InvalidOperationException("No elements are selected.");
@@ -126,7 +126,7 @@ public abstract class ListElementsFamilyTypeParametersBase : IExternalCommand
                 }
             }
 
-            uiDoc.Selection.SetElementIds(elementIdsToSelect);
+            uiDoc.SetSelectionIds(elementIdsToSelect);
             return Result.Succeeded;
         }
         catch (Exception ex)

@@ -20,7 +20,7 @@ namespace YourNamespace
             // ---------------------------------------------
             // 1) Validate there is a current selection
             // ---------------------------------------------
-            ICollection<ElementId> selIds = uidoc.Selection.GetElementIds();
+            ICollection<ElementId> selIds = uidoc.GetSelectionIds();
             if (selIds == null || selIds.Count == 0)
             {
                 TaskDialog.Show("Select Hosts", "Please select some elements first.");
@@ -133,7 +133,7 @@ namespace YourNamespace
             // ---------------------------------------------
             // 7) Update Revit’s active selection
             // ---------------------------------------------
-            uidoc.Selection.SetElementIds(finalSelection.ToList());
+            uidoc.SetSelectionIds(finalSelection.ToList());
 
             return Result.Succeeded;
         }

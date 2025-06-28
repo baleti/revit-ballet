@@ -19,7 +19,7 @@ public class SelectViewTemplatesOfSelectedViews : IExternalCommand
         // 1. Get the user’s current selection (views or viewports).
         //    If nothing is selected, fall back to the active view.
         // ───────────────────────────────────────────────────────────────
-        ICollection<ElementId> pickedIds = uidoc.Selection.GetElementIds();
+        ICollection<ElementId> pickedIds = uidoc.GetSelectionIds();
 
         if (pickedIds == null || !pickedIds.Any())
         {
@@ -56,7 +56,7 @@ public class SelectViewTemplatesOfSelectedViews : IExternalCommand
         // ───────────────────────────────────────────────────────────────
         if (templateIds.Any())
         {
-            uidoc.Selection.SetElementIds(templateIds);
+            uidoc.SetSelectionIds(templateIds);
             return Result.Succeeded;
         }
 

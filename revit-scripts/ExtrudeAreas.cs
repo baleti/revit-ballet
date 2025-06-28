@@ -14,7 +14,7 @@ public class ExtrudeAreas : IExternalCommand
         UIDocument uiDoc = uiApp.ActiveUIDocument;
         Document doc = uiDoc.Document;
 
-        ICollection<ElementId> selectedIds = uiDoc.Selection.GetElementIds();
+        ICollection<ElementId> selectedIds = uiDoc.GetSelectionIds();
         if (selectedIds.Count == 0)
         {
             message = "Please select one or more areas.";

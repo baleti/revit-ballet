@@ -16,7 +16,7 @@ namespace YourNamespace
             Document doc = uidoc.Document;
 
             // Get the currently selected elements
-            ICollection<ElementId> selectedIds = uidoc.Selection.GetElementIds();
+            ICollection<ElementId> selectedIds = uidoc.GetSelectionIds();
             if (selectedIds.Count == 0)
             {
                 message = "Please select one or more views in the project browser or drawing.";
@@ -63,7 +63,7 @@ namespace YourNamespace
             }
 
             // Set the selection in the UIDocument to the found viewport elements
-            uidoc.Selection.SetElementIds(viewportsToSelect);
+            uidoc.SetSelectionIds(viewportsToSelect);
 
             return Result.Succeeded;
         }

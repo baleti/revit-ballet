@@ -326,7 +326,7 @@ namespace MyRevitCommands
               return Result.Failed;
           }
 
-          ICollection<ElementId> selIds = uidoc.Selection.GetElementIds();
+          ICollection<ElementId> selIds = uidoc.GetSelectionIds();
           bool hasHosted = selIds.Select(id => doc.GetElement(id))
               .OfType<FamilyInstance>()
               .Any(fi => fi.Host != null);

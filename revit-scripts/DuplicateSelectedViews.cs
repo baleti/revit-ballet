@@ -228,7 +228,7 @@ namespace RevitAddin
         {
             UIDocument uiDoc = commandData.Application.ActiveUIDocument;
             Document doc = uiDoc.Document;
-            ICollection<ElementId> selectedIds = uiDoc.Selection.GetElementIds();
+            ICollection<ElementId> selectedIds = uiDoc.GetSelectionIds();
 
             // Use the currently selected elements.
             List<RevitView> selectedViews = new List<RevitView>();

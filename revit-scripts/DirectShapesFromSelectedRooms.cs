@@ -45,9 +45,9 @@ public class DirectShapesFromSelectedRooms : IExternalCommand
         }
         
         // Add newly created DirectShapes to current selection
-        var currentSelection = uidoc.Selection.GetElementIds().ToList();
+        var currentSelection = uidoc.GetSelectionIds().ToList();
         currentSelection.AddRange(createdIds);
-        uidoc.Selection.SetElementIds(currentSelection);
+        uidoc.SetSelectionIds(currentSelection);
         
         return Result.Succeeded;
     }
@@ -56,7 +56,7 @@ public class DirectShapesFromSelectedRooms : IExternalCommand
     IList<Room> GetSelectedRooms(UIDocument uidoc)
     {
         // Get currently selected elements
-        var selection = uidoc.Selection.GetElementIds();
+        var selection = uidoc.GetSelectionIds();
         
         // Filter to get only rooms with valid area
         var rooms = selection

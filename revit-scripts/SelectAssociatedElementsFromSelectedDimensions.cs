@@ -14,7 +14,7 @@ public class SelectAssociatedElementsFromSelectedDimensions : IExternalCommand
         UIDocument uiDoc = commandData.Application.ActiveUIDocument;
         Document doc = uiDoc.Document;
         Selection selection = uiDoc.Selection;
-        IList<ElementId> currentSelectionIds = selection.GetElementIds().ToList();
+        IList<ElementId> currentSelectionIds = uiDoc.GetSelectionIds().ToList();
 
         if (currentSelectionIds.Count == 0)
         {
@@ -51,7 +51,7 @@ public class SelectAssociatedElementsFromSelectedDimensions : IExternalCommand
         if (newSelection.Count > 0)
         {
             // Update the selection to include both dimensions and their associated elements
-            selection.SetElementIds(newSelection.ToList());
+            uiDoc.SetSelectionIds(newSelection.ToList());
         }
         else
         {

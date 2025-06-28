@@ -11,7 +11,7 @@ namespace MyRevitCommands
             // Get the active document and the selected element IDs
             UIDocument uidoc = commandData.Application.ActiveUIDocument;
             Document doc = uidoc.Document;
-            ICollection<ElementId> selectedIds = uidoc.Selection.GetElementIds();
+            ICollection<ElementId> selectedIds = uidoc.GetSelectionIds();
 
             if (selectedIds.Count == 0)
             {

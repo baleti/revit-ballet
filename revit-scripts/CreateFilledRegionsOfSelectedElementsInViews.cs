@@ -27,7 +27,7 @@ namespace RevitAddin
             Document doc = uidoc.Document;
 
             // Require that at least one element is selected.
-            ICollection<ElementId> selIds = uidoc.Selection.GetElementIds();
+            ICollection<ElementId> selIds = uidoc.GetSelectionIds();
             if (selIds == null || selIds.Count == 0)
             {
                 MessageBox.Show("Please select one or more elements first.", "No Selection");

@@ -14,7 +14,7 @@ public class SetSelectedLevels2D : IExternalCommand
         Document doc = uiDoc.Document;
 
         // Get currently selected levels
-        ICollection<ElementId> selectedIds = uiDoc.Selection.GetElementIds();
+        ICollection<ElementId> selectedIds = uiDoc.GetSelectionIds();
         List<Level> selectedLevels = new List<Level>();
         foreach (var id in selectedIds)
         {

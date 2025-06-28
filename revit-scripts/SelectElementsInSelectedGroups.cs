@@ -66,7 +66,7 @@ public class SelectElementsInSelectedGroups : IExternalCommand
         try
         {
             // Get selected groups
-            IList<Element> selectedElements = uidoc.Selection.GetElementIds()
+            IList<Element> selectedElements = uidoc.GetSelectionIds()
                 .Select(id => doc.GetElement(id))
                 .Where(e => e is Group)
                 .ToList();
@@ -153,7 +153,7 @@ public class SelectElementsInSelectedGroups : IExternalCommand
                     .ToList();
 
                 // Select the elements in Revit
-                uidoc.Selection.SetElementIds(selectedIds);
+                uidoc.SetSelectionIds(selectedIds);
             }
 
             return Result.Succeeded;

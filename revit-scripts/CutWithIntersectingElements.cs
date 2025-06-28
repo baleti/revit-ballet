@@ -20,7 +20,7 @@ namespace RevitAddin
             Selection selection = uiDoc.Selection;
 
             // Get all currently selected elements
-            ICollection<ElementId> selectedIds = selection.GetElementIds();
+            ICollection<ElementId> selectedIds = uiDoc.GetSelectionIds();
             if (selectedIds.Count == 0)
             {
                 message = "Please select at least one element.";
@@ -100,7 +100,7 @@ namespace RevitAddin
             }
 
             // Optionally, select the walls to show which were processed
-            selection.SetElementIds(intersectingWallIds);
+            uiDoc.SetSelectionIds(intersectingWallIds);
 
             return Result.Succeeded;
         }

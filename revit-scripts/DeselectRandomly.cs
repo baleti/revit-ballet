@@ -13,7 +13,7 @@ public class DeselectRandomly : IExternalCommand
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
     {
         UIDocument uiDoc = commandData.Application.ActiveUIDocument;
-        ICollection<ElementId> selectedElementIds = uiDoc.Selection.GetElementIds();
+        ICollection<ElementId> selectedElementIds = uiDoc.GetSelectionIds();
 
         if (selectedElementIds == null || selectedElementIds.Count == 0)
         {
@@ -37,7 +37,7 @@ public class DeselectRandomly : IExternalCommand
             .ToList();
 
         // Update the selection
-        uiDoc.Selection.SetElementIds(elementsToKeep);
+        uiDoc.SetSelectionIds(elementsToKeep);
 
         return Result.Succeeded;
     }

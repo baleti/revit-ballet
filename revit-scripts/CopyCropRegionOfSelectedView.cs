@@ -15,7 +15,7 @@ public class CopyCropRegionOfSelectedView : IExternalCommand
         Document doc = uidoc.Document;
 
         // Get the current selection
-        ICollection<ElementId> selectedIds = uidoc.Selection.GetElementIds();
+        ICollection<ElementId> selectedIds = uidoc.GetSelectionIds();
 
         // Check if exactly one element is selected
         if (selectedIds.Count != 1)

@@ -18,7 +18,7 @@ namespace RevitAddin
       Document doc = uidoc.Document;
 
       // Get the currently selected elements.
-      ICollection<ElementId> selIds = uidoc.Selection.GetElementIds();
+      ICollection<ElementId> selIds = uidoc.GetSelectionIds();
       if (selIds == null || selIds.Count == 0)
       {
         message = "Please select one or more elements.";

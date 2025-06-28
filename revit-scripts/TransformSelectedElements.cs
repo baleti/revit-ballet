@@ -50,7 +50,7 @@ namespace TransformSelectedElementsSample
       UIDocument uidoc = uiapp.ActiveUIDocument;
       Document doc = uidoc.Document;
 
-      var selIds = uidoc.Selection.GetElementIds();
+      var selIds = uidoc.GetSelectionIds();
       if (selIds.Count == 0)
       {
         TaskDialog.Show("Error", "Please select one or more elements to transform.");

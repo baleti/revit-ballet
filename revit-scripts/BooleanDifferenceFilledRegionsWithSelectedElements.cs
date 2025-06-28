@@ -37,7 +37,7 @@ namespace RevitAddin
       List<FilledRegion> selectedRegions = new List<FilledRegion>();
       List<ElementId> subtractElementIds = new List<ElementId>();
 
-      ICollection<ElementId> selIds = uidoc.Selection.GetElementIds();
+      ICollection<ElementId> selIds = uidoc.GetSelectionIds();
       if (selIds == null || selIds.Count == 0)
       {
         WinForms.MessageBox.Show("Please select at least one filled region and one subtracting element.", "No Selection");

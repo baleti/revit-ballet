@@ -106,7 +106,7 @@ namespace FilterDoorsWithWallOffsets
 
             try
             {
-                ICollection<ElementId> selectedIds = uidoc.Selection.GetElementIds();
+                ICollection<ElementId> selectedIds = uidoc.GetSelectionIds();
 
                 if (selectedIds.Count == 0)
                 {
@@ -446,7 +446,7 @@ namespace FilterDoorsWithWallOffsets
                         .ToList();
                     if (finalSelection.Any())
                     {
-                        uidoc.Selection.SetElementIds(finalSelection);
+                        uidoc.SetSelectionIds(finalSelection);
                     }
                 }
             }

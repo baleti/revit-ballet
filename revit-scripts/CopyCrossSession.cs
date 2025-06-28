@@ -16,7 +16,7 @@ public class CopyCrossSession : IExternalCommand
         UIDocument uidoc = uiApp.ActiveUIDocument;
         Document doc = uidoc.Document;
 
-        var sel = uidoc.Selection.GetElementIds().Select(id => doc.GetElement(id)).ToList();
+        var sel = uidoc.GetSelectionIds().Select(id => doc.GetElement(id)).ToList();
         var viewDependentElements = sel.Where(e => e != null && e.ViewSpecific).ToList();
 
         if (!viewDependentElements.Any())

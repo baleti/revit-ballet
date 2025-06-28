@@ -15,7 +15,7 @@ public class SelectAllElementsInViewAndInGroups : IExternalCommand
             .ToElementIds();
 
         // Set the selection to these filtered elements
-        uiDoc.Selection.SetElementIds(elementIdsInView);
+        uiDoc.SetSelectionIds(elementIdsInView);
 
         return Result.Succeeded;
     }

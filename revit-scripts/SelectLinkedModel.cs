@@ -30,7 +30,7 @@ public class SelectLinkedModels : IExternalCommand
         List<ElementId> linkedModelIds = selectedCategories.Select(x => x.Id).ToList();
 
         // Get current selection
-        ICollection<ElementId> currentSelection = uidoc.Selection.GetElementIds();
+        ICollection<ElementId> currentSelection = uidoc.GetSelectionIds();
 
         // Add new selections to the existing selection
         foreach (var id in linkedModelIds)
@@ -42,7 +42,7 @@ public class SelectLinkedModels : IExternalCommand
         }
 
         // Set the updated selection
-        uidoc.Selection.SetElementIds(currentSelection);
+        uidoc.SetSelectionIds(currentSelection);
 
         return Result.Succeeded;
     }

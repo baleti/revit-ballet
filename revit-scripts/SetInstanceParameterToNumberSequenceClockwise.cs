@@ -22,7 +22,7 @@ public class SetInstanceParameterToNumberSequenceClockwise : IExternalCommand
         UIDocument uiDoc = uiApp.ActiveUIDocument;
         Document doc = uiDoc.Document;
 
-        ICollection<ElementId> selectedIds = uiDoc.Selection.GetElementIds();
+        ICollection<ElementId> selectedIds = uiDoc.GetSelectionIds();
         if (selectedIds.Count == 0)
         {
             TaskDialog.Show("Error", "No elements selected.");

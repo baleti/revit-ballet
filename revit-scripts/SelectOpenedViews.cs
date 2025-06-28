@@ -151,7 +151,7 @@ public class SelectOpenedViews : IExternalCommand
         /* ───────────────────────────────────────
            Add chosen views to the current selection
            ───────────────────────────────────── */
-        ICollection<ElementId> current = uidoc.Selection.GetElementIds();
+        ICollection<ElementId> current = uidoc.GetSelectionIds();
 
         foreach (Dictionary<string, object> row in chosen)
         {
@@ -161,7 +161,7 @@ public class SelectOpenedViews : IExternalCommand
                 current.Add(id);
         }
 
-        uidoc.Selection.SetElementIds(current);
+        uidoc.SetSelectionIds(current);
         return Result.Succeeded;
     }
 }

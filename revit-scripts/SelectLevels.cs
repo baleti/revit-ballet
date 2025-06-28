@@ -98,7 +98,7 @@ namespace MyRevitAddin
             }
 
             // Update the active selection with the chosen level elements.
-            uidoc.Selection.SetElementIds(selectedIds);
+            uidoc.SetSelectionIds(selectedIds);
 
             return Result.Succeeded;
         }

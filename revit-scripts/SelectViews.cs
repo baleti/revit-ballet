@@ -88,7 +88,7 @@ public class SelectViews : IExternalCommand
         if (selectedViews != null && selectedViews.Any())
         {
             // Get the current selection
-            ICollection<ElementId> currentSelectionIds = uidoc.Selection.GetElementIds();
+            ICollection<ElementId> currentSelectionIds = uidoc.GetSelectionIds();
             
             // Get the ElementIds of the views selected in the dialog
             List<ElementId> newViewIds = selectedViews
@@ -105,7 +105,7 @@ public class SelectViews : IExternalCommand
             }
             
             // Update the selection with the combined set of elements
-            uidoc.Selection.SetElementIds(currentSelectionIds);
+            uidoc.SetSelectionIds(currentSelectionIds);
             
             return Result.Succeeded;
         }

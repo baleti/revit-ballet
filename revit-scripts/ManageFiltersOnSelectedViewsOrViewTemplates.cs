@@ -22,7 +22,7 @@ namespace MyRevitCommands
       public static List<View> GetSelectedViews(UIDocument uiDoc, Document doc)
       {
          List<View> selectedViews = new List<View>();
-         ICollection<ElementId> selectedIds = uiDoc.Selection.GetElementIds();
+         ICollection<ElementId> selectedIds = uiDoc.GetSelectionIds();
          foreach (ElementId id in selectedIds)
          {
             Element element = doc.GetElement(id);

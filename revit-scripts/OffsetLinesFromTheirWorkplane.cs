@@ -21,7 +21,7 @@ public class OffsetLinesFromTheirWorkplane : IExternalCommand
         try
         {
             // Get selected elements
-            ICollection<ElementId> selectedIds = uiDoc.Selection.GetElementIds();
+            ICollection<ElementId> selectedIds = uiDoc.GetSelectionIds();
             if (selectedIds.Count == 0)
             {
                 message = "Please select at least one model line.";

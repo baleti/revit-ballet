@@ -150,7 +150,7 @@ namespace MyRevitCommands
                 }
 
                 // 9. Set the selection in the active UIDocument.
-                uidoc.Selection.SetElementIds(viewsToSelect);
+                uidoc.SetSelectionIds(viewsToSelect);
             }
             catch (Exception ex)
             {

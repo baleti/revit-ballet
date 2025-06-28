@@ -15,7 +15,7 @@ public class FilterDimensions : IExternalCommand
         Document doc = uidoc.Document;
 
         // Retrieve the current selection.
-        ICollection<ElementId> selectedIds = uidoc.Selection.GetElementIds();
+        ICollection<ElementId> selectedIds = uidoc.GetSelectionIds();
         if (selectedIds == null || !selectedIds.Any())
         {
             TaskDialog.Show("Warning", "Please select dimension elements before running the command.");
@@ -276,7 +276,7 @@ public class FilterDimensions : IExternalCommand
             List<ElementId> selectedDimensionIds = selectedFromGrid
                 .Select(dict => new ElementId((int)dict["Element Id"]))
                 .ToList();
-            uidoc.Selection.SetElementIds(selectedDimensionIds);
+            uidoc.SetSelectionIds(selectedDimensionIds);
         }
 
         return Result.Succeeded;

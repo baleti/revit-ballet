@@ -22,7 +22,7 @@ namespace OffsetCropRegion
 
             // Gather selected views. If a viewport is selected, get its associated view.
             List<Autodesk.Revit.DB.View> selectedViews = new List<Autodesk.Revit.DB.View>();
-            foreach (var id in uidoc.Selection.GetElementIds())
+            foreach (var id in uidoc.GetSelectionIds())
             {
                 Element elem = doc.GetElement(id);
                 if (elem is Autodesk.Revit.DB.View view)

@@ -293,7 +293,7 @@ public abstract class SelectCategoriesInSelectedLinkedModelsBase : IExternalComm
         
         // Get currently selected linked models
         var selectedLinkInstances = new List<RevitLinkInstance>();
-        var currentSelection = uiDoc.Selection.GetElementIds();
+        var currentSelection = uiDoc.GetSelectionIds();
         
         foreach (ElementId id in currentSelection)
         {
@@ -485,7 +485,7 @@ public abstract class SelectCategoriesInSelectedLinkedModelsBase : IExternalComm
         if (elementReferences.Count > 0)
         {
             // Highlight all selected elements using references
-            uiDoc.Selection.SetReferences(elementReferences);
+            uiDoc.SetReferences(elementReferences);
             
             string resultMessage;
             if (selectInView)

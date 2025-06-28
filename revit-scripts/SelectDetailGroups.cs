@@ -60,7 +60,7 @@ public class SelectDetailGroups : IExternalCommand
 
         // Get the current selection of elements in the model
         var selection = uidoc.Selection;
-        var currentSelectionIds = selection.GetElementIds();
+        var currentSelectionIds = uidoc.GetSelectionIds();
 
         // Iterate over all selected group types
         foreach (var selectedEntry in selectedEntries)
@@ -99,7 +99,7 @@ public class SelectDetailGroups : IExternalCommand
         }
 
         // Update the selection with the combined set of elements
-        selection.SetElementIds(currentSelectionIds);
+        uidoc.SetSelectionIds(currentSelectionIds);
 
         return Result.Succeeded;
     }

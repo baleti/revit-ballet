@@ -13,7 +13,7 @@ public class FilterDoors : IExternalCommand
         Document doc = uidoc.Document;
 
         // Get and filter selected elements
-        ICollection<ElementId> selectedIds = uidoc.Selection.GetElementIds();
+        ICollection<ElementId> selectedIds = uidoc.GetSelectionIds();
         if (!selectedIds.Any())
         {
             TaskDialog.Show("Warning", "Please select doors before running the command.");
@@ -95,7 +95,7 @@ public class FilterDoors : IExternalCommand
                 .Select(d => d.Id)
                 .ToList();
             
-            uidoc.Selection.SetElementIds(finalSelection);
+            uidoc.SetSelectionIds(finalSelection);
         }
 
         return Result.Succeeded;

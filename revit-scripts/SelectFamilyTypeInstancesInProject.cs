@@ -71,7 +71,7 @@ public class SelectFamilyTypeInstancesInProject : IExternalCommand
             .ToList();
 
         // Step 5: Add the new selection to the existing selection
-        ICollection<ElementId> currentSelection = uidoc.Selection.GetElementIds();
+        ICollection<ElementId> currentSelection = uidoc.GetSelectionIds();
         List<ElementId> combinedSelection = new List<ElementId>(currentSelection);
 
         // Add new instances to the combined selection without duplicates
@@ -84,7 +84,7 @@ public class SelectFamilyTypeInstancesInProject : IExternalCommand
         }
 
         // Update the selection with both previous and newly selected elements
-        uidoc.Selection.SetElementIds(combinedSelection);
+        uidoc.SetSelectionIds(combinedSelection);
 
         return Result.Succeeded;
     }

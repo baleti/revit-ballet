@@ -252,7 +252,7 @@ namespace RoomGraphPlugin
                 // Select created lines for easier inspection
                 if (createdLineIds.Count > 0)
                 {
-                    uiDoc.Selection.SetElementIds(createdLineIds);
+                    uiDoc.SetSelectionIds(createdLineIds);
                 }
 
                 return Result.Succeeded;

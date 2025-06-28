@@ -15,7 +15,7 @@ public class FilterSelectedByCategory : IExternalCommand
         Document doc = uidoc.Document;
 
         // Get currently selected elements
-        ICollection<ElementId> selectedElementIds = uidoc.Selection.GetElementIds();
+        ICollection<ElementId> selectedElementIds = uidoc.GetSelectionIds();
         if (!selectedElementIds.Any())
         {
             TaskDialog.Show("Filter Categories", "No elements are selected.");
@@ -70,7 +70,7 @@ public class FilterSelectedByCategory : IExternalCommand
             .ToList();
 
         // Update selection in Revit
-        uidoc.Selection.SetElementIds(filteredElementIds);
+        uidoc.SetSelectionIds(filteredElementIds);
 
         return Result.Succeeded;
     }

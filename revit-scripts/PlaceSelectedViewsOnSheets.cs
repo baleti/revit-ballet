@@ -33,7 +33,7 @@ namespace RevitAddin.Commands
                 // ────────────────────────────────────────────────────────────────
                 // 1. Collect *non‑sheet* views currently selected               
                 // ────────────────────────────────────────────────────────────────
-                IList<DB.View> selViews = uidoc.Selection.GetElementIds()
+                IList<DB.View> selViews = uidoc.GetSelectionIds()
                     .Select(id => doc.GetElement(id) as DB.View)
                     .Where(v => v != null &&
                                  !(v is DB.ViewSheet) &&

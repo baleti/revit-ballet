@@ -23,7 +23,7 @@ public class SelectAllElementsInView : IExternalCommand
             .Select(e => e.Id)
             .ToList();
 
-        uiDoc.Selection.SetElementIds(ElementsNotInGroups);
+        uiDoc.SetSelectionIds(ElementsNotInGroups);
         return Result.Succeeded;
     }
 }

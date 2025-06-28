@@ -18,7 +18,7 @@ namespace RevitCommands
             try
             {
                 // Get currently selected elements
-                ICollection<ElementId> selectedIds = uidoc.Selection.GetElementIds();
+                ICollection<ElementId> selectedIds = uidoc.GetSelectionIds();
 
                 if (selectedIds.Count == 0)
                 {
@@ -87,7 +87,7 @@ namespace RevitCommands
                 }
 
                 // Select the sheets
-                uidoc.Selection.SetElementIds(sheetsToSelect);
+                uidoc.SetSelectionIds(sheetsToSelect);
 
                 return Result.Succeeded;
             }

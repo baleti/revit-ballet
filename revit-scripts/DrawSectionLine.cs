@@ -91,7 +91,7 @@ public class DrawSectionLine : IExternalCommand
         }
 
         // Set the detail lines as the current selection
-        uidoc.Selection.SetElementIds(detailLineIds);
+        uidoc.SetSelectionIds(detailLineIds);
 
         return Result.Succeeded;
     }

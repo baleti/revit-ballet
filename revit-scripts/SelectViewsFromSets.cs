@@ -65,7 +65,7 @@ public class SelectViewsFromSets : IExternalCommand
         if (selectedViewSets != null && selectedViewSets.Any())
         {
             // Get the current selection
-            ICollection<ElementId> currentSelectionIds = uidoc.Selection.GetElementIds();
+            ICollection<ElementId> currentSelectionIds = uidoc.GetSelectionIds();
             
             // Get all views from the selected view sets
             HashSet<ElementId> newViewIds = new HashSet<ElementId>();
@@ -90,7 +90,7 @@ public class SelectViewsFromSets : IExternalCommand
             }
             
             // Update the selection with the combined set of elements
-            uidoc.Selection.SetElementIds(newViewIds);
+            uidoc.SetSelectionIds(newViewIds);
             
             return Result.Succeeded;
         }

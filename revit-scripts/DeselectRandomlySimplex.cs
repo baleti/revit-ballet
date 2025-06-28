@@ -128,7 +128,7 @@ public class DeselectRandomlySimplex : IExternalCommand
         Document doc = uiDoc.Document;
         Autodesk.Revit.DB.View activeView = doc.ActiveView;
         
-        ICollection<ElementId> selectedElementIds = uiDoc.Selection.GetElementIds();
+        ICollection<ElementId> selectedElementIds = uiDoc.GetSelectionIds();
         if (selectedElementIds == null || selectedElementIds.Count == 0)
         {
             TaskDialog.Show("Error", "No elements are currently selected.");
@@ -216,7 +216,7 @@ public class DeselectRandomlySimplex : IExternalCommand
             .Select(x => x.Item1)
             .ToList();
 
-        uiDoc.Selection.SetElementIds(elementsToKeep);
+        uiDoc.SetSelectionIds(elementsToKeep);
         return Result.Succeeded;
     }
 

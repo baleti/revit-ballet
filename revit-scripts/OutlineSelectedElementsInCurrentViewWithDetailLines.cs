@@ -37,7 +37,7 @@ namespace RevitCustomCommands
                 }
 
                 // Get selected elements
-                ICollection<ElementId> selectedElementIds = uidoc.Selection.GetElementIds();
+                ICollection<ElementId> selectedElementIds = uidoc.GetSelectionIds();
                 
                 if (selectedElementIds.Count == 0)
                 {

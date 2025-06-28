@@ -118,7 +118,7 @@ public class ListTypesByCategory : IExternalCommand
             .ToList();
 
         // Step 11: Select the instances in the model
-        uidoc.Selection.SetElementIds(selectedInstances);
+        uidoc.SetSelectionIds(selectedInstances);
 
         return Result.Succeeded;
     }

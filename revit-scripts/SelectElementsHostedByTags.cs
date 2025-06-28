@@ -17,7 +17,7 @@ public class SelectElementsHostedBySelectedTags : IExternalCommand
         Document doc = uiDoc.Document;
 
         // Get the currently selected elements (could be tags, or possibly other categories)
-        ICollection<ElementId> selectedIds = uiDoc.Selection.GetElementIds();
+        ICollection<ElementId> selectedIds = uiDoc.GetSelectionIds();
 
         if (!selectedIds.Any())
         {
@@ -76,7 +76,7 @@ public class SelectElementsHostedBySelectedTags : IExternalCommand
         // If we found any local elements to select, update the UI selection
         if (elementsToSelect.Any())
         {
-            uiDoc.Selection.SetElementIds(elementsToSelect);
+            uiDoc.SetSelectionIds(elementsToSelect);
         }
         else
         {

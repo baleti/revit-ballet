@@ -70,7 +70,7 @@ public class ListAllTypesInProject : IExternalCommand
             .ToList();
 
         // Step 5: Select the instances in the model
-        uidoc.Selection.SetElementIds(selectedInstances);
+        uidoc.SetSelectionIds(selectedInstances);
 
         return Result.Succeeded;
     }

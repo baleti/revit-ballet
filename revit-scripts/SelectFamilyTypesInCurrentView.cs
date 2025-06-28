@@ -119,7 +119,7 @@ public class SelectFamilyTypesInCurrentView : IExternalCommand
             .ToList();
 
         // Add the selected family types to the current selection
-        uidoc.Selection.SetElementIds(finalSelectedTypeIds);
+        uidoc.SetSelectionIds(finalSelectedTypeIds);
 
         return Result.Succeeded;
     }

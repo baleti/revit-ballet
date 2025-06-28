@@ -17,7 +17,7 @@ public class FilterText : IExternalCommand
         Document doc = uidoc.Document;
 
         // Get currently selected elements
-        ICollection<ElementId> selectedIds = uidoc.Selection.GetElementIds();
+        ICollection<ElementId> selectedIds = uidoc.GetSelectionIds();
 
         if (!selectedIds.Any())
         {
@@ -216,7 +216,7 @@ public class FilterText : IExternalCommand
         using (var tx = new Transaction(doc, "Filter Text Selection"))
         {
             tx.Start();
-            uidoc.Selection.SetElementIds(chosenIds);
+            uidoc.SetSelectionIds(chosenIds);
             tx.Commit();
         }
 

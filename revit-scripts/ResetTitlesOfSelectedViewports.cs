@@ -28,7 +28,7 @@ namespace RevitCommands
             {
                 // Get the current selection
                 Selection selection = uiDoc.Selection;
-                ICollection<ElementId> selectedIds = selection.GetElementIds();
+                ICollection<ElementId> selectedIds = uiDoc.GetSelectionIds();
 
                 // Filter for viewports and views
                 List<Viewport> selectedViewports = new List<Viewport>();

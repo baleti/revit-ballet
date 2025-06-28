@@ -21,7 +21,7 @@ public class SelectAssociatedDimensions : IExternalCommand
 
         // Get the current selection
         Selection sel = uiDoc.Selection;
-        IList<ElementId> selectedIds = sel.GetElementIds().ToList();
+        IList<ElementId> selectedIds = uiDoc.GetSelectionIds().ToList();
 
         if (selectedIds.Count == 0)
         {
@@ -99,7 +99,7 @@ public class SelectAssociatedDimensions : IExternalCommand
                 }
 
                 // Select the dimensions in Revit
-                sel.SetElementIds(selectedDimensionIds);
+                uiDoc.SetSelectionIds(selectedDimensionIds);
             }
         }
         else

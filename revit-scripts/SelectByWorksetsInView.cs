@@ -130,7 +130,7 @@ namespace RevitWorksetVisibilityCommands
             // ------------------------------------------------------------
             // 5. Apply the selection
             // ------------------------------------------------------------
-            uidoc.Selection.SetElementIds(finalSel.ToList());
+            uidoc.SetSelectionIds(finalSel.ToList());
 
             return Result.Succeeded;
         }

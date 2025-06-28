@@ -15,7 +15,7 @@ public class RehostToJoinedWalls : IExternalCommand
         Document doc = uidoc.Document;
         
         // Ensure at least one element is selected.
-        ICollection<ElementId> selectedIds = uidoc.Selection.GetElementIds();
+        ICollection<ElementId> selectedIds = uidoc.GetSelectionIds();
         if (selectedIds.Count == 0)
         {
             message = "Please select one or more doors or windows before running the command.";

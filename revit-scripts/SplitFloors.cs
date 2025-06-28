@@ -17,7 +17,7 @@ namespace RevitCommands
             Selection sel = uidoc.Selection;
 
             // Get selected floors
-            ICollection<ElementId> selectedIds = sel.GetElementIds();
+            ICollection<ElementId> selectedIds = uidoc.GetSelectionIds();
             List<Floor> selectedFloors = new List<Floor>();
 
             foreach (ElementId id in selectedIds)

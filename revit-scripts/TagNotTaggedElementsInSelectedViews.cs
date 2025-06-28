@@ -28,7 +28,7 @@ public class TagNotTaggedElementsInSelectedViews : IExternalCommand
         Document doc = uiDoc.Document;
 
         // Get the selected views (or viewports that reference a view)
-        ICollection<ElementId> selectedIds = uiDoc.Selection.GetElementIds();
+        ICollection<ElementId> selectedIds = uiDoc.GetSelectionIds();
         if (selectedIds.Count == 0)
             return Result.Failed;
 

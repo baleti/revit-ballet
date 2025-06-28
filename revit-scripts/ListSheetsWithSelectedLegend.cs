@@ -14,7 +14,7 @@ public class ListSheetsWithSelectedLegend : IExternalCommand
         Document doc = uidoc.Document;
 
         // Get the currently selected legend
-        var selectedIds = uidoc.Selection.GetElementIds();
+        var selectedIds = uidoc.GetSelectionIds();
         if (selectedIds.Count != 1)
         {
             TaskDialog.Show("Error", "Please select one legend.");

@@ -24,7 +24,7 @@ public class UnsetRevisionToSelectedSheets : IExternalCommand
         // ─────────────────────────────────────────────
         // 1. Get sheets currently selected in Revit
         // ─────────────────────────────────────────────
-        ICollection<ElementId> pickIds = uiDoc.Selection.GetElementIds();
+        ICollection<ElementId> pickIds = uiDoc.GetSelectionIds();
 
         if (pickIds == null || pickIds.Count == 0)
         {

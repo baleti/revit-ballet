@@ -18,7 +18,7 @@ namespace RevitDetailLines
             View activeView = doc.ActiveView;
 
             // Get selected elements
-            ICollection<ElementId> selectedIds = uidoc.Selection.GetElementIds();
+            ICollection<ElementId> selectedIds = uidoc.GetSelectionIds();
             if (!selectedIds.Any())
             {
                 message = "Please select at least one element.";

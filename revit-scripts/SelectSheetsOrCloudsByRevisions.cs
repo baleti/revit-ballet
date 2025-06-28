@@ -229,13 +229,13 @@ public class SelectSheetsOrCloudsByRevisions : IExternalCommand
         if (elementsToSelect.Count > 0)
         {
             // Get current selection
-            var currentSelection = uiDoc.Selection.GetElementIds().ToList();
+            var currentSelection = uiDoc.GetSelectionIds().ToList();
             
             // Add new elements to current selection
             currentSelection.AddRange(elementsToSelect);
             
             // Set the combined selection
-            uiDoc.Selection.SetElementIds(currentSelection);
+            uiDoc.SetSelectionIds(currentSelection);
         }
 
         return Result.Succeeded;

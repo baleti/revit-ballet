@@ -17,8 +17,8 @@ public class SelectElementsOfSameTypeInLinkedModelsInView : IExternalCommand
         View activeView = uiapp.ActiveUIDocument.ActiveView;
         
         // Get currently selected elements (both regular and linked)
-        var selectedIds = uiDoc.Selection.GetElementIds();
-        var selectedRefs = uiDoc.Selection.GetReferences();
+        var selectedIds = uiDoc.GetSelectionIds();
+        var selectedRefs = uiDoc.GetReferences();
         
         if (!selectedIds.Any() && !selectedRefs.Any())
         {
@@ -211,7 +211,7 @@ public class SelectElementsOfSameTypeInLinkedModelsInView : IExternalCommand
         if (matchingReferences.Count > 0)
         {
             // Select all matching elements
-            uiDoc.Selection.SetReferences(matchingReferences);
+            uiDoc.SetReferences(matchingReferences);
         }
         else
         {

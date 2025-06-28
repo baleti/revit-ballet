@@ -17,7 +17,7 @@ public class TagSelectedElements : IExternalCommand
         Document doc = uiDoc.Document;
 
         // Get the selected elements
-        ICollection<ElementId> selectedIds = uiDoc.Selection.GetElementIds();
+        ICollection<ElementId> selectedIds = uiDoc.GetSelectionIds();
         if (selectedIds.Count == 0)
         {
             TaskDialog.Show("Error", "Please select elements to tag.");

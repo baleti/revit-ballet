@@ -81,7 +81,7 @@ namespace MyCompany.RevitCommands
       //------------------------------------------------------------------
       // 0) Ensure a selection
       //------------------------------------------------------------------
-      ICollection<ElementId> selIds = uiDoc.Selection.GetElementIds();
+      ICollection<ElementId> selIds = uiDoc.GetSelectionIds();
       if (selIds.Count == 0)
       {
         TaskDialog.Show("Revision Clouds",

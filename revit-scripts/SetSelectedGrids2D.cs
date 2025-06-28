@@ -14,7 +14,7 @@ public class SetSelectedGrids2D : IExternalCommand
         Document doc = uiDoc.Document;
 
         // Get currently selected grids
-        ICollection<ElementId> selectedIds = uiDoc.Selection.GetElementIds();
+        ICollection<ElementId> selectedIds = uiDoc.GetSelectionIds();
         List<Grid> selectedGrids = new List<Grid>();
         foreach (var id in selectedIds)
         {

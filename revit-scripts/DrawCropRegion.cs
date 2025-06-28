@@ -100,7 +100,7 @@ public class DrawCropRegion : IExternalCommand
         }
 
         // Set the detail curves as the current selection
-        uidoc.Selection.SetElementIds(detailCurveIds);
+        uidoc.SetSelectionIds(detailCurveIds);
 
         return Result.Succeeded;
     }

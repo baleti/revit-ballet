@@ -25,7 +25,7 @@ namespace MoveSelectedToCentroid
         {
             UIDocument uidoc = commandData.Application.ActiveUIDocument;
             Document   doc   = uidoc.Document;
-            ICollection<ElementId> selIds = uidoc.Selection.GetElementIds();
+            ICollection<ElementId> selIds = uidoc.GetSelectionIds();
 
             if (selIds == null || selIds.Count == 0)
             {
