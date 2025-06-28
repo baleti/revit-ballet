@@ -1017,5 +1017,31 @@ command needs to build necessary portion of a graph and assess selected room acc
 ****** =19:43= can't think of a way to distinguish communal hallways
 issue may arise in internal hallways (in apartments)
 can't think of a standard way to designate such spaces
+******* need a generalized way to distinguish room types
+need to "enrich" the graph
 ******* gave up
 going to look into streamlining existing selection methods instead
+****** =19:53= perhaps can't get around this by designating hallways manually
+this may still be a simple operation
+hallways acting as a "pivot" for the command
+may be stored in a separate location to avoid polluting project parameters
+******* =20:00= this does start to feel overconstrained already
+a lot of assumptions are being made that may break
+will apartments be always connected to lobbies
+won't topology of hallways drastically change in other projects
+is it safe to assume positions of flat entrance doors dictate order
+******* =22:37= a simple place to store temporary graph nodes are selection sets
+e.g. "hallways" and "entrances"
+****** =20:13= strategy as previously mentioned may be building a graph first
+separate from project parameters
+this exercise would require hallways and entrances
+algorithm would then compare distances between selected rooms and hallways and hallways to entrances
+shortest distances should answer what rooms belong to what hallways and what hallways belong to what blocks
+****** I find it surprising that shortest path designates relationship
+it brings me back to reading about principle of least action in physics
+something philosophical about conservation of energy and symmetries of the universe
+****** =20:35= if shortest path designates relationship graph may not be necessary
+why not use cartesian distance instead
+****** =00:34= assuming that if elements of stair category are in rooms, these rooms will have a vertical connection
+this simplifies room graph creation (previously assumed that a selection set with stair rooms will be necessary)
+hopefully other vertical circulation rooms won't be necessary
