@@ -99,7 +99,7 @@
     <Compile Include="revit-scripts\DirectShapesFromSelectedRooms.cs" />
     <Compile Include="revit-scripts\DirectShapesFromVisibleAreas.cs" />
     <Compile Include="revit-scripts\DirectShapesFromVisibleRooms.cs" />
-    <Compile Include="revit-scripts\DuplicateSelectionSets.cs" />
+    <Compile Include="revit-scripts\EditSelectionSets.cs" />
     <Compile Include="revit-scripts\DuplicateSheetWithViewsAsDraftingViews.cs" />
     <Compile Include="revit-scripts\DuplicateViewsAsDraftingViews.cs" />
     <Compile Include="revit-scripts\DuplicateViewsToSheets.cs" />

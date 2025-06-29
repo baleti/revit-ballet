@@ -53,7 +53,7 @@ public partial class CustomGUIs
     {
         // Create a key for the current filter state
         string filterKey = string.Join("|", filters.Select(f => string.Join(",", f)));
-        
+
         // Skip if nothing changed
         if (filterKey == _lastColumnVisibilityFilter)
             return;
@@ -66,7 +66,7 @@ public partial class CustomGUIs
             string colName = col.HeaderText.ToLowerInvariant();
             bool show = filters.Count == 0 ||
                         filters.Any(parts => parts.All(p => colName.Contains(p)));
-            
+
             if (show) newVisible.Add(col.Name);
         }
 
@@ -134,18 +134,35 @@ public partial class CustomGUIs
 
             bool valuePresent = matchCols.Any(c =>
             {
-                if (_searchIndexByColumn != null && 
+                string cellValue = null;
+                
+                if (_searchIndexByColumn != null &&
                     _searchIndexByColumn.ContainsKey(c) &&
                     _searchIndexByColumn[c].ContainsKey(entryIndex))
                 {
-                    return _searchIndexByColumn[c][entryIndex].Contains(f.Value);
+                    cellValue = _searchIndexByColumn[c][entryIndex];
+                }
+                else
+                {
+                    // Fallback to direct lookup if index not available
+                    object v;
+                    if (entry.TryGetValue(c, out v) && v != null)
+                    {
+                        cellValue = v.ToString().ToLowerInvariant();
+                    }
                 }
 
-                // Fallback to direct lookup if index not available
-                object v;
-                return entry.TryGetValue(c, out v) &&
-                       v != null &&
-                       v.ToString().ToLowerInvariant().Contains(f.Value);
+                if (cellValue == null) return false;
+
+                // Use glob matching if pattern contains wildcards
+                if (f.IsGlobPattern)
+                {
+                    return MatchesGlobPattern(cellValue, f.Value);
+                }
+                else
+                {
+                    return cellValue.Contains(f.Value);
+                }
             });
 
             if (!f.IsExclusion && !valuePresent) return false;
@@ -202,13 +219,14 @@ public partial class CustomGUIs
         }
 
         // Check general include/exclude filters using index
-        if (group.GeneralFilters.Count > 0)
+        if (group.GeneralFilters.Count > 0 || group.GeneralGlobPatterns.Count > 0)
         {
             string allValues = _searchIndexAllColumns != null && _searchIndexAllColumns.ContainsKey(entryIndex)
                 ? _searchIndexAllColumns[entryIndex]
                 : string.Join(" ", entry.Values.Where(v => v != null)
                                         .Select(v => v.ToString().ToLowerInvariant()));
 
+            // Check regular filters (substring match)
             bool anyInc = group.GeneralFilters.Any(g => !g.StartsWith("!"));
             bool anyExc = group.GeneralFilters.Any(g => g.StartsWith("!"));
 
@@ -222,6 +240,31 @@ public partial class CustomGUIs
                                .Select(ex => ex.Substring(1))
                                .Any(ex => allValues.Contains(ex)))
                 return false;
+
+            // Check glob patterns
+            foreach (string globPattern in group.GeneralGlobPatterns)
+            {
+                bool isExclusion = globPattern.StartsWith("!");
+                string pattern = isExclusion ? globPattern.Substring(1) : globPattern;
+                
+                // For general glob patterns, check each value individually
+                bool matchFound = false;
+                foreach (var kvp in entry)
+                {
+                    if (kvp.Value != null)
+                    {
+                        string val = kvp.Value.ToString().ToLowerInvariant();
+                        if (MatchesGlobPattern(val, pattern))
+                        {
+                            matchFound = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (!isExclusion && !matchFound) return false;
+                if (isExclusion && matchFound) return false;
+            }
         }
 
         return true;
@@ -309,7 +352,17 @@ public partial class CustomGUIs
             // plain (general) token
             if (!token.StartsWith("$"))
             {
-                group.GeneralFilters.Add(isExcl ? "!" + StripQuotes(token).ToLowerInvariant() : StripQuotes(token).ToLowerInvariant());
+                string cleanToken = StripQuotes(token).ToLowerInvariant();
+                
+                // Check if it's a glob pattern
+                if (ContainsGlobWildcards(cleanToken))
+                {
+                    group.GeneralGlobPatterns.Add(isExcl ? "!" + cleanToken : cleanToken);
+                }
+                else
+                {
+                    group.GeneralFilters.Add(isExcl ? "!" + cleanToken : cleanToken);
+                }
                 continue;
             }
 
@@ -354,11 +407,13 @@ public partial class CustomGUIs
                 else
                 {
                     // Regular value filter
+                    string cleanValue = StripQuotes(valPart).ToLowerInvariant();
                     ColumnValueFilter f = new ColumnValueFilter
                     {
                         ColumnParts = colPieces,
-                        Value = StripQuotes(valPart).ToLowerInvariant(),
-                        IsExclusion = isExcl
+                        Value = cleanValue,
+                        IsExclusion = isExcl,
+                        IsGlobPattern = ContainsGlobWildcards(cleanValue)
                     };
                     group.ColValueFilters.Add(f);
                 }

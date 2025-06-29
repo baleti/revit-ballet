@@ -1,6 +1,7 @@
 ﻿using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Windows.Forms;
 
 public partial class CustomGUIs
@@ -13,11 +14,11 @@ public partial class CustomGUIs
     private static List<Dictionary<string, object>> _cachedOriginalData;
     private static List<Dictionary<string, object>> _cachedFilteredData;
     private static DataGridView _currentGrid;
-    
+
     // Search index cache
     private static Dictionary<string, Dictionary<int, string>> _searchIndexByColumn;
     private static Dictionary<int, string> _searchIndexAllColumns;
-    
+
     // Column visibility cache
     private static HashSet<string> _lastVisibleColumns = new HashSet<string>();
     private static string _lastColumnVisibilityFilter = "";
@@ -31,6 +32,7 @@ public partial class CustomGUIs
         public List<string> ColumnParts;   // column-header fragments to match
         public string       Value;         // value to look for in the cell
         public bool         IsExclusion;   // true ⇒ "must NOT contain"
+        public bool         IsGlobPattern; // true if value contains wildcards
     }
 
     private enum ComparisonOperator
@@ -42,7 +44,7 @@ public partial class CustomGUIs
     private struct ComparisonFilter
     {
         public List<string> ColumnParts;       // column-header fragments to match (null = all columns)
-        public ComparisonOperator Operator;    // > or 
+        public ComparisonOperator Operator;    // > or <
         public double Value;                   // numeric value to compare against
         public bool IsExclusion;               // true ⇒ "must NOT match comparison"
     }
@@ -57,6 +59,7 @@ public partial class CustomGUIs
         public List<ColumnValueFilter> ColValueFilters { get; set; }
         public List<string> GeneralFilters { get; set; }
         public List<ComparisonFilter> ComparisonFilters { get; set; }
+        public List<string> GeneralGlobPatterns { get; set; } // New field for glob patterns
 
         public FilterGroup()
         {
@@ -64,6 +67,7 @@ public partial class CustomGUIs
             ColValueFilters = new List<ColumnValueFilter>();
             GeneralFilters = new List<string>();
             ComparisonFilters = new List<ComparisonFilter>();
+            GeneralGlobPatterns = new List<string>(); // Initialize new field
         }
     }
 
@@ -109,6 +113,39 @@ public partial class CustomGUIs
         return s.StartsWith("\"") && s.EndsWith("\"") && s.Length > 1
             ? s.Substring(1, s.Length - 2)
             : s;
+    }
+
+    /// <summary>Check if a string contains glob wildcards</summary>
+    private static bool ContainsGlobWildcards(string pattern)
+    {
+        return pattern != null && pattern.Contains("*");
+    }
+
+    /// <summary>Convert glob pattern to regex pattern</summary>
+    private static string GlobToRegexPattern(string globPattern)
+    {
+        // Escape special regex characters except *
+        string escaped = Regex.Escape(globPattern).Replace("\\*", ".*");
+        return "^" + escaped + "$";
+    }
+
+    /// <summary>Check if a value matches a glob pattern</summary>
+    private static bool MatchesGlobPattern(string value, string pattern)
+    {
+        if (string.IsNullOrEmpty(value) || string.IsNullOrEmpty(pattern))
+            return false;
+
+        // Convert to lowercase for case-insensitive matching
+        value = value.ToLowerInvariant();
+        pattern = pattern.ToLowerInvariant();
+
+        // If no wildcards, use simple contains (backward compatibility)
+        if (!pattern.Contains("*"))
+            return value.Contains(pattern);
+
+        // Convert glob to regex and match
+        string regexPattern = GlobToRegexPattern(pattern);
+        return Regex.IsMatch(value, regexPattern);
     }
 
     /// <summary>Build search index for fast filtering</summary>
