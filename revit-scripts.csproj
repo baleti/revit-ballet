@@ -262,8 +262,6 @@
     <Compile Include="revit-scripts\SwitchToLastView.cs" />
     <Compile Include="revit-scripts\SwitchViewByHistory.cs" />
     <Compile Include="revit-scripts\SwitchView.cs" />
-    <Compile Include="revit-scripts\SynchronizeAllViews.cs" />
-    <Compile Include="revit-scripts\SynchronizeSelectedViews.cs" />
     <Compile Include="revit-scripts\TagElementsInViews.cs" />
     <Compile Include="revit-scripts\TagSelectedElements.cs" />
     <Compile Include="revit-scripts\TagNotTaggedElementsInSelectedViews.cs" />

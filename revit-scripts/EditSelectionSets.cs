@@ -15,15 +15,78 @@ namespace RevitAddin
     // ─────────────────────────────────────────────────────────────
     //  Selection Set Info Class
     // ─────────────────────────────────────────────────────────────
-    public class SelectionSetInfo
+    public class SelectionSetInfo : ICloneable
     {
+        private static int _nextId = 1;
+        
+        public int UniqueId { get; set; }
         public SelectionFilterElement FilterElement { get; set; }
-        public bool Selected { get; set; }
         public string Name { get; set; }
         public string OriginalName { get; set; }
         public int ElementCount { get; set; }
         public bool NameChanged => Name != OriginalName;
         public bool MarkedForDeletion { get; set; }
+        public bool IsNew { get; set; } // Indicates this is a duplicated item
+
+        public SelectionSetInfo()
+        {
+            UniqueId = _nextId++;
+        }
+
+        public object Clone()
+        {
+            var clone = new SelectionSetInfo
+            {
+                FilterElement = this.FilterElement,
+                Name = this.Name,
+                OriginalName = this.OriginalName,
+                ElementCount = this.ElementCount,
+                MarkedForDeletion = this.MarkedForDeletion,
+                IsNew = this.IsNew
+            };
+            // Manually set the UniqueId to preserve it
+            clone.UniqueId = this.UniqueId;
+            return clone;
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    //  Undo/Redo System
+    // ─────────────────────────────────────────────────────────────
+    internal class UndoRedoManager
+    {
+        private readonly Stack<List<SelectionSetInfo>> _undoStack = new Stack<List<SelectionSetInfo>>();
+        private readonly Stack<List<SelectionSetInfo>> _redoStack = new Stack<List<SelectionSetInfo>>();
+
+        public bool CanUndo => _undoStack.Count > 0;
+        public bool CanRedo => _redoStack.Count > 0;
+
+        public void SaveState(List<SelectionSetInfo> state)
+        {
+            var stateCopy = state.Select(s => (SelectionSetInfo)s.Clone()).ToList();
+            _undoStack.Push(stateCopy);
+            _redoStack.Clear(); // Clear redo stack when new action is performed
+        }
+
+        public List<SelectionSetInfo> Undo(List<SelectionSetInfo> currentState)
+        {
+            if (!CanUndo) return null;
+
+            // Save current state to redo stack before returning previous state
+            var stateCopy = currentState.Select(s => (SelectionSetInfo)s.Clone()).ToList();
+            _redoStack.Push(stateCopy);
+
+            return _undoStack.Pop().Select(s => (SelectionSetInfo)s.Clone()).ToList();
+        }
+
+        public List<SelectionSetInfo> Redo()
+        {
+            if (!CanRedo) return null;
+
+            var state = _redoStack.Pop();
+            _undoStack.Push(state.Select(s => (SelectionSetInfo)s.Clone()).ToList());
+            return state.Select(s => (SelectionSetInfo)s.Clone()).ToList();
+        }
     }
     
     // ─────────────────────────────────────────────────────────────
@@ -32,42 +95,44 @@ namespace RevitAddin
     internal class SelectionSetEditForm : WinForms.Form
     {
         private readonly WinForms.DataGridView _dataGrid;
-        private readonly WinForms.NumericUpDown _numCopies;
+        private readonly WinForms.Button _duplicateButton;
         private readonly List<SelectionSetInfo> _selectionSets;
+        private readonly UndoRedoManager _undoRedoManager = new UndoRedoManager();
         private bool _isEditingCell = false;
         private bool _cancellingEdit = false;
+        private bool _isUndoRedoOperation = false;
 
-        public List<SelectionFilterElement> SelectedSelectionSets { get; private set; } = 
-            new List<SelectionFilterElement>();
+        public List<SelectionSetInfo> NewSelectionSets { get; private set; } = 
+            new List<SelectionSetInfo>();
         public List<(SelectionFilterElement element, string newName)> RenamedSelectionSets { get; private set; } = 
             new List<(SelectionFilterElement, string)>();
         public List<SelectionFilterElement> DeletedSelectionSets { get; private set; } = 
             new List<SelectionFilterElement>();
-        public int CopyCount { get; private set; } = 1;
 
         public SelectionSetEditForm(List<SelectionSetInfo> selectionSets)
         {
             _selectionSets = selectionSets;
             
             Text            = "Edit Selection Sets";
-            FormBorderStyle = WinForms.FormBorderStyle.FixedDialog;
+            FormBorderStyle = WinForms.FormBorderStyle.Sizable;
             StartPosition   = WinForms.FormStartPosition.CenterScreen;
-            MaximizeBox = MinimizeBox = false;
+            MinimumSize = new System.Drawing.Size(500, 300);
 
             // Calculate optimal window height
             var screenHeight = WinForms.Screen.PrimaryScreen.WorkingArea.Height;
             var maxWindowHeight = screenHeight - 100; // Leave 100px padding
-            var desiredDataGridHeight = Math.Max(300, Math.Min(600, selectionSets.Count * 18 + 50));
-            var windowHeight = Math.Min(maxWindowHeight, desiredDataGridHeight + 60);
-            var dataGridHeight = windowHeight - 60;
+            var desiredHeight = Math.Max(400, Math.Min(700, selectionSets.Count * 22 + 120));
+            var windowHeight = Math.Min(maxWindowHeight, desiredHeight);
 
-            ClientSize = new System.Drawing.Size(480, windowHeight);
+            ClientSize = new System.Drawing.Size(600, windowHeight);
 
             // Create DataGridView
             _dataGrid = new WinForms.DataGridView
             {
                 Location = new System.Drawing.Point(12, 12),
-                Size = new System.Drawing.Size(456, dataGridHeight),
+                Size = new System.Drawing.Size(576, windowHeight - 60),
+                Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Bottom | 
+                        WinForms.AnchorStyles.Left | WinForms.AnchorStyles.Right,
                 AllowUserToAddRows = false,
                 AllowUserToDeleteRows = false,
                 AllowUserToResizeRows = false,
@@ -77,8 +142,10 @@ namespace RevitAddin
                 RowHeadersVisible = false,
                 BackgroundColor = SystemColors.Window,
                 BorderStyle = WinForms.BorderStyle.Fixed3D,
-                RowTemplate = { Height = 18 },
-                EditMode = WinForms.DataGridViewEditMode.EditProgrammatically
+                RowTemplate = { Height = 20 },
+                EditMode = WinForms.DataGridViewEditMode.EditProgrammatically,
+                StandardTab = true, // Tab moves focus out of grid
+                TabStop = true
             };
 
             // Handle keyboard events
@@ -89,22 +156,14 @@ namespace RevitAddin
             _dataGrid.RowPrePaint += DataGrid_RowPrePaint;
 
             // Add columns
-            var checkColumn = new WinForms.DataGridViewCheckBoxColumn
-            {
-                HeaderText = "Duplicate",
-                Name = "Selected",
-                DataPropertyName = "Selected",
-                Width = 70,
-                ReadOnly = false
-            };
-            
             var nameColumn = new WinForms.DataGridViewTextBoxColumn
             {
                 HeaderText = "Selection Set Name",
                 Name = "Name",
                 DataPropertyName = "Name",
-                Width = 290,
-                ReadOnly = false
+                Width = 400,
+                ReadOnly = false,
+                AutoSizeMode = WinForms.DataGridViewAutoSizeColumnMode.Fill
             };
             
             var countColumn = new WinForms.DataGridViewTextBoxColumn
@@ -113,56 +172,219 @@ namespace RevitAddin
                 Name = "ElementCount",
                 DataPropertyName = "ElementCount",
                 Width = 80,
-                ReadOnly = true
+                ReadOnly = true,
+                AutoSizeMode = WinForms.DataGridViewAutoSizeColumnMode.None
             };
 
             _dataGrid.Columns.AddRange(new WinForms.DataGridViewColumn[] 
-                { checkColumn, nameColumn, countColumn });
+                { nameColumn, countColumn });
 
             // Bind data
             _dataGrid.DataSource = _selectionSets;
 
-            // Number of copies controls
-            var lblCopies = new WinForms.Label
+            // Duplicate Selected button
+            _duplicateButton = new WinForms.Button
             {
-                Text = "Number of copies:",
-                Location = new System.Drawing.Point(12, dataGridHeight + 25),
-                Size = new System.Drawing.Size(110, 20)
+                Text = "Duplicate Selected",
+                Location = new System.Drawing.Point(12, windowHeight - 38),
+                Size = new System.Drawing.Size(120, 25),
+                Anchor = WinForms.AnchorStyles.Bottom | WinForms.AnchorStyles.Left
             };
-            
-            _numCopies = new WinForms.NumericUpDown
-            {
-                Location = new System.Drawing.Point(130, dataGridHeight + 22),
-                Size = new System.Drawing.Size(60, 20),
-                Minimum = 1,
-                Maximum = 50,
-                Value = 1
-            };
+            _duplicateButton.Click += DuplicateButton_Click;
 
             // OK and Cancel buttons
             var ok = new WinForms.Button 
             { 
                 Text = "OK", 
-                Location = new System.Drawing.Point(270, dataGridHeight + 20), 
+                Location = new System.Drawing.Point(396, windowHeight - 38), 
                 Size = new System.Drawing.Size(80, 25), 
-                DialogResult = WinForms.DialogResult.OK 
+                DialogResult = WinForms.DialogResult.OK,
+                Anchor = WinForms.AnchorStyles.Bottom | WinForms.AnchorStyles.Right
             };
             
             var cancel = new WinForms.Button 
             { 
                 Text = "Cancel", 
-                Location = new System.Drawing.Point(360, dataGridHeight + 20), 
+                Location = new System.Drawing.Point(486, windowHeight - 38), 
                 Size = new Size(80, 25), 
-                DialogResult = WinForms.DialogResult.Cancel 
+                DialogResult = WinForms.DialogResult.Cancel,
+                Anchor = WinForms.AnchorStyles.Bottom | WinForms.AnchorStyles.Right
             };
 
             AcceptButton = ok;
             CancelButton = cancel;
 
+            // Set tab order
+            _dataGrid.TabIndex = 0;
+            _duplicateButton.TabIndex = 1;
+            ok.TabIndex = 2;
+            cancel.TabIndex = 3;
+
             Controls.AddRange(new WinForms.Control[]
             {
-                _dataGrid, lblCopies, _numCopies, ok, cancel
+                _dataGrid, _duplicateButton, ok, cancel
             });
+
+            // Save initial state for undo
+            _undoRedoManager.SaveState(_selectionSets);
+        }
+
+        private void SaveUndoState()
+        {
+            if (!_isUndoRedoOperation)
+            {
+                _undoRedoManager.SaveState(_selectionSets);
+            }
+        }
+
+        private void PerformUndo()
+        {
+            if (!_undoRedoManager.CanUndo) return;
+            
+            _isUndoRedoOperation = true;
+            var previousState = _undoRedoManager.Undo(_selectionSets);
+            if (previousState != null)
+            {
+                _selectionSets.Clear();
+                _selectionSets.AddRange(previousState.Select(s => (SelectionSetInfo)s.Clone()));
+                RefreshDataGrid();
+            }
+            _isUndoRedoOperation = false;
+        }
+
+        private void PerformRedo()
+        {
+            _isUndoRedoOperation = true;
+            var nextState = _undoRedoManager.Redo();
+            if (nextState != null)
+            {
+                _selectionSets.Clear();
+                _selectionSets.AddRange(nextState.Select(s => (SelectionSetInfo)s.Clone()));
+                RefreshDataGrid();
+            }
+            _isUndoRedoOperation = false;
+        }
+
+        private void RefreshDataGrid()
+        {
+            var selectedIndices = _dataGrid.SelectedRows.Cast<WinForms.DataGridViewRow>()
+                .Select(r => r.Index).ToList();
+
+            _dataGrid.DataSource = null;
+            _dataGrid.DataSource = _selectionSets;
+
+            // Re-apply columns
+            _dataGrid.Columns["Name"].AutoSizeMode = WinForms.DataGridViewAutoSizeColumnMode.Fill;
+            _dataGrid.Columns["ElementCount"].Width = 80;
+
+            // Restore selection
+            foreach (var index in selectedIndices)
+            {
+                if (index < _dataGrid.Rows.Count)
+                {
+                    _dataGrid.Rows[index].Selected = true;
+                }
+            }
+        }
+
+        private void DuplicateButton_Click(object sender, EventArgs e)
+        {
+            DuplicateSelectedRows();
+        }
+
+        private void DuplicateSelectedRows()
+        {
+            var selectedRows = _dataGrid.SelectedRows.Cast<WinForms.DataGridViewRow>()
+                .Where(r => !(r.DataBoundItem as SelectionSetInfo)?.MarkedForDeletion ?? false)
+                .OrderBy(r => r.Index)
+                .ToList();
+
+            if (selectedRows.Count == 0) return;
+
+            SaveUndoState();
+
+            // Get all existing names (excluding items marked for deletion)
+            var existingNames = _selectionSets
+                .Where(s => !s.MarkedForDeletion)
+                .Select(s => s.Name)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            var itemsToInsert = new List<(int index, SelectionSetInfo item)>();
+
+            foreach (var row in selectedRows)
+            {
+                if (row.DataBoundItem is SelectionSetInfo originalInfo)
+                {
+                    // Generate unique name
+                    string newName = GetNextAvailableName(originalInfo.Name, existingNames);
+                    existingNames.Add(newName);
+
+                    // Create new info
+                    var newInfo = new SelectionSetInfo
+                    {
+                        FilterElement = originalInfo.FilterElement,
+                        Name = newName,
+                        OriginalName = newName,
+                        ElementCount = originalInfo.ElementCount,
+                        MarkedForDeletion = false,
+                        IsNew = true
+                    };
+
+                    // Store the item with its insertion index (right after the original)
+                    itemsToInsert.Add((row.Index + 1, newInfo));
+                }
+            }
+
+            // Insert items in reverse order to maintain correct positions
+            foreach (var (insertIndex, item) in itemsToInsert.OrderByDescending(x => x.index))
+            {
+                var adjustedIndex = Math.Min(insertIndex + itemsToInsert.Count(x => x.index < insertIndex), _selectionSets.Count);
+                _selectionSets.Insert(adjustedIndex, item);
+            }
+
+            RefreshDataGrid();
+
+            // Select the new rows
+            _dataGrid.ClearSelection();
+            foreach (var (_, item) in itemsToInsert)
+            {
+                var rowIndex = _selectionSets.IndexOf(item);
+                if (rowIndex >= 0)
+                {
+                    _dataGrid.Rows[rowIndex].Selected = true;
+                }
+            }
+        }
+
+        private string GetNextAvailableName(string baseName, HashSet<string> usedNames)
+        {
+            var numberSuffix = new Regex(@"\s+(\d+)$", RegexOptions.Compiled);
+            var match = numberSuffix.Match(baseName);
+            
+            string nameWithoutNumber;
+            int startNumber;
+
+            if (match.Success)
+            {
+                nameWithoutNumber = baseName.Substring(0, match.Index);
+                startNumber = int.Parse(match.Groups[1].Value) + 1;
+            }
+            else
+            {
+                nameWithoutNumber = baseName;
+                startNumber = 2;
+            }
+
+            int number = startNumber;
+            string candidate = $"{nameWithoutNumber} {number}";
+            
+            while (usedNames.Contains(candidate, StringComparer.OrdinalIgnoreCase))
+            {
+                number++;
+                candidate = $"{nameWithoutNumber} {number}";
+            }
+
+            return candidate;
         }
 
         private void DataGrid_RowPrePaint(object sender, WinForms.DataGridViewRowPrePaintEventArgs e)
@@ -179,6 +401,13 @@ namespace RevitAddin
                     row.DefaultCellStyle.BackColor = System.Drawing.Color.FromArgb(255, 220, 220);
                     row.DefaultCellStyle.ForeColor = System.Drawing.Color.DarkGray;
                     row.DefaultCellStyle.Font = new Font(_dataGrid.Font, FontStyle.Strikeout);
+                }
+                else if (info.IsNew)
+                {
+                    // Light green background for new/duplicated items
+                    row.DefaultCellStyle.BackColor = System.Drawing.Color.FromArgb(220, 255, 220);
+                    row.DefaultCellStyle.ForeColor = System.Drawing.Color.Black;
+                    row.DefaultCellStyle.Font = _dataGrid.Font;
                 }
                 else if (info.NameChanged)
                 {
@@ -212,7 +441,22 @@ namespace RevitAddin
                 return;
             }
             
-            if (e.KeyCode == WinForms.Keys.F2 && !_isEditingCell)
+            if (e.Control && e.KeyCode == WinForms.Keys.Z && !e.Shift && !_isEditingCell)
+            {
+                // Ctrl+Z - Undo
+                PerformUndo();
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+            }
+            else if ((e.Control && e.KeyCode == WinForms.Keys.Y) || 
+                     (e.Control && e.Shift && e.KeyCode == WinForms.Keys.Z) && !_isEditingCell)
+            {
+                // Ctrl+Y or Ctrl+Shift+Z - Redo
+                PerformRedo();
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+            }
+            else if (e.KeyCode == WinForms.Keys.F2 && !_isEditingCell)
             {
                 HandleF2Edit();
                 e.Handled = true;
@@ -224,12 +468,12 @@ namespace RevitAddin
                 e.Handled = true;
                 e.SuppressKeyPress = true;
             }
-            else if (e.KeyCode == WinForms.Keys.Tab && !e.Shift && !_isEditingCell)
+            else if (e.Control && e.KeyCode == WinForms.Keys.D && !_isEditingCell)
             {
-                // Move focus to Number of Copies
+                // Ctrl+D to duplicate
+                DuplicateSelectedRows();
                 e.Handled = true;
                 e.SuppressKeyPress = true;
-                _numCopies.Focus();
             }
             else if (e.KeyCode == WinForms.Keys.Enter && !_isEditingCell)
             {
@@ -238,13 +482,6 @@ namespace RevitAddin
                 e.SuppressKeyPress = true;
                 DialogResult = WinForms.DialogResult.OK;
                 Close();
-            }
-            else if (e.KeyCode == WinForms.Keys.Space && !_isEditingCell)
-            {
-                // Toggle checkboxes for selected rows (only if not editing)
-                e.Handled = true;
-                e.SuppressKeyPress = true;
-                ToggleSelectedRows();
             }
             else if (e.Control && e.KeyCode == WinForms.Keys.A && !_isEditingCell)
             {
@@ -326,7 +563,7 @@ namespace RevitAddin
             if (selectedRows.Count == 1)
             {
                 // Single row - just edit it
-                _dataGrid.CurrentCell = selectedRows[0].Cells[1]; // Name column
+                _dataGrid.CurrentCell = selectedRows[0].Cells[0]; // Name column (now at index 0)
                 _dataGrid.BeginEdit(true);
             }
             else
@@ -343,6 +580,7 @@ namespace RevitAddin
 
                 if (!string.IsNullOrEmpty(baseName))
                 {
+                    SaveUndoState();
                     baseName = baseName.Trim();
                     
                     // Get all existing names for duplicate checking (excluding deleted items)
@@ -377,18 +615,19 @@ namespace RevitAddin
                                              .Any(r => (r.DataBoundItem as SelectionSetInfo)?.Name == newName));
                             }
                             
-                            // Check if this name already exists in the list (excluding deleted items)
+                            // Check if this name already exists in the list
+                            // Only mark for deletion if it's a different item (by UniqueId) and not being renamed in this batch
                             var existingItem = _selectionSets.FirstOrDefault(s => 
-                                s != info && !s.MarkedForDeletion && 
-                                string.Equals(s.Name, newName, StringComparison.OrdinalIgnoreCase));
+                                s.UniqueId != info.UniqueId && 
+                                !s.MarkedForDeletion && 
+                                string.Equals(s.Name, newName, StringComparison.OrdinalIgnoreCase) &&
+                                !selectedRows.Any(r => r.DataBoundItem is SelectionSetInfo rowInfo && rowInfo.UniqueId == s.UniqueId));
                             
                             if (existingItem != null)
                             {
                                 // Mark the existing item for deletion (overwrite)
                                 existingItem.MarkedForDeletion = true;
                             }
-                            
-                            info.Name = newName;
                         }
                     }
                     
@@ -402,21 +641,41 @@ namespace RevitAddin
             var selectedRows = _dataGrid.SelectedRows;
             if (selectedRows.Count == 0) return;
 
+            SaveUndoState();
+
+            // Create a list to track items to remove
+            var itemsToRemove = new List<SelectionSetInfo>();
+
             foreach (WinForms.DataGridViewRow row in selectedRows)
             {
                 if (row.DataBoundItem is SelectionSetInfo info)
                 {
-                    info.MarkedForDeletion = !info.MarkedForDeletion;
+                    // Don't allow deleting new items that haven't been saved yet
+                    if (info.IsNew)
+                    {
+                        // Instead, remove them from the list entirely
+                        itemsToRemove.Add(info);
+                    }
+                    else
+                    {
+                        info.MarkedForDeletion = !info.MarkedForDeletion;
+                    }
                 }
             }
+
+            // Remove items after iteration to avoid modifying collection during enumeration
+            foreach (var item in itemsToRemove)
+            {
+                _selectionSets.Remove(item);
+            }
             
-            _dataGrid.Refresh();
+            RefreshDataGrid();
         }
 
         private void DataGrid_CellValidating(object sender, WinForms.DataGridViewCellValidatingEventArgs e)
         {
             // Validate name column
-            if (e.ColumnIndex == 1) // Name column
+            if (e.ColumnIndex == 0) // Name column
             {
                 string newName = e.FormattedValue.ToString().Trim();
                 
@@ -428,11 +687,13 @@ namespace RevitAddin
                 }
                 else
                 {
+                    var currentInfo = _selectionSets[e.RowIndex];
+                    
                     // Check for duplicate names (excluding current row and deleted items)
                     SelectionSetInfo duplicateItem = null;
                     for (int i = 0; i < _selectionSets.Count; i++)
                     {
-                        if (i != e.RowIndex && 
+                        if (_selectionSets[i].UniqueId != currentInfo.UniqueId && 
                             !_selectionSets[i].MarkedForDeletion &&
                             string.Equals(_selectionSets[i].Name, newName, StringComparison.OrdinalIgnoreCase))
                         {
@@ -443,7 +704,7 @@ namespace RevitAddin
                     
                     if (duplicateItem != null)
                     {
-                        // Mark the duplicate for deletion (overwrite behavior)
+                        // Mark the duplicate for deletion
                         duplicateItem.MarkedForDeletion = true;
                         // Allow the rename to proceed
                     }
@@ -477,45 +738,16 @@ namespace RevitAddin
                 return;
             }
             
-            // Update the underlying data when editing ends
-            if (e.ColumnIndex == 1) // Name column
+            // Save undo state after successful edit
+            if (e.ColumnIndex == 0 && e.RowIndex >= 0) // Name column
             {
+                var info = _selectionSets[e.RowIndex];
+                if (info != null && info.Name != info.OriginalName)
+                {
+                    SaveUndoState();
+                }
                 _dataGrid.Refresh();
             }
-        }
-
-        private void ToggleSelectedRows()
-        {
-            // Get all selected rows
-            var selectedRows = _dataGrid.SelectedRows;
-            if (selectedRows.Count == 0) return;
-
-            // Determine new state based on first non-deleted selected row
-            bool newState = true;
-            bool foundNonDeleted = false;
-            
-            foreach (WinForms.DataGridViewRow row in selectedRows)
-            {
-                if (row.DataBoundItem is SelectionSetInfo info && !info.MarkedForDeletion)
-                {
-                    newState = !info.Selected;
-                    foundNonDeleted = true;
-                    break;
-                }
-            }
-            
-            if (!foundNonDeleted) return; // All selected items are marked for deletion
-
-            // Apply new state to all selected rows (excluding deleted ones)
-            foreach (WinForms.DataGridViewRow row in selectedRows)
-            {
-                if (row.DataBoundItem is SelectionSetInfo info && !info.MarkedForDeletion)
-                {
-                    info.Selected = newState;
-                }
-            }
-            
-            _dataGrid.Refresh();
         }
 
         protected override bool ProcessCmdKey(ref WinForms.Message msg, WinForms.Keys keyData)
@@ -538,33 +770,30 @@ namespace RevitAddin
             base.OnClosing(e);
             if (DialogResult != WinForms.DialogResult.OK) return;
 
-            // Collect selection sets to duplicate (excluding deleted ones)
-            SelectedSelectionSets = _selectionSets
-                .Where(s => s.Selected && !s.MarkedForDeletion)
-                .Select(s => s.FilterElement)
+            // Collect new selection sets to create
+            NewSelectionSets = _selectionSets
+                .Where(s => s.IsNew && !s.MarkedForDeletion)
                 .ToList();
 
-            // Collect selection sets to rename (excluding deleted ones)
+            // Collect selection sets to rename (excluding deleted and new ones)
             RenamedSelectionSets = _selectionSets
-                .Where(s => s.NameChanged && !s.MarkedForDeletion)
+                .Where(s => !s.IsNew && s.NameChanged && !s.MarkedForDeletion)
                 .Select(s => (s.FilterElement, s.Name))
                 .ToList();
 
             // Collect selection sets to delete
             DeletedSelectionSets = _selectionSets
-                .Where(s => s.MarkedForDeletion)
+                .Where(s => !s.IsNew && s.MarkedForDeletion)
                 .Select(s => s.FilterElement)
                 .ToList();
 
-            if (SelectedSelectionSets.Count == 0 && RenamedSelectionSets.Count == 0 && DeletedSelectionSets.Count == 0)
+            if (NewSelectionSets.Count == 0 && RenamedSelectionSets.Count == 0 && DeletedSelectionSets.Count == 0)
             {
                 WinForms.MessageBox.Show("No changes were made.",
                     "No Changes", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
                 e.Cancel = true;
                 return;
             }
-
-            CopyCount = (int)_numCopies.Value;
         }
     }
 
@@ -573,36 +802,24 @@ namespace RevitAddin
     // ─────────────────────────────────────────────────────────────
     internal static class SelectionSetEditor
     {
-        private static readonly Regex _numberSuffix =
-            new Regex(@"\s+(\d+)$", RegexOptions.Compiled);
-
-        public static List<SelectionFilterElement> DuplicateSelectionSets(
+        public static List<SelectionFilterElement> CreateNewSelectionSets(
             Document doc,
-            IEnumerable<SelectionFilterElement> selectionSets,
-            int copies,
-            HashSet<string> usedNames)
+            IEnumerable<SelectionSetInfo> newSetInfos)
         {
             var createdSelectionSets = new List<SelectionFilterElement>();
 
-            foreach (SelectionFilterElement originalSet in selectionSets)
+            foreach (var info in newSetInfos)
             {
                 // Get the element IDs from the original selection set
-                ICollection<ElementId> elementIds = originalSet.GetElementIds();
+                ICollection<ElementId> elementIds = info.FilterElement.GetElementIds();
 
-                for (int n = 0; n < copies; ++n)
-                {
-                    // Generate new name
-                    string newName = GetNextAvailableName(originalSet.Name, usedNames);
-                    usedNames.Add(newName);
+                // Create new selection set
+                SelectionFilterElement newSet = SelectionFilterElement.Create(doc, info.Name);
+                
+                // Add the same elements to the new selection set
+                newSet.SetElementIds(elementIds);
 
-                    // Create new selection set
-                    SelectionFilterElement newSet = SelectionFilterElement.Create(doc, newName);
-                    
-                    // Add the same elements to the new selection set
-                    newSet.SetElementIds(elementIds);
-
-                    createdSelectionSets.Add(newSet);
-                }
+                createdSelectionSets.Add(newSet);
             }
 
             return createdSelectionSets;
@@ -626,40 +843,6 @@ namespace RevitAddin
             {
                 doc.Delete(set.Id);
             }
-        }
-
-        private static string GetNextAvailableName(string baseName, HashSet<string> usedNames)
-        {
-            // Check if name already ends with a number
-            Match match = _numberSuffix.Match(baseName);
-            
-            string nameWithoutNumber;
-            int startNumber;
-
-            if (match.Success)
-            {
-                // Extract base name and current number
-                nameWithoutNumber = baseName.Substring(0, match.Index);
-                startNumber = int.Parse(match.Groups[1].Value) + 1;
-            }
-            else
-            {
-                // No number suffix, start with 2
-                nameWithoutNumber = baseName;
-                startNumber = 2;
-            }
-
-            // Find next available number
-            int number = startNumber;
-            string candidate = $"{nameWithoutNumber} {number}";
-            
-            while (usedNames.Contains(candidate, StringComparer.OrdinalIgnoreCase))
-            {
-                number++;
-                candidate = $"{nameWithoutNumber} {number}";
-            }
-
-            return candidate;
         }
     }
 
@@ -698,29 +881,27 @@ namespace RevitAddin
                 selectionSetInfos.Add(new SelectionSetInfo
                 {
                     FilterElement = set,
-                    Selected = false,
                     Name = set.Name,
                     OriginalName = set.Name,
                     ElementCount = set.GetElementIds().Count,
-                    MarkedForDeletion = false
+                    MarkedForDeletion = false,
+                    IsNew = false
                 });
             }
 
             // Show dialog
-            List<SelectionFilterElement> selectedSets;
+            List<SelectionSetInfo> newSets;
             List<(SelectionFilterElement, string)> renamedSets;
             List<SelectionFilterElement> deletedSets;
-            int copies;
             
             using (var dlg = new SelectionSetEditForm(selectionSetInfos))
             {
                 if (dlg.ShowDialog() != WinForms.DialogResult.OK) 
                     return Result.Cancelled;
                     
-                selectedSets = dlg.SelectedSelectionSets;
+                newSets = dlg.NewSelectionSets;
                 renamedSets = dlg.RenamedSelectionSets;
                 deletedSets = dlg.DeletedSelectionSets;
-                copies = dlg.CopyCount;
             }
 
             // Perform operations
@@ -730,37 +911,23 @@ namespace RevitAddin
                 
                 try
                 {
-                    // Delete first - this includes items marked for deletion and those being overwritten
+                    // Delete first
                     if (deletedSets.Count > 0)
                     {
                         SelectionSetEditor.DeleteSelectionSets(doc, deletedSets);
                     }
                     
-                    // Get all current names for duplicate checking (after deletion)
-                    var usedNames = new FilteredElementCollector(doc)
-                        .OfClass(typeof(SelectionFilterElement))
-                        .Cast<SelectionFilterElement>()
-                        .Select(s => s.Name)
-                        .ToHashSet(StringComparer.OrdinalIgnoreCase);
-                    
-                    // Apply renames (only for items that weren't deleted)
+                    // Apply renames
                     if (renamedSets.Count > 0)
                     {
                         SelectionSetEditor.RenameSelectionSets(doc, renamedSets);
-                        
-                        // Update used names with new names
-                        foreach (var (element, newName) in renamedSets)
-                        {
-                            usedNames.Add(newName);
-                        }
                     }
                     
-                    // Then duplicate (only non-deleted items)
+                    // Create new selection sets
                     List<SelectionFilterElement> createdSets = null;
-                    if (selectedSets.Count > 0)
+                    if (newSets.Count > 0)
                     {
-                        createdSets = SelectionSetEditor.DuplicateSelectionSets(
-                            doc, selectedSets, copies, usedNames);
+                        createdSets = SelectionSetEditor.CreateNewSelectionSets(doc, newSets);
                     }
                     
                     t.Commit();
