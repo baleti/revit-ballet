@@ -1061,6 +1061,12 @@ wouldn't require any new schema/parameters/state
 ****** =21:31= realized that graph of areas may be a better approach than graph of rooms
 areas are the guiding principle, while rooms (and all other elements for that matter) should follow them
 depending on revit model quality however, both areas and room may need to be used
+****** [2025-06-29 Sun 13:11] "scene graph" appears to be standard terms
+standard TreeView in winforms may be sufficient to represent them
+alternatively a plain text or datagrid with a column for parent id
+******* bear in mind that they may not always for a DAG
+cycles may appear, perhaps then a second column for second link/parent ?
+in may DAG is a scene graph, by a "dependency graph" can have cycles
 *** 28
 **** =16:48= considering caching machanisms for tables from FilterSelectedElements
 strategy would be to subscribe to some events from revit and refresh the table only when selected elements have been changed
