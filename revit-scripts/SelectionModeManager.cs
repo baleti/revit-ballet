@@ -469,8 +469,6 @@ public class ToggleSelectionMode : IExternalCommand
             SelectionModeManager.ClearTempSelectionSet(doc);
         }
         
-        TaskDialog.Show("Selection Mode", $"Selection mode changed to: {newMode}");
-        
         return Result.Succeeded;
     }
 }
@@ -527,8 +525,6 @@ public class SwitchSelectionMode : IExternalCommand
                 var doc = commandData.Application.ActiveUIDocument.Document;
                 SelectionModeManager.ClearTempSelectionSet(doc);
             }
-            
-            TaskDialog.Show("Selection Mode", $"Selection mode changed to: {chosenMode}");
         }
         
         return Result.Succeeded;

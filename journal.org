@@ -1067,6 +1067,34 @@ alternatively a plain text or datagrid with a column for parent id
 ******* bear in mind that they may not always for a DAG
 cycles may appear, perhaps then a second column for second link/parent ?
 in may DAG is a scene graph, by a "dependency graph" can have cycles
+****** [2025-07-01 Tue 13:04] will likely need to sort the graph topologically
+this requires the graph to be a DAG
+not sure if that can be ensured or if an alternative approach will be needed
+******* an interesting fact, topological sort is like a recording of depth-first traversal
+depth first traversal uses a stack data structure so I expect it to be fast
+****** =18:10= thinking about 'representational equivalence' of tables, graphs, linear systems
+finding out that org-mode tables also adopted $ (dollar sign) for designating columns made me think if table parameters and variables in programming have some useful connection with nodes in a graph
+concluded though that any table is just some view and can be rearranged arbitrarily
+graph represenations varies between adjacency matrix (dense graphs) and adjacency list (sparse graphs) depending on need
+  nothing forces parameters/variables to be in columns
+  in fact parameters/variables/nodes and both rows and columns seem to represent the same concept, that of a variable
+    expressions, edges, grids represent relationships between them
+****** =18:47= wondering why not simply represent areas in a table and represent each topological position of every area by an array of "parents" and "children" in separate columns
+possibly is graph turns out not to a directed acyclic graph these could be changed from 'parents' and 'children' columns to a single 'neighbours' column?
+  directed acyclic graph needed for topological sorting
+because schema isn't fixed you could even generate separate columns (e.g. parent 1, parent 2, etc.) dynamically as much as needed
+that's the simplest and most boring solution
+  other solutions may always follow later
+this representation seems equivalent to the popular 'adjacency list'
+  nodes are items rather than columns
+****** =20:00= finally settled on thinking about graphs as set of objects and edges as their properties
+rather than treating edges as separate items
+most real world applications seem to approach them this way as well
+  social networks, electric circuits
+  that seems to logically map to an adjacency list/matrix
+    opens up possibility to higher-level analysis like clustering, connectivity and other patterns
+  edges as a currency of graph nodes
+******* as mentioned before I could therefore retain previous tabular representation (datagrid) and simply treat connections/edges as another column
 *** 28
 **** =16:48= considering caching machanisms for tables from FilterSelectedElements
 strategy would be to subscribe to some events from revit and refresh the table only when selected elements have been changed
@@ -1091,3 +1119,9 @@ an overcomplicated version that sorts by date and shows pretty colors
 #+begin_src bash
 git fsck --unreachable --no-reflogs | grep 'unreachable commit' | awk '{print $3}' | while read hash; do   printf "%s|%s\n" "$(git show --no-patch --format="%ad" --date=iso "$hash")" "$hash"; done | sort | cut -d'|' -f2 | while read hash; do   git show --no-patch --format="%C(yellow)%h%C(reset) %C(cyan)%ad%C(reset) %C(green)%an%C(reset): %s" --date=iso "$hash"; done
 #+end_src
+** July
+*** 02
+**** =00:01= loading addin into revit 2019 yielded a lot of errors
+start setting up solution for "multi-version build"
+needs to be completely automated, minimum maintenance
+***** think about testing
