@@ -142,6 +142,7 @@
     <Compile Include="revit-scripts\SetRevisionToSelectedSheetsOrClouds.cs" />
     <Compile Include="revit-scripts\ShowGeoegraphicData.cs" />
     <Compile Include="revit-scripts\ShowHideWorksetsInView.cs" />
+    <Compile Include="revit-scripts\UnhideSelectedElementsToTemporaryHideIsolate.cs" />
     <Compile Include="revit-scripts\StretchLevelsToCropRegion.cs" />
     <Compile Include="revit-scripts\test33.cs" />
     <Compile Include="revit-scripts\SelectLastCreatedSection.cs" />
