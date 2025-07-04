@@ -1095,6 +1095,9 @@ most real world applications seem to approach them this way as well
     opens up possibility to higher-level analysis like clustering, connectivity and other patterns
   edges as a currency of graph nodes
 ******* as mentioned before I could therefore retain previous tabular representation (datagrid) and simply treat connections/edges as another column
+****** correlation of this graph-based approach to the way mechanical, electrical and plumbing systems are designed
+[2025-07-04 Fri 12:09]
+also graphs, schematics, parameteric by necessity
 *** 28
 **** =16:48= considering caching machanisms for tables from FilterSelectedElements
 strategy would be to subscribe to some events from revit and refresh the table only when selected elements have been changed
