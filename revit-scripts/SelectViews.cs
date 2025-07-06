@@ -1,6 +1,7 @@
 ﻿using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using Autodesk.Revit.Attributes;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -12,6 +13,9 @@ public class SelectViews : IExternalCommand
         UIApplication uiapp = commandData.Application;
         UIDocument uidoc = uiapp.ActiveUIDocument;
         Document doc = uidoc.Document;
+
+        // Get the currently active view
+        View activeView = doc.ActiveView;
 
         // Create a mapping for views that are placed on sheets (non-sheet views)
         Dictionary<ElementId, ViewSheet> viewToSheetMap = new Dictionary<ElementId, ViewSheet>();
@@ -74,14 +78,39 @@ public class SelectViews : IExternalCommand
             viewData.Add(viewInfo);
         }
 
+        // Sort the viewData by Title
+        viewData = viewData.OrderBy(v => v["Title"].ToString()).ToList();
+
+        // Find the index of the active view after sorting
+        int sortedActiveViewIndex = -1;
+        if (activeView != null)
+        {
+            for (int i = 0; i < viewData.Count; i++)
+            {
+                if (viewData[i]["Title"].ToString() == activeView.Title)
+                {
+                    sortedActiveViewIndex = i;
+                    break;
+                }
+            }
+        }
+
         // Define the column headers.
         List<string> columns = new List<string> { "Title", "Sheet" };
+
+        // Prepare initial selection indices (if active view was found)
+        List<int> initialSelection = null;
+        if (sortedActiveViewIndex >= 0)
+        {
+            initialSelection = new List<int> { sortedActiveViewIndex };
+        }
 
         // Show the selection dialog (using your custom GUI).
         List<Dictionary<string, object>> selectedViews = CustomGUIs.DataGrid(
             viewData,
             columns,
-            false  // Don't span all screens.
+            false,  // Don't span all screens.
+            initialSelection  // Pass the initial selection
         );
 
         // If the user made a selection, add those elements to the current selection.
