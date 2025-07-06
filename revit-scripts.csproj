@@ -117,6 +117,7 @@
     <Compile Include="revit-scripts\OutlineSelectedElementsInCurrentViewWithDetailLines.cs" />
     <Compile Include="revit-scripts\PlaceSelectedViewsOnSheets.cs" />
     <Compile Include="revit-scripts\RenameSelectedTexts.cs" />
+    <Compile Include="revit-scripts\SaveSelection_LoadSelection.cs" />
     <Compile Include="revit-scripts\SectionBox3DAroundSelectedElements.cs" />
     <Compile Include="revit-scripts\SelectByFilterInView.cs" />
     <Compile Include="revit-scripts\SelectElementsOfSameTypeInLinkedModelsInProject.cs" />

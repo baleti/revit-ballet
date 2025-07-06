@@ -118,28 +118,85 @@ public class SectionBox3DFromViews : IExternalCommand
         // Get the crop region of the selected view.
         BoundingBoxXYZ cropBox = selectedView.CropBox;
 
-        // Convert the crop box's local coordinates to world coordinates.
-        var worldPoints = new List<XYZ>();
-        foreach (double x in new double[] { cropBox.Min.X, cropBox.Max.X })
+        // Initialize min/max values
+        double minX, minY, minZ, maxX, maxY, maxZ;
+
+        // Check if the selected view is a plan view
+        if (selectedView.ViewType == ViewType.FloorPlan || 
+            selectedView.ViewType == ViewType.CeilingPlan || 
+            selectedView.ViewType == ViewType.EngineeringPlan ||
+            selectedView.ViewType == ViewType.AreaPlan)
         {
-            foreach (double y in new double[] { cropBox.Min.Y, cropBox.Max.Y })
+            // For plan views, handle X and Y from crop box, but Z from view range
+            
+            // Get the X and Y extents from the crop box
+            var worldPointsXY = new List<XYZ>();
+            foreach (double x in new double[] { cropBox.Min.X, cropBox.Max.X })
             {
-                foreach (double z in new double[] { cropBox.Min.Z, cropBox.Max.Z })
+                foreach (double y in new double[] { cropBox.Min.Y, cropBox.Max.Y })
                 {
-                    XYZ localPt = new XYZ(x, y, z);
+                    XYZ localPt = new XYZ(x, y, 0);
                     XYZ worldPt = cropBox.Transform.OfPoint(localPt);
-                    worldPoints.Add(worldPt);
+                    worldPointsXY.Add(worldPt);
                 }
             }
-        }
+            
+            minX = worldPointsXY.Min(pt => pt.X);
+            minY = worldPointsXY.Min(pt => pt.Y);
+            maxX = worldPointsXY.Max(pt => pt.X);
+            maxY = worldPointsXY.Max(pt => pt.Y);
 
-        // Compute the axis-aligned bounding box in world coordinates.
-        double minX = worldPoints.Min(pt => pt.X);
-        double minY = worldPoints.Min(pt => pt.Y);
-        double minZ = worldPoints.Min(pt => pt.Z);
-        double maxX = worldPoints.Max(pt => pt.X);
-        double maxY = worldPoints.Max(pt => pt.Y);
-        double maxZ = worldPoints.Max(pt => pt.Z);
+            // Get the view range for Z extents
+            ViewPlan viewPlan = selectedView as ViewPlan;
+            PlanViewRange viewRange = viewPlan.GetViewRange();
+            
+            // Get the levels associated with the view range
+            ElementId topLevelId = viewRange.GetLevelId(PlanViewPlane.TopClipPlane);
+            ElementId bottomLevelId = viewRange.GetLevelId(PlanViewPlane.BottomClipPlane);
+            ElementId viewDepthLevelId = viewRange.GetLevelId(PlanViewPlane.ViewDepthPlane);
+            
+            Level topLevel = doc.GetElement(topLevelId) as Level;
+            Level bottomLevel = doc.GetElement(bottomLevelId) as Level;
+            Level viewDepthLevel = doc.GetElement(viewDepthLevelId) as Level;
+            
+            // Get the offsets
+            double topOffset = viewRange.GetOffset(PlanViewPlane.TopClipPlane);
+            double bottomOffset = viewRange.GetOffset(PlanViewPlane.BottomClipPlane);
+            double viewDepthOffset = viewRange.GetOffset(PlanViewPlane.ViewDepthPlane);
+            
+            // Calculate actual elevations
+            double topElevation = topLevel.ProjectElevation + topOffset;
+            double bottomElevation = bottomLevel.ProjectElevation + bottomOffset;
+            double viewDepthElevation = viewDepthLevel.ProjectElevation + viewDepthOffset;
+            
+            // Use view depth as the bottom and top as the top
+            minZ = viewDepthElevation;
+            maxZ = topElevation;
+        }
+        else
+        {
+            // For non-plan views (sections, elevations), use the original logic
+            var worldPoints = new List<XYZ>();
+            foreach (double x in new double[] { cropBox.Min.X, cropBox.Max.X })
+            {
+                foreach (double y in new double[] { cropBox.Min.Y, cropBox.Max.Y })
+                {
+                    foreach (double z in new double[] { cropBox.Min.Z, cropBox.Max.Z })
+                    {
+                        XYZ localPt = new XYZ(x, y, z);
+                        XYZ worldPt = cropBox.Transform.OfPoint(localPt);
+                        worldPoints.Add(worldPt);
+                    }
+                }
+            }
+
+            minX = worldPoints.Min(pt => pt.X);
+            minY = worldPoints.Min(pt => pt.Y);
+            minZ = worldPoints.Min(pt => pt.Z);
+            maxX = worldPoints.Max(pt => pt.X);
+            maxY = worldPoints.Max(pt => pt.Y);
+            maxZ = worldPoints.Max(pt => pt.Z);
+        }
 
         BoundingBoxXYZ sectionBox = new BoundingBoxXYZ
         {
