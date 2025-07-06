@@ -144,8 +144,8 @@
   <ShortcutItem CommandName="Additional Settings:Detail Level" CommandId="ID_DETAIL_LEVEL" Paths="Manage&gt;Settings" />
   <ShortcutItem CommandName="Additional Settings:Assembly Code" CommandId="ID_SETTINGS_ASSEMBLY_CODE" Paths="Manage&gt;Settings" />
   <ShortcutItem CommandName="Starting View" CommandId="ID_STARTING_VIEW" Paths="Manage&gt;Manage Project" />
-  <ShortcutItem CommandName="IDs of Selection" CommandId="ID_IDS_OF_SELECTION" Shortcuts="ID" Paths="Manage&gt;Inquiry" />
-  <ShortcutItem CommandName="Select by ID" CommandId="ID_SELECT_BY_ID" Paths="Manage&gt;Inquiry" />
+  <ShortcutItem CommandName="IDs of Selection" CommandId="ID_IDS_OF_SELECTION" Paths="Manage&gt;Inquiry" />
+  <ShortcutItem CommandName="Select by ID" CommandId="ID_SELECT_BY_ID" Shortcuts="ID" Paths="Manage&gt;Inquiry" />
   <ShortcutItem CommandName="Review Warnings" CommandId="ID_REVIEW_WARNINGS" Paths="Manage&gt;Inquiry" />
   <ShortcutItem CommandName="Macro Manager" CommandId="ID_TOOLS_MACROS" Paths="Manage&gt;Macros" />
   <ShortcutItem CommandName="Macro Security" CommandId="ID_TOOLS_MACROSECURITY" Paths="Manage&gt;Macros" />
@@ -158,7 +158,6 @@
   <ShortcutItem CommandName="External Tools:SwitchView" CommandId="e19b084b-4a63-84af-a876-ec308252335e" Shortcuts="WW" Paths="Add-Ins&gt;External" />
   <ShortcutItem CommandName="External Tools:CloseCurrentView" CommandId="e19b494b-4a63-44af-a876-ec308252335e" Shortcuts="WQ" Paths="Add-Ins&gt;External" />
   <ShortcutItem CommandName="External Tools:CloseViews" CommandId="e19b494b-4a63-47af-a876-ec308252335e" Shortcuts="WC" Paths="Add-Ins&gt;External" />
-  <ShortcutItem CommandName="External Tools:SelectAllElementsInView" CommandId="e39b494b-4a63-45af-b876-ec508252535e" Shortcuts="Ctrl+A" Paths="Add-Ins&gt;External" />
   <ShortcutItem CommandName="External Tools:SelectAllElementsInViewAndInGroups" CommandId="e39b494b-4a63-45af-b876-ec50875257be" Shortcuts="Ctrl+Alt+A" Paths="Add-Ins&gt;External" />
   <ShortcutItem CommandName="External Tools:SelectCategoriesInProject" CommandId="e39b499b-4a63-45af-b876-ea508752535e" Shortcuts="SCA" Paths="Add-Ins&gt;External" />
   <ShortcutItem CommandName="External Tools:SelectCategoriesInView" CommandId="e39b494b-4a63-45af-b876-ea508752535e" Shortcuts="SCV" Paths="Add-Ins&gt;External" />
@@ -186,6 +185,15 @@
   <ShortcutItem CommandName="Transmit model(s)" CommandId="CustomCtrl_%CustomCtrl_%Add-Ins%eTransmit%eTransmit" Paths="Add-Ins&gt;eTransmit" />
   <ShortcutItem CommandName="Help" CommandId="CustomCtrl_%CustomCtrl_%Add-Ins%eTransmit%eTransmitHelp" Paths="Add-Ins&gt;eTransmit" />
   <ShortcutItem CommandName="About" CommandId="CustomCtrl_%CustomCtrl_%Add-Ins%eTransmit%eTransmitAbout" Paths="Add-Ins&gt;eTransmit" />
+  <ShortcutItem CommandName="Create PDF" CommandId="CustomCtrl_%CustomCtrl_%Add-Ins%Bluebeam%CreatePDF" Paths="Add-Ins&gt;Bluebeam" />
+  <ShortcutItem CommandName="Change Settings" CommandId="CustomCtrl_%CustomCtrl_%Add-Ins%Bluebeam%ChangeSettings" Paths="Add-Ins&gt;Bluebeam" />
+  <ShortcutItem CommandName="Split3D:Create 3D PDF" CommandId="CustomCtrl_%CustomCtrl_%CustomCtrl_%Add-Ins%Bluebeam%splitButton3D%Create 3D PDF" Paths="Add-Ins&gt;Bluebeam" />
+  <ShortcutItem CommandName="Split3D:Create U3D" CommandId="CustomCtrl_%CustomCtrl_%CustomCtrl_%Add-Ins%Bluebeam%splitButton3D%Create U3D" Paths="Add-Ins&gt;Bluebeam" />
+  <ShortcutItem CommandName="Split3D:Copy 3D to Clipboard" CommandId="CustomCtrl_%CustomCtrl_%CustomCtrl_%Add-Ins%Bluebeam%splitButton3D%Copy 3D to Clipboard" Paths="Add-Ins&gt;Bluebeam" />
+  <ShortcutItem CommandName="Split3D:3D PDF Settings" CommandId="CustomCtrl_%CustomCtrl_%CustomCtrl_%Add-Ins%Bluebeam%splitButton3D%3D PDF Settings" Paths="Add-Ins&gt;Bluebeam" />
+  <ShortcutItem CommandName="Show Log" CommandId="CustomCtrl_%CustomCtrl_%Add-Ins%Bluebeam%showLog" Paths="Add-Ins&gt;Bluebeam" />
+  <ShortcutItem CommandName="How Do I" CommandId="CustomCtrl_%CustomCtrl_%Add-Ins%Bluebeam%help" Paths="Add-Ins&gt;Bluebeam" />
+  <ShortcutItem CommandName="About" CommandId="CustomCtrl_%CustomCtrl_%Add-Ins%Bluebeam%about" Paths="Add-Ins&gt;Bluebeam" />
   <ShortcutItem CommandName="Convert RFAto FormIt" CommandId="CustomCtrl_%CustomCtrl_%Add-Ins%FormIt Converter%Convert RFA to FormIt" Paths="Add-Ins&gt;FormIt Converter" />
   <ShortcutItem CommandName="RevitLookup:Dashboard" CommandId="CustomCtrl_%CustomCtrl_%CustomCtrl_%Add-Ins%Revit Lookup%RevitLookupButton%RevitLookup.Commands.DashboardCommand" Paths="Add-Ins&gt;Revit Lookup" />
   <ShortcutItem CommandName="RevitLookup:Snoop Selection" CommandId="CustomCtrl_%CustomCtrl_%CustomCtrl_%Add-Ins%Revit Lookup%RevitLookupButton%RevitLookup.Commands.SnoopSelectionCommand" Shortcuts="LS" Paths="Add-Ins&gt;Revit Lookup" />

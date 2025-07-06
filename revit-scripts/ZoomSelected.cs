@@ -34,10 +34,23 @@ public class ZoomSelected : IExternalCommand
             return Result.Failed;
         }
         
-        if (!ZoomToBoundingBox(uiDoc, doc, boundingBox))
+        // Check if current view is 3D
+        View3D view3D = doc.ActiveView as View3D;
+        if (view3D != null)
         {
-            message = "Failed to find UIView for active view.";
-            return Result.Failed;
+            if (!ZoomToBoundingBox3D(uiDoc, view3D, boundingBox))
+            {
+                message = "Failed to zoom to bounding box in 3D view.";
+                return Result.Failed;
+            }
+        }
+        else
+        {
+            if (!ZoomToBoundingBox2D(uiDoc, doc, boundingBox))
+            {
+                message = "Failed to find UIView for active view.";
+                return Result.Failed;
+            }
         }
         
         return Result.Succeeded;
@@ -109,6 +122,150 @@ public class ZoomSelected : IExternalCommand
         return boundingBox;
     }
     
+    private bool ZoomToBoundingBox3D(UIDocument uiDoc, View3D view3D, BoundingBoxXYZ boundingBox)
+    {
+        UIView uiview = FindUIView(uiDoc, view3D.Id);
+        if (uiview == null)
+        {
+            return false;
+        }
+        
+        // Get the center of the bounding box - this will be our target/orbit point
+        XYZ targetPoint = GetCenterPoint(boundingBox);
+        
+        // Get current view orientation
+        ViewOrientation3D currentOrientation = view3D.GetOrientation();
+        XYZ currentEyePosition = currentOrientation.EyePosition;
+        XYZ currentUpDirection = currentOrientation.UpDirection;
+        XYZ currentForwardDirection = currentOrientation.ForwardDirection;
+        
+        // Calculate the size of the bounding box
+        double width = boundingBox.Max.X - boundingBox.Min.X;
+        double height = boundingBox.Max.Y - boundingBox.Min.Y;
+        double depth = boundingBox.Max.Z - boundingBox.Min.Z;
+        double maxDimension = Math.Max(Math.Max(width, height), depth);
+        
+        if (view3D.IsPerspective)
+        {
+            // For perspective views, we need to position the camera to look at the target
+            // while maintaining a good viewing distance
+            
+            // Calculate appropriate viewing distance based on field of view
+            // Revit's default FOV is about 50 degrees
+            double fieldOfView = 50.0 * Math.PI / 180.0; // Convert to radians
+            double halfFOV = fieldOfView / 2.0;
+            
+            // Use a more conservative viewing distance to avoid panning issues
+            // The multiplier affects how much of the view is filled
+            double viewingDistance = (maxDimension * 1.2) / Math.Tan(halfFOV);
+            
+            // Ensure minimum viewing distance to avoid being too close
+            viewingDistance = Math.Max(viewingDistance, maxDimension * 2.0);
+            
+            // Position the camera at the calculated distance from the target
+            XYZ newEyePosition = targetPoint - currentForwardDirection * viewingDistance;
+            
+            // Create new orientation looking at the target
+            ViewOrientation3D newOrientation = new ViewOrientation3D(newEyePosition, currentUpDirection, currentForwardDirection);
+            
+            using (Transaction t = new Transaction(view3D.Document, "Set 3D View Orientation"))
+            {
+                t.Start();
+                view3D.SetOrientation(newOrientation);
+                t.Commit();
+            }
+            
+            // Force viewport refresh
+            uiDoc.RefreshActiveView();
+            
+            // Additional refresh for perspective views to ensure proper update
+            if (view3D.IsPerspective)
+            {
+                // This helps reset the internal navigation speed
+                uiDoc.UpdateAllOpenViews();
+            }
+        }
+        else
+        {
+            // For orthographic views, use the zoom corners approach
+            XYZ rightDirection = currentForwardDirection.CrossProduct(currentUpDirection);
+            
+            // Calculate the scale based on view size
+            double scale = maxDimension * 0.6;
+            
+            // Calculate corners for zoom rectangle
+            XYZ corner1 = targetPoint + currentUpDirection * scale - rightDirection * scale;
+            XYZ corner2 = targetPoint - currentUpDirection * scale + rightDirection * scale;
+            
+            // First set the view orientation to center on target
+            using (Transaction t = new Transaction(view3D.Document, "Center 3D View"))
+            {
+                t.Start();
+                
+                // Move the eye position to look at the center
+                // For orthographic, we maintain the viewing direction but shift the position
+                XYZ offset = targetPoint - GetViewCenter(uiview, view3D);
+                XYZ newEyePosition = currentEyePosition + offset;
+                
+                ViewOrientation3D newOrientation = new ViewOrientation3D(
+                    newEyePosition, 
+                    currentUpDirection, 
+                    currentForwardDirection
+                );
+                
+                view3D.SetOrientation(newOrientation);
+                t.Commit();
+            }
+            
+            // Then zoom to the appropriate size
+            uiview.ZoomAndCenterRectangle(corner1, corner2);
+            
+            // Refresh the view
+            uiDoc.RefreshActiveView();
+        }
+        
+        return true;
+    }
+    
+    private XYZ GetViewCenter(UIView uiView, View3D view3D)
+    {
+        // Get the center of the current view
+        IList<XYZ> corners = uiView.GetZoomCorners();
+        if (corners.Count >= 2)
+        {
+            return (corners[0] + corners[1]) * 0.5;
+        }
+        
+        // Fallback to view orientation
+        ViewOrientation3D orientation = view3D.GetOrientation();
+        return orientation.EyePosition + orientation.ForwardDirection * 10; // Arbitrary distance
+    }
+    
+    private bool ZoomToBoundingBox2D(UIDocument uiDoc, Document doc, BoundingBoxXYZ boundingBox)
+    {
+        UIView uiview = FindUIView(uiDoc, doc.ActiveView.Id);
+        if (uiview == null)
+        {
+            return false;
+        }
+        
+        XYZ center = GetCenterPoint(boundingBox);
+        XYZ viewDirection = doc.ActiveView.ViewDirection;
+        XYZ upDirection = doc.ActiveView.UpDirection;
+        XYZ rightDirection = viewDirection.CrossProduct(upDirection);
+        
+        // Adjust scale factors based on bounding box size
+        double width = boundingBox.Max.X - boundingBox.Min.X;
+        double height = boundingBox.Max.Y - boundingBox.Min.Y;
+        double scaleFactor = Math.Max(width, height) * 0.6;
+        
+        XYZ corner1 = center - rightDirection * scaleFactor - upDirection * scaleFactor;
+        XYZ corner2 = center + rightDirection * scaleFactor + upDirection * scaleFactor;
+        
+        uiview.ZoomAndCenterRectangle(corner1, corner2);
+        return true;
+    }
+    
     private View FindCorrespondingView(Document linkedDoc, View hostView)
     {
         // Try to find a view in the linked document with the same name or type
@@ -163,38 +320,6 @@ public class ZoomSelected : IExternalCommand
         transformedBox.Max = new XYZ(maxX, maxY, maxZ);
         
         return transformedBox;
-    }
-    
-    private bool ZoomToBoundingBox(UIDocument uiDoc, Document doc, BoundingBoxXYZ boundingBox)
-    {
-        UIView uiview = FindUIView(uiDoc, doc.ActiveView.Id);
-        if (uiview == null)
-        {
-            return false;
-        }
-        
-        XYZ center = GetCenterPoint(boundingBox);
-        XYZ viewDirection = doc.ActiveView.ViewDirection;
-        XYZ upDirection = doc.ActiveView.UpDirection;
-        XYZ rightDirection = viewDirection.CrossProduct(upDirection);
-        
-        // Adjust scale factors based on bounding box size
-        double width = boundingBox.Max.X - boundingBox.Min.X;
-        double height = boundingBox.Max.Y - boundingBox.Min.Y;
-        double depth = boundingBox.Max.Z - boundingBox.Min.Z;
-        
-        // For 3D views, consider depth as well
-        double maxDimension = doc.ActiveView is View3D 
-            ? Math.Max(Math.Max(width, height), depth) 
-            : Math.Max(width, height);
-            
-        double scaleFactor = maxDimension * 0.6; // Adjust this factor as necessary
-        
-        XYZ corner1 = center - rightDirection * scaleFactor - upDirection * scaleFactor;
-        XYZ corner2 = center + rightDirection * scaleFactor + upDirection * scaleFactor;
-        
-        uiview.ZoomAndCenterRectangle(corner1, corner2);
-        return true;
     }
     
     private UIView FindUIView(UIDocument uiDoc, ElementId viewId)
