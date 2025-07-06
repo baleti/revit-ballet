@@ -160,7 +160,7 @@
     </Compile>
     <Compile Include="revit-scripts\ManageFiltersOnSelectedViewsOrViewTemplates.cs" />
     <Compile Include="revit-scripts\OffsetCropRegionOfSelectedViews.cs" />
-    <Compile Include="revit-scripts\SectionBox3DFromViews.cs" />
+    <Compile Include="revit-scripts\SectionBox3DFromView.cs" />
     <Compile Include="revit-scripts\CloseCurrentView.cs" />
     <Compile Include="revit-scripts\CloseViews.cs" />
     <Compile Include="revit-scripts\CopyCrossSession.cs" />

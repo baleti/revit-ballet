@@ -5,7 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 [Transaction(TransactionMode.Manual)]
-public class SectionBox3DFromViews : IExternalCommand
+public class SectionBox3DFromView : IExternalCommand
 {
     public Result Execute(
       ExternalCommandData commandData,
@@ -66,8 +66,6 @@ public class SectionBox3DFromViews : IExternalCommand
                             .ToList();
 
         // Prepare data for the custom GUI.
-        // For each view, if it is placed on a sheet (or sheets) via viewports,
-        // get a comma‐separated list of sheet numbers, names, and sheet folders.
         var entries = views.Select(v =>
         {
             string sheetNumbers = "";
@@ -118,18 +116,18 @@ public class SectionBox3DFromViews : IExternalCommand
         // Get the crop region of the selected view.
         BoundingBoxXYZ cropBox = selectedView.CropBox;
 
-        // Initialize min/max values
+        // Initialize min/max values.
         double minX, minY, minZ, maxX, maxY, maxZ;
 
-        // Check if the selected view is a plan view
-        if (selectedView.ViewType == ViewType.FloorPlan || 
-            selectedView.ViewType == ViewType.CeilingPlan || 
+        // Check if the selected view is a plan view.
+        if (selectedView.ViewType == ViewType.FloorPlan ||
+            selectedView.ViewType == ViewType.CeilingPlan ||
             selectedView.ViewType == ViewType.EngineeringPlan ||
             selectedView.ViewType == ViewType.AreaPlan)
         {
-            // For plan views, handle X and Y from crop box, but Z from view range
-            
-            // Get the X and Y extents from the crop box
+            // For plan views, handle X and Y from crop box, but Z from view range.
+
+            // Get the X and Y extents from the crop box.
             var worldPointsXY = new List<XYZ>();
             foreach (double x in new double[] { cropBox.Min.X, cropBox.Max.X })
             {
@@ -140,42 +138,42 @@ public class SectionBox3DFromViews : IExternalCommand
                     worldPointsXY.Add(worldPt);
                 }
             }
-            
+
             minX = worldPointsXY.Min(pt => pt.X);
             minY = worldPointsXY.Min(pt => pt.Y);
             maxX = worldPointsXY.Max(pt => pt.X);
             maxY = worldPointsXY.Max(pt => pt.Y);
 
-            // Get the view range for Z extents
+            // Get the view range for Z extents.
             ViewPlan viewPlan = selectedView as ViewPlan;
             PlanViewRange viewRange = viewPlan.GetViewRange();
-            
-            // Get the levels associated with the view range
+
+            // Get the levels associated with the view range.
             ElementId topLevelId = viewRange.GetLevelId(PlanViewPlane.TopClipPlane);
             ElementId bottomLevelId = viewRange.GetLevelId(PlanViewPlane.BottomClipPlane);
             ElementId viewDepthLevelId = viewRange.GetLevelId(PlanViewPlane.ViewDepthPlane);
-            
+
             Level topLevel = doc.GetElement(topLevelId) as Level;
             Level bottomLevel = doc.GetElement(bottomLevelId) as Level;
             Level viewDepthLevel = doc.GetElement(viewDepthLevelId) as Level;
-            
-            // Get the offsets
+
+            // Get the offsets.
             double topOffset = viewRange.GetOffset(PlanViewPlane.TopClipPlane);
             double bottomOffset = viewRange.GetOffset(PlanViewPlane.BottomClipPlane);
             double viewDepthOffset = viewRange.GetOffset(PlanViewPlane.ViewDepthPlane);
-            
-            // Calculate actual elevations
+
+            // Calculate actual elevations.
             double topElevation = topLevel.ProjectElevation + topOffset;
             double bottomElevation = bottomLevel.ProjectElevation + bottomOffset;
             double viewDepthElevation = viewDepthLevel.ProjectElevation + viewDepthOffset;
-            
-            // Use view depth as the bottom and top as the top
+
+            // Use view depth as the bottom and top as the top.
             minZ = viewDepthElevation;
             maxZ = topElevation;
         }
         else
         {
-            // For non-plan views (sections, elevations), use the original logic
+            // For non-plan views (sections, elevations), use the original logic.
             var worldPoints = new List<XYZ>();
             foreach (double x in new double[] { cropBox.Min.X, cropBox.Max.X })
             {
@@ -212,6 +210,19 @@ public class SectionBox3DFromViews : IExternalCommand
             current3DView.IsSectionBoxActive = true;
             current3DView.SetSectionBox(sectionBox);
             trans.Commit();
+        }
+
+        // ---------------- ZOOM TO FIT THE SECTION BOX ---------------- //
+        // After activating the section box, use the UIView API to perform the
+        // equivalent of Revit's built‑in "Zoom to Fit" so the camera frames
+        // the entire bounding box.
+        UIView uiView = uiDoc
+                        .GetOpenUIViews()
+                        .FirstOrDefault(v => v.ViewId == current3DView.Id);
+
+        if (uiView != null)
+        {
+            uiView.ZoomToFit();
         }
 
         return Result.Succeeded;
