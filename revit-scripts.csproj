@@ -118,6 +118,7 @@
     <Compile Include="revit-scripts\PlaceSelectedViewsOnSheets.cs" />
     <Compile Include="revit-scripts\RenameSelectedTexts.cs" />
     <Compile Include="revit-scripts\SectionBox3DAroundSelectedElements.cs" />
+    <Compile Include="revit-scripts\SelectByFilterInView.cs" />
     <Compile Include="revit-scripts\SelectElementsOfSameTypeInLinkedModelsInProject.cs" />
     <Compile Include="revit-scripts\SelectAllRevisionCloudsInProject.cs" />
     <Compile Include="revit-scripts\SelectAllVisibleRevisionCloudsInProject.cs" />
@@ -139,6 +140,7 @@
     <Compile Include="revit-scripts\SelectViewsFromSets.cs" />
     <Compile Include="revit-scripts\SelectViewTemplates.cs" />
     <Compile Include="revit-scripts\SelectViewTemplatesOfSelectedViews.cs" />
+    <Compile Include="revit-scripts\SetFocalLength.cs" />
     <Compile Include="revit-scripts\SetRevisionToSelectedSheetsOrClouds.cs" />
     <Compile Include="revit-scripts\ShowGeoegraphicData.cs" />
     <Compile Include="revit-scripts\ShowHideWorksetsInView.cs" />

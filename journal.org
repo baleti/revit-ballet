@@ -1098,6 +1098,27 @@ most real world applications seem to approach them this way as well
 ****** correlation of this graph-based approach to the way mechanical, electrical and plumbing systems are designed
 [2025-07-04 Fri 12:09]
 also graphs, schematics, parameteric by necessity
+****** =15:45= an elegant concept that captures many of these ideas is "configuration space"
+"set of all possible positions the system can be in"
+"for a mechanical system, it's described by its degrees of freedom"
+manifolds describe properties of coordinate systems ("spaces") themselves
+topology, differentiable geometry, mechanical systems degrees of freedom
+******* simplical complexes
+"simplex" is a generalization of a triangle in more dimensions
+  2-simplex is a triangle, 3 vertices
+  3-simplex is a tetrahedron, 4 vertices
+said to be useful in modelling neural networks
+  because a "complete graph" aka graph where all nodes are connected to each other aka fully connected layer in neural networks is also a simplex of degree number of nodes
+  any graph can be interpreted as a simplicial complex aka combination of simplices of varying dimensions
+simplicial complexes are a branch of algebraic topology
+their applications include analysis of neural network and other high dimensional graph (e.g. image analysis)
+  topological patterns have been used to analyze functional patterns in the blue brain project
+****** one potential application of these mathematical concepts would be data analysis of patterns between various possible graphs made between building areas
+[2025-07-05 Sat 13:06]
+thinking of x,y,z positions of area centroids just as another property
+rather than its 3d embedding
+therefore maybe other properties can be used in the same manner (area, circulation links, use class)
+****** =14:04= notion of abstractness of graph theory and topology over continuous geometry
 *** 28
 **** =16:48= considering caching machanisms for tables from FilterSelectedElements
 strategy would be to subscribe to some events from revit and refresh the table only when selected elements have been changed
@@ -1128,3 +1149,8 @@ git fsck --unreachable --no-reflogs | grep 'unreachable commit' | awk '{print $3
 start setting up solution for "multi-version build"
 needs to be completely automated, minimum maintenance
 ***** think about testing
+*** 06
+**** =15:58= hit sad limitation of revit api, there is no way to unhide in view elements from linked models
+given that temporary isolate methods don't work on elements on linked models and other limitations like filters not distinguishing between linked models working with linked models in revit becomes is severely limiting
+[[https://forums.autodesk.com/t5/revit-ideas/unhide-elements-in-view-in-linked-models/idi-p/13712780][revit idea]]
+***** possible workaround would be duplicating the view precisely and performing a "sacrificial" hide in view there
