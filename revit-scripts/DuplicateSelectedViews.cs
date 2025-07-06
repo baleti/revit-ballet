@@ -30,7 +30,7 @@ namespace RevitAddin
     internal static class ViewDuplicator
     {
         /// <summary>
-        /// Loops through the provided views and duplicates each if it is an AreaPlan.
+        /// Loops through the provided views and duplicates each.
         /// The new view is renamed using the original name, "Copy", timestamp, and a sequential number suffix.
         /// If a view does not support the chosen duplication option, it is skipped.
         /// </summary>
@@ -45,8 +45,8 @@ namespace RevitAddin
 
             foreach (var view in views)
             {
-                // Process only AreaPlan views.
-                if (view != null && view.ViewType == ViewType.AreaPlan)
+                // Process all views (ViewType restriction removed)
+                if (view != null)
                 {
                     ViewDuplicateOption duplicateOption;
 
