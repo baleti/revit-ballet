@@ -111,6 +111,7 @@
     <Compile Include="revit-scripts\FilterDoorsWithWallOffsets_WallFinding.cs" />
     <Compile Include="revit-scripts\FilterPosition.cs" />
     <Compile Include="revit-scripts\FilterDimensions.cs" />
+    <Compile Include="revit-scripts\FilterPositionOnAreas.cs" />
     <Compile Include="revit-scripts\FilterRevisionClouds.cs" />
     <Compile Include="revit-scripts\FilterSheets.cs" />
     <Compile Include="revit-scripts\InvokeLastAddinCommand.cs" />

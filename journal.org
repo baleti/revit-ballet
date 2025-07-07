@@ -1119,6 +1119,10 @@ thinking of x,y,z positions of area centroids just as another property
 rather than its 3d embedding
 therefore maybe other properties can be used in the same manner (area, circulation links, use class)
 ****** =14:04= notion of abstractness of graph theory and topology over continuous geometry
+****** multi-column tree view as a representation for graph-table data structure
+[2025-07-07 Mon 10:48]
+it combines benefits of simplifity of tabes with richness of graphs/trees
+******* how will it know on which column to expand when different columns can expand to different subtables?
 *** 28
 **** =16:48= considering caching machanisms for tables from FilterSelectedElements
 strategy would be to subscribe to some events from revit and refresh the table only when selected elements have been changed

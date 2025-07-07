@@ -8,27 +8,99 @@ using Autodesk.Revit.UI;
 [Transaction(TransactionMode.ReadOnly)]
 public class FilterPosition : IExternalCommand
 {
+    // Helper class to store element data along with its reference
+    private class ElementDataWithReference
+    {
+        public Dictionary<string, object> Data { get; set; }
+        public Reference Reference { get; set; }
+        public Element Element { get; set; }
+        public bool IsLinked { get; set; }
+        public string DocumentName { get; set; }
+    }
+
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
     {
         // Get the active UIDocument and Document.
         UIDocument uidoc = commandData.Application.ActiveUIDocument;
         Document doc = uidoc.Document;
 
-        // Retrieve the current selection.
-        ICollection<ElementId> selectedIds = uidoc.GetSelectionIds();
-        if (selectedIds == null || !selectedIds.Any())
+        // Retrieve the current selection using the SelectionModeManager which supports linked references
+        IList<Reference> selectedRefs = uidoc.GetReferences();
+        if (selectedRefs == null || !selectedRefs.Any())
         {
-            TaskDialog.Show("Warning", "Please select elements before running the command.");
-            return Result.Failed;
+            // Try to get regular selection IDs as fallback
+            ICollection<ElementId> selectedIds = uidoc.GetSelectionIds();
+            if (selectedIds == null || !selectedIds.Any())
+            {
+                TaskDialog.Show("Warning", "Please select elements before running the command.");
+                return Result.Failed;
+            }
+            
+            // Convert ElementIds to References for consistency
+            selectedRefs = selectedIds.Select(id => new Reference(doc.GetElement(id))).ToList();
         }
 
-        // Get the selected elements.
-        List<Element> selectedElements = selectedIds.Select(id => doc.GetElement(id)).ToList();
+        // Process references to get elements (both from current doc and linked docs)
+        List<ElementDataWithReference> elementDataList = new List<ElementDataWithReference>();
+
+        foreach (Reference reference in selectedRefs)
+        {
+            Element elem = null;
+            bool isLinked = false;
+            string documentName = doc.Title;
+
+            try
+            {
+                if (reference.LinkedElementId != ElementId.InvalidElementId)
+                {
+                    // This is a linked element
+                    isLinked = true;
+                    RevitLinkInstance linkInstance = doc.GetElement(reference.ElementId) as RevitLinkInstance;
+                    if (linkInstance != null)
+                    {
+                        Document linkedDoc = linkInstance.GetLinkDocument();
+                        if (linkedDoc != null)
+                        {
+                            elem = linkedDoc.GetElement(reference.LinkedElementId);
+                            documentName = linkedDoc.Title;
+                        }
+                    }
+                }
+                else
+                {
+                    // Regular element in current document
+                    elem = doc.GetElement(reference.ElementId);
+                }
+
+                if (elem != null)
+                {
+                    elementDataList.Add(new ElementDataWithReference
+                    {
+                        Element = elem,
+                        Reference = reference,
+                        IsLinked = isLinked,
+                        DocumentName = documentName
+                    });
+                }
+            }
+            catch
+            {
+                // Skip problematic references
+                continue;
+            }
+        }
+
+        if (!elementDataList.Any())
+        {
+            TaskDialog.Show("Warning", "No valid elements found in selection.");
+            return Result.Failed;
+        }
 
         // Define the property names (columns) for the data grid.
         List<string> propertyNames = new List<string>
         {
             "Element Id",
+            "Document",
             "Category",
             "Name",
             "LocationType",
@@ -42,15 +114,17 @@ public class FilterPosition : IExternalCommand
             "Curve End"
         };
 
-        // Prepare the list of dictionaries that will hold each element’s orientation data.
-        List<Dictionary<string, object>> elementData = new List<Dictionary<string, object>>();
+        // Prepare the list of dictionaries that will hold each element's orientation data.
+        List<Dictionary<string, object>> gridData = new List<Dictionary<string, object>>();
 
-        foreach (Element elem in selectedElements)
+        foreach (var elemData in elementDataList)
         {
+            Element elem = elemData.Element;
             Dictionary<string, object> properties = new Dictionary<string, object>();
 
             // Basic element properties.
             properties["Element Id"] = elem.Id.IntegerValue;
+            properties["Document"] = elemData.DocumentName + (elemData.IsLinked ? " (Linked)" : "");
             properties["Category"] = elem.Category != null ? elem.Category.Name : "";
             properties["Name"] = elem.Name;
 
@@ -114,23 +188,36 @@ public class FilterPosition : IExternalCommand
                 }
             }
 
-            elementData.Add(properties);
+            // Store the data along with the index for later reference
+            elemData.Data = properties;
+            gridData.Add(properties);
         }
 
         // Display the data grid. (Assuming CustomGUIs.DataGrid is a helper method that
         // shows a grid for the user to review and optionally modify the selection.)
-        List<Dictionary<string, object>> selectedFromGrid = CustomGUIs.DataGrid(elementData, propertyNames, false);
+        List<Dictionary<string, object>> selectedFromGrid = CustomGUIs.DataGrid(gridData, propertyNames, false);
 
         // If the user made a selection in the grid, update the active selection.
         if (selectedFromGrid?.Any() == true)
         {
-            var finalSelection = selectedElements
-                .Where(e => selectedFromGrid.Any(s =>
-                    (int)s["Element Id"] == e.Id.IntegerValue))
-                .Select(e => e.Id)
-                .ToList();
+            // Build a new list of references based on the selected items
+            List<Reference> finalReferences = new List<Reference>();
 
-            uidoc.SetSelectionIds(finalSelection);
+            foreach (var selectedData in selectedFromGrid)
+            {
+                // Find the matching element data by comparing element ID and document name
+                var matchingElemData = elementDataList.FirstOrDefault(ed =>
+                    (int)ed.Data["Element Id"] == (int)selectedData["Element Id"] &&
+                    ed.Data["Document"].ToString() == selectedData["Document"].ToString());
+
+                if (matchingElemData != null)
+                {
+                    finalReferences.Add(matchingElemData.Reference);
+                }
+            }
+
+            // Update the selection using SetReferences to maintain linked element references
+            uidoc.SetReferences(finalReferences);
         }
 
         return Result.Succeeded;
