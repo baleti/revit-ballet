@@ -79,9 +79,11 @@ public class DirectShapesFromVisibleAreas : IExternalCommand
             BoundingBoxXYZ sb = v3.GetSectionBox();
             Transform      tr = sb.Transform;
 
-            XYZ[] c =
+            // Transform section box corners to world coordinates
+            XYZ[] corners =
             {
-                tr.OfPoint(sb.Min), tr.OfPoint(sb.Max),
+                tr.OfPoint(sb.Min), 
+                tr.OfPoint(sb.Max),
                 tr.OfPoint(new XYZ(sb.Min.X, sb.Max.Y, sb.Min.Z)),
                 tr.OfPoint(new XYZ(sb.Max.X, sb.Min.Y, sb.Min.Z)),
                 tr.OfPoint(new XYZ(sb.Min.X, sb.Min.Y, sb.Max.Z)),
@@ -89,14 +91,35 @@ public class DirectShapesFromVisibleAreas : IExternalCommand
                 tr.OfPoint(new XYZ(sb.Min.X, sb.Max.Y, sb.Max.Z)),
                 tr.OfPoint(new XYZ(sb.Max.X, sb.Min.Y, sb.Max.Z))
             };
-            XYZ wMin = new XYZ(c.Min(p => p.X), c.Min(p => p.Y), c.Min(p => p.Z));
-            XYZ wMax = new XYZ(c.Max(p => p.X), c.Max(p => p.Y), c.Max(p => p.Z));
+            
+            XYZ wMin = new XYZ(corners.Min(p => p.X), corners.Min(p => p.Y), corners.Min(p => p.Z));
+            XYZ wMax = new XYZ(corners.Max(p => p.X), corners.Max(p => p.Y), corners.Max(p => p.Z));
 
-            var outline = new Outline(wMin, wMax);
-            var filter  = new BoundingBoxIntersectsFilter(outline);
-
-            areas = areas.Where(a => a.get_BoundingBox(null) != null && filter.PassesFilter(a))
-                         .ToList();
+            // Filter areas based on their location point and level
+            areas = areas.Where(a =>
+            {
+                // Get area location point
+                LocationPoint loc = a.Location as LocationPoint;
+                if (loc == null) return false;
+                
+                XYZ pt = loc.Point;
+                
+                // Check if the area's location point is within section box X/Y bounds
+                if (pt.X < wMin.X || pt.X > wMax.X || 
+                    pt.Y < wMin.Y || pt.Y > wMax.Y)
+                    return false;
+                
+                // Get area's level elevation
+                Level level = doc.GetElement(a.LevelId) as Level;
+                if (level == null) return false;
+                
+                double elevation = level.Elevation;
+                
+                // Check if the level elevation is within section box Z bounds
+                // Add some tolerance for areas slightly above/below their level
+                double tolerance = UnitUtils.ConvertToInternalUnits(1.0, UnitTypeId.Feet);
+                return elevation >= wMin.Z - tolerance && elevation <= wMax.Z + tolerance;
+            }).ToList();
         }
         // 2-D cropped view
         else if (view.CropBoxActive)
