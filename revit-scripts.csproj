@@ -104,6 +104,7 @@
     <Compile Include="revit-scripts\DuplicateSheetWithViewsAsDraftingViews.cs" />
     <Compile Include="revit-scripts\DuplicateViewsAsDraftingViews.cs" />
     <Compile Include="revit-scripts\DuplicateViewsToSheets.cs" />
+    <Compile Include="revit-scripts\FaceFlipSelectedDoors.cs" />
     <Compile Include="revit-scripts\FilterDoorsWithWallOffsets_Command.cs" />
     <Compile Include="revit-scripts\FilterDoorsWithWallOffsets_Diagnostics.cs" />
     <Compile Include="revit-scripts\FilterDoorsWithWallOffsets_Dimensioning.cs" />
