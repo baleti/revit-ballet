@@ -308,7 +308,7 @@ public partial class CustomGUIs
             int rowsHeight = grid.Rows.GetRowsHeight(DataGridViewElementStates.Visible);
             int reqHeight = rowsHeight + grid.ColumnHeadersHeight +
                             2 * grid.RowTemplate.Height +
-                            SystemInformation.HorizontalScrollBarHeight + 20;
+                            SystemInformation.HorizontalScrollBarHeight + 30;
 
             int availHeight = Screen.PrimaryScreen.WorkingArea.Height - padding * 2;
             form.Height = Math.Min(reqHeight, availHeight);
