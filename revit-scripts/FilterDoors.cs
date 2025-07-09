@@ -32,10 +32,9 @@ public class FilterDoors : IExternalCommand
             return Result.Failed;
         }
 
-        // Collect shared parameters once before processing
-        var sharedParams = selectedOpenings
+        // Collect all parameters (not just shared) once before processing
+        var allParams = selectedOpenings
             .SelectMany(d => d.Parameters.OfType<Parameter>())
-            .Where(p => p.IsShared)
             .Select(p => p.Definition.Name)
             .Distinct()
             .OrderBy(n => n)
@@ -48,7 +47,7 @@ public class FilterDoors : IExternalCommand
             "Head Height", "Comments", "Group", "FacingFlipped", "HandFlipped",
             "Width", "Height", "Room From", "Room To"
         };
-        propertyNames.AddRange(sharedParams);
+        propertyNames.AddRange(allParams);
 
         List<Dictionary<string, object>> openingData = new List<Dictionary<string, object>>();
 
@@ -87,11 +86,19 @@ public class FilterDoors : IExternalCommand
             openingProperties["Room From"] = openingInst.FromRoom?.Name ?? "";
             openingProperties["Room To"] = openingInst.ToRoom?.Name ?? "";
 
-            // Shared parameters
-            foreach (var paramName in sharedParams)
+            // All parameters (built-in, shared, project, family)
+            foreach (var paramName in allParams)
             {
                 var param = opening.LookupParameter(paramName);
-                openingProperties[paramName] = param?.AsValueString() ?? param?.AsString() ?? "";
+                if (param != null)
+                {
+                    // Use AsValueString() first for formatted values, then AsString() for text
+                    openingProperties[paramName] = param.AsValueString() ?? param.AsString() ?? "None";
+                }
+                else
+                {
+                    openingProperties[paramName] = "";
+                }
             }
 
             openingData.Add(openingProperties);
