@@ -23,6 +23,9 @@ public partial class CustomGUIs
     private static HashSet<string> _lastVisibleColumns = new HashSet<string>();
     private static string _lastColumnVisibilityFilter = "";
 
+    // Column ordering cache
+    private static string _lastColumnOrderingFilter = "";
+
     // ──────────────────────────────────────────────────────────────
     //  Helper types
     // ──────────────────────────────────────────────────────────────
@@ -33,6 +36,8 @@ public partial class CustomGUIs
         public string       Value;         // value to look for in the cell
         public bool         IsExclusion;   // true ⇒ "must NOT contain"
         public bool         IsGlobPattern; // true if value contains wildcards
+        public bool         IsExactMatch;  // true if value should match exactly
+        public bool         IsColumnExactMatch; // true if column should match exactly
     }
 
     private enum ComparisonOperator
@@ -50,6 +55,16 @@ public partial class CustomGUIs
     }
 
     /// <summary>
+    /// Represents column ordering information
+    /// </summary>
+    private struct ColumnOrderInfo
+    {
+        public List<string> ColumnParts;   // column-header fragments to match
+        public int Position;               // desired position (1-based)
+        public bool IsExactMatch;          // true if column should match exactly
+    }
+
+    /// <summary>
     /// Represents a group of filters that use AND logic internally.
     /// Multiple FilterGroups are combined with OR logic.
     /// </summary>
@@ -60,6 +75,9 @@ public partial class CustomGUIs
         public List<string> GeneralFilters { get; set; }
         public List<ComparisonFilter> ComparisonFilters { get; set; }
         public List<string> GeneralGlobPatterns { get; set; } // New field for glob patterns
+        public List<ColumnOrderInfo> ColumnOrdering { get; set; } // New field for column ordering
+        public List<bool> ColVisibilityExactMatch { get; set; } // Track exact match for visibility
+        public List<string> GeneralExactFilters { get; set; } // Exact match general filters
 
         public FilterGroup()
         {
@@ -68,6 +86,9 @@ public partial class CustomGUIs
             GeneralFilters = new List<string>();
             ComparisonFilters = new List<ComparisonFilter>();
             GeneralGlobPatterns = new List<string>(); // Initialize new field
+            ColumnOrdering = new List<ColumnOrderInfo>(); // Initialize column ordering
+            ColVisibilityExactMatch = new List<bool>(); // Initialize exact match tracking
+            GeneralExactFilters = new List<string>(); // Initialize exact match filters
         }
     }
 

@@ -21,7 +21,7 @@ public partial class CustomGUIs
         // Quick return for empty filter
         if (string.IsNullOrWhiteSpace(searchText))
         {
-            UpdateColumnVisibilityOptimized(grid, new HashSet<List<string>>(new ListStringComparer()));
+            UpdateColumnVisibilityOptimized(grid, new HashSet<List<string>>(new ListStringComparer()), new List<ColumnOrderInfo>(), new List<bool>());
             return entries;
         }
 
@@ -35,12 +35,18 @@ public partial class CustomGUIs
             filterGroups.Add(group);
         }
 
-        // Update column visibility (optimized)
+        // Update column visibility and ordering (optimized)
         HashSet<List<string>> allColVisibilityFilters = new HashSet<List<string>>(
             filterGroups.SelectMany(g => g.ColVisibilityFilters),
             new ListStringComparer());
 
-        UpdateColumnVisibilityOptimized(grid, allColVisibilityFilters);
+        // Collect all column ordering from all groups
+        List<ColumnOrderInfo> allColumnOrdering = filterGroups.SelectMany(g => g.ColumnOrdering).ToList();
+        
+        // Collect exact match flags for visibility
+        List<bool> allColVisibilityExactMatch = filterGroups.SelectMany(g => g.ColVisibilityExactMatch).ToList();
+
+        UpdateColumnVisibilityOptimized(grid, allColVisibilityFilters, allColumnOrdering, allColVisibilityExactMatch);
 
         // Use optimized row filtering
         List<Dictionary<string, object>> filtered = FilterRowsOptimized(entries, filterGroups, propertyNames);
@@ -49,30 +55,132 @@ public partial class CustomGUIs
     }
 
     /// <summary>Optimized column visibility update - only updates when changed</summary>
-    private static void UpdateColumnVisibilityOptimized(DataGridView grid, HashSet<List<string>> filters)
+    private static void UpdateColumnVisibilityOptimized(DataGridView grid, HashSet<List<string>> filters, List<ColumnOrderInfo> columnOrdering, List<bool> exactMatchFlags)
     {
-        // Create a key for the current filter state
+        // Create a key for the current filter state (including ordering)
         string filterKey = string.Join("|", filters.Select(f => string.Join(",", f)));
+        string orderingKey = string.Join("|", columnOrdering.Select(o => o.Position + ":" + string.Join(",", o.ColumnParts) + ":" + o.IsExactMatch));
+        string exactMatchKey = string.Join("|", exactMatchFlags.Select(e => e ? "1" : "0"));
+        string combinedKey = filterKey + "||" + orderingKey + "||" + exactMatchKey;
 
         // Skip if nothing changed
-        if (filterKey == _lastColumnVisibilityFilter)
+        if (combinedKey == _lastColumnVisibilityFilter + "||" + _lastColumnOrderingFilter)
             return;
 
-        _lastColumnVisibilityFilter = filterKey;
+        _lastColumnVisibilityFilter = filterKey + "||" + exactMatchKey;
+        _lastColumnOrderingFilter = orderingKey;
+        
         var newVisible = new HashSet<string>();
 
-        foreach (DataGridViewColumn col in grid.Columns)
+        // Update visibility
+        if (filters.Count > 0)
         {
-            string colName = col.HeaderText.ToLowerInvariant();
-            bool show = filters.Count == 0 ||
-                        filters.Any(parts => parts.All(p => colName.Contains(p)));
-
-            if (show) newVisible.Add(col.Name);
+            var filterList = filters.ToList();
+            for (int i = 0; i < filterList.Count; i++)
+            {
+                var parts = filterList[i];
+                bool isExactMatch = i < exactMatchFlags.Count && exactMatchFlags[i];
+                
+                foreach (DataGridViewColumn col in grid.Columns)
+                {
+                    string colName = col.HeaderText.ToLowerInvariant();
+                    bool show = false;
+                    
+                    if (isExactMatch)
+                    {
+                        // For exact match, join parts with space and compare
+                        string exactPattern = string.Join(" ", parts);
+                        show = colName == exactPattern;
+                    }
+                    else
+                    {
+                        // Original behavior: all parts must be contained
+                        show = parts.All(p => colName.Contains(p));
+                    }
+                    
+                    if (show) newVisible.Add(col.Name);
+                }
+            }
+        }
+        else
+        {
+            // No filters, show all columns
+            foreach (DataGridViewColumn col in grid.Columns)
+            {
+                newVisible.Add(col.Name);
+            }
         }
 
-        // Only update DOM if visibility actually changed
-        if (!_lastVisibleColumns.SetEquals(newVisible))
+        // Apply column ordering if any
+        if (columnOrdering.Count > 0)
         {
+            grid.SuspendLayout(); // Prevent flicker
+
+            // First, update visibility
+            foreach (DataGridViewColumn col in grid.Columns)
+            {
+                col.Visible = newVisible.Contains(col.Name);
+            }
+
+            // Create a list to track new display indices
+            var columnPositions = new List<Tuple<DataGridViewColumn, int>>();
+
+            // Process columns with explicit ordering
+            foreach (var orderInfo in columnOrdering.OrderBy(o => o.Position))
+            {
+                foreach (DataGridViewColumn col in grid.Columns)
+                {
+                    if (!col.Visible) continue;
+
+                    string colName = col.HeaderText.ToLowerInvariant();
+                    bool matches = false;
+                    
+                    if (orderInfo.IsExactMatch)
+                    {
+                        // For exact match, join parts with space and compare
+                        string exactPattern = string.Join(" ", orderInfo.ColumnParts);
+                        matches = colName == exactPattern;
+                    }
+                    else
+                    {
+                        // Original behavior: all parts must be contained
+                        matches = orderInfo.ColumnParts.All(part => colName.Contains(part));
+                    }
+                    
+                    if (matches)
+                    {
+                        // Check if this column is already in the list
+                        if (!columnPositions.Any(cp => cp.Item1 == col))
+                        {
+                            columnPositions.Add(Tuple.Create(col, orderInfo.Position));
+                        }
+                    }
+                }
+            }
+
+            // Add remaining visible columns that don't have explicit ordering
+            int nextPosition = columnPositions.Count > 0 ? columnPositions.Max(cp => cp.Item2) + 1 : 1;
+            foreach (DataGridViewColumn col in grid.Columns)
+            {
+                if (col.Visible && !columnPositions.Any(cp => cp.Item1 == col))
+                {
+                    columnPositions.Add(Tuple.Create(col, nextPosition++));
+                }
+            }
+
+            // Apply the new display order
+            int displayIndex = 0;
+            foreach (var colPos in columnPositions.OrderBy(cp => cp.Item2))
+            {
+                colPos.Item1.DisplayIndex = displayIndex++;
+            }
+
+            grid.ResumeLayout();
+            _lastVisibleColumns = newVisible;
+        }
+        else if (!_lastVisibleColumns.SetEquals(newVisible))
+        {
+            // Only update visibility if no ordering is specified and visibility changed
             grid.SuspendLayout(); // Prevent flicker
             foreach (DataGridViewColumn col in grid.Columns)
             {
@@ -125,17 +233,29 @@ public partial class CustomGUIs
         // Check column-qualified value filters
         foreach (ColumnValueFilter f in group.ColValueFilters)
         {
-            List<string> matchCols = propertyNames
-                .Where(p => f.ColumnParts.All(part =>
-                            p.ToLowerInvariant().Contains(part)))
-                .ToList();
+            List<string> matchCols = new List<string>();
+            
+            if (f.IsColumnExactMatch)
+            {
+                // For exact column match, join parts with space and compare
+                string exactPattern = string.Join(" ", f.ColumnParts);
+                matchCols = propertyNames.Where(p => p.ToLowerInvariant() == exactPattern).ToList();
+            }
+            else
+            {
+                // Original behavior: all parts must be contained
+                matchCols = propertyNames
+                    .Where(p => f.ColumnParts.All(part =>
+                                p.ToLowerInvariant().Contains(part)))
+                    .ToList();
+            }
 
             if (matchCols.Count == 0) continue;
 
             bool valuePresent = matchCols.Any(c =>
             {
                 string cellValue = null;
-                
+
                 if (_searchIndexByColumn != null &&
                     _searchIndexByColumn.ContainsKey(c) &&
                     _searchIndexByColumn[c].ContainsKey(entryIndex))
@@ -154,8 +274,12 @@ public partial class CustomGUIs
 
                 if (cellValue == null) return false;
 
-                // Use glob matching if pattern contains wildcards
-                if (f.IsGlobPattern)
+                // Check value match based on exact match flag
+                if (f.IsExactMatch)
+                {
+                    return cellValue == f.Value;
+                }
+                else if (f.IsGlobPattern)
                 {
                     return MatchesGlobPattern(cellValue, f.Value);
                 }
@@ -219,51 +343,99 @@ public partial class CustomGUIs
         }
 
         // Check general include/exclude filters using index
-        if (group.GeneralFilters.Count > 0 || group.GeneralGlobPatterns.Count > 0)
+        if (group.GeneralFilters.Count > 0 || group.GeneralGlobPatterns.Count > 0 || group.GeneralExactFilters.Count > 0)
         {
-            string allValues = _searchIndexAllColumns != null && _searchIndexAllColumns.ContainsKey(entryIndex)
-                ? _searchIndexAllColumns[entryIndex]
-                : string.Join(" ", entry.Values.Where(v => v != null)
-                                        .Select(v => v.ToString().ToLowerInvariant()));
-
-            // Check regular filters (substring match)
-            bool anyInc = group.GeneralFilters.Any(g => !g.StartsWith("!"));
-            bool anyExc = group.GeneralFilters.Any(g => g.StartsWith("!"));
-
-            if (anyInc &&
-                !group.GeneralFilters.Where(g => !g.StartsWith("!"))
-                               .All(inc => allValues.Contains(inc)))
-                return false;
-
-            if (anyExc &&
-                group.GeneralFilters.Where(g => g.StartsWith("!"))
-                               .Select(ex => ex.Substring(1))
-                               .Any(ex => allValues.Contains(ex)))
-                return false;
-
-            // Check glob patterns
-            foreach (string globPattern in group.GeneralGlobPatterns)
+            // Check exact filters separately for each value
+            if (group.GeneralExactFilters.Count > 0)
             {
-                bool isExclusion = globPattern.StartsWith("!");
-                string pattern = isExclusion ? globPattern.Substring(1) : globPattern;
+                bool anyInc = group.GeneralExactFilters.Any(g => !g.StartsWith("!"));
+                bool anyExc = group.GeneralExactFilters.Any(g => g.StartsWith("!"));
                 
-                // For general glob patterns, check each value individually
-                bool matchFound = false;
+                // For exact matches, check each cell value individually
+                bool hasExactMatch = false;
                 foreach (var kvp in entry)
                 {
                     if (kvp.Value != null)
                     {
                         string val = kvp.Value.ToString().ToLowerInvariant();
-                        if (MatchesGlobPattern(val, pattern))
+                        
+                        // Check inclusion filters
+                        if (anyInc)
                         {
-                            matchFound = true;
-                            break;
+                            foreach (string filter in group.GeneralExactFilters.Where(g => !g.StartsWith("!")))
+                            {
+                                if (val == filter)
+                                {
+                                    hasExactMatch = true;
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        // Check exclusion filters
+                        if (anyExc)
+                        {
+                            foreach (string filter in group.GeneralExactFilters.Where(g => g.StartsWith("!")))
+                            {
+                                string cleanFilter = filter.Substring(1);
+                                if (val == cleanFilter)
+                                    return false; // Excluded value found
+                            }
                         }
                     }
                 }
+                
+                if (anyInc && !hasExactMatch)
+                    return false;
+            }
+            
+            // Check substring filters (original behavior)
+            if (group.GeneralFilters.Count > 0 || group.GeneralGlobPatterns.Count > 0)
+            {
+                string allValues = _searchIndexAllColumns != null && _searchIndexAllColumns.ContainsKey(entryIndex)
+                    ? _searchIndexAllColumns[entryIndex]
+                    : string.Join(" ", entry.Values.Where(v => v != null)
+                                            .Select(v => v.ToString().ToLowerInvariant()));
 
-                if (!isExclusion && !matchFound) return false;
-                if (isExclusion && matchFound) return false;
+                // Check regular filters (substring match)
+                bool anyInc = group.GeneralFilters.Any(g => !g.StartsWith("!"));
+                bool anyExc = group.GeneralFilters.Any(g => g.StartsWith("!"));
+
+                if (anyInc &&
+                    !group.GeneralFilters.Where(g => !g.StartsWith("!"))
+                                   .All(inc => allValues.Contains(inc)))
+                    return false;
+
+                if (anyExc &&
+                    group.GeneralFilters.Where(g => g.StartsWith("!"))
+                                   .Select(ex => ex.Substring(1))
+                                   .Any(ex => allValues.Contains(ex)))
+                    return false;
+
+                // Check glob patterns
+                foreach (string globPattern in group.GeneralGlobPatterns)
+                {
+                    bool isExclusion = globPattern.StartsWith("!");
+                    string pattern = isExclusion ? globPattern.Substring(1) : globPattern;
+
+                    // For general glob patterns, check each value individually
+                    bool matchFound = false;
+                    foreach (var kvp in entry)
+                    {
+                        if (kvp.Value != null)
+                        {
+                            string val = kvp.Value.ToString().ToLowerInvariant();
+                            if (MatchesGlobPattern(val, pattern))
+                            {
+                                matchFound = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (!isExclusion && !matchFound) return false;
+                    if (isExclusion && matchFound) return false;
+                }
             }
         }
 
@@ -320,10 +492,10 @@ public partial class CustomGUIs
     {
         FilterGroup group = new FilterGroup();
 
-        // Split into tokens - updated regex to handle comparison operators
+        // Split into tokens - updated regex to handle 'e' prefix for exact matching
         List<string> tokens = Regex.Matches(
                 groupText,
-                @"(\$""[^""]+?""::""[^""]+?""|\$""[^""]+?""\:\:[^ ]+|\$[^ ]+?::""[^""]+?""|\$[^ ]+?::[^ ]+|\$""[^""]+?""\:[^ ]+|\$[^ ]+?:[^ ]+|\$""[^""]+?""|\$[^ ]+|[<>]\d+\.?\d*|""[^""]+""|\S+)")
+                @"(!\d+\$e""[^""]+?""::e""[^""]+?""|!\d+\$e""[^""]+?""::[^ ]+|!\d+\$[^ ]+?::e""[^""]+?""|!\d+\$e""[^""]+?""::""[^""]+?""|!\d+\$""[^""]+?""::e""[^""]+?""|!\d+\$e""[^""]+?""|!\d+\$""[^""]+?""::""[^""]+?""|!\d+\$""[^""]+?""\:\:[^ ]+|!\d+\$[^ ]+?::""[^""]+?""|!\d+\$[^ ]+?::[^ ]+|!\d+\$""[^""]+?""\:[^ ]+|!\d+\$[^ ]+?:[^ ]+|!\d+\$""[^""]+?""|!\d+\$[^ ]+|\d+\$e""[^""]+?""::e""[^""]+?""|\d+\$e""[^""]+?""::[^ ]+|\d+\$[^ ]+?::e""[^""]+?""|\d+\$e""[^""]+?""::""[^""]+?""|\d+\$""[^""]+?""::e""[^""]+?""|\d+\$e""[^""]+?""|\d+\$""[^""]+?""::""[^""]+?""|\d+\$""[^""]+?""\:\:[^ ]+|\d+\$[^ ]+?::""[^""]+?""|\d+\$[^ ]+?::[^ ]+|\d+\$""[^""]+?""\:[^ ]+|\d+\$[^ ]+?:[^ ]+|\d+\$""[^""]+?""|\d+\$[^ ]+|!\$e""[^""]+?""::e""[^""]+?""|!\$e""[^""]+?""::[^ ]+|!\$[^ ]+?::e""[^""]+?""|!\$e""[^""]+?""::""[^""]+?""|!\$""[^""]+?""::e""[^""]+?""|!\$e""[^""]+?""|!\$""[^""]+?""::""[^""]+?""|!\$""[^""]+?""\:\:[^ ]+|!\$[^ ]+?::""[^""]+?""|!\$[^ ]+?::[^ ]+|!\$""[^""]+?""\:[^ ]+|!\$[^ ]+?:[^ ]+|!\$""[^""]+?""|!\$[^ ]+|\$e""[^""]+?""::e""[^""]+?""|\$e""[^""]+?""::[^ ]+|\$[^ ]+?::e""[^""]+?""|\$e""[^""]+?""::""[^""]+?""|\$""[^""]+?""::e""[^""]+?""|\$e""[^""]+?""|\$""[^""]+?""::""[^""]+?""|\$""[^""]+?""\:\:[^ ]+|\$[^ ]+?::""[^""]+?""|\$[^ ]+?::[^ ]+|\$""[^""]+?""\:[^ ]+|\$[^ ]+?:[^ ]+|\$""[^""]+?""|\$[^ ]+|[<>]\d+\.?\d*|e""[^""]+?""|""[^""]+""|\S+)")
             .Cast<Match>()
             .Select(m => m.Value.Trim())
             .Where(t => t.Length > 0)
@@ -349,18 +521,44 @@ public partial class CustomGUIs
                 continue;
             }
 
+            // Check for numeric prefix before $ (e.g., 1$col, 2$"column name")
+            var numericPrefixMatch = Regex.Match(token, @"^(\d+)\$(.+)$");
+            int? columnPosition = null;
+            string tokenWithoutPosition = token;
+
+            if (numericPrefixMatch.Success)
+            {
+                columnPosition = int.Parse(numericPrefixMatch.Groups[1].Value);
+                tokenWithoutPosition = "$" + numericPrefixMatch.Groups[2].Value;
+                token = tokenWithoutPosition; // Process the rest as normal $column syntax
+            }
+
+            // Check for exact match prefix on general tokens
+            bool isGeneralExactMatch = false;
+            if (!token.StartsWith("$") && token.StartsWith("e\"") && token.EndsWith("\"") && token.Length > 3)
+            {
+                isGeneralExactMatch = true;
+                token = token.Substring(1); // Remove 'e' prefix
+            }
+
             // plain (general) token
             if (!token.StartsWith("$"))
             {
                 string cleanToken = StripQuotes(token).ToLowerInvariant();
-                
-                // Check if it's a glob pattern
-                if (ContainsGlobWildcards(cleanToken))
+
+                if (isGeneralExactMatch)
                 {
+                    // Exact match filter
+                    group.GeneralExactFilters.Add(isExcl ? "!" + cleanToken : cleanToken);
+                }
+                else if (ContainsGlobWildcards(cleanToken))
+                {
+                    // Glob pattern
                     group.GeneralGlobPatterns.Add(isExcl ? "!" + cleanToken : cleanToken);
                 }
                 else
                 {
+                    // Regular substring filter
                     group.GeneralFilters.Add(isExcl ? "!" + cleanToken : cleanToken);
                 }
                 continue;
@@ -368,6 +566,15 @@ public partial class CustomGUIs
 
             // token begins with '$' → column-qualified
             string body = token.Substring(1); // drop '$'
+            
+            // Check for exact match on column
+            bool isColumnExactMatch = false;
+            if (body.StartsWith("e\"") && body.Contains("\""))
+            {
+                isColumnExactMatch = true;
+                body = body.Substring(1); // Remove 'e' prefix
+            }
+            
             int dblColonPos = body.IndexOf("::", StringComparison.Ordinal);
             int colonPos = dblColonPos >= 0 ? dblColonPos : body.IndexOf(':');
 
@@ -379,6 +586,14 @@ public partial class CustomGUIs
                 valPart = body.Substring(start);
             }
 
+            // Check for exact match on value
+            bool isValueExactMatch = false;
+            if (!string.IsNullOrWhiteSpace(valPart) && valPart.StartsWith("e\"") && valPart.EndsWith("\"") && valPart.Length > 3)
+            {
+                isValueExactMatch = true;
+                valPart = valPart.Substring(1); // Remove 'e' prefix
+            }
+
             bool quotedCol = colPart.StartsWith("\"") && colPart.EndsWith("\"");
             string cleanCol = StripQuotes(colPart).ToLowerInvariant();
             List<string> colPieces = quotedCol
@@ -387,8 +602,20 @@ public partial class CustomGUIs
 
             if (colPieces.Count == 0) continue;
 
-            // Column visibility
+            // Column visibility with exact match tracking
             group.ColVisibilityFilters.Add(colPieces);
+            group.ColVisibilityExactMatch.Add(isColumnExactMatch);
+
+            // If we have a column position, add it to ordering
+            if (columnPosition.HasValue && !isExcl)
+            {
+                group.ColumnOrdering.Add(new ColumnOrderInfo
+                {
+                    ColumnParts = colPieces,
+                    Position = columnPosition.Value,
+                    IsExactMatch = isColumnExactMatch
+                });
+            }
 
             // Check if value part has comparison operator
             if (!string.IsNullOrWhiteSpace(valPart))
@@ -413,7 +640,9 @@ public partial class CustomGUIs
                         ColumnParts = colPieces,
                         Value = cleanValue,
                         IsExclusion = isExcl,
-                        IsGlobPattern = ContainsGlobWildcards(cleanValue)
+                        IsGlobPattern = ContainsGlobWildcards(cleanValue),
+                        IsExactMatch = isValueExactMatch,
+                        IsColumnExactMatch = isColumnExactMatch
                     };
                     group.ColValueFilters.Add(f);
                 }
