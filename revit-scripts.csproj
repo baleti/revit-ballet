@@ -89,6 +89,7 @@
     <Compile Include="revit-scripts\AssignViewTemplateToSelectedViews.cs" />
     <Compile Include="revit-scripts\BooleanDifferenceFilledRegionsWithSelectedElements.cs" />
     <Compile Include="revit-scripts\ChangeLevelOfSelectedElements.cs" />
+    <Compile Include="revit-scripts\CombineSelectionSetsIntoANewSet.cs" />
     <Compile Include="revit-scripts\CombineViewSetsIntoANewSet.cs" />
     <Compile Include="revit-scripts\CopyCropRegionOfSelectedView.cs" />
     <Compile Include="revit-scripts\CreateFilledRegionsOfSelectedElementsInViews.cs" />
