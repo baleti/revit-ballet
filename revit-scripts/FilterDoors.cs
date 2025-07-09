@@ -1,6 +1,7 @@
 ﻿using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -44,8 +45,8 @@ public class FilterDoors : IExternalCommand
         List<string> propertyNames = new List<string>
         {
             "Element Id", "Category", "Family Name", "Instance Name", "Level", "Mark",
-            "Head Height", "Comments", "Group", "FacingFlipped", "HandFlipped",
-            "Width", "Height", "Room From", "Room To"
+            "Head Height", "Comments", "Group", "FacingFlipped", "HandFlipped", "Wall Direction",
+            "Room From", "Room To", "Width", "Height"
         };
         propertyNames.AddRange(allParams);
 
@@ -71,6 +72,12 @@ public class FilterDoors : IExternalCommand
             openingProperties["FacingFlipped"] = openingInst.FacingFlipped;
             openingProperties["HandFlipped"] = openingInst.HandFlipped;
             
+            // Calculate Wall Direction
+            openingProperties["Wall Direction"] = GetWallDirection(openingInst);
+            
+            openingProperties["Room From"] = openingInst.FromRoom?.Name ?? "";
+            openingProperties["Room To"] = openingInst.ToRoom?.Name ?? "";
+            
             // Width and Height parameters differ between doors and windows
             if (opening.Category.Id.IntegerValue == (int)BuiltInCategory.OST_Doors)
             {
@@ -82,9 +89,6 @@ public class FilterDoors : IExternalCommand
                 openingProperties["Width"] = openingType?.get_Parameter(BuiltInParameter.WINDOW_WIDTH)?.AsDouble() ?? 0.0;
                 openingProperties["Height"] = openingType?.get_Parameter(BuiltInParameter.WINDOW_HEIGHT)?.AsDouble() ?? 0.0;
             }
-            
-            openingProperties["Room From"] = openingInst.FromRoom?.Name ?? "";
-            openingProperties["Room To"] = openingInst.ToRoom?.Name ?? "";
 
             // All parameters (built-in, shared, project, family)
             foreach (var paramName in allParams)
@@ -119,5 +123,56 @@ public class FilterDoors : IExternalCommand
         }
 
         return Result.Succeeded;
+    }
+    
+    private string GetWallDirection(FamilyInstance opening)
+    {
+        try
+        {
+            // Get the host wall
+            Element host = opening.Host;
+            if (!(host is Wall wall)) return "";
+            
+            // Get wall location curve
+            LocationCurve wallLocation = wall.Location as LocationCurve;
+            if (wallLocation == null) return "";
+            
+            Curve wallCurve = wallLocation.Curve;
+            if (wallCurve == null) return "";
+            
+            // Get opening location
+            LocationPoint openingLocation = opening.Location as LocationPoint;
+            if (openingLocation == null) return "";
+            
+            XYZ openingPoint = openingLocation.Point;
+            
+            // Project opening point onto wall curve to get parameter
+            IntersectionResult projection = wallCurve.Project(openingPoint);
+            if (projection == null) return "";
+            
+            double parameter = projection.Parameter;
+            
+            // Get tangent at the parameter
+            Transform transform = wallCurve.ComputeDerivatives(parameter, false);
+            XYZ tangent = transform.BasisX.Normalize(); // Tangent is the first derivative
+            
+            // Get the opening's facing direction (normalized)
+            XYZ facingDirection = opening.FacingOrientation.Normalize();
+            
+            // Get the right direction when facing through the door
+            // Right = Facing x Up
+            XYZ rightDirection = facingDirection.CrossProduct(XYZ.BasisZ).Normalize();
+            
+            // Check if wall tangent aligns with right or left direction
+            double dotProduct = tangent.DotProduct(rightDirection);
+            
+            // If dot product is positive, wall extends to the right
+            // If dot product is negative, wall extends to the left
+            return dotProduct > 0 ? "Right" : "Left";
+        }
+        catch
+        {
+            return "";
+        }
     }
 }
