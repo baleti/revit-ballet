@@ -85,6 +85,8 @@
     <Reference Include="System.Windows.Forms" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="revit-scripts\AddTextNoteToSelectedDoors.cs" />
+    <Compile Include="revit-scripts\AddTextNoteToSelectedElements.cs" />
     <Compile Include="revit-scripts\AlignSectionBox3DTopToWorkplane.cs" />
     <Compile Include="revit-scripts\AssignViewTemplateToSelectedViews.cs" />
     <Compile Include="revit-scripts\BooleanDifferenceFilledRegionsWithSelectedElements.cs" />
