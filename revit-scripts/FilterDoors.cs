@@ -156,18 +156,15 @@ public class FilterDoors : IExternalCommand
             Transform transform = wallCurve.ComputeDerivatives(parameter, false);
             XYZ tangent = transform.BasisX.Normalize(); // Tangent is the first derivative
             
-            // Get the opening's facing direction (normalized)
-            XYZ facingDirection = opening.FacingOrientation.Normalize();
+            // Use global coordinate system for consistent reference
+            // Assume looking in positive Y direction (north), so right is positive X
+            XYZ globalRight = XYZ.BasisX; // (1, 0, 0)
             
-            // Get the right direction when facing through the door
-            // Right = Facing x Up
-            XYZ rightDirection = facingDirection.CrossProduct(XYZ.BasisZ).Normalize();
+            // Check if wall tangent aligns with global right direction
+            double dotProduct = tangent.DotProduct(globalRight);
             
-            // Check if wall tangent aligns with right or left direction
-            double dotProduct = tangent.DotProduct(rightDirection);
-            
-            // If dot product is positive, wall extends to the right
-            // If dot product is negative, wall extends to the left
+            // If dot product is positive, wall extends to the right (positive X)
+            // If dot product is negative, wall extends to the left (negative X)
             return dotProduct > 0 ? "Right" : "Left";
         }
         catch
