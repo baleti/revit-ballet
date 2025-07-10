@@ -95,6 +95,7 @@
     <Compile Include="revit-scripts\CombineViewSetsIntoANewSet.cs" />
     <Compile Include="revit-scripts\CopyCropRegionOfSelectedView.cs" />
     <Compile Include="revit-scripts\CreateFilledRegionsOfSelectedElementsInViews.cs" />
+    <Compile Include="revit-scripts\CreateViewSetFromSelectedViews.cs" />
     <Compile Include="revit-scripts\DataGrid2_Filtering.cs" />
     <Compile Include="revit-scripts\DataGrid2_Helpers.cs" />
     <Compile Include="revit-scripts\DataGrid2_Sorting.cs" />
