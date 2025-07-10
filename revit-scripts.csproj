@@ -113,11 +113,13 @@
     <Compile Include="revit-scripts\FilterDoorsWithWallOffsets_Dimensioning.cs" />
     <Compile Include="revit-scripts\FilterDoorsWithWallOffsets_Models.cs" />
     <Compile Include="revit-scripts\FilterDoorsWithWallOffsets_WallFinding.cs" />
+    <Compile Include="revit-scripts\FilterDoors_SplitIntoSelectionSets.cs" />
     <Compile Include="revit-scripts\FilterPosition.cs" />
     <Compile Include="revit-scripts\FilterDimensions.cs" />
     <Compile Include="revit-scripts\FilterPositionOnAreas.cs" />
     <Compile Include="revit-scripts\FilterPositionOnRooms.cs" />
     <Compile Include="revit-scripts\FilterRevisionClouds.cs" />
+    <Compile Include="revit-scripts\FilterSelectedElements_SplitIntoSelectionSets.cs" />
     <Compile Include="revit-scripts\FilterSheets.cs" />
     <Compile Include="revit-scripts\HandFlipSelectedDoors.cs" />
     <Compile Include="revit-scripts\InvokeLastAddinCommand.cs" />
@@ -135,6 +137,7 @@
     <Compile Include="revit-scripts\SelectCategoriesInLinkedModels.cs" />
     <Compile Include="revit-scripts\SelectElementsOfSameTypeInLinkedModelsInView.cs" />
     <Compile Include="revit-scripts\SelectFamilyTypesInProjectByCategory.cs" />
+    <Compile Include="revit-scripts\SelectFiltersMatchingSelectedElements.cs" />
     <Compile Include="revit-scripts\SelectHostsOfSelectedElements.cs" />
     <Compile Include="revit-scripts\SelectionModeManager.cs" />
     <Compile Include="revit-scripts\SelectLast300CreatedElements.cs" />

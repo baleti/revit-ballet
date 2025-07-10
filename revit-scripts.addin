@@ -153,4 +153,39 @@
         <AddInId>F38B8B7B-4A67-49AF-BA19-ECAA9752578E</AddInId>
         <VendorId>scripts</VendorId>
     </AddIn>
+    <AddIn Type="Command">
+        <Name>scripts</Name>
+        <Assembly>revit-scripts.dll</Assembly>
+        <FullClassName>revit-scripts/FilterDoors</FullClassName>
+        <AddInId>F38B8B7B-4A97-49AF-BA19-ECAA9752578E</AddInId>
+        <VendorId>scripts</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>scripts</Name>
+        <Assembly>revit-scripts.dll</Assembly>
+        <FullClassName>revit-scripts/ToggleSelectionMode</FullClassName>
+        <AddInId>F38B8B7B-4AA7-49AF-BA19-ECAA9752578E</AddInId>
+        <VendorId>scripts</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>scripts</Name>
+        <Assembly>revit-scripts.dll</Assembly>
+        <FullClassName>revit-scripts/SwitchSelectionMode</FullClassName>
+        <AddInId>F38B8B7B-4AB7-49AF-BA19-ECAA9752578E</AddInId>
+        <VendorId>scripts</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>scripts</Name>
+        <Assembly>revit-scripts.dll</Assembly>
+        <FullClassName>revit-scripts/SelectFamilyTypeInstancesInProject</FullClassName>
+        <AddInId>F38B8B7B-4AC7-49AF-BA19-ECAA9752578E</AddInId>
+        <VendorId>scripts</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>scripts</Name>
+        <Assembly>revit-scripts.dll</Assembly>
+        <FullClassName>revit-scripts/SelectFamilyTypeInstancesInCurrentView</FullClassName>
+        <AddInId>F38B8B7B-4AD7-49AF-BA19-ECAA9752578E</AddInId>
+        <VendorId>scripts</VendorId>
+    </AddIn>
 </RevitAddIns>
