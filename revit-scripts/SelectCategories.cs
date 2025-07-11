@@ -9,11 +9,15 @@ public class CategoryWrapper
 {
     public ElementId Id { get; set; }
     public string Name { get; set; }
+    public bool IsDirectShapeCategory { get; set; }
+    public string DirectShapeCategoryName { get; set; }
     
-    public CategoryWrapper(ElementId id, string name)
+    public CategoryWrapper(ElementId id, string name, bool isDirectShape = false, string directShapeCatName = null)
     {
         Id = id;
         Name = name;
+        IsDirectShapeCategory = isDirectShape;
+        DirectShapeCategoryName = directShapeCatName;
     }
 }
 
@@ -41,14 +45,36 @@ public abstract class SelectCategoriesBase : IExternalCommand
             collector.WhereElementIsNotElementType();
         }
         
-        // Build a unique set of category IDs.
+        // Build a unique set of category IDs and track Direct Shapes and regular elements separately.
         HashSet<ElementId> categoryIds = new HashSet<ElementId>();
+        Dictionary<ElementId, List<DirectShape>> directShapesByCategory = new Dictionary<ElementId, List<DirectShape>>();
+        Dictionary<ElementId, int> regularElementCountByCategory = new Dictionary<ElementId, int>();
+        
         foreach (Element elem in collector)
         {
             Category category = elem.Category;
             if (category != null)
             {
                 categoryIds.Add(category.Id);
+                
+                // Check if this is a DirectShape
+                if (elem is DirectShape directShape)
+                {
+                    if (!directShapesByCategory.ContainsKey(category.Id))
+                    {
+                        directShapesByCategory[category.Id] = new List<DirectShape>();
+                    }
+                    directShapesByCategory[category.Id].Add(directShape);
+                }
+                else
+                {
+                    // Count regular (non-DirectShape) elements
+                    if (!regularElementCountByCategory.ContainsKey(category.Id))
+                    {
+                        regularElementCountByCategory[category.Id] = 0;
+                    }
+                    regularElementCountByCategory[category.Id]++;
+                }
             }
         }
         
@@ -76,12 +102,39 @@ public abstract class SelectCategoriesBase : IExternalCommand
                 // Add the OST_Viewers category manually.
                 ElementId viewersCatId = new ElementId((int)BuiltInCategory.OST_Viewers);
                 categoryIds.Add(viewersCatId);
+                
+                // Count regular viewer elements
+                var viewerElements = elementsNotInGroups
+                    .Select(id => doc.GetElement(id))
+                    .Where(e => e != null && e.Category != null &&
+                              e.Category.Id.IntegerValue == (int)BuiltInCategory.OST_Viewers);
+                
+                foreach (var viewer in viewerElements)
+                {
+                    if (viewer is DirectShape ds)
+                    {
+                        if (!directShapesByCategory.ContainsKey(viewersCatId))
+                        {
+                            directShapesByCategory[viewersCatId] = new List<DirectShape>();
+                        }
+                        directShapesByCategory[viewersCatId].Add(ds);
+                    }
+                    else
+                    {
+                        if (!regularElementCountByCategory.ContainsKey(viewersCatId))
+                        {
+                            regularElementCountByCategory[viewersCatId] = 0;
+                        }
+                        regularElementCountByCategory[viewersCatId]++;
+                    }
+                }
             }
         }
         // --- End additional logic ---
         
         // Build a list of CategoryWrapper objects for the DataGrid.
         List<CategoryWrapper> categoryList = new List<CategoryWrapper>();
+        
         foreach (ElementId id in categoryIds)
         {
             // For OST_Viewers in in-view mode, we will add them later grouped by view family.
@@ -91,11 +144,41 @@ public abstract class SelectCategoriesBase : IExternalCommand
             Category cat = Category.GetCategory(doc, id);
             if (cat != null)
             {
-                categoryList.Add(new CategoryWrapper(cat.Id, cat.Name));
+                // Only add the regular category entry if it has non-DirectShape elements
+                bool hasRegularElements = regularElementCountByCategory.ContainsKey(id) && 
+                                        regularElementCountByCategory[id] > 0;
+                
+                if (hasRegularElements)
+                {
+                    categoryList.Add(new CategoryWrapper(cat.Id, cat.Name));
+                }
+                
+                // If this category contains Direct Shapes, add a separate entry for them
+                if (directShapesByCategory.ContainsKey(id))
+                {
+                    int directShapeCount = directShapesByCategory[id].Count;
+                    string directShapeName = $"Direct Shapes: {cat.Name} ({directShapeCount} items)";
+                    categoryList.Add(new CategoryWrapper(cat.Id, directShapeName, true, cat.Name));
+                }
             }
             else if (id.IntegerValue == (int)BuiltInCategory.OST_Viewers)
             {
-                categoryList.Add(new CategoryWrapper(id, "Views (OST_Viewers)"));
+                // Only add if it has regular elements (not just Direct Shapes)
+                bool hasRegularElements = regularElementCountByCategory.ContainsKey(id) && 
+                                        regularElementCountByCategory[id] > 0;
+                
+                if (hasRegularElements)
+                {
+                    categoryList.Add(new CategoryWrapper(id, "Views (OST_Viewers)"));
+                }
+                
+                // If this category contains Direct Shapes, add a separate entry
+                if (directShapesByCategory.ContainsKey(id))
+                {
+                    int directShapeCount = directShapesByCategory[id].Count;
+                    string directShapeName = $"Direct Shapes: Views (OST_Viewers) ({directShapeCount} items)";
+                    categoryList.Add(new CategoryWrapper(id, directShapeName, true, "Views (OST_Viewers)"));
+                }
             }
         }
         
@@ -130,6 +213,9 @@ public abstract class SelectCategoriesBase : IExternalCommand
             }
         }
         
+        // Sort the list to keep Direct Shapes grouped with their parent categories
+        categoryList = categoryList.OrderBy(c => c.Name.Replace("Direct Shapes: ", "")).ToList();
+        
         // Define properties to display (only "Name" in this example).
         var propertyNames = new List<string> { "Name" };
         
@@ -153,9 +239,20 @@ public abstract class SelectCategoriesBase : IExternalCommand
                 categoryCollector.WhereElementIsNotElementType();
             }
             
+            // Handle Direct Shape categories
+            if (selectedCategory.IsDirectShapeCategory)
+            {
+                // Only select Direct Shapes in this category
+                var directShapeIds = categoryCollector
+                    .WhereElementIsNotElementType()
+                    .OfCategory((BuiltInCategory)selectedCategory.Id.IntegerValue)
+                    .OfClass(typeof(DirectShape))
+                    .Select(e => e.Id);
+                elementIds.AddRange(directShapeIds);
+            }
             // If the selected category is a split Views category, filter further by the VIEW_FAMILY parameter.
-            if (selectedCategory.Id.IntegerValue == (int)BuiltInCategory.OST_Viewers &&
-                selectedCategory.Name.StartsWith("Views: "))
+            else if (selectedCategory.Id.IntegerValue == (int)BuiltInCategory.OST_Viewers &&
+                     selectedCategory.Name.StartsWith("Views: "))
             {
                 string familyName = selectedCategory.Name.Substring("Views: ".Length);
                 var viewerIds = categoryCollector
@@ -167,9 +264,11 @@ public abstract class SelectCategoriesBase : IExternalCommand
             }
             else
             {
+                // For regular categories, exclude Direct Shapes to avoid double-selection
                 var elementIdsOfCategory = categoryCollector
                     .WhereElementIsNotElementType()
                     .OfCategory((BuiltInCategory)selectedCategory.Id.IntegerValue)
+                    .Where(e => !(e is DirectShape))  // Exclude Direct Shapes from regular category selection
                     .Select(e => e.Id)
                     .ToList();
                 elementIds.AddRange(elementIdsOfCategory);
