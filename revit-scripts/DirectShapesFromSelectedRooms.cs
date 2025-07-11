@@ -102,10 +102,14 @@ public class DirectShapesFromSelectedRooms : IExternalCommand
         // Name retains Revit's original (includes number)
         ds.Name = Sanitize(room.Name);
 
+        // Get the level name
+        Level level = doc.GetElement(room.LevelId) as Level;
+        string levelName = level?.Name ?? "Unknown Level";
+
         // Comments: "<Number> - <stripped room name>"
         string stripped = StripNumber(room.Name, room.Number);
         if (string.IsNullOrWhiteSpace(stripped)) stripped = room.Name;
-        string comment  = $"{room.Number} - {stripped}";
+        string comment = $"{room.Number} - {stripped} - {levelName}";
 
         Parameter p = ds.LookupParameter("Comments") ??
                       ds.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS);

@@ -102,10 +102,14 @@ public class DirectShapesFromSelectedAreas : IExternalCommand
         // Name retains Revit's original (includes number)
         ds.Name = Sanitize(area.Name);
 
+        // Get the level name
+        Level level = doc.GetElement(area.LevelId) as Level;
+        string levelName = level?.Name ?? "Unknown Level";
+
         // Comments: "<Number> - <stripped area name>"
         string stripped = StripNumber(area.Name, area.Number);
         if (string.IsNullOrWhiteSpace(stripped)) stripped = area.Name;
-        string comment  = $"{area.Number} - {stripped}";
+        string comment = $"{area.Number} - {stripped} - {levelName}";
 
         Parameter p = ds.LookupParameter("Comments") ??
                       ds.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS);
