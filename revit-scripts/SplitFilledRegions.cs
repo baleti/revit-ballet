@@ -17,7 +17,7 @@ namespace RevitCommands
             Selection sel = uidoc.Selection;
 
             // Get selected filled regions
-            ICollection<ElementId> selectedIds = uidoc.GetSelectionIds();
+            ICollection<ElementId> selectedIds = sel.GetElementIds();
             List<FilledRegion> selectedRegions = new List<FilledRegion>();
 
             foreach (ElementId id in selectedIds)
@@ -35,6 +35,8 @@ namespace RevitCommands
                 return Result.Failed;
             }
 
+            List<ElementId> newRegionIds = new List<ElementId>();
+
             using (Transaction trans = new Transaction(doc, "Split Filled Regions"))
             {
                 trans.Start();
@@ -43,9 +45,6 @@ namespace RevitCommands
                 {
                     // Get all boundary loops
                     IList<CurveLoop> loops = region.GetBoundaries();
-
-                    // Skip splitting if only one loop
-                    if (loops.Count <= 1) continue;
 
                     // Capture the original boundary line style (subcategory).
                     GraphicsStyle boundaryStyle = GetBoundaryLineStyle(doc, region);
@@ -68,14 +67,19 @@ namespace RevitCommands
                         {
                             SetBoundaryLineStyle(doc, newRegion, boundaryStyle);
                         }
+
+                        newRegionIds.Add(newRegion.Id);
                     }
 
                     // Delete the original filled region
-                    //doc.Delete(region.Id);
+                    doc.Delete(region.Id);
                 }
 
                 trans.Commit();
             }
+
+            // Set the new regions as the current selection
+            sel.SetElementIds(newRegionIds);
 
             return Result.Succeeded;
         }
