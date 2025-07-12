@@ -350,9 +350,6 @@ namespace RevitAddin
             {
                 trans.Start();
                 
-                int successCount = 0;
-                int failCount = 0;
-                
                 foreach (Area area in selectedAreas)
                 {
                     try
@@ -362,7 +359,6 @@ namespace RevitAddin
                         
                         if (segments == null || segments.Count == 0)
                         {
-                            failCount++;
                             continue;
                         }
 
@@ -373,33 +369,129 @@ namespace RevitAddin
                         {
                             if (segmentList.Count == 0)
                                 continue;
-                                
-                            CurveLoop curveLoop = new CurveLoop();
                             
-                            foreach (BoundarySegment segment in segmentList)
+                            CurveLoop curveLoop = new CurveLoop();
+                            Curve prevCurve = null;
+                            int skippedCount = 0;
+                            double maxGapTolerance = 0.05; // Adjustable tolerance for bridging small gaps (in feet)
+                            
+                            for (int i = 0; i < segmentList.Count; i++)
                             {
-                                Curve curve = segment.GetCurve();
-                                if (curve != null)
+                                BoundarySegment seg = segmentList[i];
+                                Curve curve = seg.GetCurve();
+                                if (curve == null)
+                                {
+                                    skippedCount++;
+                                    continue;
+                                }
+                                
+                                // Check continuity with previous curve
+                                if (prevCurve != null)
+                                {
+                                    XYZ prevEnd = prevCurve.GetEndPoint(1);
+                                    XYZ currStart = curve.GetEndPoint(0);
+                                    double dist = prevEnd.DistanceTo(currStart);
+                                    
+                                    // Try reversing if the opposite end connects better
+                                    XYZ currEnd = curve.GetEndPoint(1);
+                                    double revDist = prevEnd.DistanceTo(currEnd);
+                                    if (revDist < dist && revDist <= 0.001)
+                                    {
+                                        curve = curve.CreateReversed();
+                                        currStart = curve.GetEndPoint(0);
+                                        dist = revDist;
+                                    }
+                                    
+                                    // If small gap, bridge with a connecting line; else if too large, skip
+                                    if (dist > 0.001)
+                                    {
+                                        if (dist <= maxGapTolerance)
+                                        {
+                                            Curve connectingLine = Line.CreateBound(prevEnd, currStart);
+                                            try
+                                            {
+                                                curveLoop.Append(connectingLine);
+                                            }
+                                            catch
+                                            {
+                                                skippedCount++;
+                                                continue;
+                                            }
+                                        }
+                                        else
+                                        {
+                                            skippedCount++;
+                                            continue;
+                                        }
+                                    }
+                                }
+                                
+                                // Append the valid curve
+                                try
                                 {
                                     curveLoop.Append(curve);
                                 }
+                                catch
+                                {
+                                    skippedCount++;
+                                    continue;
+                                }
+                                prevCurve = curve;
                             }
                             
-                            // Only add if we have a valid curve loop
-                            if (curveLoop.Count() > 0)
+                            // Check if the loop is closed (min 3 curves for a valid region)
+                            int numCurves = curveLoop.NumberOfCurves();
+                            
+                            if (numCurves >= 3)
                             {
+                                XYZ firstStart = curveLoop.First().GetEndPoint(0);
+                                XYZ lastEnd = curveLoop.Last().GetEndPoint(1);
+                                double closeDist = firstStart.DistanceTo(lastEnd);
+                                
+                                if (closeDist > 0.001)
+                                {
+                                    if (closeDist <= 0.01) // Larger tolerance for auto-closing small gaps
+                                    {
+                                        Curve closingLine = Line.CreateBound(lastEnd, firstStart);
+                                        try
+                                        {
+                                            curveLoop.Append(closingLine);
+                                        }
+                                        catch
+                                        {
+                                            continue;
+                                        }
+                                    }
+                                    else
+                                    {
+                                        continue;
+                                    }
+                                }
+                                
                                 curveLoops.Add(curveLoop);
+                            }
+                            else
+                            {
+                                continue;
                             }
                         }
 
                         if (curveLoops.Count == 0)
                         {
-                            failCount++;
                             continue;
                         }
 
                         // Create the filled region in the current view
-                        FilledRegion filledRegion = FilledRegion.Create(doc, selectedRegionType.Id, activeView.Id, curveLoops);
+                        FilledRegion filledRegion = null;
+                        try
+                        {
+                            filledRegion = FilledRegion.Create(doc, selectedRegionType.Id, activeView.Id, curveLoops);
+                        }
+                        catch (Exception ex)
+                        {
+                            TaskDialog.Show("Warning", $"Error creating filled region for Area {area.Id}: {ex.Message}");
+                            continue;
+                        }
                         
                         if (filledRegion != null)
                         {
@@ -411,16 +503,10 @@ namespace RevitAddin
                             
                             // Add to created list
                             createdFilledRegionIds.Add(filledRegion.Id);
-                            successCount++;
-                        }
-                        else
-                        {
-                            failCount++;
                         }
                     }
                     catch (Exception ex)
                     {
-                        failCount++;
                         // Log the error but continue with other areas
                         TaskDialog.Show("Warning", $"Error creating filled region for Area {area.Id}: {ex.Message}");
                     }

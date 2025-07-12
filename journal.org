@@ -1158,3 +1158,11 @@ needs to be completely automated, minimum maintenance
 given that temporary isolate methods don't work on elements on linked models and other limitations like filters not distinguishing between linked models working with linked models in revit becomes is severely limiting
 [[https://forums.autodesk.com/t5/revit-ideas/unhide-elements-in-view-in-linked-models/idi-p/13712780][revit idea]]
 ***** possible workaround would be duplicating the view precisely and performing a "sacrificial" hide in view there
+*** 12
+**** =14:43= considered using Fody.Costura to embed code from references .dlls into a single .dll file
+sadly all such tools like fody.costura or ilmerge don't perform dead code elimination and embed entire .dll
+  this seems to lead to noticeable waste that I'd rather avoid by simply shipping other dependencies as separate files
+  perhaps it would not benefit from other optimizations offered by windows when .dlls are referenced as separate files
+  shame this isn't available in the default toolchain build process
+also don't know how addin worked before if I only shipped a single .dll file without its references
+  perhaps they were cached globally somehow
