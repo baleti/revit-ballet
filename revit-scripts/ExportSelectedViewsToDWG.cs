@@ -8,6 +8,9 @@ using System.IO;
 using System.Linq;
 using System.Windows.Forms;
 using System.Text.RegularExpressions;
+using Application = System.Windows.Forms.Application;
+using System.Runtime.InteropServices;
+using Microsoft.WindowsAPICodePack.Dialogs;
 
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
@@ -22,7 +25,7 @@ public class ExportSelectedViewsToDWG : IExternalCommand
         var selectedIds = uidoc.GetSelectionIds();
         if (!selectedIds.Any())
         {
-            TaskDialog.Show("No Selection", "Please select sheets or views to export.");
+            Autodesk.Revit.UI.TaskDialog.Show("No Selection", "Please select sheets or views to export.");
             return Result.Cancelled;
         }
         
@@ -40,7 +43,7 @@ public class ExportSelectedViewsToDWG : IExternalCommand
         
         if (!viewsAndSheets.Any())
         {
-            TaskDialog.Show("Invalid Selection", "No exportable views or sheets were selected.");
+            Autodesk.Revit.UI.TaskDialog.Show("Invalid Selection", "No exportable views or sheets were selected.");
             return Result.Cancelled;
         }
         
@@ -50,18 +53,30 @@ public class ExportSelectedViewsToDWG : IExternalCommand
             if (dialog.ShowDialog() != DialogResult.OK)
                 return Result.Cancelled;
             
-            // Get folder location
+            // Get folder location using CommonOpenFileDialog
             string exportFolder = null;
-            using (var folderDialog = new FolderBrowserDialog())
+            var lastPath = dialog.GetLastExportPath();
+            
+            var folderDialog = new CommonOpenFileDialog
             {
-                folderDialog.Description = "Select folder for DWG export";
-                folderDialog.ShowNewFolderButton = true;
-                
-                if (folderDialog.ShowDialog() != DialogResult.OK)
-                    return Result.Cancelled;
-                
-                exportFolder = folderDialog.SelectedPath;
+                Title = "Select folder for DWG export",
+                IsFolderPicker = true,
+                InitialDirectory = lastPath,
+                EnsurePathExists = true,
+                EnsureFileExists = false
+            };
+            
+            if (folderDialog.ShowDialog(commandData.Application.MainWindowHandle) == CommonFileDialogResult.Ok)
+            {
+                exportFolder = folderDialog.FileName;
             }
+            else
+            {
+                return Result.Cancelled;
+            }
+            
+            // Save the export path along with other settings
+            dialog.SaveExportSettings(exportFolder);
             
             // Get selected export options
             var exportOptions = dialog.GetSelectedExportOptions();
@@ -73,43 +88,126 @@ public class ExportSelectedViewsToDWG : IExternalCommand
             
             var successCount = 0;
             var failedExports = new List<string>();
+            var cancelled = false;
             
+            // Option 1: Using custom progress dialog (comment out if using Option 2)
+            using (var progressDialog = new ExportProgressDialog(viewsAndSheets.Count))
+            {
+                progressDialog.Show(new RevitWindow(commandData.Application.MainWindowHandle));
+                
+                using (var tx = new Transaction(doc, "Export Views to DWG"))
+                {
+                    tx.Start();
+                    
+                    for (int i = 0; i < viewsAndSheets.Count; i++)
+                    {
+                        if (progressDialog.IsCancelled)
+                        {
+                            cancelled = true;
+                            break;
+                        }
+                        
+                        var view = viewsAndSheets[i];
+                        progressDialog.UpdateProgress(i, $"Exporting: {view.Name}");
+                        Application.DoEvents(); // Allow UI to update
+                        
+                        try
+                        {
+                            var fileName = dialog.GetFileName(view);
+                            var viewIds = new List<ElementId> { view.Id };
+                            
+                            doc.Export(exportFolder, fileName, viewIds, exportOptions);
+                            successCount++;
+                        }
+                        catch (Exception ex)
+                        {
+                            failedExports.Add($"{view.Name}: {ex.Message}");
+                        }
+                    }
+                    
+                    if (cancelled)
+                        tx.RollBack();
+                    else
+                        tx.Commit();
+                }
+            }
+            
+            // Option 2: Using Revit's UI for progress (uncomment to use)
+            /*
             using (var tx = new Transaction(doc, "Export Views to DWG"))
             {
                 tx.Start();
                 
-                foreach (var view in viewsAndSheets)
+                uidoc.Application.Application.ProgressMeter.BeginProgress("Exporting to DWG", viewsAndSheets.Count);
+                
+                try
                 {
-                    try
+                    for (int i = 0; i < viewsAndSheets.Count; i++)
                     {
-                        var fileName = dialog.GetFileName(view);
-                        var viewIds = new List<ElementId> { view.Id };
+                        if (uidoc.Application.Application.ProgressMeter.IsCanceled)
+                        {
+                            cancelled = true;
+                            break;
+                        }
                         
-                        doc.Export(exportFolder, fileName, viewIds, exportOptions);
-                        successCount++;
-                    }
-                    catch (Exception ex)
-                    {
-                        failedExports.Add($"{view.Name}: {ex.Message}");
+                        var view = viewsAndSheets[i];
+                        uidoc.Application.Application.ProgressMeter.Update(i + 1);
+                        
+                        try
+                        {
+                            var fileName = dialog.GetFileName(view);
+                            var viewIds = new List<ElementId> { view.Id };
+                            
+                            doc.Export(exportFolder, fileName, viewIds, exportOptions);
+                            successCount++;
+                        }
+                        catch (Exception ex)
+                        {
+                            failedExports.Add($"{view.Name}: {ex.Message}");
+                        }
                     }
                 }
+                finally
+                {
+                    uidoc.Application.Application.ProgressMeter.EndProgress();
+                }
                 
-                tx.Commit();
+                if (cancelled)
+                    tx.RollBack();
+                else
+                    tx.Commit();
             }
+            */
             
             // Show results
-            var resultMessage = $"Successfully exported {successCount} of {viewsAndSheets.Count} views.";
-            if (failedExports.Any())
+            if (cancelled)
             {
-                resultMessage += $"\n\nFailed exports:\n{string.Join("\n", failedExports.Take(5))}";
-                if (failedExports.Count > 5)
-                    resultMessage += $"\n...and {failedExports.Count - 5} more.";
+                Autodesk.Revit.UI.TaskDialog.Show("Export Cancelled", "DWG export was cancelled by user.");
             }
-            
-            TaskDialog.Show("Export Complete", resultMessage);
+            else
+            {
+                var resultMessage = $"Successfully exported {successCount} of {viewsAndSheets.Count} views.";
+                if (failedExports.Any())
+                {
+                    resultMessage += $"\n\nFailed exports:\n{string.Join("\n", failedExports.Take(5))}";
+                    if (failedExports.Count > 5)
+                        resultMessage += $"\n...and {failedExports.Count - 5} more.";
+                }
+                
+                Autodesk.Revit.UI.TaskDialog.Show("Export Complete", resultMessage);
+            }
         }
         
         return Result.Succeeded;
+    }
+}
+
+public class RevitWindow : IWin32Window
+{
+    public IntPtr Handle { get; private set; }
+    public RevitWindow(IntPtr handle)
+    {
+        Handle = handle;
     }
 }
 
@@ -121,22 +219,23 @@ public class DWGNamingDialog : System.Windows.Forms.Form
         "revit-scripts"
     );
     private static readonly string FormatHistoryFile = Path.Combine(AppDataPath, "ExportSelectedViewsToDWG");
+    private static readonly string ExportSettingsFile = Path.Combine(AppDataPath, "ExportSelectedViewsToDWG_Settings");
     
     private Document doc;
     private List<Autodesk.Revit.DB.View> views;
     private Dictionary<Autodesk.Revit.DB.View, Dictionary<string, string>> viewParameters;
     private List<string> availableParameters;
-    private List<string> filteredParameters;
     private string formatString = "{Sheet Number}_{Sheet Name}";
     private List<ExportDWGSettings> exportSettings;
     private bool isPlaceholderActive = true;
+    private List<string> formatHistory;
+    private int lastCursorPosition = 0;
     
-    private System.Windows.Forms.TextBox txtFormatString;
+    private System.Windows.Forms.ComboBox cmbFormatString;
     private System.Windows.Forms.TextBox txtSearch;
-    private ListBox lstAvailableParams;
+    private DataGridView dgvAvailableParams;
     private DataGridView dgvPreview;
     private System.Windows.Forms.ComboBox cmbExportOptions;
-    private Button btnInsertParam;
     private Button btnOK;
     private Button btnCancel;
     private SplitContainer splitMain;
@@ -170,6 +269,7 @@ public class DWGNamingDialog : System.Windows.Forms.Form
     
     private void LoadFormatHistory()
     {
+        formatHistory = new List<string>();
         try
         {
             Directory.CreateDirectory(AppDataPath);
@@ -180,12 +280,16 @@ public class DWGNamingDialog : System.Windows.Forms.Form
                 {
                     formatString = lines[0];
                 }
+                formatHistory.AddRange(lines.Where(l => !string.IsNullOrWhiteSpace(l)).Take(10));
             }
         }
         catch
         {
             // Use default if load fails
         }
+        
+        if (!formatHistory.Any())
+            formatHistory.Add(formatString);
     }
     
     private void SaveFormatHistory()
@@ -215,6 +319,91 @@ public class DWGNamingDialog : System.Windows.Forms.Form
         {
             // Ignore save errors
         }
+    }
+    
+    private void SaveProjectSetting(string key, string value)
+    {
+        try
+        {
+            Directory.CreateDirectory(AppDataPath);
+            var lines = File.Exists(ExportSettingsFile) ? File.ReadAllLines(ExportSettingsFile).ToList() : new List<string>();
+            var projectName = doc.Title;
+            var sectionHeader = $"[{projectName}]";
+            int sectionIndex = lines.FindIndex(l => l.Trim() == sectionHeader);
+            
+            if (sectionIndex < 0)
+            {
+                lines.Add(sectionHeader);
+                sectionIndex = lines.Count - 1;
+            }
+            
+            int endIndex = sectionIndex + 1;
+            while (endIndex < lines.Count && !lines[endIndex].Trim().StartsWith("["))
+            {
+                endIndex++;
+            }
+            
+            bool found = false;
+            for (int i = sectionIndex + 1; i < endIndex; i++)
+            {
+                var trimmed = lines[i].Trim();
+                if (trimmed.StartsWith(key + ":"))
+                {
+                    lines[i] = $"{key}: {value}";
+                    found = true;
+                    break;
+                }
+            }
+            
+            if (!found)
+            {
+                lines.Insert(endIndex, $"{key}: {value}");
+            }
+            
+            File.WriteAllLines(ExportSettingsFile, lines);
+        }
+        catch
+        {
+            // Ignore save errors
+        }
+    }
+    
+    private string GetProjectSetting(string key)
+    {
+        try
+        {
+            if (File.Exists(ExportSettingsFile))
+            {
+                var lines = File.ReadAllLines(ExportSettingsFile);
+                var projectName = doc.Title;
+                var sectionHeader = $"[{projectName}]";
+                bool inSection = false;
+                
+                foreach (var line in lines)
+                {
+                    var trimmed = line.Trim();
+                    if (trimmed.StartsWith("[") && trimmed.EndsWith("]"))
+                    {
+                        inSection = trimmed == sectionHeader;
+                        continue;
+                    }
+                    
+                    if (inSection)
+                    {
+                        if (trimmed.StartsWith(key + ":"))
+                        {
+                            return trimmed.Substring(key.Length + 1).Trim();
+                        }
+                        else if (key == "export settings" && !trimmed.StartsWith("last path:") && !string.IsNullOrEmpty(trimmed))
+                        {
+                            return trimmed;
+                        }
+                    }
+                }
+            }
+        }
+        catch { }
+        return null;
     }
     
     private void InitializeParameters()
@@ -274,7 +463,6 @@ public class DWGNamingDialog : System.Windows.Forms.Form
         }
         
         availableParameters = paramSet.OrderBy(p => p).ToList();
-        filteredParameters = new List<string>(availableParameters);
     }
     
     private void InitializeUI()
@@ -298,24 +486,19 @@ public class DWGNamingDialog : System.Windows.Forms.Form
             Size = new System.Drawing.Size(100, 20)
         };
         
-        txtFormatString = new System.Windows.Forms.TextBox
+        cmbFormatString = new System.Windows.Forms.ComboBox
         {
-            Text = formatString,
             Location = new System.Drawing.Point(12, 35),
             Size = new System.Drawing.Size(600, 25),
-            Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
+            Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+            DropDownStyle = ComboBoxStyle.DropDown
         };
-        txtFormatString.TextChanged += TxtFormatString_TextChanged;
-        txtFormatString.KeyPress += TxtFormatString_KeyPress;
-        
-        btnInsertParam = new Button
-        {
-            Text = "Insert Selected Parameter",
-            Location = new System.Drawing.Point(620, 35),
-            Size = new System.Drawing.Size(150, 25),
-            Anchor = AnchorStyles.Top | AnchorStyles.Right
-        };
-        btnInsertParam.Click += BtnInsertParam_Click;
+        cmbFormatString.Items.AddRange(formatHistory.ToArray());
+        cmbFormatString.Text = formatString;
+        cmbFormatString.TextChanged += CmbFormatString_TextChanged;
+        cmbFormatString.KeyDown += CmbFormatString_KeyDown;
+        cmbFormatString.Enter += CmbFormatString_Enter;
+        cmbFormatString.Leave += CmbFormatString_Leave;
         
         var lblExportOptions = new Label
         {
@@ -337,99 +520,164 @@ public class DWGNamingDialog : System.Windows.Forms.Form
         {
             cmbExportOptions.Items.Add(settings.Name);
         }
-        cmbExportOptions.SelectedIndex = 0;
+        
+        // Load saved choice
+        string savedChoice = GetProjectSetting("export settings") ?? "<Default>";
+        var selectedIndex = cmbExportOptions.Items.IndexOf(savedChoice);
+        cmbExportOptions.SelectedIndex = selectedIndex >= 0 ? selectedIndex : 0;
+        
+        lblFormat.TabStop = false;
+        cmbFormatString.TabIndex = 0; // First tab stop
+        lblExportOptions.TabStop = false;
+        cmbExportOptions.TabIndex = 1;
         
         pnlTop.Controls.AddRange(new System.Windows.Forms.Control[] {
-            lblFormat, txtFormatString, btnInsertParam,
+            lblFormat, cmbFormatString,
             lblExportOptions, cmbExportOptions
         });
+        
+        pnlTop.Resize += (s, e) => {
+            cmbFormatString.Width = pnlTop.ClientSize.Width - cmbFormatString.Left - 12;
+        };
         
         // Bottom panel for buttons
         var pnlBottom = new System.Windows.Forms.Panel
         {
             Dock = DockStyle.Bottom,
-            Height = 50
+            Height = 50,
+            BackColor = SystemColors.Control
         };
         
         btnOK = new Button
         {
             Text = "OK",
             Size = new System.Drawing.Size(75, 30),
+            DialogResult = DialogResult.OK,
+            TabIndex = 5,
             Anchor = AnchorStyles.Bottom | AnchorStyles.Right
         };
-        btnOK.Location = new System.Drawing.Point(this.ClientSize.Width - btnOK.Width - 100, 10);
-        btnOK.DialogResult = DialogResult.OK;
         btnOK.Click += BtnOK_Click;
         
         btnCancel = new Button
         {
             Text = "Cancel",
             Size = new System.Drawing.Size(75, 30),
+            DialogResult = DialogResult.Cancel,
+            TabIndex = 6,
             Anchor = AnchorStyles.Bottom | AnchorStyles.Right
         };
-        btnCancel.Location = new System.Drawing.Point(this.ClientSize.Width - btnCancel.Width - 15, 10);
-        btnCancel.DialogResult = DialogResult.Cancel;
         
-        pnlBottom.Controls.AddRange(new System.Windows.Forms.Control[] { btnOK, btnCancel });
+        // Position buttons in resize event to ensure proper placement
+        pnlBottom.Resize += (s, e) => {
+            btnCancel.Location = new System.Drawing.Point(pnlBottom.Width - btnCancel.Width - 15, 10);
+            btnOK.Location = new System.Drawing.Point(pnlBottom.Width - btnOK.Width - btnCancel.Width - 25, 10);
+        };
+        
+        pnlBottom.Controls.Add(btnOK);
+        pnlBottom.Controls.Add(btnCancel);
         
         // Main split container
         splitMain = new SplitContainer
         {
             Dock = DockStyle.Fill,
             Orientation = Orientation.Vertical,
-            SplitterDistance = 250, // 25% for parameters
-            TabStop = false // Prevent tab focus on splitter
+            SplitterDistance = 300, // 30% for parameters
+            TabStop = false, // Prevent tab focus on splitter
+            SplitterWidth = 4
         };
         
         // Left panel for parameters
         pnlLeft = new System.Windows.Forms.Panel
         {
             Dock = DockStyle.Fill,
-            Padding = new Padding(12)
+            Padding = new Padding(12, 12, 6, 12)
         };
-        
-        txtSearch = new System.Windows.Forms.TextBox
-        {
-            Location = new System.Drawing.Point(12, 35),
-            Size = new System.Drawing.Size(220, 25),
-            Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
-            ForeColor = SystemColors.GrayText,
-            Text = "Filter Parameters"
-        };
-        txtSearch.TextChanged += TxtSearch_TextChanged;
-        txtSearch.KeyPress += TxtSearch_KeyPress;
-        txtSearch.Enter += TxtSearch_Enter;
-        txtSearch.Leave += TxtSearch_Leave;
         
         var lblAvailable = new Label
         {
             Text = "Available Parameters:",
-            Location = new System.Drawing.Point(12, 65),
+            Location = new System.Drawing.Point(0, 0),
             Size = new System.Drawing.Size(200, 20)
         };
         
-        lstAvailableParams = new ListBox
+        txtSearch = new System.Windows.Forms.TextBox
         {
-            Location = new System.Drawing.Point(12, 85),
-            Size = new System.Drawing.Size(220, 380),
-            Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
+            Location = new System.Drawing.Point(0, 25),
+            Size = new System.Drawing.Size(276, 25),
+            Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+            ForeColor = SystemColors.GrayText,
+            Text = "Filter Parameters",
+            TabIndex = 3,
+            TabStop = true
         };
-        lstAvailableParams.DoubleClick += LstAvailableParams_DoubleClick;
-        lstAvailableParams.KeyPress += LstAvailableParams_KeyPress;
-        lstAvailableParams.Items.AddRange(availableParameters.ToArray());
+        txtSearch.TextChanged += TxtSearch_TextChanged;
+        txtSearch.Enter += TxtSearch_Enter;
+        txtSearch.Leave += TxtSearch_Leave;
+        
+        dgvAvailableParams = new DataGridView
+        {
+            Location = new System.Drawing.Point(0, 55),
+            Size = new System.Drawing.Size(276, 400),
+            Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
+            AllowUserToAddRows = false,
+            AllowUserToDeleteRows = false,
+            AllowUserToResizeRows = false,
+            ReadOnly = true,
+            SelectionMode = DataGridViewSelectionMode.FullRowSelect,
+            MultiSelect = false,
+            RowHeadersVisible = false,
+            AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
+            StandardTab = true,
+            ScrollBars = ScrollBars.Vertical, // Changed to only vertical since columns are auto-sized
+            RowTemplate = { Height = 18 }, // Set row height to 18 pixels
+            ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing,
+            ColumnHeadersHeight = 23 // Set a fixed header height
+        };
+        dgvAvailableParams.DoubleClick += DgvAvailableParams_DoubleClick;
+        dgvAvailableParams.KeyDown += DgvAvailableParams_KeyDown;
+        
+        // Setup columns
+        dgvAvailableParams.Columns.Add("Parameter", "Parameter");
+        dgvAvailableParams.Columns.Add("Sample", "Sample Value");
+        dgvAvailableParams.Columns[0].FillWeight = 50;
+        dgvAvailableParams.Columns[1].FillWeight = 50;
+        
+        PopulateParametersGrid();
         
         var btnAddParam = new Button
         {
-            Text = "Add Parameter",
-            Location = new System.Drawing.Point(12, 470),
-            Size = new System.Drawing.Size(220, 25),
+            Text = "Insert Selected Parameter",
+            Location = new System.Drawing.Point(0, 460),
+            Size = new System.Drawing.Size(276, 25),
             Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
         };
         btnAddParam.Click += BtnAddParam_Click;
         
+        txtSearch.TabIndex = 2;
+        lblAvailable.TabStop = false;
+        dgvAvailableParams.TabIndex = 3;
+        btnAddParam.TabIndex = 4;
+        
         pnlLeft.Controls.AddRange(new System.Windows.Forms.Control[] {
-            txtSearch, lblAvailable, lstAvailableParams, btnAddParam
+            lblAvailable, txtSearch, dgvAvailableParams, btnAddParam
         });
+        
+        pnlLeft.Resize += (s, e) => {
+            var padding = pnlLeft.Padding;
+            var availableWidth = pnlLeft.ClientSize.Width - padding.Left - padding.Right;
+            var availableHeight = pnlLeft.ClientSize.Height - padding.Top - padding.Bottom;
+            
+            // Update txtSearch width
+            txtSearch.Width = availableWidth;
+            
+            // Update dgvAvailableParams size
+            dgvAvailableParams.Width = availableWidth;
+            dgvAvailableParams.Height = availableHeight - dgvAvailableParams.Top - 35; // Leave space for button
+            
+            // Update button position and width
+            btnAddParam.Top = dgvAvailableParams.Bottom + 5;
+            btnAddParam.Width = availableWidth;
+        };
         
         splitMain.Panel1.Controls.Add(pnlLeft);
         
@@ -437,32 +685,34 @@ public class DWGNamingDialog : System.Windows.Forms.Form
         var pnlRight = new System.Windows.Forms.Panel
         {
             Dock = DockStyle.Fill,
-            Padding = new Padding(0, 12, 12, 12) // No left padding to use full width
+            Padding = new Padding(6, 12, 12, 12)
         };
         
         var lblPreview = new Label
         {
             Text = "Preview:",
-            Location = new System.Drawing.Point(0, 12),
+            Location = new System.Drawing.Point(0, 0),
             Size = new System.Drawing.Size(100, 20)
         };
         
         dgvPreview = new DataGridView
         {
-            Location = new System.Drawing.Point(0, 35),
+            Location = new System.Drawing.Point(0, 25),
+            Size = new System.Drawing.Size(pnlRight.ClientSize.Width, pnlRight.ClientSize.Height - 25),
+            Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
             AllowUserToAddRows = false,
             AllowUserToDeleteRows = false,
             ReadOnly = true,
             AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
-            RowHeadersVisible = false
+            RowHeadersVisible = false,
+            ScrollBars = ScrollBars.Vertical,
+            RowTemplate = { Height = 18 }, // Set row height to 18 pixels for consistency
+            ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing,
+            ColumnHeadersHeight = 23 // Set a fixed header height
         };
         
-        // Size the DataGridView to fit within the panel properly
-        dgvPreview.Size = new System.Drawing.Size(
-            pnlRight.Width - pnlRight.Padding.Left - pnlRight.Padding.Right,
-            pnlRight.Height - 35 - pnlRight.Padding.Top - pnlRight.Padding.Bottom
-        );
-        dgvPreview.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+        lblPreview.TabStop = false;
+        dgvPreview.TabStop = false; // Preview is read-only, skip in tab order
         
         pnlRight.Controls.AddRange(new System.Windows.Forms.Control[] {
             lblPreview, dgvPreview
@@ -475,15 +725,87 @@ public class DWGNamingDialog : System.Windows.Forms.Form
         this.Controls.Add(pnlBottom);
         this.Controls.Add(pnlTop);
         
-        // Set splitter position to 25% after form loads
+        // Set splitter position to 30% after form loads
         this.Load += (s, e) => { 
-            splitMain.SplitterDistance = this.Width / 4;
-            txtFormatString.Focus(); // Set initial focus to format string
+            splitMain.SplitterDistance = (int)(this.Width * 0.3);
+            // Force initial resize
+            pnlLeft.PerformLayout();
+            pnlRight.PerformLayout();
+        };
+        
+        // Set focus after form is shown
+        this.Shown += (s, e) => {
+            this.ActiveControl = cmbFormatString;
+            cmbFormatString.Focus();
+            cmbFormatString.SelectionStart = 0;
+            cmbFormatString.SelectionLength = 0;
+            lastCursorPosition = 0;
         };
         
         // Set accept and cancel buttons
         this.AcceptButton = btnOK;
         this.CancelButton = btnCancel;
+        
+        // Set tab order for panels
+        pnlTop.TabIndex = 0;
+        splitMain.TabIndex = 1;
+        pnlBottom.TabIndex = 2;
+    }
+    
+    private void PopulateParametersGrid()
+    {
+        dgvAvailableParams.Rows.Clear();
+        
+        // Get first view for sample values
+        var firstView = views.FirstOrDefault();
+        var sampleParams = firstView != null ? viewParameters[firstView] : new Dictionary<string, string>();
+        
+        var parametersToShow = isPlaceholderActive || string.IsNullOrWhiteSpace(txtSearch.Text) 
+            ? availableParameters 
+            : availableParameters.Where(p => p.ToLower().Contains(txtSearch.Text.ToLower())).ToList();
+        
+        foreach (var param in parametersToShow)
+        {
+            var sampleValue = sampleParams.ContainsKey(param) ? sampleParams[param] : "";
+            if (sampleValue.Length > 50)
+                sampleValue = sampleValue.Substring(0, 47) + "...";
+            
+            dgvAvailableParams.Rows.Add(param, sampleValue);
+        }
+    }
+    
+    private void CmbFormatString_TextChanged(object sender, EventArgs e)
+    {
+        formatString = cmbFormatString.Text;
+        UpdatePreview();
+    }
+    
+    private void CmbFormatString_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.KeyCode == Keys.F4)
+        {
+            cmbFormatString.DroppedDown = !cmbFormatString.DroppedDown;
+            e.Handled = true;
+            cmbFormatString.BeginInvoke(new Action(() =>
+            {
+                cmbFormatString.SelectionStart = lastCursorPosition;
+                cmbFormatString.SelectionLength = 0;
+            }));
+        }
+    }
+    
+    private void CmbFormatString_Enter(object sender, EventArgs e)
+    {
+        cmbFormatString.BeginInvoke(new Action(() =>
+        {
+            cmbFormatString.SelectionStart = lastCursorPosition;
+            cmbFormatString.SelectionLength = 0;
+        }));
+    }
+    
+    private void CmbFormatString_Leave(object sender, EventArgs e)
+    {
+        lastCursorPosition = cmbFormatString.SelectionStart;
     }
     
     private void TxtSearch_TextChanged(object sender, EventArgs e)
@@ -492,21 +814,7 @@ public class DWGNamingDialog : System.Windows.Forms.Form
         if (isPlaceholderActive)
             return;
             
-        var searchText = txtSearch.Text.ToLower();
-        lstAvailableParams.Items.Clear();
-        
-        if (string.IsNullOrWhiteSpace(searchText))
-        {
-            filteredParameters = new List<string>(availableParameters);
-        }
-        else
-        {
-            filteredParameters = availableParameters
-                .Where(p => p.ToLower().Contains(searchText))
-                .ToList();
-        }
-        
-        lstAvailableParams.Items.AddRange(filteredParameters.ToArray());
+        PopulateParametersGrid();
     }
     
     private void TxtSearch_Enter(object sender, EventArgs e)
@@ -526,83 +834,67 @@ public class DWGNamingDialog : System.Windows.Forms.Form
             txtSearch.Text = "Filter Parameters";
             txtSearch.ForeColor = SystemColors.GrayText;
             isPlaceholderActive = true;
+            PopulateParametersGrid();
+        }
+    }
+    
+    private void BtnAddParam_Click(object sender, EventArgs e)
+    {
+        InsertSelectedParameter();
+    }
+    
+    private void DgvAvailableParams_DoubleClick(object sender, EventArgs e)
+    {
+        InsertSelectedParameter();
+    }
+    
+    private void DgvAvailableParams_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.KeyCode == Keys.Enter)
+        {
+            InsertSelectedParameter();
+            e.Handled = true;
+            e.SuppressKeyPress = true;
+        }
+        else if (e.KeyCode == Keys.Tab)
+        {
+            // Let the form handle tab navigation
+            e.Handled = false;
+        }
+    }
+    
+    private void InsertSelectedParameter()
+    {
+        if (dgvAvailableParams.SelectedRows.Count > 0)
+        {
+            var paramName = dgvAvailableParams.SelectedRows[0].Cells[0].Value.ToString();
+            var insertText = $"{{{paramName}}}";
             
-            // Reset the list to show all parameters
-            lstAvailableParams.Items.Clear();
-            lstAvailableParams.Items.AddRange(availableParameters.ToArray());
+            var selectionStart = lastCursorPosition;
+            var currentText = cmbFormatString.Text;
+            cmbFormatString.Text = currentText.Insert(selectionStart, insertText);
+            lastCursorPosition = selectionStart + insertText.Length;
+            cmbFormatString.Focus();
+            cmbFormatString.SelectionStart = lastCursorPosition;
+            cmbFormatString.SelectionLength = 0;
         }
-    }
-    
-    private void TxtFormatString_TextChanged(object sender, EventArgs e)
-    {
-        formatString = txtFormatString.Text;
-        UpdatePreview();
-    }
-    
-    private void BtnInsertParam_Click(object sender, EventArgs e)
-    {
-        if (lstAvailableParams.SelectedItem != null)
-        {
-            InsertParameter(lstAvailableParams.SelectedItem.ToString());
-        }
-    }
-    
-    private void LstAvailableParams_DoubleClick(object sender, EventArgs e)
-    {
-        if (lstAvailableParams.SelectedItem != null)
-        {
-            InsertParameter(lstAvailableParams.SelectedItem.ToString());
-        }
-    }
-    
-    private void InsertParameter(string paramName)
-    {
-        var insertText = $"{{{paramName}}}";
-        var selectionStart = txtFormatString.SelectionStart;
-        txtFormatString.Text = txtFormatString.Text.Insert(selectionStart, insertText);
-        txtFormatString.SelectionStart = selectionStart + insertText.Length;
-        txtFormatString.Focus();
     }
     
     private void BtnOK_Click(object sender, EventArgs e)
     {
         SaveFormatHistory();
+        SaveProjectSetting("export settings", cmbExportOptions.SelectedItem?.ToString() ?? "<Default>");
     }
     
-    private void BtnAddParam_Click(object sender, EventArgs e)
+    public string GetLastExportPath()
     {
-        if (lstAvailableParams.SelectedItem != null)
-        {
-            InsertParameter(lstAvailableParams.SelectedItem.ToString());
-        }
+        return GetProjectSetting("last path") ?? Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
     }
     
-    private void TxtFormatString_KeyPress(object sender, KeyPressEventArgs e)
+    public void SaveExportSettings(string exportPath)
     {
-        // Prevent Enter from triggering OK when in format string textbox
-        if (e.KeyChar == (char)Keys.Enter)
-        {
-            e.Handled = true;
-        }
-    }
-    
-    private void TxtSearch_KeyPress(object sender, KeyPressEventArgs e)
-    {
-        // Prevent Enter from triggering OK when in search textbox
-        if (e.KeyChar == (char)Keys.Enter)
-        {
-            e.Handled = true;
-        }
-    }
-    
-    private void LstAvailableParams_KeyPress(object sender, KeyPressEventArgs e)
-    {
-        // Add parameter on Enter when in parameter list
-        if (e.KeyChar == (char)Keys.Enter && lstAvailableParams.SelectedItem != null)
-        {
-            InsertParameter(lstAvailableParams.SelectedItem.ToString());
-            e.Handled = true;
-        }
+        SaveProjectSetting("export settings", cmbExportOptions.SelectedItem?.ToString() ?? "<Default>");
+        SaveProjectSetting("last path", exportPath);
     }
     
     private void UpdatePreview()
@@ -613,9 +905,9 @@ public class DWGNamingDialog : System.Windows.Forms.Form
         dgvPreview.Columns.Add("Original", "Original Name");
         dgvPreview.Columns.Add("NewName", "DWG File Name");
         
-        // Set equal column widths
-        dgvPreview.Columns[0].FillWeight = 50;
-        dgvPreview.Columns[1].FillWeight = 50;
+        // Set column widths
+        dgvPreview.Columns[0].FillWeight = 30;
+        dgvPreview.Columns[1].FillWeight = 70;
         
         foreach (var view in views.Take(15)) // Show first 15 for performance
         {
@@ -688,5 +980,104 @@ public class DWGNamingDialog : System.Windows.Forms.Form
         }
         
         return null;
+    }
+}
+
+// Progress dialog for export operation
+public class ExportProgressDialog : System.Windows.Forms.Form
+{
+    private ProgressBar progressBar;
+    private Label lblStatus;
+    private Label lblProgress;
+    private Button btnCancel;
+    private bool isCancelled = false;
+    private int totalItems;
+    
+    public bool IsCancelled => isCancelled;
+    
+    public ExportProgressDialog(int totalItems)
+    {
+        this.totalItems = totalItems;
+        InitializeUI();
+    }
+    
+    private void InitializeUI()
+    {
+        this.Text = "Exporting to DWG";
+        this.Size = new System.Drawing.Size(450, 180); // Increased height
+        this.StartPosition = FormStartPosition.CenterScreen;
+        this.FormBorderStyle = FormBorderStyle.FixedDialog;
+        this.MaximizeBox = false;
+        this.MinimizeBox = false;
+        this.ControlBox = false; // Remove close button
+        
+        lblStatus = new Label
+        {
+            Text = "Preparing export...",
+            Location = new System.Drawing.Point(12, 20),
+            Size = new System.Drawing.Size(410, 20),
+            AutoEllipsis = true
+        };
+        
+        lblProgress = new Label
+        {
+            Text = "0 of " + totalItems,
+            Location = new System.Drawing.Point(12, 45),
+            Size = new System.Drawing.Size(100, 20)
+        };
+        
+        progressBar = new ProgressBar
+        {
+            Location = new System.Drawing.Point(12, 70),
+            Size = new System.Drawing.Size(410, 23),
+            Minimum = 0,
+            Maximum = totalItems,
+            Value = 0,
+            Style = ProgressBarStyle.Continuous
+        };
+        
+        btnCancel = new Button
+        {
+            Text = "Cancel",
+            Location = new System.Drawing.Point(347, 105), // Moved up slightly
+            Size = new System.Drawing.Size(75, 23),
+            DialogResult = DialogResult.Cancel
+        };
+        btnCancel.Click += (s, e) => { 
+            isCancelled = true;
+            btnCancel.Enabled = false;
+            btnCancel.Text = "Cancelling...";
+        };
+        
+        this.Controls.AddRange(new System.Windows.Forms.Control[] {
+            lblStatus, lblProgress, progressBar, btnCancel
+        });
+        
+        // Add ESC key handling
+        this.KeyPreview = true;
+        this.KeyDown += (s, e) => {
+            if (e.KeyCode == Keys.Escape)
+            {
+                btnCancel.PerformClick();
+            }
+        };
+    }
+    
+    public void UpdateProgress(int current, string status)
+    {
+        if (this.InvokeRequired)
+        {
+            this.Invoke(new Action(() => UpdateProgress(current, status)));
+            return;
+        }
+        
+        progressBar.Value = Math.Min(current + 1, progressBar.Maximum);
+        lblStatus.Text = status;
+        lblProgress.Text = $"{current + 1} of {totalItems}";
+        // Update percentage in title
+        var percentage = (int)((current + 1) * 100.0 / totalItems);
+        this.Text = $"Exporting to DWG - {percentage}%";
+        
+        this.Refresh();
     }
 }
