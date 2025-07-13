@@ -219,11 +219,6 @@ public class AddTextNoteToSelectedDoors : IExternalCommand
                     trans.Commit();
 
                     int movedCount = textNoteInfos.Count(n => n.WasMoved);
-                    TaskDialog.Show("Success",
-                        $"Created text notes for {selectedOpenings.Count} doors/windows.\n" +
-                        $"Text Note Type: {actualTypeName}\n" +
-                        $"Notes repositioned: {movedCount}\n" +
-                        $"UUID: {uuid}");
                 }
                 catch (Exception ex)
                 {
