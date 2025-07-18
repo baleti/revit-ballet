@@ -5,6 +5,7 @@ using System.Drawing;
 using System.Linq;
 using System.Text;
 using System.Windows.Forms;
+using System.IO;
 
 public partial class CustomGUIs
 {
@@ -134,7 +135,7 @@ public partial class CustomGUIs
             {
                 grid.AutoResizeColumns();
             }
-            
+
             int reqWidth = grid.Columns.GetColumnsWidth(DataGridViewElementStates.Visible)
                           + SystemInformation.VerticalScrollBarWidth + 50;
             form.Width = Math.Min(reqWidth, Screen.PrimaryScreen.WorkingArea.Width - 20);
@@ -294,6 +295,48 @@ public partial class CustomGUIs
                 searchBox.Focus();
                 e.Handled = true;
             }
+            else if (e.KeyCode == Keys.E && e.Control)
+            {
+                string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                string storagePath = Path.Combine(appData, "revit-scripts", "DataGrid-last-export-location");
+                string initialPath = "";
+                if (File.Exists(storagePath))
+                {
+                    initialPath = File.ReadAllText(storagePath).Trim();
+                }
+                SaveFileDialog sfd = new SaveFileDialog();
+                sfd.Filter = "CSV Files|*.csv";
+                sfd.Title = "Export DataGrid to CSV";
+                sfd.DefaultExt = "csv";
+                if (!string.IsNullOrEmpty(initialPath))
+                {
+                    string dir = Path.GetDirectoryName(initialPath);
+                    if (Directory.Exists(dir))
+                    {
+                        sfd.InitialDirectory = dir;
+                        sfd.FileName = Path.GetFileName(initialPath);
+                    }
+                }
+                else
+                {
+                    sfd.InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+                    sfd.FileName = "DataGridExport.csv";
+                }
+                if (sfd.ShowDialog() == DialogResult.OK)
+                {
+                    try
+                    {
+                        ExportToCsv(grid, _cachedFilteredData, sfd.FileName);
+                        Directory.CreateDirectory(Path.GetDirectoryName(storagePath));
+                        File.WriteAllText(storagePath, sfd.FileName);
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show("Error exporting: " + ex.Message);
+                    }
+                }
+                e.Handled = true;
+            }
         };
 
         grid.KeyDown += (s, e) => HandleKeyDown(e, grid);
@@ -338,5 +381,35 @@ public partial class CustomGUIs
         form.ShowDialog();
 
         return selectedEntries;
+    }
+
+    private static void ExportToCsv(DataGridView grid, List<Dictionary<string, object>> data, string filePath)
+    {
+        var visibleColumns = grid.Columns.Cast<DataGridViewColumn>()
+            .Where(c => c.Visible)
+            .OrderBy(c => c.DisplayIndex)
+            .ToList();
+
+        using (var writer = new StreamWriter(filePath))
+        {
+            // Write header
+            writer.WriteLine(string.Join(",", visibleColumns.Select(c => CsvQuote(c.HeaderText))));
+
+            // Write rows
+            foreach (var row in data)
+            {
+                var values = visibleColumns.Select(c => CsvQuote(row.ContainsKey(c.Name) ? row[c.Name]?.ToString() ?? "" : ""));
+                writer.WriteLine(string.Join(",", values));
+            }
+        }
+    }
+
+    private static string CsvQuote(string value)
+    {
+        if (value.Contains(",") || value.Contains("\"") || value.Contains("\n"))
+        {
+            return "\"" + value.Replace("\"", "\"\"") + "\"";
+        }
+        return value;
     }
 }
