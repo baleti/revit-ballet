@@ -249,8 +249,12 @@ public class PDFNamingDialog : System.Windows.Forms.Form
     private bool isPlaceholderActive = true;
     private List<string> formatHistory;
     private int lastCursorPosition = 0;
+    private Dictionary<string, string> pdfNamingPresets; // Store PDF naming presets
+    private Stack<string> undoStack = new Stack<string>(); // For undo functionality
+    private Stack<string> redoStack = new Stack<string>(); // For redo functionality
     
     private System.Windows.Forms.ComboBox cmbFormatString;
+    private System.Windows.Forms.ComboBox cmbPDFNamingPresets;
     private System.Windows.Forms.TextBox txtSearch;
     private DataGridView dgvAvailableParams;
     private DataGridView dgvPreview;
@@ -267,10 +271,165 @@ public class PDFNamingDialog : System.Windows.Forms.Form
         this.doc = doc;
         this.views = views;
         LoadExportSettings();
+        LoadPDFNamingPresets();
         InitializeParameters();
         LoadFormatHistory();
         InitializeUI();
         UpdatePreview();
+    }
+    
+    private void LoadPDFNamingPresets()
+    {
+        pdfNamingPresets = new Dictionary<string, string>();
+        
+        try
+        {
+            Type pdfSettingsType = Type.GetType("Autodesk.Revit.DB.ExportPDFSettings, RevitAPI");
+            if (pdfSettingsType == null)
+                return;
+            
+            // Get the active PDF export settings using reflection
+            var getActiveMethod = pdfSettingsType.GetMethod("GetActivePredefinedSettings", new Type[] { typeof(Document) });
+            if (getActiveMethod != null)
+            {
+                dynamic activePdfSettings = getActiveMethod.Invoke(null, new object[] { doc });
+                if (activePdfSettings != null)
+                {
+                    AddPDFNamingPreset("Active PDF Settings", activePdfSettings);
+                }
+            }
+            
+            // Get all PDF export settings in the project
+            var collector = new FilteredElementCollector(doc).OfClass(pdfSettingsType);
+            
+            foreach (dynamic settings in collector)
+            {
+                var presetName = $"PDF: {settings.Name}";
+                AddPDFNamingPreset(presetName, settings);
+            }
+        }
+        catch (Exception ex)
+        {
+            // Log error but continue - PDF settings might not be available
+            System.Diagnostics.Debug.WriteLine($"Error loading PDF naming presets: {ex.Message}");
+        }
+    }
+    
+    private void AddPDFNamingPreset(string presetName, dynamic settings)
+    {
+        try
+        {
+            dynamic options = settings.GetOptions();
+            dynamic namingRules = options.GetNamingRule();
+            
+            if (namingRules != null && namingRules.Count > 0)
+            {
+                string formatString = ConvertPDFNamingRuleToFormatString(namingRules);
+                if (!string.IsNullOrEmpty(formatString))
+                {
+                    pdfNamingPresets[presetName] = formatString;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error processing PDF naming preset '{presetName}': {ex.Message}");
+        }
+    }
+    
+    private string ConvertPDFNamingRuleToFormatString(dynamic namingRules)
+    {
+        var formatParts = new List<string>();
+        
+        for (int i = 0; i < namingRules.Count; i++)
+        {
+            dynamic rule = namingRules[i];
+            var paramPart = "";
+            
+            // Add prefix if exists
+            if (!string.IsNullOrEmpty(rule.Prefix))
+            {
+                formatParts.Add(rule.Prefix);
+            }
+            
+            // Convert BuiltInParameter enum values to ElementId for comparison
+            var sheetNumberId = new ElementId(BuiltInParameter.SHEET_NUMBER);
+            var sheetNameId = new ElementId(BuiltInParameter.SHEET_NAME);
+            var viewNameId = new ElementId(BuiltInParameter.VIEW_NAME);
+            var viewTypeId = new ElementId(BuiltInParameter.VIEW_TYPE);
+            var invalidId = new ElementId(BuiltInParameter.INVALID);
+            
+            ElementId paramId = rule.ParamId;
+            
+            // Get the parameter part
+            if (paramId.Equals(sheetNumberId))
+            {
+                paramPart = "{Sheet Number}";
+            }
+            else if (paramId.Equals(sheetNameId))
+            {
+                paramPart = "{Sheet Name}";
+            }
+            else if (paramId.Equals(viewNameId))
+            {
+                paramPart = "{View Name}";
+            }
+            else if (paramId.Equals(viewTypeId))
+            {
+                paramPart = "{View Type}";
+            }
+            else if (!paramId.Equals(invalidId) && paramId.IntegerValue < 0)
+            {
+                // For built-in parameters (negative IDs), try to convert to BuiltInParameter
+                try
+                {
+                    var builtInParam = (BuiltInParameter)paramId.IntegerValue;
+                    var paramName = LabelUtils.GetLabelFor(builtInParam);
+                    if (!string.IsNullOrEmpty(paramName))
+                    {
+                        paramPart = $"{{{paramName}}}";
+                    }
+                }
+                catch
+                {
+                    // If conversion fails, try to get parameter name directly
+                    var param = doc.GetElement(paramId) as ParameterElement;
+                    if (param != null)
+                    {
+                        paramPart = $"{{{param.Name}}}";
+                    }
+                }
+            }
+            else if (paramId.IntegerValue > 0)
+            {
+                // For custom parameters (positive IDs), get the parameter element
+                var param = doc.GetElement(paramId) as ParameterElement;
+                if (param != null)
+                {
+                    paramPart = $"{{{param.Name}}}";
+                }
+            }
+            
+            // Add the parameter if found
+            if (!string.IsNullOrEmpty(paramPart))
+            {
+                formatParts.Add(paramPart);
+            }
+            
+            // Add suffix if exists
+            if (!string.IsNullOrEmpty(rule.Suffix))
+            {
+                formatParts.Add(rule.Suffix);
+            }
+            
+            // Add separator if specified and not the last item
+            if (!string.IsNullOrEmpty(rule.Separator) && i < namingRules.Count - 1)
+            {
+                formatParts.Add(rule.Separator);
+            }
+        }
+        
+        return string.Join("", formatParts);
     }
     
     private void LoadExportSettings()
@@ -497,7 +656,7 @@ public class PDFNamingDialog : System.Windows.Forms.Form
         pnlTop = new System.Windows.Forms.Panel
         {
             Dock = DockStyle.Top,
-            Height = 100,
+            Height = 130, // Increased height for new dropdown
             Padding = new Padding(12)
         };
         
@@ -522,16 +681,40 @@ public class PDFNamingDialog : System.Windows.Forms.Form
         cmbFormatString.Enter += CmbFormatString_Enter;
         cmbFormatString.Leave += CmbFormatString_Leave;
         
+        // New PDF naming presets dropdown
+        var lblPDFPresets = new Label
+        {
+            Text = "PDF Export Format String:",
+            Location = new System.Drawing.Point(12, 65),
+            Size = new System.Drawing.Size(150, 20)
+        };
+        
+        cmbPDFNamingPresets = new System.Windows.Forms.ComboBox
+        {
+            Location = new System.Drawing.Point(165, 65),
+            Size = new System.Drawing.Size(300, 25),
+            DropDownStyle = ComboBoxStyle.DropDownList
+        };
+        
+        // Populate PDF presets
+        cmbPDFNamingPresets.Items.Add("<None>");
+        foreach (var preset in pdfNamingPresets)
+        {
+            cmbPDFNamingPresets.Items.Add(preset.Key);
+        }
+        cmbPDFNamingPresets.SelectedIndex = 0;
+        cmbPDFNamingPresets.SelectedIndexChanged += CmbPDFNamingPresets_SelectedIndexChanged;
+        
         var lblExportOptions = new Label
         {
             Text = "PDF Export Settings:",
-            Location = new System.Drawing.Point(12, 65),
+            Location = new System.Drawing.Point(12, 95),
             Size = new System.Drawing.Size(120, 20)
         };
         
         cmbExportOptions = new System.Windows.Forms.ComboBox
         {
-            Location = new System.Drawing.Point(135, 65),
+            Location = new System.Drawing.Point(135, 95),
             Size = new System.Drawing.Size(300, 25),
             DropDownStyle = ComboBoxStyle.DropDownList
         };
@@ -550,11 +733,14 @@ public class PDFNamingDialog : System.Windows.Forms.Form
         
         lblFormat.TabStop = false;
         cmbFormatString.TabIndex = 0; // First tab stop
+        lblPDFPresets.TabStop = false;
+        cmbPDFNamingPresets.TabIndex = 1;
         lblExportOptions.TabStop = false;
-        cmbExportOptions.TabIndex = 1;
+        cmbExportOptions.TabIndex = 2;
         
         pnlTop.Controls.AddRange(new System.Windows.Forms.Control[] {
             lblFormat, cmbFormatString,
+            lblPDFPresets, cmbPDFNamingPresets,
             lblExportOptions, cmbExportOptions
         });
 
@@ -563,13 +749,13 @@ public class PDFNamingDialog : System.Windows.Forms.Form
             var lblPrinter = new Label
             {
                 Text = "PDF Printer Driver:",
-                Location = new System.Drawing.Point(12, 95),
+                Location = new System.Drawing.Point(12, 125),
                 Size = new System.Drawing.Size(120, 20)
             };
             
             cmbPrinterDriver = new System.Windows.Forms.ComboBox
             {
-                Location = new System.Drawing.Point(135, 95),
+                Location = new System.Drawing.Point(135, 125),
                 Size = new System.Drawing.Size(300, 25),
                 DropDownStyle = ComboBoxStyle.DropDownList
             };
@@ -590,11 +776,11 @@ public class PDFNamingDialog : System.Windows.Forms.Form
             }
             
             lblPrinter.TabStop = false;
-            cmbPrinterDriver.TabIndex = 2;
+            cmbPrinterDriver.TabIndex = 3;
             
             pnlTop.Controls.Add(lblPrinter);
             pnlTop.Controls.Add(cmbPrinterDriver);
-            pnlTop.Height += 40; // Increase height for the new control
+            pnlTop.Height += 30; // Increase height for the new control
         }
         
         pnlTop.Resize += (s, e) => {
@@ -614,7 +800,7 @@ public class PDFNamingDialog : System.Windows.Forms.Form
             Text = "OK",
             Size = new System.Drawing.Size(75, 30),
             DialogResult = DialogResult.OK,
-            TabIndex = 5,
+            TabIndex = 6,
             Anchor = AnchorStyles.Bottom | AnchorStyles.Right
         };
         btnOK.Click += BtnOK_Click;
@@ -624,7 +810,7 @@ public class PDFNamingDialog : System.Windows.Forms.Form
             Text = "Cancel",
             Size = new System.Drawing.Size(75, 30),
             DialogResult = DialogResult.Cancel,
-            TabIndex = 6,
+            TabIndex = 7,
             Anchor = AnchorStyles.Bottom | AnchorStyles.Right
         };
         
@@ -668,7 +854,7 @@ public class PDFNamingDialog : System.Windows.Forms.Form
             Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
             ForeColor = SystemColors.GrayText,
             Text = "Filter Parameters",
-            TabIndex = 3,
+            TabIndex = 4,
             TabStop = true
         };
         txtSearch.TextChanged += TxtSearch_TextChanged;
@@ -714,10 +900,10 @@ public class PDFNamingDialog : System.Windows.Forms.Form
         };
         btnAddParam.Click += BtnAddParam_Click;
         
-        txtSearch.TabIndex = 2;
+        txtSearch.TabIndex = 3;
         lblAvailable.TabStop = false;
-        dgvAvailableParams.TabIndex = 3;
-        btnAddParam.TabIndex = 4;
+        dgvAvailableParams.TabIndex = 4;
+        btnAddParam.TabIndex = 5;
         
         pnlLeft.Controls.AddRange(new System.Windows.Forms.Control[] {
             lblAvailable, txtSearch, dgvAvailableParams, btnAddParam
@@ -813,6 +999,28 @@ public class PDFNamingDialog : System.Windows.Forms.Form
         pnlBottom.TabIndex = 2;
     }
     
+    private void CmbPDFNamingPresets_SelectedIndexChanged(object sender, EventArgs e)
+    {
+        if (cmbPDFNamingPresets.SelectedIndex > 0)
+        {
+            var selectedPreset = cmbPDFNamingPresets.SelectedItem.ToString();
+            if (pdfNamingPresets.ContainsKey(selectedPreset))
+            {
+                // Save current state for undo
+                if (!string.IsNullOrEmpty(formatString))
+                {
+                    undoStack.Push(formatString);
+                    redoStack.Clear();
+                }
+                
+                formatString = pdfNamingPresets[selectedPreset];
+                cmbFormatString.Text = formatString;
+                lastCursorPosition = formatString.Length;
+                UpdatePreview();
+            }
+        }
+    }
+    
     private void PopulateParametersGrid()
     {
         dgvAvailableParams.Rows.Clear();
@@ -837,8 +1045,18 @@ public class PDFNamingDialog : System.Windows.Forms.Form
     
     private void CmbFormatString_TextChanged(object sender, EventArgs e)
     {
-        formatString = cmbFormatString.Text;
-        UpdatePreview();
+        if (formatString != cmbFormatString.Text)
+        {
+            // Save current state for undo before changing
+            if (!string.IsNullOrEmpty(formatString))
+            {
+                undoStack.Push(formatString);
+                redoStack.Clear(); // Clear redo stack when new change is made
+            }
+            
+            formatString = cmbFormatString.Text;
+            UpdatePreview();
+        }
     }
     
     private void CmbFormatString_KeyDown(object sender, KeyEventArgs e)
@@ -852,6 +1070,32 @@ public class PDFNamingDialog : System.Windows.Forms.Form
                 cmbFormatString.SelectionStart = lastCursorPosition;
                 cmbFormatString.SelectionLength = 0;
             }));
+        }
+        else if (e.Control && e.KeyCode == Keys.Z)
+        {
+            // Undo
+            if (undoStack.Count > 0)
+            {
+                redoStack.Push(formatString);
+                formatString = undoStack.Pop();
+                cmbFormatString.Text = formatString;
+                lastCursorPosition = formatString.Length;
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+            }
+        }
+        else if (e.Control && e.KeyCode == Keys.Y)
+        {
+            // Redo
+            if (redoStack.Count > 0)
+            {
+                undoStack.Push(formatString);
+                formatString = redoStack.Pop();
+                cmbFormatString.Text = formatString;
+                lastCursorPosition = formatString.Length;
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+            }
         }
     }
     
@@ -930,6 +1174,10 @@ public class PDFNamingDialog : System.Windows.Forms.Form
         {
             var paramName = dgvAvailableParams.SelectedRows[0].Cells[0].Value.ToString();
             var insertText = $"{{{paramName}}}";
+            
+            // Save current state for undo
+            undoStack.Push(formatString);
+            redoStack.Clear();
             
             var selectionStart = lastCursorPosition;
             var currentText = cmbFormatString.Text;
