@@ -1,5 +1,5 @@
 #+html:<div align="center"><img src="https://github.com/baleti/revit-scripts-docs/blob/e0b7b4ad6ed5bee7c57f38ce8a62b56244b53133/logo.png" width="200"/></div>
-** productivity tools for revit architecture
+** I don't actually know what to call these anymore, just that it saves me so much time, hope it will you as well
 *** switch/close/open views and sheets
 [[https://github.com/baleti/revit-scripts-docs/blob/8142cd312030378ed0b2543ad563b8514dbf9d5a/OpenViews.gif]]
 *** invoke commands
