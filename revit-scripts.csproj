@@ -143,14 +143,12 @@
     <Compile Include="revit-scripts\FilterDoorsWithWallOffsets_Dimensioning.cs" />
     <Compile Include="revit-scripts\FilterDoorsWithWallOffsets_Models.cs" />
     <Compile Include="revit-scripts\FilterDoorsWithWallOffsets_WallFinding.cs" />
-    <Compile Include="revit-scripts\FilterDoors_SplitIntoSelectionSets.cs" />
     <Compile Include="revit-scripts\FilterFilledRegions.cs" />
     <Compile Include="revit-scripts\FilterPosition.cs" />
     <Compile Include="revit-scripts\FilterDimensions.cs" />
     <Compile Include="revit-scripts\FilterPositionOnAreas.cs" />
     <Compile Include="revit-scripts\FilterPositionOnRooms.cs" />
     <Compile Include="revit-scripts\FilterRevisionClouds.cs" />
-    <Compile Include="revit-scripts\FilterSelectedElements_SplitIntoSelectionSets.cs" />
     <Compile Include="revit-scripts\FilterSheets.cs" />
     <Compile Include="revit-scripts\HandFlipSelectedDoors.cs" />
     <Compile Include="revit-scripts\InvokeLastAddinCommand.cs" />

@@ -12,12 +12,58 @@ public static class ExtendedElementDataHelper
 {
     public static List<Dictionary<string, object>> GetElementDataWithSheetInfo(UIDocument uiDoc, bool selectedOnly = false, bool includeParameters = false)
     {
-        // First get the standard element data using the existing helper
         var elementData = ElementDataHelper.GetElementData(uiDoc, selectedOnly, includeParameters);
-        
+
+        var doc = uiDoc.Document;
+
+        // Precollect scope boxes
+        var scopeBoxes = new FilteredElementCollector(doc)
+            .OfCategory(BuiltInCategory.OST_VolumeOfInterest)
+            .ToElements()
+            .Cast<Element>()
+            .ToList();
+
+        // Precompute view sheet info
+        var sheets = new FilteredElementCollector(doc)
+            .OfClass(typeof(ViewSheet))
+            .Cast<ViewSheet>()
+            .ToList();
+
+        var viewSheetInfo = new Dictionary<ElementId, Tuple<string, string, string>>();
+
+        foreach (var sheet in sheets)
+        {
+            foreach (var vpId in sheet.GetAllViewports())
+            {
+                var vp = doc.GetElement(vpId) as Viewport;
+                if (vp != null)
+                {
+                    var viewId = vp.ViewId;
+                    string viewTitleOnSheet = string.Empty;
+                    var titleParam = vp.get_Parameter(BuiltInParameter.VIEWPORT_VIEW_NAME);
+                    if (titleParam == null || !titleParam.HasValue || string.IsNullOrEmpty(titleParam.AsString()))
+                    {
+                        titleParam = vp.LookupParameter("Title on Sheet");
+                    }
+                    if (titleParam != null && titleParam.HasValue)
+                    {
+                        viewTitleOnSheet = titleParam.AsString() ?? string.Empty;
+                    }
+                    viewSheetInfo[viewId] = Tuple.Create(sheet.SheetNumber, sheet.Name, viewTitleOnSheet);
+                }
+            }
+        }
+
         // Enhance each element's data
         foreach (var data in elementData)
         {
+            // Rename original ScopeBoxes key if present
+            if (data.ContainsKey("ScopeBoxes"))
+            {
+                data["Scope Boxes Outline"] = data["ScopeBoxes"];
+                data.Remove("ScopeBoxes");
+            }
+
             // Get the element to add sheet info
             Element element = null;
             Document elementDoc = uiDoc.Document;
@@ -35,20 +81,23 @@ public static class ExtendedElementDataHelper
             if (element != null)
             {
                 // Add sheet information
-                AddSheetInfo(element, elementDoc, data);
+                AddSheetInfo(element, doc, data, viewSheetInfo);
                 
                 // Add area if not already present
                 AddArea(element, data);
                 
                 // Add perimeter for elements that support it
                 AddPerimeter(element, data);
+
+                // Add scope boxes center for filled regions
+                AddScopeBoxesCenter(element, doc, data, scopeBoxes);
             }
         }
         
         return elementData;
     }
     
-    private static void AddSheetInfo(Element element, Document doc, Dictionary<string, object> data)
+    private static void AddSheetInfo(Element element, Document doc, Dictionary<string, object> data, Dictionary<ElementId, Tuple<string, string, string>> viewSheetInfo)
     {
         string sheetNumber = string.Empty;
         string sheetTitle = string.Empty;
@@ -56,53 +105,11 @@ public static class ExtendedElementDataHelper
         
         if (element.OwnerViewId != null && element.OwnerViewId != ElementId.InvalidElementId)
         {
-            View ownerView = doc.GetElement(element.OwnerViewId) as View;
-            if (ownerView != null)
+            if (viewSheetInfo.TryGetValue(element.OwnerViewId, out var info))
             {
-                // Check if view is on a sheet
-                var viewSheetId = ownerView.get_Parameter(BuiltInParameter.VIEWER_SHEET_NUMBER);
-                if (viewSheetId != null && !string.IsNullOrEmpty(viewSheetId.AsString()))
-                {
-                    // Find the sheet that contains this view
-                    var sheets = new FilteredElementCollector(doc)
-                        .OfClass(typeof(ViewSheet))
-                        .Cast<ViewSheet>();
-                    
-                    foreach (var sheet in sheets)
-                    {
-                        var viewportId = sheet.GetAllViewports().FirstOrDefault(vpId => 
-                        {
-                            var vp = doc.GetElement(vpId) as Viewport;
-                            return vp != null && vp.ViewId == ownerView.Id;
-                        });
-                        
-                        if (viewportId != null && viewportId != ElementId.InvalidElementId)
-                        {
-                            sheetNumber = sheet.SheetNumber;
-                            sheetTitle = sheet.Name;
-                            
-                            // Get the viewport to access "Title on Sheet"
-                            var viewport = doc.GetElement(viewportId) as Viewport;
-                            if (viewport != null)
-                            {
-                                // Try to get the title on sheet from viewport
-                                var titleParam = viewport.get_Parameter(BuiltInParameter.VIEWPORT_VIEW_NAME);
-                                if (titleParam == null || !titleParam.HasValue || string.IsNullOrEmpty(titleParam.AsString()))
-                                {
-                                    // Try alternative parameter
-                                    titleParam = viewport.LookupParameter("Title on Sheet");
-                                }
-                                
-                                if (titleParam != null && titleParam.HasValue)
-                                {
-                                    viewTitleOnSheet = titleParam.AsString() ?? string.Empty;
-                                }
-                            }
-                            
-                            break;
-                        }
-                    }
-                }
+                sheetNumber = info.Item1;
+                sheetTitle = info.Item2;
+                viewTitleOnSheet = info.Item3;
             }
         }
         
@@ -189,6 +196,52 @@ public static class ExtendedElementDataHelper
         double convertedValue = UnitUtils.ConvertFromInternalUnits(perimeterInFeet, unitTypeId);
         data["Perimeter"] = $"{convertedValue:F2} m";
     }
+
+    private static void AddScopeBoxesCenter(Element element, Document doc, Dictionary<string, object> data, List<Element> scopeBoxes)
+    {
+        if (!(element is FilledRegion))
+        {
+            data["Scope Boxes Center"] = string.Empty;
+            return;
+        }
+
+        View ownerView = doc.GetElement(element.OwnerViewId) as View;
+        if (ownerView == null)
+        {
+            data["Scope Boxes Center"] = string.Empty;
+            return;
+        }
+
+        BoundingBoxXYZ bb = element.get_BoundingBox(ownerView);
+        if (bb == null)
+        {
+            data["Scope Boxes Center"] = string.Empty;
+            return;
+        }
+
+        XYZ center = (bb.Min + bb.Max) / 2.0;
+
+        var containingScopeBoxes = scopeBoxes
+            .Where(sb => IsPointInScopeBox(sb, center))
+            .Select(sb => sb.Name)
+            .OrderBy(name => name)
+            .ToList();
+
+        data["Scope Boxes Center"] = string.Join(", ", containingScopeBoxes);
+    }
+
+    private static bool IsPointInScopeBox(Element scopeBox, XYZ point)
+    {
+        BoundingBoxXYZ bb = scopeBox.get_BoundingBox(null);
+        if (bb == null) return false;
+
+        Transform inverse = bb.Transform.Inverse;
+        XYZ localPt = inverse.OfPoint(point);
+
+        return (bb.Min.X <= localPt.X && localPt.X <= bb.Max.X) &&
+               (bb.Min.Y <= localPt.Y && localPt.Y <= bb.Max.Y) &&
+               (bb.Min.Z <= localPt.Z && localPt.Z <= bb.Max.Z);
+    }
 }
 
 /// <summary>
@@ -240,7 +293,8 @@ public class FilterFilledRegions : IExternalCommand
             // Reorder to put most useful columns first, including sheet info
             var orderedProps = new List<string> { 
                 "DisplayName", 
-                "ScopeBoxes", 
+                "Scope Boxes Outline", 
+                "Scope Boxes Center",
                 "Category",
                 "SheetNumber",
                 "SheetTitle",
