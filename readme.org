@@ -1,5 +1,9 @@
-#+html:<div align="center"><img src="https://github.com/baleti/revit-scripts-docs/blob/e0b7b4ad6ed5bee7c57f38ce8a62b56244b53133/logo.png" width="200"/></div>
-** I don't actually know what to call these anymore, just that it saves me so much time, hope it will you as well
+#+html:<div align="center"><img src="https://raw.githubusercontent.com/baleti/revit-scripts-docs/refs/heads/main/logo%20revit%20ballet%201.png" width="200"/></div>
+
+#+html:<p align="center"><i>Dance around Revit 🩰</i></p>
+
+Collection of custom commands for revit 2024. Solves common challenges encountered at technical delivery of buildings.
+** sample commands
 *** switch/close/open views and sheets
 [[https://github.com/baleti/revit-scripts-docs/blob/8142cd312030378ed0b2543ad563b8514dbf9d5a/OpenViews.gif]]
 *** invoke commands
