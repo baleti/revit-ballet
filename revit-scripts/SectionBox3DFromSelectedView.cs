@@ -5,10 +5,59 @@ using Autodesk.Revit.UI;
 using System;
 using System.Linq;
 using System.Collections.Generic;
+using System.IO;
 
 [Transaction(TransactionMode.Manual)]
 public class SectionBox3DFromSelectedView : IExternalCommand
 {
+    private bool GetZoomToFitSetting()
+    {
+        string appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        string configDir = Path.Combine(appDataPath, "revit-scripts");
+        string configFile = Path.Combine(configDir, "SectionBox3DFromView");
+        
+        // Create directory if it doesn't exist
+        if (!Directory.Exists(configDir))
+        {
+            Directory.CreateDirectory(configDir);
+        }
+        
+        // Create config file with default if it doesn't exist
+        if (!File.Exists(configFile))
+        {
+            File.WriteAllText(configFile, "ZoomToFit = True");
+            return true;
+        }
+        
+        // Read the config file
+        try
+        {
+            string content = File.ReadAllText(configFile);
+            string[] lines = content.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+            
+            foreach (string line in lines)
+            {
+                if (line.Trim().StartsWith("ZoomToFit", StringComparison.OrdinalIgnoreCase))
+                {
+                    string[] parts = line.Split('=');
+                    if (parts.Length >= 2)
+                    {
+                        string value = parts[1].Trim().ToLower();
+                        return value == "true" || value == "1";
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // If any error reading file, default to true
+            return true;
+        }
+        
+        // Default to true if setting not found
+        return true;
+    }
+
     public Result Execute(
       ExternalCommandData commandData,
       ref string message,
@@ -199,6 +248,23 @@ public class SectionBox3DFromSelectedView : IExternalCommand
 
         // Activate the default 3D view.
         uiDoc.ActiveView = default3DView;
+        
+        // Check configuration setting for zoom to fit
+        bool zoomToFit = GetZoomToFitSetting();
+        
+        if (zoomToFit)
+        {
+            // Zoom to fit the section box
+            UIView uiView = uiDoc
+                            .GetOpenUIViews()
+                            .FirstOrDefault(v => v.ViewId == default3DView.Id);
+
+            if (uiView != null)
+            {
+                uiView.ZoomToFit();
+            }
+        }
+        
         return Result.Succeeded;
     }
 
