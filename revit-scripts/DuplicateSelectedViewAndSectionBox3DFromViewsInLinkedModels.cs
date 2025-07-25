@@ -18,62 +18,15 @@ public class DuplicateSelectedViewAndSectionBox3DFromViewsInLinkedModels : IExte
         UIDocument uiDoc = uiApp.ActiveUIDocument;
         Document doc = uiDoc.Document;
 
-        // Step 1: Get all 3D views in the project for selection
-        List<View3D> all3DViews = new FilteredElementCollector(doc)
-            .OfClass(typeof(View3D))
-            .Cast<View3D>()
-            .Where(v => !v.IsTemplate)
-            .ToList();
-
-        if (all3DViews.Count == 0)
+        // Check if the active view is a non-template 3D view
+        View3D selected3DView = doc.ActiveView as View3D;
+        if (selected3DView == null || selected3DView.IsTemplate)
         {
-            TaskDialog.Show("Error", "No 3D views found in the project.");
+            TaskDialog.Show("Error", "Please activate a non-template 3D view to duplicate.");
             return Result.Failed;
         }
 
-        // Prepare data for the first DataGrid (3D view selection)
-        var view3DEntries = all3DViews.Select(view => new Dictionary<string, object>
-        {
-            { "View Name", view.Name },
-            { "View Id", view.Id.IntegerValue.ToString() }
-        }).ToList();
-
-        // Check if active view is a 3D view to use as initial selection
-        View3D activeView3D = doc.ActiveView as View3D;
-        List<int> initialSelectionIndices = null;
-        if (activeView3D != null && !activeView3D.IsTemplate)
-        {
-            // Find the index of the active view in the entries list
-            int activeViewIndex = view3DEntries.FindIndex(entry => 
-                entry["View Id"].ToString() == activeView3D.Id.IntegerValue.ToString());
-            
-            if (activeViewIndex >= 0)
-            {
-                initialSelectionIndices = new List<int> { activeViewIndex };
-            }
-        }
-
-        // Define column headers for 3D views
-        var view3DPropertyNames = new List<string> { "View Name" };
-
-        // Show first DataGrid for 3D view selection (single selection)
-        List<Dictionary<string, object>> selectedView3DEntries = CustomGUIs.DataGrid(
-            view3DEntries, 
-            view3DPropertyNames, 
-            false, // spanAllScreens parameter
-            initialSelectionIndices); // initial selection indices
-
-        if (selectedView3DEntries.Count == 0)
-        {
-            TaskDialog.Show("Info", "No 3D view selected.");
-            return Result.Cancelled;
-        }
-
-        // Get selected 3D view
-        ElementId selected3DViewId = new ElementId(int.Parse(selectedView3DEntries[0]["View Id"].ToString()));
-        View3D selected3DView = doc.GetElement(selected3DViewId) as View3D;
-
-        // Step 2: Get all RevitLinkInstances in the project
+        // Step 1: Get all RevitLinkInstances in the project
         List<RevitLinkInstance> linkInstances = new FilteredElementCollector(doc)
             .OfClass(typeof(RevitLinkInstance))
             .Cast<RevitLinkInstance>()
@@ -86,7 +39,7 @@ public class DuplicateSelectedViewAndSectionBox3DFromViewsInLinkedModels : IExte
             return Result.Cancelled;
         }
 
-        // Prepare data for the second DataGrid (linked models selection)
+        // Prepare data for the DataGrid (linked models selection)
         var linkEntries = linkInstances.Select(link =>
         {
             Document linkedDocument = link.GetLinkDocument();
@@ -129,7 +82,7 @@ public class DuplicateSelectedViewAndSectionBox3DFromViewsInLinkedModels : IExte
         // Define column headers for linked models
         var linkPropertyNames = new List<string> { "Type" };
 
-        // Show second DataGrid for linked model selection (allow multiple selection)
+        // Show DataGrid for linked model selection (allow multiple selection)
         List<Dictionary<string, object>> selectedLinkEntries = CustomGUIs.DataGrid(linkEntries, linkPropertyNames, false);
         if (selectedLinkEntries.Count == 0)
         {
@@ -143,7 +96,7 @@ public class DuplicateSelectedViewAndSectionBox3DFromViewsInLinkedModels : IExte
             .Where(link => link != null)
             .ToList();
 
-        // Step 3: Collect views from selected linked models
+        // Step 2: Collect views from selected linked models
         // Define view types to exclude
         var excludedTypes = new HashSet<ViewType>
         {
@@ -239,7 +192,7 @@ public class DuplicateSelectedViewAndSectionBox3DFromViewsInLinkedModels : IExte
             "Link Type"
         };
 
-        // Show third DataGrid for view selection (multiple selection allowed)
+        // Show DataGrid for view selection (multiple selection allowed)
         List<Dictionary<string, object>> selectedViewEntries = CustomGUIs.DataGrid(allViewEntries, viewPropertyNames, false);
         if (selectedViewEntries.Count == 0)
         {
@@ -247,7 +200,7 @@ public class DuplicateSelectedViewAndSectionBox3DFromViewsInLinkedModels : IExte
             return Result.Cancelled;
         }
 
-        // Step 4: Duplicate the 3D view for each selected linked view and set section boxes
+        // Step 3: Duplicate the 3D view for each selected linked view and set section boxes
         using (Transaction trans = new Transaction(doc, "Duplicate 3D View and Set Section Boxes"))
         {
             trans.Start();
