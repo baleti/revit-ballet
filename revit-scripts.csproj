@@ -116,7 +116,7 @@
     <Compile Include="revit-scripts\BooleanDifferenceFilledRegionsWithSelectedElements.cs" />
     <Compile Include="revit-scripts\ChangeLevelOfSelectedElements.cs" />
     <Compile Include="revit-scripts\ChangeLineStyleOfSelectedFilledRegions.cs" />
-    <Compile Include="revit-scripts\ClashDetectInSelectedLinkedModels.cs" />
+    <Compile Include="revit-scripts\ClashDetectionSelectedElements.cs" />
     <Compile Include="revit-scripts\CombineSelectedFilledRegions.cs" />
     <Compile Include="revit-scripts\CombineSelectionSetsIntoANewSet.cs" />
     <Compile Include="revit-scripts\CombineViewSetsIntoANewSet.cs" />
@@ -169,6 +169,7 @@
     <Compile Include="revit-scripts\SelectByWorksetsInView.cs" />
     <Compile Include="revit-scripts\SelectCategoriesInLinkedModels.cs" />
     <Compile Include="revit-scripts\SelectElementsOfSameTypeInLinkedModelsInView.cs" />
+    <Compile Include="revit-scripts\SelectFamilyTypeInstancesInLinkedModels.cs" />
     <Compile Include="revit-scripts\SelectFamilyTypesInProjectByCategory.cs" />
     <Compile Include="revit-scripts\SelectFiltersMatchingSelectedElements.cs" />
     <Compile Include="revit-scripts\SelectHostsOfSelectedElements.cs" />
