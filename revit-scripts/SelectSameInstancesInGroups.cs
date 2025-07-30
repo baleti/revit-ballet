@@ -115,13 +115,6 @@ public class SelectSameInstancesInGroups : IExternalCommand
             // Set the new selection using the extension method from SelectionModeManager
             uidoc.SetSelectionIds(allElementIds.ToList());
             
-            // Report results
-            int additionalElements = allElementIds.Count - selectedIds.Count;
-            string resultMessage = $"Selected {allElementIds.Count} elements total.\n" +
-                                 $"Found {additionalElements} additional matching elements in groups.";
-            
-            TaskDialog.Show("Selection Complete", resultMessage);
-            
             return Result.Succeeded;
         }
         catch (Exception ex)
