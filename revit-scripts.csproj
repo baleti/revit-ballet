@@ -180,6 +180,7 @@
     <Compile Include="revit-scripts\RenameFamilies.cs" />
     <Compile Include="revit-scripts\SelectAssociatedElementsFromSelectedDimensions.cs" />
     <Compile Include="revit-scripts\SelectOpenedViews.cs" />
+    <Compile Include="revit-scripts\SelectRevisionCloudsOfSelectedSheets.cs" />
     <Compile Include="revit-scripts\SelectSameInstancesInGroups.cs" />
     <Compile Include="revit-scripts\SelectSheetsBySelectedTitleBlocks.cs" />
     <Compile Include="revit-scripts\SelectViewportsOfViews.cs" />

@@ -1166,3 +1166,7 @@ sadly all such tools like fody.costura or ilmerge don't perform dead code elimin
   shame this isn't available in the default toolchain build process
 also don't know how addin worked before if I only shipped a single .dll file without its references
   perhaps they were cached globally somehow
+*** 30
+**** =14:00= ExportSelectedViewsToPDF command turned out to be ~25% slower than revit builtin PDF Exporter
+ExportSelectedViewsToPDF - 12 minutes
+Revit UI - 9 minutes
