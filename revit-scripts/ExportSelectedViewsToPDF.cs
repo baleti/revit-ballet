@@ -202,18 +202,6 @@ public class ExportSelectedViewsToPDF : IExternalCommand
             {
                 Autodesk.Revit.UI.TaskDialog.Show("Export Cancelled", "PDF export was cancelled by user.");
             }
-            else
-            {
-                var resultMessage = $"Successfully exported {successCount} of {viewsAndSheets.Count} views.";
-                if (failedExports.Any())
-                {
-                    resultMessage += $"\n\nFailed exports:\n{string.Join("\n", failedExports.Take(5))}";
-                    if (failedExports.Count > 5)
-                        resultMessage += $"\n...and {failedExports.Count - 5} more.";
-                }
-                
-                Autodesk.Revit.UI.TaskDialog.Show("Export Complete", resultMessage);
-            }
         }
         
         return Result.Succeeded;
