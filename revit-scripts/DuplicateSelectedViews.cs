@@ -81,15 +81,18 @@ namespace RevitAddin
                         RevitView dupView = doc.GetElement(newViewId) as RevitView;
                         if (dupView != null)
                         {
+                            // Sanitize the original name by trimming curly braces
+                            string baseName = view.Name.Trim(new char[] { '{', '}' });
+
                             // If only one duplicate is requested, don't append the _N suffix
                             if (duplicateCount == 1)
                             {
-                                dupView.Name = $"{view.Name} - Copy {timestamp}";
+                                dupView.Name = $"{baseName} - Copy {timestamp}";
                             }
                             else
                             {
                                 // For multiple duplicates, append _N suffix starting from 1
-                                dupView.Name = $"{view.Name} - Copy {timestamp}_{i + 1}";
+                                dupView.Name = $"{baseName} - Copy {timestamp}_{i + 1}";
                             }
                         }
                     }
