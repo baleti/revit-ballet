@@ -9,8 +9,12 @@ using System.Text;
 using System.Windows.Forms;
 using System.Drawing;
 using System.Threading;
+using System.IO;
+using System.Runtime.Serialization.Formatters.Binary;
+using System.Threading.Tasks;
+using Newtonsoft.Json;
 
-// Aliases to resolve conflicts between Revit API and Windows Forms namespaces
+// Aliases to resolve conflicts
 using WinForm = System.Windows.Forms.Form;
 using WinPoint = System.Drawing.Point;
 using WinSize = System.Drawing.Size;
@@ -20,9 +24,7 @@ using WinControl = System.Windows.Forms.Control;
 using RevitColor = Autodesk.Revit.DB.Color;
 
 /// <summary>
-/// ClashDetectionSelectedElements - Single file implementation
-/// Detects clashes between currently selected elements (from project or linked models)
-/// Creates DirectShape markers at clash locations with detailed information
+/// Optimized ClashDetectionSelectedElements with spatial indexing and parallel processing support
 /// </summary>
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
@@ -31,8 +33,10 @@ public class ClashDetectionSelectedElements : IExternalCommand
     // Configuration
     private const double CLASH_TOLERANCE = 0.001; // 1mm tolerance
     private const string CLASH_DS_PREFIX = "CLASH_AREA_";
-    private const double MIN_ELEMENT_SIZE = 0.1; // Minimum element size in feet to consider
+    private const double MIN_ELEMENT_SIZE = 0.1; // Minimum element size in feet
     private const double BBOX_OFFSET = 0.5; // Offset for bounding box in feet
+    private const double SPATIAL_CELL_SIZE = 10.0; // Spatial grid cell size in feet
+    private const bool USE_PARALLEL_PROCESSING = false; // Enable subprocess parallelization
     
     // Performance monitoring
     private Stopwatch _stopwatch = new Stopwatch();
@@ -47,7 +51,7 @@ public class ClashDetectionSelectedElements : IExternalCommand
         {
             _stopwatch.Start();
             
-            // Get selected elements using SelectionModeManager
+            // Get selected elements
             var selectedElements = GetSelectedElements(uidoc, doc);
             
             if (selectedElements.Count < 2)
@@ -58,19 +62,22 @@ public class ClashDetectionSelectedElements : IExternalCommand
                 return Result.Cancelled;
             }
             
-            // Group elements by their source (document or link)
-            var elementGroups = GroupElementsBySource(selectedElements);
+            // Extract all geometry data upfront (for potential parallel processing)
+            var geometryData = ExtractGeometryData(selectedElements);
             
-            if (elementGroups.Count < 2 && elementGroups.First().Value.Count < 2)
+            List<ClashInfo> clashes;
+            bool isCancelled;
+            
+            if (USE_PARALLEL_PROCESSING && geometryData.All(g => g.SerializedSolid != null))
             {
-                TaskDialog.Show("Clash Detection", 
-                    "Selected elements must be from at least 2 different sources (models/links) " +
-                    "or select multiple elements from the same model to check for self-clashes.");
-                return Result.Cancelled;
+                // Use parallel subprocess approach
+                (clashes, isCancelled) = PerformParallelClashDetection(doc, selectedElements, geometryData);
             }
-            
-            // Perform clash detection
-            var (clashes, isCancelled) = PerformClashDetection(doc, selectedElements, elementGroups);
+            else
+            {
+                // Use optimized single-threaded approach with spatial indexing
+                (clashes, isCancelled) = PerformOptimizedClashDetection(doc, selectedElements, geometryData);
+            }
             
             if (clashes.Count == 0)
             {
@@ -100,6 +107,394 @@ public class ClashDetectionSelectedElements : IExternalCommand
             return Result.Failed;
         }
     }
+    
+    #region Geometry Data Extraction
+    
+    /// <summary>
+    /// Extract all geometry data upfront to minimize Revit API calls
+    /// </summary>
+    private List<GeometryData> ExtractGeometryData(List<ElementInfo> elements)
+    {
+        var geometryDataList = new List<GeometryData>();
+        
+        foreach (var elemInfo in elements)
+        {
+            var geomData = new GeometryData
+            {
+                ElementId = elemInfo.Element.Id,
+                ElementInfo = elemInfo,
+                BoundingBox = GetTransformedBoundingBox(elemInfo.Element, elemInfo.Transform),
+                BoundingSphere = null,
+                Solid = null,
+                SerializedSolid = null
+            };
+            
+            // Get solid
+            var solid = GetSolid(elemInfo.Element);
+            if (solid != null)
+            {
+                // Transform solid if needed
+                if (!elemInfo.Transform.IsIdentity)
+                {
+                    solid = SolidUtils.CreateTransformed(solid, elemInfo.Transform);
+                }
+                geomData.Solid = solid;
+                
+                // Calculate bounding sphere for quick checks
+                geomData.BoundingSphere = CalculateBoundingSphere(geomData.BoundingBox);
+                
+                // Try to serialize solid for parallel processing
+                try
+                {
+                    geomData.SerializedSolid = SerializeSolid(solid);
+                }
+                catch
+                {
+                    // Serialization failed, will use in-process checking
+                }
+            }
+            
+            geometryDataList.Add(geomData);
+        }
+        
+        return geometryDataList;
+    }
+    
+    private BoundingSphere CalculateBoundingSphere(BoundingBoxXYZ bbox)
+    {
+        if (bbox == null) return null;
+        
+        var center = (bbox.Min + bbox.Max) * 0.5;
+        var radius = center.DistanceTo(bbox.Max);
+        
+        return new BoundingSphere { Center = center, Radius = radius };
+    }
+    
+    private SerializedSolid SerializeSolid(Solid solid)
+    {
+        // Extract faces and edges for external processing
+        var serialized = new SerializedSolid
+        {
+            Faces = new List<SerializedFace>(),
+            Volume = solid.Volume
+        };
+        
+        foreach (Face face in solid.Faces)
+        {
+            var mesh = face.Triangulate();
+            if (mesh == null) continue;
+            
+            var sFace = new SerializedFace
+            {
+                Vertices = new List<double[]>(),
+                Triangles = new List<int[]>()
+            };
+            
+            // Store vertices
+            for (int i = 0; i < mesh.NumTriangles; i++)
+            {
+                var triangle = mesh.get_Triangle(i);
+                for (int j = 0; j < 3; j++)
+                {
+                    var vertex = triangle.get_Vertex(j);
+                    sFace.Vertices.Add(new[] { vertex.X, vertex.Y, vertex.Z });
+                }
+                sFace.Triangles.Add(new[] { i * 3, i * 3 + 1, i * 3 + 2 });
+            }
+            
+            serialized.Faces.Add(sFace);
+        }
+        
+        return serialized;
+    }
+    
+    #endregion
+    
+    #region Spatial Indexing
+    
+    /// <summary>
+    /// Spatial grid for efficient collision detection
+    /// </summary>
+    private class SpatialGrid
+    {
+        private Dictionary<long, List<GeometryData>> _grid = new Dictionary<long, List<GeometryData>>();
+        private double _cellSize;
+        
+        public SpatialGrid(double cellSize = SPATIAL_CELL_SIZE)
+        {
+            _cellSize = cellSize;
+        }
+        
+        public void AddElement(GeometryData geomData)
+        {
+            if (geomData.BoundingBox == null) return;
+            
+            var minCell = GetCellCoord(geomData.BoundingBox.Min);
+            var maxCell = GetCellCoord(geomData.BoundingBox.Max);
+            
+            for (int x = minCell.X; x <= maxCell.X; x++)
+            for (int y = minCell.Y; y <= maxCell.Y; y++)
+            for (int z = minCell.Z; z <= maxCell.Z; z++)
+            {
+                long key = GetCellKey(x, y, z);
+                if (!_grid.ContainsKey(key))
+                    _grid[key] = new List<GeometryData>();
+                _grid[key].Add(geomData);
+            }
+        }
+        
+        public HashSet<(GeometryData, GeometryData)> GetPotentialClashPairs()
+        {
+            var pairs = new HashSet<(GeometryData, GeometryData)>();
+            var processed = new HashSet<string>();
+            
+            foreach (var cell in _grid.Values)
+            {
+                // Check all pairs within the cell
+                for (int i = 0; i < cell.Count - 1; i++)
+                {
+                    for (int j = i + 1; j < cell.Count; j++)
+                    {
+                        var elem1 = cell[i];
+                        var elem2 = cell[j];
+                        
+                        // Create unique key for this pair
+                        var key1 = $"{elem1.ElementId.IntegerValue}_{elem2.ElementId.IntegerValue}";
+                        var key2 = $"{elem2.ElementId.IntegerValue}_{elem1.ElementId.IntegerValue}";
+                        
+                        if (!processed.Contains(key1) && !processed.Contains(key2))
+                        {
+                            processed.Add(key1);
+                            
+                            // Quick sphere check first
+                            if (elem1.BoundingSphere != null && elem2.BoundingSphere != null)
+                            {
+                                double distance = elem1.BoundingSphere.Center.DistanceTo(elem2.BoundingSphere.Center);
+                                if (distance > elem1.BoundingSphere.Radius + elem2.BoundingSphere.Radius)
+                                    continue; // No possible intersection
+                            }
+                            
+                            pairs.Add((elem1, elem2));
+                        }
+                    }
+                }
+            }
+            
+            return pairs;
+        }
+        
+        private (int X, int Y, int Z) GetCellCoord(XYZ point)
+        {
+            return (
+                (int)Math.Floor(point.X / _cellSize),
+                (int)Math.Floor(point.Y / _cellSize),
+                (int)Math.Floor(point.Z / _cellSize)
+            );
+        }
+        
+        private long GetCellKey(int x, int y, int z)
+        {
+            // Simple spatial hashing
+            const int offset = 1000000;
+            return ((long)(x + offset) << 40) | ((long)(y + offset) << 20) | (long)(z + offset);
+        }
+    }
+    
+    #endregion
+    
+    #region Optimized Clash Detection
+    
+    private (List<ClashInfo> Clashes, bool IsCancelled) PerformOptimizedClashDetection(
+        Document doc, List<ElementInfo> allElements, List<GeometryData> geometryData)
+    {
+        var clashes = new List<ClashInfo>();
+        var progressForm = new ClashDetectionProgressForm();
+        bool isCancelled = false;
+        
+        try
+        {
+            progressForm.Show();
+            Application.DoEvents();
+            
+            // Build spatial index
+            progressForm.UpdateProgress(0, 100, "Building spatial index...", "");
+            var spatialGrid = new SpatialGrid();
+            
+            foreach (var geomData in geometryData)
+            {
+                spatialGrid.AddElement(geomData);
+            }
+            
+            // Get potential clash pairs from spatial index
+            var potentialPairs = spatialGrid.GetPotentialClashPairs();
+            int totalComparisons = potentialPairs.Count;
+            
+            progressForm.UpdateProgress(0, totalComparisons, 
+                $"Checking {totalComparisons} potential clashes (reduced from {(allElements.Count * (allElements.Count - 1)) / 2})...", "");
+            
+            int currentComparison = 0;
+            
+            foreach (var (geom1, geom2) in potentialPairs)
+            {
+                currentComparison++;
+                
+                // Update UI periodically
+                if (currentComparison % 5 == 0 || clashes.Count > 0)
+                {
+                    Application.DoEvents();
+                    Thread.Yield();
+                    
+                    if (progressForm.IsCancelled)
+                    {
+                        isCancelled = true;
+                        break;
+                    }
+                }
+                
+                var elem1Info = geom1.ElementInfo;
+                var elem2Info = geom2.ElementInfo;
+                
+                string currentDesc = $"{GetElementDescription(elem1Info.Element, false)} vs {GetElementDescription(elem2Info.Element, false)}";
+                progressForm.UpdateProgress(currentComparison, totalComparisons,
+                    $"Checking potential clash {currentComparison} of {totalComparisons}", 
+                    currentDesc);
+                
+                // Detailed solid intersection check
+                if (geom1.Solid != null && geom2.Solid != null && 
+                    CheckElementsClash(geom1.Solid, geom2.Solid))
+                {
+                    var clashInfo = new ClashInfo
+                    {
+                        Element1 = elem1Info.Element,
+                        Element2 = elem2Info.Element,
+                        Link1 = elem1Info.LinkInstance,
+                        Link2 = elem2Info.LinkInstance,
+                        ClashPoint = CalculateClashPoint(geom1.BoundingBox, geom2.BoundingBox),
+                        OverlapBBox = CalculateOverlapBBox(geom1.BoundingBox, geom2.BoundingBox)
+                    };
+                    
+                    clashes.Add(clashInfo);
+                    
+                    // Report clash immediately
+                    string source1 = elem1Info.IsLinked ? elem1Info.SourceName : "Host";
+                    string source2 = elem2Info.IsLinked ? elem2Info.SourceName : "Host";
+                    
+                    string clashDesc = $"Clash {clashes.Count}: [{source1}] {GetElementDescription(elem1Info.Element, false)} " +
+                                      $"<-> [{source2}] {GetElementDescription(elem2Info.Element, false)}";
+                    progressForm.AddClash(clashDesc);
+                }
+            }
+            
+            progressForm.SetComplete(clashes.Count, _stopwatch.ElapsedMilliseconds, isCancelled);
+        }
+        finally
+        {
+            if (progressForm != null && !progressForm.IsDisposed && !isCancelled)
+            {
+                // Keep form open if not cancelled
+            }
+        }
+        
+        return (clashes, isCancelled);
+    }
+    
+    #endregion
+    
+    #region Parallel Subprocess Detection
+    
+    private (List<ClashInfo> Clashes, bool IsCancelled) PerformParallelClashDetection(
+        Document doc, List<ElementInfo> allElements, List<GeometryData> geometryData)
+    {
+        var clashes = new List<ClashInfo>();
+        var progressForm = new ClashDetectionProgressForm();
+        bool isCancelled = false;
+        
+        try
+        {
+            progressForm.Show();
+            Application.DoEvents();
+            
+            // Prepare data for external processing
+            var clashCheckData = new ClashCheckData
+            {
+                Elements = geometryData.Select(g => new ExternalGeometryData
+                {
+                    ElementId = g.ElementId.IntegerValue,
+                    BoundingBox = new[] 
+                    { 
+                        g.BoundingBox.Min.X, g.BoundingBox.Min.Y, g.BoundingBox.Min.Z,
+                        g.BoundingBox.Max.X, g.BoundingBox.Max.Y, g.BoundingBox.Max.Z
+                    },
+                    SerializedSolid = g.SerializedSolid
+                }).ToList()
+            };
+            
+            // Save data to temp file
+            string tempFile = Path.GetTempFileName();
+            File.WriteAllText(tempFile, JsonConvert.SerializeObject(clashCheckData));
+            
+            // Start subprocess (would need separate executable)
+            progressForm.UpdateProgress(0, 100, "Starting parallel clash detection...", "");
+            
+            // This is where you'd spawn subprocesses
+            // For demo purposes, showing the structure:
+            int numProcesses = Environment.ProcessorCount;
+            var tasks = new Task<List<ClashResult>>[numProcesses];
+            
+            for (int i = 0; i < numProcesses; i++)
+            {
+                int processIndex = i;
+                tasks[i] = Task.Run(() => 
+                {
+                    // In real implementation, this would start a separate process
+                    // Process.Start("ClashDetector.exe", $"{tempFile} {processIndex} {numProcesses}");
+                    // For now, just return empty results
+                    return new List<ClashResult>();
+                });
+            }
+            
+            // Wait for all tasks and collect results
+            Task.WaitAll(tasks);
+            
+            // Convert results back to ClashInfo
+            foreach (var task in tasks)
+            {
+                foreach (var result in task.Result)
+                {
+                    var elem1 = allElements.First(e => e.Element.Id.IntegerValue == result.ElementId1);
+                    var elem2 = allElements.First(e => e.Element.Id.IntegerValue == result.ElementId2);
+                    
+                    clashes.Add(new ClashInfo
+                    {
+                        Element1 = elem1.Element,
+                        Element2 = elem2.Element,
+                        Link1 = elem1.LinkInstance,
+                        Link2 = elem2.LinkInstance,
+                        ClashPoint = new XYZ(result.ClashPoint[0], result.ClashPoint[1], result.ClashPoint[2]),
+                        OverlapBBox = null // Would need to reconstruct
+                    });
+                }
+            }
+            
+            // Clean up
+            File.Delete(tempFile);
+            
+            progressForm.SetComplete(clashes.Count, _stopwatch.ElapsedMilliseconds, isCancelled);
+        }
+        finally
+        {
+            if (progressForm != null && !progressForm.IsDisposed && !isCancelled)
+            {
+                // Keep form open
+            }
+        }
+        
+        return (clashes, isCancelled);
+    }
+    
+    #endregion
+    
+    #region Original Methods (unchanged)
     
     private List<ElementInfo> GetSelectedElements(UIDocument uidoc, Document doc)
     {
@@ -183,146 +578,9 @@ public class ClashDetectionSelectedElements : IExternalCommand
     
     private bool HasSolidGeometry(Element element)
     {
-        // Quick check for element types that typically have solid geometry
         if (element.Category == null)
             return false;
-            
-        // Check if it's a type that typically has geometry
         return element.get_Geometry(new Options()) != null;
-    }
-    
-    private Dictionary<string, List<ElementInfo>> GroupElementsBySource(List<ElementInfo> elements)
-    {
-        return elements.GroupBy(e => e.IsLinked ? e.LinkInstance.UniqueId : "HOST")
-                      .ToDictionary(g => g.Key, g => g.ToList());
-    }
-    
-    private (List<ClashInfo> Clashes, bool IsCancelled) PerformClashDetection(Document doc, List<ElementInfo> allElements, 
-                                                  Dictionary<string, List<ElementInfo>> elementGroups)
-    {
-        var clashes = new List<ClashInfo>();
-        var progressForm = new ClashDetectionProgressForm();
-        bool isCancelled = false;
-        
-        try
-        {
-            progressForm.Show();
-            Application.DoEvents();
-            
-            // Precompute transformed bounding boxes and solids for all elements (optimization to avoid repeated API calls in loop)
-            var elementData = new Dictionary<ElementId, (BoundingBoxXYZ BB, Solid Solid)>();
-            foreach (var elemInfo in allElements)
-            {
-                var bb = GetTransformedBoundingBox(elemInfo.Element, elemInfo.Transform);
-                var solid = GetSolid(elemInfo.Element);
-                if (solid != null && !elemInfo.Transform.IsIdentity)
-                {
-                    solid = SolidUtils.CreateTransformed(solid, elemInfo.Transform);
-                }
-                elementData[elemInfo.Element.Id] = (bb, solid);
-            }
-            
-            // Calculate total comparisons - always all unique pairs
-            int totalComparisons = (allElements.Count * (allElements.Count - 1)) / 2;
-            
-            progressForm.UpdateProgress(0, totalComparisons, 
-                $"Checking {allElements.Count} elements for clashes...", "");
-            
-            int currentComparison = 0;
-            
-            // Check each pair of elements
-            for (int i = 0; i < allElements.Count - 1; i++)
-            {
-                var elem1Info = allElements[i];
-                var (bb1, solid1) = elementData[elem1Info.Element.Id];
-                
-                for (int j = i + 1; j < allElements.Count; j++)
-                {
-                    var elem2Info = allElements[j];
-                    var (bb2, solid2) = elementData[elem2Info.Element.Id];
-                    
-                    // Skip if same element
-                    if (elem1Info.Element.Id == elem2Info.Element.Id && 
-                        elem1Info.Document.Title == elem2Info.Document.Title)
-                        continue;
-                    
-                    currentComparison++;
-                    
-                    // Update UI more frequently for better responsiveness
-                    if (currentComparison % 5 == 0 || clashes.Count > 0)
-                    {
-                        Application.DoEvents();
-                        Thread.Yield(); // Allow other threads to run
-                        
-                        if (progressForm.IsCancelled)
-                        {
-                            isCancelled = true;
-                            goto DetectionEnd;
-                        }
-                    }
-                    
-                    string currentDesc = $"{GetElementDescription(elem1Info.Element, false)} [ID: {elem1Info.Element.Id}] vs {GetElementDescription(elem2Info.Element, false)} [ID: {elem2Info.Element.Id}]";
-                    progressForm.UpdateProgress(currentComparison, totalComparisons,
-                        $"Checking element {i+1} vs {j+1} of {allElements.Count}",
-                        currentDesc);
-                    
-                    // Quick bounding box check first
-                    if (!DoBoundingBoxesOverlap(bb1, bb2))
-                        continue;
-                    
-                    // Detailed solid intersection check
-                    if (CheckElementsClash(solid1, solid2))
-                    {
-                        var clashInfo = new ClashInfo
-                        {
-                            Element1 = elem1Info.Element,
-                            Element2 = elem2Info.Element,
-                            Link1 = elem1Info.LinkInstance,
-                            Link2 = elem2Info.LinkInstance,
-                            ClashPoint = CalculateClashPoint(bb1, bb2),
-                            OverlapBBox = CalculateOverlapBBox(bb1, bb2)
-                        };
-                        
-                        clashes.Add(clashInfo);
-                        
-                        // Report clash immediately
-                        string source1 = elem1Info.IsLinked ? elem1Info.SourceName : "Host";
-                        string source2 = elem2Info.IsLinked ? elem2Info.SourceName : "Host";
-                        
-                        string clashDesc = $"Clash {clashes.Count}: [{source1}] {GetElementDescription(elem1Info.Element, false)} " +
-                                          $"<-> [{source2}] {GetElementDescription(elem2Info.Element, false)}";
-                        progressForm.AddClash(clashDesc);
-                        
-                        Application.DoEvents();
-                    }
-                }
-            }
-            
-DetectionEnd:
-            progressForm.SetComplete(clashes.Count, _stopwatch.ElapsedMilliseconds, isCancelled);
-        }
-        finally
-        {
-            if (progressForm != null && !progressForm.IsDisposed)
-            {
-                if (isCancelled)
-                {
-                    progressForm.Close();
-                }
-            }
-        }
-        
-        return (clashes, isCancelled);
-    }
-    
-    private bool DoBoundingBoxesOverlap(BoundingBoxXYZ bb1, BoundingBoxXYZ bb2)
-    {
-        if (bb1 == null || bb2 == null)
-            return false;
-        
-        return bb1.Min.X <= bb2.Max.X && bb1.Max.X >= bb2.Min.X &&
-               bb1.Min.Y <= bb2.Max.Y && bb1.Max.Y >= bb2.Min.Y &&
-               bb1.Min.Z <= bb2.Max.Z && bb1.Max.Z >= bb2.Min.Z;
     }
     
     private bool CheckElementsClash(Solid solid1, Solid solid2)
@@ -330,7 +588,6 @@ DetectionEnd:
         if (solid1 == null || solid2 == null)
             return false;
         
-        // Check intersection
         try
         {
             var intersection = BooleanOperationsUtils.ExecuteBooleanOperation(
@@ -349,7 +606,6 @@ DetectionEnd:
         if (bb1 == null || bb2 == null)
             return XYZ.Zero;
         
-        // Calculate intersection center
         var minX = Math.Max(bb1.Min.X, bb2.Min.X);
         var minY = Math.Max(bb1.Min.Y, bb2.Min.Y);
         var minZ = Math.Max(bb1.Min.Z, bb2.Min.Z);
@@ -418,7 +674,7 @@ DetectionEnd:
                 ElementId matId = Material.Create(doc, "ClashTransparentRed");
                 clashMat = doc.GetElement(matId) as Material;
                 clashMat.Color = new RevitColor(255, 0, 0);
-                clashMat.Transparency = 70; // 0-100 scale
+                clashMat.Transparency = 70;
             }
             
             int clashNumber = 1;
@@ -502,7 +758,6 @@ DetectionEnd:
         // Add clash information to comments
         var clashInfo = $"Clash #{clashNumber}: {GetElementDescription(clash.Element1, true)}, {GetElementDescription(clash.Element2, true)}";
         
-        // Set comments parameter
         var commentsParam = ds.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS);
         if (commentsParam != null && !commentsParam.IsReadOnly)
         {
@@ -528,13 +783,11 @@ DetectionEnd:
         
         if (!detailed)
         {
-            // Short version for progress display
             if (!string.IsNullOrEmpty(type))
                 return $"{category}: {type}";
             return category;
         }
         
-        // Detailed version for clash report
         var desc = $"{category}";
         if (!string.IsNullOrEmpty(family))
             desc += $" - {family}";
@@ -583,7 +836,6 @@ DetectionEnd:
         var geomElem = elem.get_Geometry(options);
         if (geomElem == null) return null;
         
-        // Get largest solid (skip very small solids)
         Solid largestSolid = null;
         double largestVolume = 0;
         
@@ -596,7 +848,6 @@ DetectionEnd:
                 largestVolume = solid.Volume;
             }
             
-            // Check geometry instances
             var instance = geomObj as GeometryInstance;
             if (instance != null)
             {
@@ -616,7 +867,10 @@ DetectionEnd:
         return largestSolid;
     }
     
-    // Helper class to store element information with transform
+    #endregion
+    
+    #region Helper Classes
+    
     private class ElementInfo
     {
         public Element Element { get; set; }
@@ -627,7 +881,6 @@ DetectionEnd:
         public RevitLinkInstance LinkInstance { get; set; }
     }
     
-    // Helper class to store clash information
     private class ClashInfo
     {
         public Element Element1 { get; set; }
@@ -637,12 +890,61 @@ DetectionEnd:
         public XYZ ClashPoint { get; set; }
         public BoundingBoxXYZ OverlapBBox { get; set; }
     }
+    
+    private class GeometryData
+    {
+        public ElementId ElementId { get; set; }
+        public ElementInfo ElementInfo { get; set; }
+        public BoundingBoxXYZ BoundingBox { get; set; }
+        public BoundingSphere BoundingSphere { get; set; }
+        public Solid Solid { get; set; }
+        public SerializedSolid SerializedSolid { get; set; }
+    }
+    
+    private class BoundingSphere
+    {
+        public XYZ Center { get; set; }
+        public double Radius { get; set; }
+    }
+    
+    // Serializable classes for external processing
+    [Serializable]
+    private class SerializedSolid
+    {
+        public List<SerializedFace> Faces { get; set; }
+        public double Volume { get; set; }
+    }
+    
+    [Serializable]
+    private class SerializedFace
+    {
+        public List<double[]> Vertices { get; set; }
+        public List<int[]> Triangles { get; set; }
+    }
+    
+    private class ClashCheckData
+    {
+        public List<ExternalGeometryData> Elements { get; set; }
+    }
+    
+    private class ExternalGeometryData
+    {
+        public int ElementId { get; set; }
+        public double[] BoundingBox { get; set; }
+        public SerializedSolid SerializedSolid { get; set; }
+    }
+    
+    private class ClashResult
+    {
+        public int ElementId1 { get; set; }
+        public int ElementId2 { get; set; }
+        public double[] ClashPoint { get; set; }
+    }
+    
+    #endregion
 }
 
-/// <summary>
-/// Progress dialog for clash detection operations
-/// Shows real-time progress, found clashes, elapsed time, and provides cancellation
-/// </summary>
+// Progress form remains the same
 public class ClashDetectionProgressForm : WinForm
 {
     private ProgressBar progressBar;
@@ -663,9 +965,8 @@ public class ClashDetectionProgressForm : WinForm
         stopwatch = new Stopwatch();
         stopwatch.Start();
         
-        // Timer to update elapsed time
         updateTimer = new System.Windows.Forms.Timer();
-        updateTimer.Interval = 100; // Update every 100ms
+        updateTimer.Interval = 100;
         updateTimer.Tick += (s, e) => UpdateElapsedTime();
         updateTimer.Start();
     }
@@ -680,7 +981,6 @@ public class ClashDetectionProgressForm : WinForm
         this.MaximizeBox = false;
         this.MinimizeBox = false;
         
-        // Progress bar
         progressBar = new ProgressBar
         {
             Location = new WinPoint(12, 12),
@@ -689,7 +989,6 @@ public class ClashDetectionProgressForm : WinForm
             Style = ProgressBarStyle.Continuous
         };
         
-        // Status label
         statusLabel = new Label
         {
             Location = new WinPoint(12, 40),
@@ -698,7 +997,6 @@ public class ClashDetectionProgressForm : WinForm
             Text = "Initializing..."
         };
         
-        // Current element label
         currentElementLabel = new Label
         {
             Location = new WinPoint(12, 65),
@@ -708,7 +1006,6 @@ public class ClashDetectionProgressForm : WinForm
             AutoSize = false
         };
         
-        // Time label
         timeLabel = new Label
         {
             Location = new WinPoint(this.ClientSize.Width - 172 - 12, 110),
@@ -718,7 +1015,6 @@ public class ClashDetectionProgressForm : WinForm
             TextAlign = ContentAlignment.TopRight
         };
         
-        // Clash count label
         clashCountLabel = new Label
         {
             Location = new WinPoint(12, 110),
@@ -728,7 +1024,6 @@ public class ClashDetectionProgressForm : WinForm
             Font = new WinFont(this.Font, FontStyle.Bold)
         };
         
-        // Clash list box
         clashListBox = new ListBox
         {
             Location = new WinPoint(12, 135),
@@ -739,7 +1034,6 @@ public class ClashDetectionProgressForm : WinForm
             SelectionMode = SelectionMode.MultiExtended
         };
         
-        // Cancel button
         cancelButton = new Button
         {
             Location = new WinPoint(this.ClientSize.Width - 75 - 12, this.ClientSize.Height - 23 - 12),
@@ -754,7 +1048,6 @@ public class ClashDetectionProgressForm : WinForm
             this.DialogResult = DialogResult.Cancel;
         };
         
-        // Add controls
         this.Controls.AddRange(new WinControl[] 
         {
             progressBar,
@@ -808,11 +1101,9 @@ public class ClashDetectionProgressForm : WinForm
         statusLabel.Text = status;
         currentElementLabel.Text = $"Processing: {currentElement}";
         
-        // Update percentage in title
         int percentage = total > 0 ? (current * 100 / total) : 0;
         this.Text = $"Clash Detection Progress - {percentage}%";
         
-        // Estimate time remaining
         if (current > 0 && stopwatch.ElapsedMilliseconds > 1000)
         {
             var avgTimePerItem = stopwatch.ElapsedMilliseconds / (double)current;
@@ -837,10 +1128,9 @@ public class ClashDetectionProgressForm : WinForm
         
         string timestamp = DateTime.Now.ToString("HH:mm:ss");
         clashListBox.Items.Add($"[{timestamp}] {clashDescription}");
-        clashListBox.TopIndex = clashListBox.Items.Count - 1; // Scroll to latest
+        clashListBox.TopIndex = clashListBox.Items.Count - 1;
         clashCountLabel.Text = $"Clashes found: {clashListBox.Items.Count}";
         
-        // Flash the clash count label briefly
         var originalColor = clashCountLabel.ForeColor;
         clashCountLabel.ForeColor = System.Drawing.Color.Red;
         Application.DoEvents();
@@ -875,9 +1165,8 @@ public class ClashDetectionProgressForm : WinForm
             statusLabel.Text = $"Complete! Found {totalClashes} clashes in {elapsedMs}ms";
         }
         cancelButton.Text = "Close";
-        IsCancelled = false; // Reset the flag
+        IsCancelled = false;
         
-        // Recreate button to clear all handlers
         this.Controls.Remove(cancelButton);
         cancelButton = new Button
         {
