@@ -271,7 +271,7 @@
     <Compile Include="revit-scripts\SetRevisionsToSheetsWhereRevisionIsByCloud.cs" />
     <Compile Include="revit-scripts\SetRevisionsToSheetsWhereRevisionIsByCloudOrBySheet.cs" />
     <Compile Include="revit-scripts\SetRevisionsToSheets.cs" />
-    <Compile Include="revit-scripts\DrawRevisionCloudAroundSelectedElements.cs" />
+    <Compile Include="revit-scripts\DrawRevisionCloudAroundSelectedElementsInSheets.cs" />
     <Compile Include="revit-scripts\DrawSectionLine.cs" />
     <Compile Include="revit-scripts\DuplicateSheets.cs">
       <SubType>Form</SubType>
