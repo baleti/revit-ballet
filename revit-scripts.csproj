@@ -137,6 +137,7 @@
     <Compile Include="revit-scripts\DuplicateSheetWithViewsAsDraftingViews.cs" />
     <Compile Include="revit-scripts\DuplicateViewsAsDraftingViews.cs" />
     <Compile Include="revit-scripts\DuplicateViewsToSheets.cs" />
+    <Compile Include="revit-scripts\ExportSelectedElementsToFile.cs" />
     <Compile Include="revit-scripts\ExportSelectedViewsToDWG.cs" />
     <Compile Include="revit-scripts\ExportSelectedViewsToPDF.cs" />
     <Compile Include="revit-scripts\FaceFlipSelectedDoors.cs" />
@@ -153,6 +154,7 @@
     <Compile Include="revit-scripts\FilterRevisionClouds.cs" />
     <Compile Include="revit-scripts\FilterSheets.cs" />
     <Compile Include="revit-scripts\HandFlipSelectedDoors.cs" />
+    <Compile Include="revit-scripts\ImportElementsFromFile.cs" />
     <Compile Include="revit-scripts\InvokeLastAddinCommand.cs" />
     <Compile Include="revit-scripts\MoveSelectedToCentroid.cs" />
     <Compile Include="revit-scripts\OutlineSelectedElementsInCurrentViewWithDetailLines.cs" />
