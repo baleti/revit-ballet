@@ -182,6 +182,7 @@
     <Compile Include="revit-scripts\SelectOpenedViews.cs" />
     <Compile Include="revit-scripts\SelectRevisionCloudsOfSelectedSheets.cs" />
     <Compile Include="revit-scripts\SelectSameInstancesInGroups.cs" />
+    <Compile Include="revit-scripts\SelectSectionBoxInCurrentView.cs" />
     <Compile Include="revit-scripts\SelectSheetsBySelectedTitleBlocks.cs" />
     <Compile Include="revit-scripts\SelectViewportsOfViews.cs" />
     <Compile Include="revit-scripts\SelectViewsByViewTemplates.cs" />

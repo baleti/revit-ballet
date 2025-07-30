@@ -15,7 +15,7 @@ public class SelectElementsOfSameTypeInLinkedModelsInProject : IExternalCommand
         Document doc = uiapp.ActiveUIDocument.Document;
         UIDocument uiDoc = uiapp.ActiveUIDocument;
         
-        // Get currently selected elements (both regular and linked)
+        // Get currently selected elements using SelectionModeManager methods
         var selectedIds = uiDoc.GetSelectionIds();
         var selectedRefs = uiDoc.GetReferences();
         
@@ -28,12 +28,13 @@ public class SelectElementsOfSameTypeInLinkedModelsInProject : IExternalCommand
         // Collect type information from selected elements
         var selectedTypes = new HashSet<string>(); // Use type signatures for comparison
         var typeDescriptions = new List<string>(); // For user feedback
+        var selectedLinkIds = new HashSet<ElementId>(); // Track link instance IDs that contain selected elements
         
         // Process regular elements from host document
         foreach (var id in selectedIds)
         {
             Element element = doc.GetElement(id);
-            if (element != null)
+            if (element != null && !(element is RevitLinkInstance))
             {
                 string typeSignature = GetElementTypeSignature(element);
                 if (!string.IsNullOrEmpty(typeSignature))
@@ -49,16 +50,19 @@ public class SelectElementsOfSameTypeInLinkedModelsInProject : IExternalCommand
         {
             try
             {
-                var linkedInstance = doc.GetElement(reference.ElementId) as RevitLinkInstance;
-                if (linkedInstance != null)
+                if (reference.LinkedElementId != ElementId.InvalidElementId)
                 {
-                    Document linkedDoc = linkedInstance.GetLinkDocument();
-                    if (linkedDoc != null)
+                    // This is a linked element reference
+                    var linkedInstance = doc.GetElement(reference.ElementId) as RevitLinkInstance;
+                    if (linkedInstance != null)
                     {
-                        var linkedRef = reference.LinkedElementId;
-                        if (linkedRef != ElementId.InvalidElementId)
+                        // Track this link instance
+                        selectedLinkIds.Add(reference.ElementId);
+                        
+                        Document linkedDoc = linkedInstance.GetLinkDocument();
+                        if (linkedDoc != null)
                         {
-                            Element linkedElement = linkedDoc.GetElement(linkedRef);
+                            Element linkedElement = linkedDoc.GetElement(reference.LinkedElementId);
                             if (linkedElement != null)
                             {
                                 string typeSignature = GetElementTypeSignature(linkedElement);
@@ -71,11 +75,11 @@ public class SelectElementsOfSameTypeInLinkedModelsInProject : IExternalCommand
                         }
                     }
                 }
-                else
+                else if (reference.ElementId != ElementId.InvalidElementId)
                 {
-                    // Handle regular element selected via reference
-                    Element element = doc.GetElement(reference);
-                    if (element != null)
+                    // Regular element reference
+                    Element element = doc.GetElement(reference.ElementId);
+                    if (element != null && !(element is RevitLinkInstance))
                     {
                         string typeSignature = GetElementTypeSignature(element);
                         if (!string.IsNullOrEmpty(typeSignature))
@@ -108,36 +112,33 @@ public class SelectElementsOfSameTypeInLinkedModelsInProject : IExternalCommand
             return Result.Cancelled;
         }
         
-        // Create wrappers for the DataGrid
-        var linkWrappers = allLinkInstances
-            .Select(link => new LinkedModelWrapper(link))
-            .OrderBy(w => w.Name)
-            .ToList();
+        // Create dictionary entries for the DataGrid
+        var linkEntries = new List<Dictionary<string, object>>();
+        var linkToIndexMap = new Dictionary<ElementId, int>(); // Map link ElementId to index
         
-        // Determine which models should be pre-selected (models that contain selected elements)
-        var preSelectedIndices = new List<int>();
-        var selectedLinkNames = new HashSet<string>();
+        // Sort link instances by name first
+        allLinkInstances = allLinkInstances.OrderBy(link => link.Name).ToList();
         
-        // Collect link names from currently selected linked elements
-        foreach (var reference in selectedRefs)
+        for (int i = 0; i < allLinkInstances.Count; i++)
         {
-            try
+            var link = allLinkInstances[i];
+            var entry = new Dictionary<string, object>
             {
-                var linkedInstance = doc.GetElement(reference.ElementId) as RevitLinkInstance;
-                if (linkedInstance != null)
-                {
-                    selectedLinkNames.Add(linkedInstance.Name);
-                }
-            }
-            catch { /* Skip problematic references */ }
+                { "Name", link.Name },
+                { "LinkType", link.GetTypeId() != ElementId.InvalidElementId ? 
+                    doc.GetElement(link.GetTypeId())?.Name ?? "Unknown" : "Unknown" }
+            };
+            linkEntries.Add(entry);
+            linkToIndexMap[link.Id] = i;
         }
         
-        // Find indices of models that should be pre-selected
-        for (int i = 0; i < linkWrappers.Count; i++)
+        // Determine which models should be pre-selected based on selectedLinkIds
+        var preSelectedIndices = new List<int>();
+        foreach (var linkId in selectedLinkIds)
         {
-            if (selectedLinkNames.Contains(linkWrappers[i].Name))
+            if (linkToIndexMap.ContainsKey(linkId))
             {
-                preSelectedIndices.Add(i);
+                preSelectedIndices.Add(linkToIndexMap[linkId]);
             }
         }
         
@@ -145,21 +146,31 @@ public class SelectElementsOfSameTypeInLinkedModelsInProject : IExternalCommand
         var linkPropertyNames = new List<string> { "Name", "LinkType" };
         
         // Show the DataGrid to let the user select linked models to search
-        var selectedLinkWrappers = CustomGUIs.DataGrid<LinkedModelWrapper>(
-            linkWrappers, 
-            linkPropertyNames, 
-            preSelectedIndices.Count > 0 ? preSelectedIndices : null,
-            "Select Linked Models to Search"
+        var selectedEntries = CustomGUIs.DataGrid(
+            linkEntries,
+            linkPropertyNames,
+            false, // spanAllScreens
+            preSelectedIndices.Count > 0 ? preSelectedIndices : null
         );
         
-        if (selectedLinkWrappers.Count == 0)
+        if (selectedEntries == null || selectedEntries.Count == 0)
             return Result.Cancelled;
         
-        // Extract the selected link instances
-        var selectedLinkInstances = selectedLinkWrappers.Select(w => w.LinkInstance).ToList();
+        // Extract the selected link instances based on selected entries
+        var selectedLinkInstances = new List<RevitLinkInstance>();
+        foreach (var entry in selectedEntries)
+        {
+            var linkName = entry["Name"].ToString();
+            var matchingLink = allLinkInstances.FirstOrDefault(link => link.Name == linkName);
+            if (matchingLink != null)
+            {
+                selectedLinkInstances.Add(matchingLink);
+            }
+        }
         
         List<Reference> matchingReferences = new List<Reference>();
         int linksSearched = 0;
+        int totalElementsFound = 0;
         
         // Search only the user-selected linked models for matching element types
         foreach (var linkInstance in selectedLinkInstances)
@@ -168,6 +179,7 @@ public class SelectElementsOfSameTypeInLinkedModelsInProject : IExternalCommand
             if (linkedDoc == null) continue;
             
             linksSearched++;
+            int elementsInThisLink = 0;
             
             FilteredElementCollector collector = new FilteredElementCollector(linkedDoc);
             collector.WhereElementIsNotElementType();
@@ -185,6 +197,8 @@ public class SelectElementsOfSameTypeInLinkedModelsInProject : IExternalCommand
                         if (linkedRef != null)
                         {
                             matchingReferences.Add(linkedRef);
+                            elementsInThisLink++;
+                            totalElementsFound++;
                         }
                     }
                 }
@@ -198,7 +212,7 @@ public class SelectElementsOfSameTypeInLinkedModelsInProject : IExternalCommand
         
         if (matchingReferences.Count > 0)
         {
-            // Select all matching elements
+            // Select all matching elements using SelectionModeManager
             uiDoc.SetReferences(matchingReferences);
         }
         

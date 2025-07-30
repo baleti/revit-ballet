@@ -149,12 +149,22 @@ public partial class CustomGUIs
         if (initialSelectionIndices != null && initialSelectionIndices.Count > 0)
         {
             int firstVisible = GetFirstVisibleColumnIndex();
+            bool currentCellSet = false;
+            
             foreach (int idx in initialSelectionIndices)
+            {
                 if (idx >= 0 && idx < grid.Rows.Count && firstVisible >= 0)
                 {
                     grid.Rows[idx].Selected = true;
-                    grid.CurrentCell = grid.Rows[idx].Cells[firstVisible];
+                    
+                    // Only set CurrentCell once, for the first valid selection
+                    if (!currentCellSet)
+                    {
+                        grid.CurrentCell = grid.Rows[idx].Cells[firstVisible];
+                        currentCellSet = true;
+                    }
                 }
+            }
         }
 
         // Setup delay timer for large datasets
