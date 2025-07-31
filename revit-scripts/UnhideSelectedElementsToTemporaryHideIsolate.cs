@@ -36,13 +36,30 @@ public class UnhideSelectedElementsToTemporaryHideIsolate : IExternalCommand
                 return Result.Succeeded;
             }
 
-            // Filter selected elements to only those that can be hidden in the view
+            // Process selected elements and expand groups
             List<ElementId> validSelectedIds = new List<ElementId>();
             foreach (ElementId id in selectedElementIds)
             {
                 Element elem = doc.GetElement(id);
-                if (elem != null && elem.CanBeHidden(activeView))
+                if (elem == null) continue;
+
+                // Check if this is a model group
+                if (elem is Group group)
                 {
+                    // For groups, add all member elements that can be hidden
+                    ICollection<ElementId> memberIds = group.GetMemberIds();
+                    foreach (ElementId memberId in memberIds)
+                    {
+                        Element memberElem = doc.GetElement(memberId);
+                        if (memberElem != null && memberElem.CanBeHidden(activeView))
+                        {
+                            validSelectedIds.Add(memberId);
+                        }
+                    }
+                }
+                else if (elem.CanBeHidden(activeView))
+                {
+                    // For non-group elements, add directly if they can be hidden
                     validSelectedIds.Add(id);
                 }
             }
@@ -57,37 +74,46 @@ public class UnhideSelectedElementsToTemporaryHideIsolate : IExternalCommand
             {
                 trans.Start();
 
-                // Strategy: Collect ALL visible elements (regardless of category) and add the selected elements
-                List<ElementId> elementsToIsolate = new List<ElementId>();
+                // Strategy: Collect currently visible elements and add selected elements to them
+                HashSet<ElementId> currentlyVisibleIds = new HashSet<ElementId>();
                 
-                // Collect ALL elements in the view that can be hidden
-                FilteredElementCollector collector = new FilteredElementCollector(doc, activeView.Id)
+                // Important: Use document-wide collector to avoid section box filtering
+                FilteredElementCollector collector = new FilteredElementCollector(doc)
                     .WhereElementIsNotElementType();
 
-                // Add ALL elements that can be hidden and are not permanently hidden
+                // Check each element's visibility in the current view
                 foreach (Element elem in collector)
                 {
-                    if (elem.CanBeHidden(activeView) && !elem.IsHidden(activeView))
+                    ElementId elemId = elem.Id;
+                    
+                    // Skip if element cannot be hidden in this view
+                    if (!elem.CanBeHidden(activeView))
+                        continue;
+                    
+                    // Check if element is visible (not permanently hidden and not temporarily hidden)
+                    bool isPermanentlyHidden = elem.IsHidden(activeView);
+                    bool isTemporarilyHidden = activeView.IsElementVisibleInTemporaryViewMode(
+                        TemporaryViewMode.TemporaryHideIsolate, elemId) == false;
+                    
+                    // If element is currently visible (not hidden by either method)
+                    if (!isPermanentlyHidden && !isTemporarilyHidden)
                     {
-                        elementsToIsolate.Add(elem.Id);
+                        currentlyVisibleIds.Add(elemId);
                     }
                 }
 
-                // Ensure selected elements are in the isolation list
+                // Add selected elements (including expanded group members) to the visible set
                 foreach (ElementId id in validSelectedIds)
                 {
-                    if (!elementsToIsolate.Contains(id))
-                    {
-                        elementsToIsolate.Add(id);
-                    }
+                    currentlyVisibleIds.Add(id);
                 }
 
                 // Reset current temporary mode and apply new isolation
                 activeView.DisableTemporaryViewMode(TemporaryViewMode.TemporaryHideIsolate);
                 
-                if (elementsToIsolate.Count > 0)
+                if (currentlyVisibleIds.Count > 0)
                 {
-                    activeView.IsolateElementsTemporary(elementsToIsolate);
+                    activeView.IsolateElementsTemporary(currentlyVisibleIds.ToList());
                 }
 
                 trans.Commit();

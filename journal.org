@@ -1155,6 +1155,9 @@ needs to be completely automated, minimum maintenance
 ***** think about testing
 *** 06
 **** =15:58= hit sad limitation of revit api, there is no way to unhide in view elements from linked models
+:PROPERTIES:
+:ID:       c4a24ec8-e379-4ebf-b0c4-bed868fe87f2
+:END:
 given that temporary isolate methods don't work on elements on linked models and other limitations like filters not distinguishing between linked models working with linked models in revit becomes is severely limiting
 [[https://forums.autodesk.com/t5/revit-ideas/unhide-elements-in-view-in-linked-models/idi-p/13712780][revit idea]]
 ***** possible workaround would be duplicating the view precisely and performing a "sacrificial" hide in view there
@@ -1170,3 +1173,5 @@ also don't know how addin worked before if I only shipped a single .dll file wit
 **** =14:00= ExportSelectedViewsToPDF command turned out to be ~25% slower than revit builtin PDF Exporter
 ExportSelectedViewsToPDF - 12 minutes
 Revit UI - 9 minutes
+*** 31
+**** =12:30= caught myself [[id:c4a24ec8-e379-4ebf-b0c4-bed868fe87f2][again]] not remembering that revit api doesn't let you hide/unhide elements in linked models
