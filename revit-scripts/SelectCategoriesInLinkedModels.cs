@@ -486,20 +486,6 @@ public abstract class SelectCategoriesInSelectedLinkedModelsBase : IExternalComm
         {
             // Highlight all selected elements using references
             uiDoc.SetReferences(elementReferences);
-            
-            string resultMessage;
-            if (selectInView)
-            {
-                resultMessage = $"Selected {elementsSuccessfullySelected} elements whose bounding boxes intersect with current view range.\n" +
-                               $"Total elements in categories: {totalElementsInCategory}\n" +
-                               $"Elements in view range: {elementsInViewRange}";
-            }
-            else
-            {
-                resultMessage = $"Selected {elementsSuccessfullySelected} elements from {selectedLinkInstances.Count} linked model(s).";
-            }
-            
-            TaskDialog.Show("Success", resultMessage);
         }
         else
         {

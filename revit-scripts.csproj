@@ -156,6 +156,7 @@
     <Compile Include="revit-scripts\HandFlipSelectedDoors.cs" />
     <Compile Include="revit-scripts\ImportElementsFromFile.cs" />
     <Compile Include="revit-scripts\InvokeLastAddinCommand.cs" />
+    <Compile Include="revit-scripts\IsolateElementsInView.cs" />
     <Compile Include="revit-scripts\MoveSelectedToCentroid.cs" />
     <Compile Include="revit-scripts\OutlineSelectedElementsInCurrentViewWithDetailLines.cs" />
     <Compile Include="revit-scripts\PlaceSelectedViewsOnSheets.cs" />
