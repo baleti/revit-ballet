@@ -6,7 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 [Transaction(TransactionMode.Manual)]
-public class PasteSelectedElementToViews : IExternalCommand
+public class CopySelectedElementsToViews : IExternalCommand
 {
     public Result Execute(
         ExternalCommandData commandData, 

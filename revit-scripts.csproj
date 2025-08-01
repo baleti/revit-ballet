@@ -109,6 +109,7 @@
     <Reference Include="WindowsFormsIntegration" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="revit-scripts\AddSelectedElementsToSelectedModelGroups.cs" />
     <Compile Include="revit-scripts\AddTextNoteToSelectedDoors.cs" />
     <Compile Include="revit-scripts\AddTextNoteToSelectedElements.cs" />
     <Compile Include="revit-scripts\AlignSectionBox3DTopToWorkplane.cs" />
@@ -121,6 +122,7 @@
     <Compile Include="revit-scripts\CombineSelectionSetsIntoANewSet.cs" />
     <Compile Include="revit-scripts\CombineViewSetsIntoANewSet.cs" />
     <Compile Include="revit-scripts\CopyCropRegionOfSelectedView.cs" />
+    <Compile Include="revit-scripts\CopySelectedRevisionCloudsToSheetsAndInheritRevision.cs" />
     <Compile Include="revit-scripts\CreateFilledRegionsFromSelectedAreas.cs" />
     <Compile Include="revit-scripts\CreateFilledRegionsOfSelectedElementsInViews.cs" />
     <Compile Include="revit-scripts\CreateViewSetFromSelectedViews.cs" />
@@ -197,6 +199,7 @@
     <Compile Include="revit-scripts\ShowGeoegraphicData.cs" />
     <Compile Include="revit-scripts\ShowHideWorksetsInView.cs" />
     <Compile Include="revit-scripts\ImportScopeBoxesFromFile.cs" />
+    <Compile Include="revit-scripts\SwapSelectedModelGroups.cs" />
     <Compile Include="revit-scripts\UnhideSelectedElementsToTemporaryHideIsolate.cs" />
     <Compile Include="revit-scripts\StretchLevelsToCropRegion.cs" />
     <Compile Include="revit-scripts\test33.cs" />
@@ -258,7 +261,7 @@
     <Compile Include="revit-scripts\ListTypesInCurrentProject.cs" />
     <Compile Include="revit-scripts\ListTypesByCategory.cs" />
     <Compile Include="revit-scripts\MoveViewToSheet.cs" />
-    <Compile Include="revit-scripts\PasteInSamePlaceToViews.cs" />
+    <Compile Include="revit-scripts\CopySelectedElementsToViews.cs" />
     <Compile Include="revit-scripts\SelectAssociatedDimensions.cs" />
     <Compile Include="revit-scripts\SelectDoubleSwitchedSocketOutletInLink.cs" />
     <Compile Include="revit-scripts\SelectModelGroupsInProject.cs" />
