@@ -29,19 +29,47 @@ public class SelectModelGroupsInProject : IExternalCommand
             return Result.Failed;
         }
 
+        // Get all model group instances and count them by type in one pass
+        var allGroupInstances = new FilteredElementCollector(doc)
+                                .OfCategory(BuiltInCategory.OST_IOSModelGroups)
+                                .WhereElementIsNotElementType()
+                                .Cast<Group>()
+                                .ToList();
+
+        // Create a dictionary to store instance counts by GroupType Id
+        var instanceCountByTypeId = new Dictionary<ElementId, int>();
+        foreach (var instance in allGroupInstances)
+        {
+            var typeId = instance.GroupType.Id;
+            if (instanceCountByTypeId.ContainsKey(typeId))
+            {
+                instanceCountByTypeId[typeId]++;
+            }
+            else
+            {
+                instanceCountByTypeId[typeId] = 1;
+            }
+        }
+
         // Prepare entries for the DataGrid
         var entries = new List<Dictionary<string, object>>();
         foreach (var groupType in modelGroupTypes)
         {
+            // Get count from dictionary (0 if not found)
+            int instanceCount = instanceCountByTypeId.ContainsKey(groupType.Id) 
+                                ? instanceCountByTypeId[groupType.Id] 
+                                : 0;
+
             var entry = new Dictionary<string, object>
             {
-                { "Group Name", groupType.Name }
+                { "Group Name", groupType.Name },
+                { "Instances", instanceCount }
             };
             entries.Add(entry);
         }
 
         // Define the columns to display in the DataGrid
-        var propertyNames = new List<string> { "Group Name" };
+        var propertyNames = new List<string> { "Group Name", "Instances" };
 
         // Prompt the user to select one or more group types using the custom DataGrid GUI
         var selectedEntries = CustomGUIs.DataGrid(entries, propertyNames, spanAllScreens: false);
@@ -71,10 +99,7 @@ public class SelectModelGroupsInProject : IExternalCommand
             }
 
             // Find instances of the selected GroupType in the model
-            var groupInstances = new FilteredElementCollector(doc)
-                                    .OfCategory(BuiltInCategory.OST_IOSModelGroups)
-                                    .WhereElementIsNotElementType()
-                                    .Cast<Group>()
+            var groupInstances = allGroupInstances
                                     .Where(g => g.GroupType.Id == selectedGroupType.Id)
                                     .ToList();
 
