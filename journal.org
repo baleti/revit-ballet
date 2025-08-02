@@ -1175,3 +1175,16 @@ ExportSelectedViewsToPDF - 12 minutes
 Revit UI - 9 minutes
 *** 31
 **** =12:30= caught myself [[id:c4a24ec8-e379-4ebf-b0c4-bed868fe87f2][again]] not remembering that revit api doesn't let you hide/unhide elements in linked models
+** August
+*** 01
+**** =20:48= struggling a lot to get SelectSameInstancesInGroups to work
+this breaks when a group has excluded members
+cannot use location of elements, because group transformation cannot be obtained
+could obtain location but comparing corresponding elements
+but when elements are excluded there is no way to obtain corresponding elements
+in summary revit api has really screwed up groups
+https://forums.autodesk.com/t5/revit-api-forum/groups-check-for-mirrored/td-p/5868527
+***** new strategy
+if group doesn't have excldued members use default indexing
+if group has excluded members reconstruct transformation
+  tried principal components analysis but it didn't seem to work

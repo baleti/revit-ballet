@@ -134,6 +134,7 @@
     <Compile Include="revit-scripts\DirectShapesFromSelectedRooms.cs" />
     <Compile Include="revit-scripts\DirectShapesFromVisibleAreas.cs" />
     <Compile Include="revit-scripts\DirectShapesFromVisibleRooms.cs" />
+    <Compile Include="revit-scripts\DrawRevisionCloudAroundSelectedElementsInSheetsAndInheritRevision.cs" />
     <Compile Include="revit-scripts\DuplicateSelectedViewAndSectionBox3DFromViewsInLinkedModels.cs" />
     <Compile Include="revit-scripts\EditSelectionSets.cs" />
     <Compile Include="revit-scripts\DuplicateSheetWithViewsAsDraftingViews.cs" />
@@ -200,6 +201,8 @@
     <Compile Include="revit-scripts\ShowHideWorksetsInView.cs" />
     <Compile Include="revit-scripts\ImportScopeBoxesFromFile.cs" />
     <Compile Include="revit-scripts\SwapSelectedModelGroups.cs" />
+    <Compile Include="revit-scripts\test44.cs" />
+    <Compile Include="revit-scripts\test45.cs" />
     <Compile Include="revit-scripts\UnhideSelectedElementsToTemporaryHideIsolate.cs" />
     <Compile Include="revit-scripts\StretchLevelsToCropRegion.cs" />
     <Compile Include="revit-scripts\test33.cs" />
