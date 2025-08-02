@@ -53,7 +53,8 @@ namespace MyCompany.RevitCommands
                 "Revision Number",
                 "Revision Description",
                 "Cloud Count",
-                "Longest Edge (mm)"
+                "Longest Edge (mm)",
+                "Comments"
             };
 
             // --- build grid data + quick lookup map ------------------------------------------
@@ -97,6 +98,14 @@ namespace MyCompany.RevitCommands
                 if (nameParam != null)
                 {
                     cloudName = nameParam.AsString() ?? string.Empty;
+                }
+
+                // Get Comments parameter value
+                string comments = string.Empty;
+                Parameter commentsParam = cloud.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS);
+                if (commentsParam != null)
+                {
+                    comments = commentsParam.AsString() ?? string.Empty;
                 }
 
                 // Analyze geometry to count clouds and find longest edge
@@ -166,7 +175,8 @@ namespace MyCompany.RevitCommands
                     ["Revision Number"] = revisionNumber,
                     ["Revision Description"] = revisionDescription,
                     ["Cloud Count"] = cloudCount.ToString(),
-                    ["Longest Edge (mm)"] = longestEdgeLength.ToString("F1")
+                    ["Longest Edge (mm)"] = longestEdgeLength.ToString("F1"),
+                    ["Comments"] = comments
                 });
 
                 // Remember the id for later

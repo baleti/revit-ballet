@@ -5,6 +5,7 @@ using Autodesk.Revit.UI;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 #endregion
 
 namespace MyCompany.RevitCommands
@@ -26,15 +27,45 @@ namespace MyCompany.RevitCommands
                                              .Any(e => e.Id == id);
 
     // ------------------------------------------------------------------
+    // Helper to get element description
+    // ------------------------------------------------------------------
+    private static string GetElementDescription(Element el)
+    {
+      string family = "Unknown";
+      string type = "Unknown";
+      string id = el.Id.ToString();
+
+      if (el is FamilyInstance fi)
+      {
+        family = fi.Symbol?.Family?.Name ?? "Unknown Family";
+        type = fi.Symbol?.Name ?? "Unknown Type";
+      }
+      else if (el.Category != null)
+      {
+        family = el.Category.Name;
+        type = el.Name ?? el.GetType().Name;
+      }
+      else
+      {
+        family = el.GetType().Name;
+        type = el.Name ?? "";
+      }
+
+      return $"{family} - {type} - {id}";
+    }
+
+    // ------------------------------------------------------------------
     // 2-D rectangle helper used for Boolean union
     // ------------------------------------------------------------------
     private class Rect2D
     {
       public double Xmin, Ymin, Xmax, Ymax;
+      public HashSet<ElementId> ContributingElements { get; set; }
 
       public Rect2D(double xmin, double ymin, double xmax, double ymax)
       {
         Xmin = xmin; Ymin = ymin; Xmax = xmax; Ymax = ymax;
+        ContributingElements = new HashSet<ElementId>();
       }
 
       public bool IntersectsOrTouches(Rect2D other) =>
@@ -47,6 +78,10 @@ namespace MyCompany.RevitCommands
         Ymin = Math.Min(Ymin, other.Ymin);
         Xmax = Math.Max(Xmax, other.Xmax);
         Ymax = Math.Max(Ymax, other.Ymax);
+        
+        // Merge contributing elements
+        foreach (var id in other.ContributingElements)
+          ContributingElements.Add(id);
       }
     }
 
@@ -335,6 +370,7 @@ namespace MyCompany.RevitCommands
             }
 
             var r = new Rect2D(sxMin, syMin, sxMax, syMax);
+            r.ContributingElements.Add(elId);  // Track which element contributed to this rectangle
 
             if (!rectsBySheet.TryGetValue(shId, out var list))
             {
@@ -388,8 +424,6 @@ namespace MyCompany.RevitCommands
             continue;  // Skip this sheet if no revision found
           }
 
-          List<Curve> curves = new List<Curve>();
-
           foreach (Rect2D r in rects)
           {
             XYZ bl = new XYZ(r.Xmin, r.Ymin, 0);
@@ -397,41 +431,46 @@ namespace MyCompany.RevitCommands
             XYZ tr = new XYZ(r.Xmax, r.Ymax, 0);
             XYZ br = new XYZ(r.Xmax, r.Ymin, 0);
 
-            curves.Add(Line.CreateBound(bl, tl));
-            curves.Add(Line.CreateBound(tl, tr));
-            curves.Add(Line.CreateBound(tr, br));
-            curves.Add(Line.CreateBound(br, bl));
-          }
+            List<Curve> curves = new List<Curve>
+            {
+              Line.CreateBound(bl, tl),
+              Line.CreateBound(tl, tr),
+              Line.CreateBound(tr, br),
+              Line.CreateBound(br, bl)
+            };
 
-          RevisionCloud.Create(doc,
-                               sheet,
-                               latestRevisionId,
-                               curves);
+            RevisionCloud cloud = RevisionCloud.Create(doc,
+                                 sheet,
+                                 latestRevisionId,
+                                 curves);
+
+            // Build comment with element descriptions
+            if (cloud != null && r.ContributingElements.Count > 0)
+            {
+              StringBuilder comment = new StringBuilder("Elements: ");
+              List<string> descriptions = new List<string>();
+              
+              foreach (ElementId id in r.ContributingElements)
+              {
+                Element elem = doc.GetElement(id);
+                if (elem != null)
+                {
+                  descriptions.Add(GetElementDescription(elem));
+                }
+              }
+              
+              comment.Append(string.Join("; ", descriptions));
+              
+              // Set the Comments parameter
+              Parameter commentsParam = cloud.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS);
+              if (commentsParam != null && !commentsParam.IsReadOnly)
+              {
+                commentsParam.Set(comment.ToString());
+              }
+            }
+          }
         }
         t.Commit();
-      }
-
-      //------------------------------------------------------------------
-      // 6) Report skipped items and sheets, if any
-      //------------------------------------------------------------------
-      List<string> messages = new List<string>();
-
-      if (failedElems.Count > 0)
-      {
-        messages.Add($"{failedElems.Count} of {selIds.Count} selected element(s) " +
-          "are in Drafting/Legend views or not visible on any chosen sheet.");
-      }
-
-      if (skippedSheets > 0)
-      {
-        messages.Add($"{skippedSheets} sheet(s) were skipped because they have no revisions: " +
-          string.Join(", ", skippedSheetNumbers.Take(5)) + 
-          (skippedSheetNumbers.Count > 5 ? "..." : ""));
-      }
-
-      if (messages.Count > 0)
-      {
-        TaskDialog.Show("Revision Clouds", string.Join("\n\n", messages));
       }
 
       return Result.Succeeded;
