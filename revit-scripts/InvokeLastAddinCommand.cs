@@ -12,7 +12,7 @@ public class InvokeLastAddinCommand : IExternalCommand
 {
     private const string FolderName = "revit-scripts";
     private const string ConfigFileName = "InvokeAddinCommand-last-dll-path";
-    private const string LastCommandFileName = "InvokeAddinCommand-last-command";
+    private const string LastCommandFileName = "InvokeAddinCommand-history";
     private static readonly string ConfigFolderPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), FolderName);
     private static readonly string ConfigFilePath = Path.Combine(ConfigFolderPath, ConfigFileName);
     private static readonly string LastCommandFilePath = Path.Combine(ConfigFolderPath, LastCommandFileName);
@@ -33,11 +33,19 @@ public class InvokeLastAddinCommand : IExternalCommand
             }
 
             string dllPath = File.ReadAllText(ConfigFilePath);
-            string commandClassName = File.ReadAllText(LastCommandFilePath);
-
-            if (string.IsNullOrEmpty(dllPath) || !File.Exists(dllPath) || string.IsNullOrEmpty(commandClassName))
+            
+            // Read the last command from the history file
+            string commandClassName = GetLastCommand();
+            
+            if (string.IsNullOrEmpty(commandClassName))
             {
-                message = "Invalid DLL path or command class name.";
+                message = "No command history found.";
+                return Result.Failed;
+            }
+
+            if (string.IsNullOrEmpty(dllPath) || !File.Exists(dllPath))
+            {
+                message = "Invalid DLL path.";
                 return Result.Failed;
             }
 
@@ -78,6 +86,30 @@ public class InvokeLastAddinCommand : IExternalCommand
         finally
         {
             AppDomain.CurrentDomain.AssemblyResolve -= CurrentDomain_AssemblyResolve;
+        }
+    }
+
+    private string GetLastCommand()
+    {
+        try
+        {
+            // Read all lines and get the last non-empty line
+            string[] lines = File.ReadAllLines(LastCommandFilePath);
+            
+            // Find the last non-empty line
+            for (int i = lines.Length - 1; i >= 0; i--)
+            {
+                if (!string.IsNullOrWhiteSpace(lines[i]))
+                {
+                    return lines[i].Trim();
+                }
+            }
+            
+            return null;
+        }
+        catch
+        {
+            return null;
         }
     }
 

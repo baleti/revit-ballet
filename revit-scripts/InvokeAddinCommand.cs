@@ -13,7 +13,7 @@ public class InvokeAddinCommand : IExternalCommand
 {
     private const string FolderName = "revit-scripts";
     private const string ConfigFileName = "InvokeAddinCommand-last-dll-path";
-    private const string LastCommandFileName = "InvokeAddinCommand-last-command";
+    private const string LastCommandFileName = "InvokeAddinCommand-history";
     private static readonly string ConfigFolderPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), FolderName);
     private static readonly string ConfigFilePath = Path.Combine(ConfigFolderPath, ConfigFileName);
     private static readonly string LastCommandFilePath = Path.Combine(ConfigFolderPath, LastCommandFileName);
@@ -85,7 +85,8 @@ public class InvokeAddinCommand : IExternalCommand
                     {
                         if (fullCommandClassName != "InvokeLastAddinCommand")
                         {
-                            File.WriteAllText(LastCommandFilePath, fullCommandClassName);
+                            // Append to history file instead of overwriting
+                            AppendToCommandHistory(fullCommandClassName);
                         }
 
                         object commandInstance = Activator.CreateInstance(commandType);
@@ -115,6 +116,32 @@ public class InvokeAddinCommand : IExternalCommand
         }
 
         return Result.Failed;
+    }
+
+    private void AppendToCommandHistory(string commandClassName)
+    {
+        try
+        {
+            // Ensure directory exists
+            if (!Directory.Exists(ConfigFolderPath))
+            {
+                Directory.CreateDirectory(ConfigFolderPath);
+            }
+
+            // Append command with timestamp for better tracking
+            string historyEntry = $"{commandClassName}";
+            
+            // Append to file (creates file if it doesn't exist)
+            using (StreamWriter sw = File.AppendText(LastCommandFilePath))
+            {
+                sw.WriteLine(historyEntry);
+            }
+        }
+        catch (Exception ex)
+        {
+            // Log error but don't fail the command execution
+            TaskDialog.Show("Warning", $"Failed to update command history: {ex.Message}");
+        }
     }
 
     private Assembly LoadAssembly(string assemblyPath)
