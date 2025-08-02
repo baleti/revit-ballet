@@ -113,6 +113,8 @@ namespace MyCompany.RevitCommands
       UIDocument uiDoc = cd.Application.ActiveUIDocument;
       Document   doc   = uiDoc.Document;
 
+      string timestamp = DateTime.Now.ToString("yyyy.MM.dd HH:mm");
+
       //------------------------------------------------------------------
       // 0) Ensure a selection
       //------------------------------------------------------------------
@@ -444,7 +446,7 @@ namespace MyCompany.RevitCommands
                 Element elem = doc.GetElement(id);
                 if (elem != null)
                 {
-                  descriptions.Add(GetElementDescription(elem));
+                  descriptions.Add(GetElementDescription(elem) + "-" + timestamp);
                 }
               }
               
