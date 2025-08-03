@@ -109,7 +109,7 @@
     <Reference Include="WindowsFormsIntegration" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="revit-scripts\AddSelectedElementsToSelectedModelGroups.cs" />
+    <Compile Include="revit-scripts\CombineSelectedElementsWithSelectedModelGroups.cs" />
     <Compile Include="revit-scripts\AddTextNoteToSelectedDoors.cs" />
     <Compile Include="revit-scripts\AddTextNoteToSelectedElements.cs" />
     <Compile Include="revit-scripts\AlignSectionBox3DTopToWorkplane.cs" />
@@ -118,6 +118,7 @@
     <Compile Include="revit-scripts\ChangeLevelOfSelectedElements.cs" />
     <Compile Include="revit-scripts\ChangeLineStyleOfSelectedFilledRegions.cs" />
     <Compile Include="revit-scripts\ClashDetectionSelectedElements.cs" />
+    <Compile Include="revit-scripts\CombineSelectedElementsContainingSelectedModelGroups.cs" />
     <Compile Include="revit-scripts\CombineSelectedFilledRegions.cs" />
     <Compile Include="revit-scripts\CombineSelectionSetsIntoANewSet.cs" />
     <Compile Include="revit-scripts\CombineViewSetsIntoANewSet.cs" />
@@ -193,6 +194,7 @@
     <Compile Include="revit-scripts\SelectViewportsOfViews.cs" />
     <Compile Include="revit-scripts\SelectViewsByViewTemplates.cs" />
     <Compile Include="revit-scripts\SelectViewsFromSets.cs" />
+    <Compile Include="revit-scripts\SelectViewsWhereSelectedElementsAreVisible.cs" />
     <Compile Include="revit-scripts\SelectViewTemplates.cs" />
     <Compile Include="revit-scripts\SelectViewTemplatesOfSelectedViews.cs" />
     <Compile Include="revit-scripts\SetFocalLength.cs" />
@@ -203,6 +205,8 @@
     <Compile Include="revit-scripts\SwapSelectedModelGroups.cs" />
     <Compile Include="revit-scripts\test44.cs" />
     <Compile Include="revit-scripts\test45.cs" />
+    <Compile Include="revit-scripts\test50.cs" />
+    <Compile Include="revit-scripts\CopySelectedElementsAlongContainingGroups.cs" />
     <Compile Include="revit-scripts\UnhideSelectedElementsToTemporaryHideIsolate.cs" />
     <Compile Include="revit-scripts\StretchLevelsToCropRegion.cs" />
     <Compile Include="revit-scripts\test33.cs" />
