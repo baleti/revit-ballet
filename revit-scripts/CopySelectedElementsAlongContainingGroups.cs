@@ -7,8 +7,8 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using Autodesk.Revit.UI.Selection;
 
-[Transaction(TransactionMode.ReadOnly)]
-public class DetectGroupTransformations : IExternalCommand
+[Transaction(TransactionMode.Manual)]
+public class CopySelectedElementsAlongContainingGroups : IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
     {
@@ -17,108 +17,214 @@ public class DetectGroupTransformations : IExternalCommand
         
         try
         {
-            // Get selected group
-            Reference pickRef = uidoc.Selection.PickObject(ObjectType.Element, new GroupSelectionFilter(), "Select a model group");
-            Group selectedGroup = doc.GetElement(pickRef) as Group;
+            // Get selected elements
+            ICollection<ElementId> selectedIds = uidoc.Selection.GetElementIds();
             
-            if (selectedGroup == null)
+            if (selectedIds.Count == 0)
             {
-                message = "Please select a model group";
+                message = "Please select elements and groups first";
                 return Result.Failed;
             }
             
-            // Get the group type
-            GroupType groupType = doc.GetElement(selectedGroup.GetTypeId()) as GroupType;
+            // Separate groups and elements
+            List<Group> selectedGroups = new List<Group>();
+            List<Element> selectedElements = new List<Element>();
             
-            // Get all instances of this group type
-            FilteredElementCollector collector = new FilteredElementCollector(doc);
-            IList<Element> allGroupInstances = collector
-                .OfClass(typeof(Group))
-                .WhereElementIsNotElementType()
-                .Where(g => g.GetTypeId() == groupType.Id)
-                .ToList();
-            
-            // Get reference elements from selected group
-            ReferenceElements refElements = GetReferenceElements(selectedGroup, doc);
-            
-            if (refElements == null || refElements.Elements.Count < 2)
+            foreach (ElementId id in selectedIds)
             {
-                message = "Could not find enough unique elements in the reference group to determine transformation.\n\n" +
-                         "This can happen when elements have identical dimensions (length/height for walls).\n" +
-                         "Try selecting a different group or ensure groups have distinct elements.";
+                Element elem = doc.GetElement(id);
+                if (elem is Group)
+                {
+                    selectedGroups.Add(elem as Group);
+                }
+                else if (elem != null && !(elem is ElementType))
+                {
+                    selectedElements.Add(elem);
+                }
+            }
+            
+            if (selectedGroups.Count == 0)
+            {
+                message = "No groups found in selection. Please select at least one group.";
                 return Result.Failed;
             }
             
-            // Build results
+            if (selectedElements.Count == 0)
+            {
+                message = "No elements found in selection. Please select elements to copy.";
+                return Result.Failed;
+            }
+            
+            // Match elements to their containing groups
+            Dictionary<Group, List<Element>> groupElementMap = new Dictionary<Group, List<Element>>();
+            
+            foreach (Group group in selectedGroups)
+            {
+                BoundingBoxXYZ groupBB = group.get_BoundingBox(null);
+                if (groupBB == null) continue;
+                
+                // Expand bounding box slightly to account for tolerance
+                XYZ min = groupBB.Min - new XYZ(0.1, 0.1, 0.1);
+                XYZ max = groupBB.Max + new XYZ(0.1, 0.1, 0.1);
+                
+                List<Element> containedElements = new List<Element>();
+                
+                foreach (Element elem in selectedElements)
+                {
+                    LocationPoint locPoint = elem.Location as LocationPoint;
+                    LocationCurve locCurve = elem.Location as LocationCurve;
+                    
+                    bool isContained = false;
+                    
+                    if (locPoint != null)
+                    {
+                        XYZ point = locPoint.Point;
+                        isContained = IsPointInBoundingBox(point, min, max);
+                    }
+                    else if (locCurve != null)
+                    {
+                        // Check if both endpoints are within bounding box
+                        XYZ start = locCurve.Curve.GetEndPoint(0);
+                        XYZ end = locCurve.Curve.GetEndPoint(1);
+                        isContained = IsPointInBoundingBox(start, min, max) && 
+                                     IsPointInBoundingBox(end, min, max);
+                    }
+                    else
+                    {
+                        // For other elements, check their bounding box
+                        BoundingBoxXYZ elemBB = elem.get_BoundingBox(null);
+                        if (elemBB != null)
+                        {
+                            isContained = IsPointInBoundingBox(elemBB.Min, min, max) && 
+                                         IsPointInBoundingBox(elemBB.Max, min, max);
+                        }
+                    }
+                    
+                    if (isContained)
+                    {
+                        containedElements.Add(elem);
+                    }
+                }
+                
+                if (containedElements.Count > 0)
+                {
+                    groupElementMap[group] = containedElements;
+                }
+            }
+            
+            if (groupElementMap.Count == 0)
+            {
+                message = "No selected elements are contained within the selected groups";
+                return Result.Failed;
+            }
+            
+            // Process each group and copy elements
             StringBuilder results = new StringBuilder();
-            results.AppendLine($"Group Type: {groupType.Name}");
-            results.AppendLine($"Reference Group ID: {selectedGroup.Id}");
-            results.AppendLine($"Total Instances: {allGroupInstances.Count}");
-            results.AppendLine($"Reference Location: {FormatPoint((selectedGroup.Location as LocationPoint).Point)}");
+            results.AppendLine("Copy Elements Following Groups - Results");
+            results.AppendLine(new string('=', 50));
             
-            // Check if reference group has excluded members
-            string refGroupName = selectedGroup.Name;
-            if (refGroupName != null && refGroupName.Contains("(members excluded)"))
+            int totalCopied = 0;
+            
+            using (Transaction trans = new Transaction(doc, "Copy Elements Following Groups"))
             {
-                results.AppendLine($"WARNING: Some groups have excluded members. Using length and height only for matching.");
+                trans.Start();
+                
+                foreach (var kvp in groupElementMap)
+                {
+                    Group referenceGroup = kvp.Key;
+                    List<Element> elementsToCopy = kvp.Value;
+                    
+                    // Get the group type
+                    GroupType groupType = doc.GetElement(referenceGroup.GetTypeId()) as GroupType;
+                    
+                    results.AppendLine($"\nGroup Type: {groupType.Name}");
+                    results.AppendLine($"Reference Group ID: {referenceGroup.Id}");
+                    results.AppendLine($"Elements to copy: {elementsToCopy.Count}");
+                    
+                    // Get all instances of this group type
+                    FilteredElementCollector collector = new FilteredElementCollector(doc);
+                    IList<Element> allGroupInstances = collector
+                        .OfClass(typeof(Group))
+                        .WhereElementIsNotElementType()
+                        .Where(g => g.GetTypeId() == groupType.Id)
+                        .ToList();
+                    
+                    results.AppendLine($"Total group instances: {allGroupInstances.Count}");
+                    
+                    // Get reference elements for transformation calculation
+                    ReferenceElements refElements = GetReferenceElements(referenceGroup, doc);
+                    
+                    if (refElements == null || refElements.Elements.Count < 2)
+                    {
+                        results.AppendLine("WARNING: Could not determine transformation for this group type");
+                        continue;
+                    }
+                    
+                    // Copy elements to other instances
+                    int copiedForThisGroup = 0;
+                    
+                    foreach (Element elem in allGroupInstances)
+                    {
+                        Group otherGroup = elem as Group;
+                        if (otherGroup.Id == referenceGroup.Id) continue;
+                        
+                        TransformResult transformResult = CalculateTransformation(refElements, otherGroup, doc);
+                        
+                        if (transformResult != null)
+                        {
+                            // Copy elements with transformation
+                            foreach (Element elementToCopy in elementsToCopy)
+                            {
+                                try
+                                {
+                                    // Create the transformation
+                                    Transform transform = CreateTransform(transformResult, 
+                                        (referenceGroup.Location as LocationPoint).Point,
+                                        (otherGroup.Location as LocationPoint).Point);
+                                    
+                                    // Copy the element
+                                    ICollection<ElementId> copiedIds = ElementTransformUtils.CopyElements(
+                                        doc, 
+                                        new List<ElementId> { elementToCopy.Id },
+                                        doc,
+                                        transform,
+                                        null);
+                                    
+                                    // Update Comments parameter for copied elements
+                                    foreach (ElementId copiedId in copiedIds)
+                                    {
+                                        Element copiedElem = doc.GetElement(copiedId);
+                                        Parameter commentsParam = copiedElem.get_Parameter(
+                                            BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS);
+                                        
+                                        if (commentsParam != null && !commentsParam.IsReadOnly)
+                                        {
+                                            commentsParam.Set($"Copied to {groupType.Name}");
+                                        }
+                                        
+                                        copiedForThisGroup++;
+                                        totalCopied++;
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    results.AppendLine($"  Error copying element {elementToCopy.Id}: {ex.Message}");
+                                }
+                            }
+                        }
+                    }
+                    
+                    results.AppendLine($"Elements copied to other instances: {copiedForThisGroup}");
+                }
+                
+                trans.Commit();
             }
             
             results.AppendLine("\n" + new string('=', 50));
-            
-            // Compare with other instances
-            int count = 0;
-            int skippedCount = 0;
-            foreach (Element elem in allGroupInstances)
-            {
-                Group otherGroup = elem as Group;
-                if (otherGroup.Id == selectedGroup.Id) continue;
-                
-                TransformResult transformResult = CalculateTransformation(refElements, otherGroup, doc);
-                
-                if (transformResult != null)
-                {
-                    count++;
-                    results.AppendLine($"\nInstance {count}: Group ID {otherGroup.Id}");
-                    
-                    // Check if this group has excluded members
-                    string otherGroupName = otherGroup.Name;
-                    if (otherGroupName != null && otherGroupName.Contains("(members excluded)"))
-                    {
-                        results.AppendLine("  Note: This instance has excluded members");
-                    }
-                    
-                    if (transformResult.MatchingElements < refElements.Elements.Count)
-                    {
-                        results.AppendLine($"  Matching elements: {transformResult.MatchingElements}/{refElements.Elements.Count}");
-                    }
-                    
-                    results.AppendLine($"Location: {FormatPoint((otherGroup.Location as LocationPoint).Point)}");
-                    results.AppendLine($"Translation: {FormatPoint(transformResult.Translation)}");
-                    results.AppendLine($"Rotation: {transformResult.Rotation:F2}°");
-                    
-                    if (transformResult.IsMirrored)
-                    {
-                        results.AppendLine($"Mirrored: Yes");
-                    }
-                    
-                    if (Math.Abs(transformResult.Scale - 1.0) > 0.001)
-                    {
-                        results.AppendLine($"Scale: {transformResult.Scale:F3}");
-                    }
-                }
-                else
-                {
-                    skippedCount++;
-                }
-            }
-            
-            if (skippedCount > 0)
-            {
-                results.AppendLine($"\nNote: {skippedCount} group(s) could not be analyzed (insufficient matching elements)");
-            }
+            results.AppendLine($"\nTotal elements copied: {totalCopied}");
             
             // Display results
-            TaskDialog dlg = new TaskDialog("Group Transformations");
+            TaskDialog dlg = new TaskDialog("Copy Elements Following Groups");
             dlg.MainContent = results.ToString();
             dlg.Show();
             
@@ -129,6 +235,39 @@ public class DetectGroupTransformations : IExternalCommand
             message = ex.Message;
             return Result.Failed;
         }
+    }
+    
+    private bool IsPointInBoundingBox(XYZ point, XYZ min, XYZ max)
+    {
+        return point.X >= min.X && point.X <= max.X &&
+               point.Y >= min.Y && point.Y <= max.Y &&
+               point.Z >= min.Z && point.Z <= max.Z;
+    }
+    
+    private Transform CreateTransform(TransformResult transformResult, XYZ refOrigin, XYZ targetOrigin)
+    {
+        Transform transform = Transform.Identity;
+        
+        // Apply translation
+        transform = transform.Multiply(Transform.CreateTranslation(transformResult.Translation));
+        
+        // Apply rotation around target origin
+        if (Math.Abs(transformResult.Rotation) > 0.01)
+        {
+            double radians = transformResult.Rotation * Math.PI / 180;
+            XYZ axis = XYZ.BasisZ;
+            transform = transform.Multiply(Transform.CreateRotationAtPoint(axis, radians, targetOrigin));
+        }
+        
+        // Apply mirroring if needed
+        if (transformResult.IsMirrored)
+        {
+            // Create mirror plane through target origin
+            Plane mirrorPlane = Plane.CreateByNormalAndOrigin(XYZ.BasisX, targetOrigin);
+            transform = transform.Multiply(Transform.CreateReflection(mirrorPlane));
+        }
+        
+        return transform;
     }
     
     private ReferenceElements GetReferenceElements(Group group, Document doc)
@@ -167,7 +306,7 @@ public class DetectGroupTransformations : IExternalCommand
             }
         }
         
-        // Build unique elements list - we DON'T require them to exist in all groups
+        // Build unique elements list
         Dictionary<string, ElementInfo> uniqueElements = new Dictionary<string, ElementInfo>();
         
         // Process walls first (preferred because they have two points)
@@ -530,18 +669,5 @@ public class DetectGroupTransformations : IExternalCommand
         public bool IsMirrored { get; set; }
         public double Scale { get; set; }
         public int MatchingElements { get; set; }
-    }
-    
-    public class GroupSelectionFilter : ISelectionFilter
-    {
-        public bool AllowElement(Element elem)
-        {
-            return elem is Group;
-        }
-        
-        public bool AllowReference(Reference reference, XYZ position)
-        {
-            return false;
-        }
     }
 }
