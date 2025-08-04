@@ -10,6 +10,12 @@ using Autodesk.Revit.UI.Selection;
 [Transaction(TransactionMode.Manual)]
 public class CopySelectedElementsAlongContainingGroups : IExternalCommand
 {
+    private StringBuilder diagnosticLog = new StringBuilder();
+    
+    // Configuration options
+    private bool allowDuplicates = false; // Set to true to bypass duplicate checking
+    private bool verboseDiagnostics = true; // Set to true for detailed diagnostics
+    
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
     {
         UIDocument uidoc = commandData.Application.ActiveUIDocument;
@@ -55,56 +61,12 @@ public class CopySelectedElementsAlongContainingGroups : IExternalCommand
                 return Result.Failed;
             }
             
-            // Match elements to their containing groups
+            // Match elements to their containing groups using proper containment check
             Dictionary<Group, List<Element>> groupElementMap = new Dictionary<Group, List<Element>>();
             
             foreach (Group group in selectedGroups)
             {
-                BoundingBoxXYZ groupBB = group.get_BoundingBox(null);
-                if (groupBB == null) continue;
-                
-                // Expand bounding box slightly to account for tolerance
-                XYZ min = groupBB.Min - new XYZ(0.1, 0.1, 0.1);
-                XYZ max = groupBB.Max + new XYZ(0.1, 0.1, 0.1);
-                
-                List<Element> containedElements = new List<Element>();
-                
-                foreach (Element elem in selectedElements)
-                {
-                    LocationPoint locPoint = elem.Location as LocationPoint;
-                    LocationCurve locCurve = elem.Location as LocationCurve;
-                    
-                    bool isContained = false;
-                    
-                    if (locPoint != null)
-                    {
-                        XYZ point = locPoint.Point;
-                        isContained = IsPointInBoundingBox(point, min, max);
-                    }
-                    else if (locCurve != null)
-                    {
-                        // Check if both endpoints are within bounding box
-                        XYZ start = locCurve.Curve.GetEndPoint(0);
-                        XYZ end = locCurve.Curve.GetEndPoint(1);
-                        isContained = IsPointInBoundingBox(start, min, max) && 
-                                     IsPointInBoundingBox(end, min, max);
-                    }
-                    else
-                    {
-                        // For other elements, check their bounding box
-                        BoundingBoxXYZ elemBB = elem.get_BoundingBox(null);
-                        if (elemBB != null)
-                        {
-                            isContained = IsPointInBoundingBox(elemBB.Min, min, max) && 
-                                         IsPointInBoundingBox(elemBB.Max, min, max);
-                        }
-                    }
-                    
-                    if (isContained)
-                    {
-                        containedElements.Add(elem);
-                    }
-                }
+                List<Element> containedElements = GetElementsContainedInGroup(group, selectedElements, doc);
                 
                 if (containedElements.Count > 0)
                 {
@@ -123,6 +85,11 @@ public class CopySelectedElementsAlongContainingGroups : IExternalCommand
             results.AppendLine("Copy Elements Following Groups - Results");
             results.AppendLine(new string('=', 50));
             
+            if (allowDuplicates)
+            {
+                results.AppendLine("NOTE: Duplicate checking is DISABLED");
+            }
+            
             int totalCopied = 0;
             
             using (Transaction trans = new Transaction(doc, "Copy Elements Following Groups"))
@@ -138,8 +105,17 @@ public class CopySelectedElementsAlongContainingGroups : IExternalCommand
                     GroupType groupType = doc.GetElement(referenceGroup.GetTypeId()) as GroupType;
                     
                     results.AppendLine($"\nGroup Type: {groupType.Name}");
-                    results.AppendLine($"Reference Group ID: {referenceGroup.Id}");
                     results.AppendLine($"Elements to copy: {elementsToCopy.Count}");
+                    
+                    // Update Comments parameter for original source elements
+                    foreach (Element elem in elementsToCopy)
+                    {
+                        Parameter commentsParam = elem.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS);
+                        if (commentsParam != null && !commentsParam.IsReadOnly)
+                        {
+                            commentsParam.Set($"{groupType.Name}");
+                        }
+                    }
                     
                     // Get all instances of this group type
                     FilteredElementCollector collector = new FilteredElementCollector(doc);
@@ -160,6 +136,11 @@ public class CopySelectedElementsAlongContainingGroups : IExternalCommand
                         continue;
                     }
                     
+                    // Clear diagnostics for new group type
+                    diagnosticLog.Clear();
+                    diagnosticLog.AppendLine("\n=== TRANSFORMATION DIAGNOSTICS ===");
+                    diagnosticLog.AppendLine($"Reference Group Origin: {FormatPoint(refElements.GroupOrigin)}");
+                    
                     // Copy elements to other instances
                     int copiedForThisGroup = 0;
                     
@@ -168,10 +149,52 @@ public class CopySelectedElementsAlongContainingGroups : IExternalCommand
                         Group otherGroup = elem as Group;
                         if (otherGroup.Id == referenceGroup.Id) continue;
                         
+                        XYZ otherOrigin = (otherGroup.Location as LocationPoint).Point;
+                        
+                        // Add diagnostic header for this target group
+                        diagnosticLog.AppendLine($"\n--- Target Group: {otherGroup.Id} ---");
+                        diagnosticLog.AppendLine($"Target Group Origin: {FormatPoint(otherOrigin)}");
+                        
                         TransformResult transformResult = CalculateTransformation(refElements, otherGroup, doc);
                         
                         if (transformResult != null)
                         {
+                            // Log transformation results
+                            diagnosticLog.AppendLine($"Transformation Found:");
+                            diagnosticLog.AppendLine($"  Translation: {FormatPoint(transformResult.Translation)}");
+                            diagnosticLog.AppendLine($"  Rotation: {transformResult.Rotation:F2}°");
+                            diagnosticLog.AppendLine($"  Mirrored: {transformResult.IsMirrored}");
+                            diagnosticLog.AppendLine($"  Matching Elements: {transformResult.MatchingElements}");
+                            
+                            // Check if elements already exist at target location to avoid duplicates
+                            bool elementsAlreadyExist = false;
+                            
+                            if (!allowDuplicates)
+                            {
+                                elementsAlreadyExist = CheckIfElementsExistAtTarget(
+                                    elementsToCopy, transformResult, 
+                                    refElements.GroupOrigin, otherOrigin, doc);
+                            }
+                            
+                            if (elementsAlreadyExist)
+                            {
+                                diagnosticLog.AppendLine("  Elements already exist at target location - skipping");
+                                
+                                if (verboseDiagnostics)
+                                {
+                                    // Add diagnostic info about what was found
+                                    diagnosticLog.AppendLine("  Diagnostic: Checking each element individually...");
+                                    foreach (Element elemm in elementsToCopy)
+                                    {
+                                        bool exists = CheckIfSingleElementExistsAtTarget(
+                                            elemm, transformResult, refElements.GroupOrigin, otherOrigin, doc);
+                                        diagnosticLog.AppendLine($"    Element {elemm.Id}: {(exists ? "EXISTS" : "NOT FOUND")}");
+                                    }
+                                }
+                                
+                                continue;
+                            }
+                            
                             // Copy elements with transformation
                             foreach (Element elementToCopy in elementsToCopy)
                             {
@@ -179,8 +202,8 @@ public class CopySelectedElementsAlongContainingGroups : IExternalCommand
                                 {
                                     // Create the transformation
                                     Transform transform = CreateTransform(transformResult, 
-                                        (referenceGroup.Location as LocationPoint).Point,
-                                        (otherGroup.Location as LocationPoint).Point);
+                                        refElements.GroupOrigin,
+                                        otherOrigin);
                                     
                                     // Copy the element
                                     ICollection<ElementId> copiedIds = ElementTransformUtils.CopyElements(
@@ -199,7 +222,7 @@ public class CopySelectedElementsAlongContainingGroups : IExternalCommand
                                         
                                         if (commentsParam != null && !commentsParam.IsReadOnly)
                                         {
-                                            commentsParam.Set($"Copied to {groupType.Name}");
+                                            commentsParam.Set($"{groupType.Name}");
                                         }
                                         
                                         copiedForThisGroup++;
@@ -212,6 +235,10 @@ public class CopySelectedElementsAlongContainingGroups : IExternalCommand
                                 }
                             }
                         }
+                        else
+                        {
+                            diagnosticLog.AppendLine("  No transformation could be calculated");
+                        }
                     }
                     
                     results.AppendLine($"Elements copied to other instances: {copiedForThisGroup}");
@@ -222,6 +249,9 @@ public class CopySelectedElementsAlongContainingGroups : IExternalCommand
             
             results.AppendLine("\n" + new string('=', 50));
             results.AppendLine($"\nTotal elements copied: {totalCopied}");
+            
+            // Add diagnostics to results
+            results.AppendLine("\n" + diagnosticLog.ToString());
             
             // Display results
             TaskDialog dlg = new TaskDialog("Copy Elements Following Groups");
@@ -237,6 +267,191 @@ public class CopySelectedElementsAlongContainingGroups : IExternalCommand
         }
     }
     
+    // Improved containment check - using convex hull approach
+    private List<Element> GetElementsContainedInGroup(Group group, List<Element> candidateElements, Document doc)
+    {
+        List<Element> containedElements = new List<Element>();
+        
+        // Get all member locations to create a containment boundary
+        ICollection<ElementId> memberIds = group.GetMemberIds();
+        List<XYZ> boundaryPoints = new List<XYZ>();
+        
+        // Collect all boundary points from group members
+        foreach (ElementId id in memberIds)
+        {
+            Element member = doc.GetElement(id);
+            if (member == null) continue;
+            
+            // Get points based on element location
+            LocationPoint locPoint = member.Location as LocationPoint;
+            LocationCurve locCurve = member.Location as LocationCurve;
+            
+            if (locPoint != null)
+            {
+                boundaryPoints.Add(locPoint.Point);
+            }
+            else if (locCurve != null)
+            {
+                Curve curve = locCurve.Curve;
+                boundaryPoints.Add(curve.GetEndPoint(0));
+                boundaryPoints.Add(curve.GetEndPoint(1));
+                // Add some intermediate points for better accuracy
+                for (int i = 1; i < 4; i++)
+                {
+                    boundaryPoints.Add(curve.Evaluate(i * 0.25, true));
+                }
+            }
+            else
+            {
+                // For other elements, use bounding box corners
+                BoundingBoxXYZ bb = member.get_BoundingBox(null);
+                if (bb != null)
+                {
+                    boundaryPoints.Add(bb.Min);
+                    boundaryPoints.Add(bb.Max);
+                    boundaryPoints.Add(new XYZ(bb.Min.X, bb.Max.Y, bb.Min.Z));
+                    boundaryPoints.Add(new XYZ(bb.Max.X, bb.Min.Y, bb.Min.Z));
+                }
+            }
+        }
+        
+        if (boundaryPoints.Count < 3)
+        {
+            // Not enough points to form a boundary, fall back to bounding box
+            return GetElementsInBoundingBox(group, candidateElements);
+        }
+        
+        // For now, use an enhanced bounding box approach with tighter tolerance
+        // A full convex hull implementation would be more complex
+        
+        // Find the extremes of the boundary points
+        double minX = boundaryPoints.Min(p => p.X);
+        double maxX = boundaryPoints.Max(p => p.X);
+        double minY = boundaryPoints.Min(p => p.Y);
+        double maxY = boundaryPoints.Max(p => p.Y);
+        double minZ = boundaryPoints.Min(p => p.Z);
+        double maxZ = boundaryPoints.Max(p => p.Z);
+        
+        // Create a tight bounding region with minimal tolerance
+        double tolerance = 0.001; // About 0.3mm
+        XYZ min = new XYZ(minX - tolerance, minY - tolerance, minZ - tolerance);
+        XYZ max = new XYZ(maxX + tolerance, maxY + tolerance, maxZ + tolerance);
+        
+        // Check each candidate element
+        foreach (Element elem in candidateElements)
+        {
+            if (IsElementInBoundingRegion(elem, min, max, boundaryPoints))
+            {
+                containedElements.Add(elem);
+            }
+        }
+        
+        return containedElements;
+    }
+    
+    // Enhanced containment check considering actual boundary points
+    private bool IsElementInBoundingRegion(Element elem, XYZ min, XYZ max, List<XYZ> boundaryPoints)
+    {
+        // First do a quick bounding box check
+        LocationPoint locPoint = elem.Location as LocationPoint;
+        LocationCurve locCurve = elem.Location as LocationCurve;
+        
+        if (locPoint != null)
+        {
+            XYZ point = locPoint.Point;
+            if (!IsPointInBoundingBox(point, min, max))
+                return false;
+                
+            // Additional check: ensure point is reasonably close to some boundary points
+            // This helps exclude elements that are in the bounding box but not part of the group
+            double minDistance = boundaryPoints.Min(p => p.DistanceTo(point));
+            return minDistance < 10.0; // Within 10 feet/units of some group element
+        }
+        else if (locCurve != null)
+        {
+            XYZ start = locCurve.Curve.GetEndPoint(0);
+            XYZ end = locCurve.Curve.GetEndPoint(1);
+            
+            // Both endpoints must be in bounds
+            if (!IsPointInBoundingBox(start, min, max) || !IsPointInBoundingBox(end, min, max))
+                return false;
+                
+            // Check proximity to boundary
+            double minStartDist = boundaryPoints.Min(p => p.DistanceTo(start));
+            double minEndDist = boundaryPoints.Min(p => p.DistanceTo(end));
+            return Math.Max(minStartDist, minEndDist) < 10.0;
+        }
+        else
+        {
+            // For other elements, check their bounding box
+            BoundingBoxXYZ elemBB = elem.get_BoundingBox(null);
+            if (elemBB != null)
+            {
+                if (!IsPointInBoundingBox(elemBB.Min, min, max) || !IsPointInBoundingBox(elemBB.Max, min, max))
+                    return false;
+                    
+                XYZ center = (elemBB.Min + elemBB.Max) * 0.5;
+                double minDistance = boundaryPoints.Min(p => p.DistanceTo(center));
+                return minDistance < 10.0;
+            }
+        }
+        
+        return false;
+    }
+    
+    // Fallback bounding box method with tighter tolerance
+    private List<Element> GetElementsInBoundingBox(Group group, List<Element> candidateElements)
+    {
+        List<Element> containedElements = new List<Element>();
+        
+        BoundingBoxXYZ groupBB = group.get_BoundingBox(null);
+        if (groupBB == null) return containedElements;
+        
+        // Use very small tolerance
+        double tolerance = 0.01; // About 3mm
+        XYZ min = groupBB.Min - new XYZ(tolerance, tolerance, tolerance);
+        XYZ max = groupBB.Max + new XYZ(tolerance, tolerance, tolerance);
+        
+        foreach (Element elem in candidateElements)
+        {
+            LocationPoint locPoint = elem.Location as LocationPoint;
+            LocationCurve locCurve = elem.Location as LocationCurve;
+            
+            bool isContained = false;
+            
+            if (locPoint != null)
+            {
+                XYZ point = locPoint.Point;
+                isContained = IsPointInBoundingBox(point, min, max);
+            }
+            else if (locCurve != null)
+            {
+                // Check if both endpoints are within bounding box
+                XYZ start = locCurve.Curve.GetEndPoint(0);
+                XYZ end = locCurve.Curve.GetEndPoint(1);
+                isContained = IsPointInBoundingBox(start, min, max) && 
+                             IsPointInBoundingBox(end, min, max);
+            }
+            else
+            {
+                // For other elements, check their bounding box
+                BoundingBoxXYZ elemBB = elem.get_BoundingBox(null);
+                if (elemBB != null)
+                {
+                    isContained = IsPointInBoundingBox(elemBB.Min, min, max) && 
+                                 IsPointInBoundingBox(elemBB.Max, min, max);
+                }
+            }
+            
+            if (isContained)
+            {
+                containedElements.Add(elem);
+            }
+        }
+        
+        return containedElements;
+    }
+    
     private bool IsPointInBoundingBox(XYZ point, XYZ min, XYZ max)
     {
         return point.X >= min.X && point.X <= max.X &&
@@ -244,28 +459,221 @@ public class CopySelectedElementsAlongContainingGroups : IExternalCommand
                point.Z >= min.Z && point.Z <= max.Z;
     }
     
+    // Check if elements already exist at target location
+    private bool CheckIfElementsExistAtTarget(List<Element> elementsToCopy, 
+        TransformResult transformResult, XYZ refOrigin, XYZ targetOrigin, Document doc)
+    {
+        // Create the transformation
+        Transform transform = CreateTransform(transformResult, refOrigin, targetOrigin);
+        
+        // Count how many potential duplicates we find
+        int duplicateCount = 0;
+        
+        foreach (Element elem in elementsToCopy)
+        {
+            // Get element location(s)
+            List<XYZ> testPoints = new List<XYZ>();
+            
+            LocationPoint locPoint = elem.Location as LocationPoint;
+            LocationCurve locCurve = elem.Location as LocationCurve;
+            
+            if (locPoint != null)
+            {
+                testPoints.Add(locPoint.Point);
+            }
+            else if (locCurve != null)
+            {
+                // For curves, check both endpoints
+                testPoints.Add(locCurve.Curve.GetEndPoint(0));
+                testPoints.Add(locCurve.Curve.GetEndPoint(1));
+            }
+            
+            if (testPoints.Count == 0) continue;
+            
+            bool foundDuplicate = false;
+            
+            foreach (XYZ testPoint in testPoints)
+            {
+                // Transform the test point
+                XYZ targetPoint = transform.OfPoint(testPoint);
+                
+                // Check if an element of same type exists at target location
+                // Using a very small search radius for precision
+                double searchRadius = 0.01; // About 3mm
+                BoundingBoxXYZ searchBox = new BoundingBoxXYZ();
+                searchBox.Min = targetPoint - new XYZ(searchRadius, searchRadius, searchRadius);
+                searchBox.Max = targetPoint + new XYZ(searchRadius, searchRadius, searchRadius);
+                
+                // Create a bounding box filter
+                Outline outline = new Outline(searchBox.Min, searchBox.Max);
+                BoundingBoxIntersectsFilter bbFilter = new BoundingBoxIntersectsFilter(outline);
+                
+                // Filter for same category
+                ElementCategoryFilter categoryFilter = new ElementCategoryFilter(elem.Category.Id);
+                
+                // Combine filters
+                LogicalAndFilter andFilter = new LogicalAndFilter(bbFilter, categoryFilter);
+                
+                // Search for existing elements
+                FilteredElementCollector collector = new FilteredElementCollector(doc);
+                IList<Element> existingElements = collector
+                    .WhereElementIsNotElementType()
+                    .WherePasses(andFilter)
+                    .ToList();
+                
+                // Check if any existing element matches our element type and is not the source element
+                foreach (Element existing in existingElements)
+                {
+                    if (existing.Id == elem.Id) continue; // Skip the source element itself
+                    
+                    if (existing.GetTypeId() == elem.GetTypeId())
+                    {
+                        // Additional check for curves - verify both endpoints match
+                        if (locCurve != null && existing.Location is LocationCurve)
+                        {
+                            LocationCurve existingCurve = existing.Location as LocationCurve;
+                            XYZ existingStart = existingCurve.Curve.GetEndPoint(0);
+                            XYZ existingEnd = existingCurve.Curve.GetEndPoint(1);
+                            
+                            // Transform both endpoints of source curve
+                            XYZ transformedStart = transform.OfPoint(locCurve.Curve.GetEndPoint(0));
+                            XYZ transformedEnd = transform.OfPoint(locCurve.Curve.GetEndPoint(1));
+                            
+                            // Check if endpoints match (in either order)
+                            bool endpointsMatch = 
+                                (existingStart.IsAlmostEqualTo(transformedStart, 0.01) && 
+                                 existingEnd.IsAlmostEqualTo(transformedEnd, 0.01)) ||
+                                (existingStart.IsAlmostEqualTo(transformedEnd, 0.01) && 
+                                 existingEnd.IsAlmostEqualTo(transformedStart, 0.01));
+                            
+                            if (endpointsMatch)
+                            {
+                                foundDuplicate = true;
+                                break;
+                            }
+                        }
+                        else
+                        {
+                            foundDuplicate = true;
+                            break;
+                        }
+                    }
+                }
+                
+                if (foundDuplicate) break;
+            }
+            
+            if (foundDuplicate)
+            {
+                duplicateCount++;
+            }
+        }
+        
+        // Only skip if ALL elements already exist (not just some)
+        // This handles cases where some elements might be shared between groups
+        return duplicateCount == elementsToCopy.Count;
+    }
+    
     private Transform CreateTransform(TransformResult transformResult, XYZ refOrigin, XYZ targetOrigin)
     {
+        diagnosticLog.AppendLine($"\n  Creating Transform:");
+        diagnosticLog.AppendLine($"    Ref Origin: {FormatPoint(refOrigin)}");
+        diagnosticLog.AppendLine($"    Target Origin: {FormatPoint(targetOrigin)}");
+        diagnosticLog.AppendLine($"    Rotation: {transformResult.Rotation:F2}°, Mirrored: {transformResult.IsMirrored}");
+        
+        // For mirrored transformations with no rotation
+        if (transformResult.IsMirrored && Math.Abs(transformResult.Rotation) < 0.01)
+        {
+            diagnosticLog.AppendLine($"    Using mirror-only transformation");
+            
+            // Determine which axis is mirrored based on the translation
+            XYZ midpoint = (refOrigin + targetOrigin) * 0.5;
+            
+            // Check which coordinates changed
+            double xDiff = Math.Abs(refOrigin.X - targetOrigin.X);
+            double yDiff = Math.Abs(refOrigin.Y - targetOrigin.Y);
+            double zDiff = Math.Abs(refOrigin.Z - targetOrigin.Z);
+            
+            Transform mirror;
+            
+            if (xDiff > yDiff && xDiff > zDiff)
+            {
+                // X coordinates differ most - mirror about Y-Z plane
+                diagnosticLog.AppendLine($"    Mirror about Y-Z plane (X-axis mirror)");
+                Plane mirrorPlane = Plane.CreateByNormalAndOrigin(XYZ.BasisX, midpoint);
+                mirror = Transform.CreateReflection(mirrorPlane);
+            }
+            else if (yDiff > xDiff && yDiff > zDiff)
+            {
+                // Y coordinates differ most - mirror about X-Z plane
+                diagnosticLog.AppendLine($"    Mirror about X-Z plane (Y-axis mirror)");
+                Plane mirrorPlane = Plane.CreateByNormalAndOrigin(XYZ.BasisY, midpoint);
+                mirror = Transform.CreateReflection(mirrorPlane);
+            }
+            else
+            {
+                // Z coordinates differ most - mirror about X-Y plane
+                diagnosticLog.AppendLine($"    Mirror about X-Y plane (Z-axis mirror)");
+                Plane mirrorPlane = Plane.CreateByNormalAndOrigin(XYZ.BasisZ, midpoint);
+                mirror = Transform.CreateReflection(mirrorPlane);
+            }
+            
+            diagnosticLog.AppendLine($"    Mirror plane at: {FormatPoint(midpoint)}");
+            
+            return mirror;
+        }
+        
+        // For complex transformations involving both rotation and mirroring
+        if (Math.Abs(Math.Abs(transformResult.Rotation) - 180.0) < 1.0 && transformResult.IsMirrored)
+        {
+            diagnosticLog.AppendLine($"    Using special 180° + mirror transformation");
+            
+            // This is equivalent to a mirror about Y axis
+            Transform t = Transform.Identity;
+            
+            // Set the basis vectors
+            t.BasisX = -XYZ.BasisX;  // (-1, 0, 0)
+            t.BasisY = XYZ.BasisY;   // (0, 1, 0) 
+            t.BasisZ = XYZ.BasisZ;   // (0, 0, 1)
+            
+            // Set the translation
+            t.Origin = new XYZ(
+                2 * ((refOrigin.X + targetOrigin.X) / 2) - refOrigin.X,
+                targetOrigin.Y - refOrigin.Y,
+                targetOrigin.Z - refOrigin.Z
+            );
+            
+            diagnosticLog.AppendLine($"    Transform Origin: {FormatPoint(t.Origin)}");
+            diagnosticLog.AppendLine($"    Transform BasisX: {FormatPoint(t.BasisX)}");
+            diagnosticLog.AppendLine($"    Transform BasisY: {FormatPoint(t.BasisY)}");
+            
+            return t;
+        }
+        
+        // Standard case: build transformation step by step
+        diagnosticLog.AppendLine($"    Using standard transformation");
+        
         Transform transform = Transform.Identity;
         
-        // Apply translation
-        transform = transform.Multiply(Transform.CreateTranslation(transformResult.Translation));
+        // Move to origin
+        transform = transform.Multiply(Transform.CreateTranslation(-refOrigin));
         
-        // Apply rotation around target origin
+        // Apply rotation
         if (Math.Abs(transformResult.Rotation) > 0.01)
         {
             double radians = transformResult.Rotation * Math.PI / 180;
-            XYZ axis = XYZ.BasisZ;
-            transform = transform.Multiply(Transform.CreateRotationAtPoint(axis, radians, targetOrigin));
+            transform = transform.Multiply(Transform.CreateRotation(XYZ.BasisZ, radians));
         }
         
-        // Apply mirroring if needed
+        // Apply mirror if needed
         if (transformResult.IsMirrored)
         {
-            // Create mirror plane through target origin
-            Plane mirrorPlane = Plane.CreateByNormalAndOrigin(XYZ.BasisX, targetOrigin);
+            Plane mirrorPlane = Plane.CreateByNormalAndOrigin(XYZ.BasisX, XYZ.Zero);
             transform = transform.Multiply(Transform.CreateReflection(mirrorPlane));
         }
+        
+        // Move to target
+        transform = transform.Multiply(Transform.CreateTranslation(targetOrigin));
         
         return transform;
     }
@@ -444,11 +852,17 @@ public class CopySelectedElementsAlongContainingGroups : IExternalCommand
     {
         try
         {
+            diagnosticLog.AppendLine($"\n  Calculating Transformation:");
+            
             // Get corresponding elements in other group
             List<ElementInfo> otherElements = GetCorrespondingElements(refElements, otherGroup, doc);
             
             // We need at least 2 matching elements to calculate transformation
-            if (otherElements == null || otherElements.Count < 2) return null;
+            if (otherElements == null || otherElements.Count < 2) 
+            {
+                diagnosticLog.AppendLine($"    Not enough matching elements: {otherElements?.Count ?? 0}");
+                return null;
+            }
             
             TransformResult result = new TransformResult();
             result.MatchingElements = otherElements.Count;
@@ -456,6 +870,9 @@ public class CopySelectedElementsAlongContainingGroups : IExternalCommand
             // Calculate translation (difference in group origins)
             XYZ otherOrigin = (otherGroup.Location as LocationPoint).Point;
             result.Translation = otherOrigin - refElements.GroupOrigin;
+            
+            diagnosticLog.AppendLine($"    Found {otherElements.Count} matching elements");
+            diagnosticLog.AppendLine($"    Translation: {FormatPoint(result.Translation)}");
             
             // Find two matching elements for transformation calculation
             ElementInfo ref1 = null;
@@ -490,6 +907,8 @@ public class CopySelectedElementsAlongContainingGroups : IExternalCommand
             
             if (ref1 == null || ref2 == null || other1 == null || other2 == null)
             {
+                diagnosticLog.AppendLine($"    Could not find two matching element pairs");
+                
                 // If we can't find two different matching elements, try to work with just one
                 if (ref1 != null && other1 != null && ref1.Point1 != null && ref1.Point2 != null)
                 {
@@ -506,10 +925,32 @@ public class CopySelectedElementsAlongContainingGroups : IExternalCommand
                     result.Rotation = singleAngle * 180 / Math.PI;
                     result.IsMirrored = false; // Can't determine mirroring with one element
                     result.Scale = 1.0;
+                    
+                    diagnosticLog.AppendLine($"    Using single element for rotation: {result.Rotation:F2}°");
+                    
                     return result;
                 }
                 return null;
             }
+            
+            // Log element details
+            diagnosticLog.AppendLine($"\n    Element 1 (Ref):");
+            diagnosticLog.AppendLine($"      Key: {ref1.UniqueKey}");
+            diagnosticLog.AppendLine($"      Point1: {FormatPoint(ref1.Point1)}");
+            diagnosticLog.AppendLine($"      Point2: {FormatPoint(ref1.Point2)}");
+            
+            diagnosticLog.AppendLine($"    Element 1 (Other):");
+            diagnosticLog.AppendLine($"      Point1: {FormatPoint(other1.Point1)}");
+            diagnosticLog.AppendLine($"      Point2: {FormatPoint(other1.Point2)}");
+            
+            diagnosticLog.AppendLine($"\n    Element 2 (Ref):");
+            diagnosticLog.AppendLine($"      Key: {ref2.UniqueKey}");
+            diagnosticLog.AppendLine($"      Point1: {FormatPoint(ref2.Point1)}");
+            diagnosticLog.AppendLine($"      Point2: {FormatPoint(ref2.Point2)}");
+            
+            diagnosticLog.AppendLine($"    Element 2 (Other):");
+            diagnosticLog.AppendLine($"      Point1: {FormatPoint(other2.Point1)}");
+            diagnosticLog.AppendLine($"      Point2: {FormatPoint(other2.Point2)}");
             
             // Calculate vectors in reference group
             XYZ refVector1 = (ref1.Point2 - ref1.Point1).Normalize();
@@ -519,8 +960,24 @@ public class CopySelectedElementsAlongContainingGroups : IExternalCommand
             XYZ otherVector1 = (other1.Point2 - other1.Point1).Normalize();
             XYZ otherVector2 = (other2.Point2 - other2.Point1).Normalize();
             
-            // Calculate rotation angle from first element
+            diagnosticLog.AppendLine($"\n    Ref Vector 1: {FormatPoint(refVector1)}");
+            diagnosticLog.AppendLine($"    Other Vector 1: {FormatPoint(otherVector1)}");
+            
+            // For mirrored groups, the matching elements might have reversed directions
+            // Check if vectors are opposite
             double dotProduct = refVector1.DotProduct(otherVector1);
+            bool vectorsReversed = dotProduct < -0.9; // Nearly opposite
+            
+            if (vectorsReversed)
+            {
+                diagnosticLog.AppendLine($"    Vectors are reversed (dot product: {dotProduct:F4})");
+                // For mirrored walls, the direction might be flipped
+                // This is common when groups are mirrored
+                otherVector1 = -otherVector1;
+                otherVector2 = -otherVector2;
+                dotProduct = refVector1.DotProduct(otherVector1);
+            }
+            
             double angle = Math.Acos(Math.Max(-1.0, Math.Min(1.0, dotProduct)));
             
             // Determine rotation direction
@@ -529,8 +986,12 @@ public class CopySelectedElementsAlongContainingGroups : IExternalCommand
             
             result.Rotation = angle * 180 / Math.PI;
             
-            // Mirror detection: Check the spatial arrangement of elements
-            // Get midpoints of the elements
+            diagnosticLog.AppendLine($"    Dot Product: {dotProduct:F4}");
+            diagnosticLog.AppendLine($"    Cross Product Z: {crossProduct.Z:F4}");
+            diagnosticLog.AppendLine($"    Rotation: {result.Rotation:F2}°");
+            
+            // Simplified mirror detection for axis-aligned mirrors
+            // Check the relative positions
             XYZ refMid1 = (ref1.Point1 + ref1.Point2) * 0.5;
             XYZ refMid2 = (ref2.Point1 + ref2.Point2) * 0.5;
             XYZ otherMid1 = (other1.Point1 + other1.Point2) * 0.5;
@@ -542,49 +1003,41 @@ public class CopySelectedElementsAlongContainingGroups : IExternalCommand
             XYZ otherPos1 = otherMid1 - otherOrigin;
             XYZ otherPos2 = otherMid2 - otherOrigin;
             
-            // Create a vector between the two element centers
-            XYZ refBetween = refPos2 - refPos1;
-            XYZ otherBetween = otherPos2 - otherPos1;
+            diagnosticLog.AppendLine($"\n    Mirror Detection:");
+            diagnosticLog.AppendLine($"    Ref Pos 1 (relative): {FormatPoint(refPos1)}");
+            diagnosticLog.AppendLine($"    Other Pos 1 (relative): {FormatPoint(otherPos1)}");
             
-            // Remove rotation effect to isolate mirror detection
-            // Rotate the other vector back by the detected angle
-            double radAngle = -angle * Math.PI / 180;
-            double cos = Math.Cos(radAngle);
-            double sin = Math.Sin(radAngle);
+            // For simple mirror across Y-Z plane (X-axis mirror)
+            // X coordinates should be negated, Y and Z should be same
+            bool xMirrored = Math.Abs(refPos1.X + otherPos1.X) < 0.1 && 
+                             Math.Abs(refPos1.Y - otherPos1.Y) < 0.1 &&
+                             Math.Abs(refPos1.Z - otherPos1.Z) < 0.1;
             
-            // Apply 2D rotation (assuming Z is up)
-            XYZ rotatedOtherBetween = new XYZ(
-                otherBetween.X * cos - otherBetween.Y * sin,
-                otherBetween.X * sin + otherBetween.Y * cos,
-                otherBetween.Z
-            );
+            // For simple mirror across X-Z plane (Y-axis mirror)  
+            bool yMirrored = Math.Abs(refPos1.X - otherPos1.X) < 0.1 && 
+                             Math.Abs(refPos1.Y + otherPos1.Y) < 0.1 &&
+                             Math.Abs(refPos1.Z - otherPos1.Z) < 0.1;
             
-            // Now check if the arrangement is mirrored
-            // The vectors should be opposite if mirrored
-            double dotBetween = refBetween.Normalize().DotProduct(rotatedOtherBetween.Normalize());
+            result.IsMirrored = xMirrored || yMirrored || vectorsReversed;
             
-            // If dot product is negative, the arrangement is flipped
-            result.IsMirrored = dotBetween < -0.5;
-            
-            // Additional check using determinant method
-            if (!result.IsMirrored && Math.Abs(angle) < 1.0) // Only for non-rotated cases
-            {
-                // Check if the handedness changed using cross product
-                XYZ refNormal = refVector1.CrossProduct(refBetween);
-                XYZ otherNormal = otherVector1.CrossProduct(otherBetween);
-                
-                // If normals point in opposite directions, it's mirrored
-                double normalDot = refNormal.Normalize().DotProduct(otherNormal.Normalize());
-                result.IsMirrored = normalDot < -0.5;
-            }
+            diagnosticLog.AppendLine($"    X-Mirror Check: {xMirrored}");
+            diagnosticLog.AppendLine($"    Y-Mirror Check: {yMirrored}");
+            diagnosticLog.AppendLine($"    Vectors Reversed: {vectorsReversed}");
+            diagnosticLog.AppendLine($"    Final Mirror Detection: {result.IsMirrored}");
             
             // Scale (typically 1.0 for groups)
             result.Scale = 1.0;
             
+            diagnosticLog.AppendLine($"\n    Final Transformation:");
+            diagnosticLog.AppendLine($"    Rotation: {result.Rotation:F2}°");
+            diagnosticLog.AppendLine($"    Mirrored: {result.IsMirrored}");
+            diagnosticLog.AppendLine($"    Scale: {result.Scale}");
+            
             return result;
         }
-        catch
+        catch (Exception ex)
         {
+            diagnosticLog.AppendLine($"    Exception in CalculateTransformation: {ex.Message}");
             return null;
         }
     }
@@ -639,6 +1092,92 @@ public class CopySelectedElementsAlongContainingGroups : IExternalCommand
         }
         
         return otherElements;
+    }
+    
+    // Check if a single element exists at target location
+    private bool CheckIfSingleElementExistsAtTarget(Element elem, 
+        TransformResult transformResult, XYZ refOrigin, XYZ targetOrigin, Document doc)
+    {
+        // Create the transformation
+        Transform transform = CreateTransform(transformResult, refOrigin, targetOrigin);
+        
+        // Get element location(s)
+        List<XYZ> testPoints = new List<XYZ>();
+        
+        LocationPoint locPoint = elem.Location as LocationPoint;
+        LocationCurve locCurve = elem.Location as LocationCurve;
+        
+        if (locPoint != null)
+        {
+            testPoints.Add(locPoint.Point);
+        }
+        else if (locCurve != null)
+        {
+            // For curves, check both endpoints
+            testPoints.Add(locCurve.Curve.GetEndPoint(0));
+            testPoints.Add(locCurve.Curve.GetEndPoint(1));
+        }
+        
+        if (testPoints.Count == 0) return false;
+        
+        foreach (XYZ testPoint in testPoints)
+        {
+            // Transform the test point
+            XYZ targetPoint = transform.OfPoint(testPoint);
+            
+            // Check if an element of same type exists at target location
+            double searchRadius = 0.01; // About 3mm
+            BoundingBoxXYZ searchBox = new BoundingBoxXYZ();
+            searchBox.Min = targetPoint - new XYZ(searchRadius, searchRadius, searchRadius);
+            searchBox.Max = targetPoint + new XYZ(searchRadius, searchRadius, searchRadius);
+            
+            // Create filters
+            Outline outline = new Outline(searchBox.Min, searchBox.Max);
+            BoundingBoxIntersectsFilter bbFilter = new BoundingBoxIntersectsFilter(outline);
+            ElementCategoryFilter categoryFilter = new ElementCategoryFilter(elem.Category.Id);
+            LogicalAndFilter andFilter = new LogicalAndFilter(bbFilter, categoryFilter);
+            
+            // Search for existing elements
+            FilteredElementCollector collector = new FilteredElementCollector(doc);
+            IList<Element> existingElements = collector
+                .WhereElementIsNotElementType()
+                .WherePasses(andFilter)
+                .ToList();
+            
+            // Check if any existing element matches
+            foreach (Element existing in existingElements)
+            {
+                if (existing.Id == elem.Id) continue;
+                
+                if (existing.GetTypeId() == elem.GetTypeId())
+                {
+                    // For curves, verify endpoints match
+                    if (locCurve != null && existing.Location is LocationCurve)
+                    {
+                        LocationCurve existingCurve = existing.Location as LocationCurve;
+                        XYZ existingStart = existingCurve.Curve.GetEndPoint(0);
+                        XYZ existingEnd = existingCurve.Curve.GetEndPoint(1);
+                        
+                        XYZ transformedStart = transform.OfPoint(locCurve.Curve.GetEndPoint(0));
+                        XYZ transformedEnd = transform.OfPoint(locCurve.Curve.GetEndPoint(1));
+                        
+                        bool endpointsMatch = 
+                            (existingStart.IsAlmostEqualTo(transformedStart, 0.01) && 
+                             existingEnd.IsAlmostEqualTo(transformedEnd, 0.01)) ||
+                            (existingStart.IsAlmostEqualTo(transformedEnd, 0.01) && 
+                             existingEnd.IsAlmostEqualTo(transformedStart, 0.01));
+                        
+                        if (endpointsMatch) return true;
+                    }
+                    else
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+        
+        return false;
     }
     
     private string FormatPoint(XYZ point)

@@ -1188,3 +1188,13 @@ https://forums.autodesk.com/t5/revit-api-forum/groups-check-for-mirrored/td-p/58
 if group doesn't have excldued members use default indexing
 if group has excluded members reconstruct transformation
   tried principal components analysis but it didn't seem to work
+*** 03
+**** =21:39= unable to finish commands adding elements to model groups
+in summary revit api is completely nerfed when it comes to group
+  feels deliberate
+no way to add to existing groups, only ungroup and regroup, but that changes location of origin
+  this makes it impossible to later swap old groups with new ones
+  no way to change origin...
+***** =00:55= a potential hack how to solve this limitation struck me while writing this paragraph
+I haven't quite finished writing it, but more importantly potentially adding extra element (e.g. model lines) to shift group origin to land in the same place as the source group could solve it
+****** along with recently written CopySelectedElementsAlongContainingElements command that seems to be able to reverse engineer transformation should provide a fighting chance against revit groups
