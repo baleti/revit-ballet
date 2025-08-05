@@ -179,7 +179,7 @@
     <Compile Include="revit-scripts\SelectFamilyTypeInstancesInLinkedModels.cs" />
     <Compile Include="revit-scripts\SelectFamilyTypesInProjectByCategory.cs" />
     <Compile Include="revit-scripts\SelectFiltersMatchingSelectedElements.cs" />
-    <Compile Include="revit-scripts\SelectGroupsContainingSelectedElementsByRoom.cs" />
+    <Compile Include="revit-scripts\FilterSelectedElementsByContainingGroupsWithRooms.cs" />
     <Compile Include="revit-scripts\SelectHostsOfSelectedElements.cs" />
     <Compile Include="revit-scripts\SelectionModeManager.cs" />
     <Compile Include="revit-scripts\SelectLast300CreatedElements.cs" />

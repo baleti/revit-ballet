@@ -9,7 +9,7 @@ using Autodesk.Revit.UI.Selection;
 using Autodesk.Revit.DB.Architecture;
 
 [Transaction(TransactionMode.Manual)]
-public class SelectGroupsContainingSelectedElementsByRoom : IExternalCommand
+public class FilterSelectedElementsByContainingGroupsWithRooms : IExternalCommand
 {
     // Cache for element test points to avoid recalculation
     private Dictionary<ElementId, List<XYZ>> _elementTestPointsCache = new Dictionary<ElementId, List<XYZ>>();
@@ -109,40 +109,28 @@ public class SelectGroupsContainingSelectedElementsByRoom : IExternalCommand
                 }
             }
             
-            // Find all unique groups that contain at least one element
-            HashSet<Group> allContainingGroups = new HashSet<Group>();
+            // Find maximum number of groups any single element is contained in
+            int maxGroupsPerElement = 0;
             foreach (var groups in elementToGroupsMap.Values)
             {
-                foreach (var group in groups)
-                {
-                    allContainingGroups.Add(group);
-                }
+                maxGroupsPerElement = Math.Max(maxGroupsPerElement, groups.Count);
             }
             
-            if (allContainingGroups.Count == 0)
+            if (maxGroupsPerElement == 0)
             {
                 TaskDialog.Show("No Groups Found", 
                     "No groups were found containing the selected elements within their rooms.");
                 return Result.Succeeded;
             }
             
-            // Prepare data for DataGrid - elements as rows, groups as columns
+            // Prepare data for DataGrid
             List<Dictionary<string, object>> gridEntries = new List<Dictionary<string, object>>();
-            List<string> propertyNames = new List<string> { "Element" };
+            List<string> propertyNames = new List<string> { "Type", "Family", "Id", "Comments" };
             
-            // Create ordered list of groups for consistent column ordering
-            List<Group> orderedGroups = allContainingGroups.OrderBy(g => 
+            // Add columns for groups (Group 1, Group 2, etc.)
+            for (int i = 1; i <= maxGroupsPerElement; i++)
             {
-                GroupType gt = doc.GetElement(g.GetTypeId()) as GroupType;
-                return gt?.Name ?? "Unknown";
-            }).ToList();
-            
-            // Add group names as column headers
-            foreach (Group group in orderedGroups)
-            {
-                GroupType groupType = doc.GetElement(group.GetTypeId()) as GroupType;
-                string groupName = groupType?.Name ?? "Unknown";
-                propertyNames.Add(groupName);
+                propertyNames.Add($"Group {i}");
             }
             
             // Create entries for each element
@@ -150,28 +138,62 @@ public class SelectGroupsContainingSelectedElementsByRoom : IExternalCommand
             {
                 Dictionary<string, object> entry = new Dictionary<string, object>();
                 
-                // Element description
-                string elemDesc = $"{elem.Category?.Name ?? "Unknown"} - {elem.Id}";
-                if (elem.Name != null && !string.IsNullOrEmpty(elem.Name))
-                {
-                    elemDesc = elem.Name;
-                }
-                entry["Element"] = elemDesc;
+                // Type
+                ElementType elemType = doc.GetElement(elem.GetTypeId()) as ElementType;
+                entry["Type"] = elemType?.Name ?? "Unknown";
                 
-                // Add checkmarks for groups that contain this element
-                List<Group> containingGroups = elementToGroupsMap[elem.Id];
-                foreach (Group group in orderedGroups)
+                // Family
+                string familyName = "Unknown";
+                if (elemType != null)
                 {
-                    GroupType groupType = doc.GetElement(group.GetTypeId()) as GroupType;
-                    string groupName = groupType?.Name ?? "Unknown";
-                    
-                    if (containingGroups.Contains(group))
+                    FamilySymbol famSymbol = elemType as FamilySymbol;
+                    if (famSymbol != null && famSymbol.Family != null)
                     {
-                        entry[groupName] = "✓";
+                        familyName = famSymbol.Family.Name;
                     }
                     else
                     {
-                        entry[groupName] = "";
+                        // For system families, use category name
+                        familyName = elem.Category?.Name ?? "System Family";
+                    }
+                }
+                entry["Family"] = familyName;
+                
+                // Id
+                entry["Id"] = elem.Id.IntegerValue.ToString();
+                
+                // Comments
+                Parameter commentsParam = elem.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS);
+                string comments = commentsParam?.AsString() ?? "";
+                entry["Comments"] = comments;
+                
+                // Store the actual element object for later retrieval
+                entry["_ElementObject"] = elem;
+                
+                // Get groups containing this element
+                List<Group> containingGroups = elementToGroupsMap[elem.Id];
+                
+                // Sort groups by name for consistent ordering
+                containingGroups = containingGroups.OrderBy(g => 
+                {
+                    GroupType gt = doc.GetElement(g.GetTypeId()) as GroupType;
+                    return gt?.Name ?? "Unknown";
+                }).ToList();
+                
+                // Fill in group columns
+                for (int i = 0; i < maxGroupsPerElement; i++)
+                {
+                    string columnName = $"Group {i + 1}";
+                    if (i < containingGroups.Count)
+                    {
+                        Group group = containingGroups[i];
+                        GroupType groupType = doc.GetElement(group.GetTypeId()) as GroupType;
+                        string groupName = groupType?.Name ?? "Unknown";
+                        entry[columnName] = groupName;
+                    }
+                    else
+                    {
+                        entry[columnName] = "";
                     }
                 }
                 
@@ -192,33 +214,24 @@ public class SelectGroupsContainingSelectedElementsByRoom : IExternalCommand
                 return Result.Cancelled;
             }
             
-            // Determine which groups to select based on selected entries
-            HashSet<Group> groupsToSelect = new HashSet<Group>();
+            // Determine which elements to select based on selected entries
+            HashSet<Element> elementsToSelect = new HashSet<Element>();
             
             foreach (var entry in selectedEntries)
             {
-                // Check which groups have checkmarks in the selected rows
-                for (int i = 0; i < orderedGroups.Count; i++)
+                // Get the element object from the hidden key
+                if (entry.ContainsKey("_ElementObject") && entry["_ElementObject"] is Element)
                 {
-                    Group group = orderedGroups[i];
-                    GroupType groupType = doc.GetElement(group.GetTypeId()) as GroupType;
-                    string groupName = groupType?.Name ?? "Unknown";
-                    
-                    if (entry.ContainsKey(groupName) && entry[groupName].ToString() == "✓")
-                    {
-                        groupsToSelect.Add(group);
-                    }
+                    Element elem = entry["_ElementObject"] as Element;
+                    elementsToSelect.Add(elem);
                 }
             }
             
-            // Set selection to chosen groups
-            if (groupsToSelect.Count > 0)
+            // Set selection to chosen elements
+            if (elementsToSelect.Count > 0)
             {
-                List<ElementId> groupIds = groupsToSelect.Select(g => g.Id).ToList();
-                uidoc.Selection.SetElementIds(groupIds);
-                
-                TaskDialog.Show("Success", 
-                    $"Selected {groupIds.Count} group(s) based on your selection.");
+                List<ElementId> elementIds = elementsToSelect.Select(e => e.Id).ToList();
+                uidoc.Selection.SetElementIds(elementIds);
             }
             
             return Result.Succeeded;
