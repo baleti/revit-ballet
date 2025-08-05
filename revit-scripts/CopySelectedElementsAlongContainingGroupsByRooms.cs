@@ -33,6 +33,10 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
         public double LevelZ { get; set; }
         public bool IsUnbound { get; set; }
         public BoundingBoxXYZ BoundingBox { get; set; }
+        public Level Level { get; set; }
+        public double Height { get; set; }
+        public double MinZ { get; set; }
+        public double MaxZ { get; set; }
     }
     
     // Structure to hold copy operation data
@@ -111,6 +115,9 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
                 .Cast<Group>()
                 .ToList();
             
+            // Build room cache for ALL rooms in the document
+            BuildRoomCache(doc);
+            
             // PRE-CALCULATE ALL GROUP BOUNDING BOXES AND BUILD SPATIAL INDEX
             PreCalculateGroupDataAndSpatialIndex(allGroups, doc);
             
@@ -125,6 +132,9 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
             {
                 elementToGroupsMap[elem.Id] = new List<Group>();
             }
+            
+            // Build comprehensive room-to-group mapping with priority handling
+            Dictionary<ElementId, Group> roomToSingleGroupMap = BuildRoomToGroupMapping(allGroups, doc);
             
             // Diagnostic tracking
             Dictionary<string, int> skipReasons = new Dictionary<string, int>
@@ -142,7 +152,6 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
                 // Get cached bounding box
                 BoundingBoxXYZ groupBB = _groupBoundingBoxCache[group.Id];
                 
-                // Double-check intersection (should pass since we got it from spatial index)
                 if (groupBB == null)
                 {
                     skipReasons["No Bounding Box"]++;
@@ -156,7 +165,9 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
                 }
                 
                 // Check which selected elements are contained in this group's rooms
-                List<Element> containedElements = GetElementsContainedInGroupRoomsOptimized(group, selectedElements, doc);
+                // Using the single room-to-group mapping to avoid duplicates
+                List<Element> containedElements = GetElementsContainedInGroupRoomsFiltered(
+                    group, selectedElements, doc, roomToSingleGroupMap);
                 
                 if (containedElements.Count == 0)
                 {
@@ -186,6 +197,20 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
                         elementToGroupsMap[elem.Id].Add(group);
                     }
                 }
+            }
+            
+            // Sort groups consistently by name when there are multiple groups per element
+            // (This can still happen if an element is in multiple rooms that belong to different groups)
+            foreach (var kvp in elementToGroupsMap)
+            {
+                kvp.Value.Sort((g1, g2) =>
+                {
+                    GroupType gt1 = doc.GetElement(g1.GetTypeId()) as GroupType;
+                    GroupType gt2 = doc.GetElement(g2.GetTypeId()) as GroupType;
+                    string name1 = gt1?.Name ?? "Unknown";
+                    string name2 = gt2?.Name ?? "Unknown";
+                    return string.Compare(name1, name2, StringComparison.Ordinal);
+                });
             }
             
             // Filter out elements that aren't in any groups
@@ -479,14 +504,8 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
                         }
                     }
                     
-                    // Show why the 10 missing groups were not populated
-                    int expectedGroups = allGroups.Count;
-                    int actualGroups = skipReasons["Contained Elements"];
-                    if (actualGroups < expectedGroups)
-                    {
-                        resultMessage.AppendLine($"\nWARNING: Only {actualGroups} of {expectedGroups} groups contain selected elements!");
-                        resultMessage.AppendLine("Run DiagnosticsForDuplicateAlongGroups command for detailed analysis.");
-                    }
+                    // Show spatial containment info
+                    resultMessage.AppendLine($"\nNote: Now includes rooms that are spatially contained within groups (not just direct members).");
                 }
                 
                 // Show which elements were in multiple groups
@@ -512,6 +531,266 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
             message = ex.Message;
             return Result.Failed;
         }
+    }
+    
+    // Build room cache for all rooms
+    private void BuildRoomCache(Document doc)
+    {
+        FilteredElementCollector roomCollector = new FilteredElementCollector(doc);
+        List<Room> allRooms = roomCollector
+            .OfClass(typeof(SpatialElement))
+            .WhereElementIsNotElementType()
+            .OfType<Room>()
+            .Where(r => r != null && r.Area > 0)
+            .ToList();
+        
+        foreach (Room room in allRooms)
+        {
+            Level roomLevel = doc.GetElement(room.LevelId) as Level;
+            if (roomLevel == null) continue;
+            
+            double roomLevelElevation = roomLevel.Elevation;
+            double roomHeight = room.LookupParameter("Height")?.AsDouble() 
+                ?? room.get_Parameter(BuiltInParameter.ROOM_HEIGHT)?.AsDouble()
+                ?? UnitUtils.ConvertToInternalUnits(10.0, UnitTypeId.Feet);
+            
+            RoomData data = new RoomData
+            {
+                Level = roomLevel,
+                LevelZ = roomLevelElevation,
+                Height = roomHeight,
+                MinZ = roomLevelElevation,
+                MaxZ = roomLevelElevation + roomHeight,
+                BoundingBox = room.get_BoundingBox(null),
+                IsUnbound = room.Volume <= 0.001
+            };
+            
+            _roomDataCache[room.Id] = data;
+        }
+    }
+    
+    // Build comprehensive room-to-group mapping with priority handling
+    // Each room maps to exactly ONE group (direct member > most specific spatial containment)
+    private Dictionary<ElementId, Group> BuildRoomToGroupMapping(IList<Group> allGroups, Document doc)
+    {
+        Dictionary<ElementId, Group> roomToGroupMap = new Dictionary<ElementId, Group>();
+        Dictionary<ElementId, List<Group>> roomDirectMembership = new Dictionary<ElementId, List<Group>>();
+        Dictionary<ElementId, List<Group>> roomSpatialContainment = new Dictionary<ElementId, List<Group>>();
+        
+        // First pass: identify direct memberships
+        foreach (Group group in allGroups)
+        {
+            foreach (ElementId memberId in group.GetMemberIds())
+            {
+                Element member = doc.GetElement(memberId);
+                if (member is Room room && room.Area > 0)
+                {
+                    if (!roomDirectMembership.ContainsKey(memberId))
+                    {
+                        roomDirectMembership[memberId] = new List<Group>();
+                    }
+                    roomDirectMembership[memberId].Add(group);
+                }
+            }
+        }
+        
+        // Second pass: identify spatial containments
+        foreach (Group group in allGroups)
+        {
+            BoundingBoxXYZ groupBB = _groupBoundingBoxCache.ContainsKey(group.Id) 
+                ? _groupBoundingBoxCache[group.Id] 
+                : group.get_BoundingBox(null);
+            
+            if (groupBB == null) continue;
+            
+            // Expand bounding box slightly for tolerance
+            double tolerance = 0.1;
+            XYZ minExpanded = new XYZ(
+                groupBB.Min.X - tolerance,
+                groupBB.Min.Y - tolerance,
+                groupBB.Min.Z - tolerance
+            );
+            XYZ maxExpanded = new XYZ(
+                groupBB.Max.X + tolerance,
+                groupBB.Max.Y + tolerance,
+                groupBB.Max.Z + tolerance
+            );
+            
+            // Check all rooms for spatial containment
+            foreach (var kvp in _roomDataCache)
+            {
+                ElementId roomId = kvp.Key;
+                RoomData roomData = kvp.Value;
+                
+                // Skip if this room has direct membership in ANY group
+                if (roomDirectMembership.ContainsKey(roomId))
+                    continue;
+                
+                // Check spatial containment
+                if (IsRoomWithinBoundingBox(roomData, minExpanded, maxExpanded))
+                {
+                    if (!roomSpatialContainment.ContainsKey(roomId))
+                    {
+                        roomSpatialContainment[roomId] = new List<Group>();
+                    }
+                    roomSpatialContainment[roomId].Add(group);
+                }
+            }
+        }
+        
+        // Build final mapping with priority:
+        // 1. Direct membership takes priority (use most specific if multiple)
+        // 2. Spatial containment is secondary (use most specific if multiple)
+        
+        // Add direct memberships (sorted by specificity)
+        foreach (var kvp in roomDirectMembership)
+        {
+            ElementId roomId = kvp.Key;
+            RoomData roomData = _roomDataCache[roomId];
+            
+            // Sort groups by specificity (smaller bounding box = more specific)
+            List<Group> sortedGroups = SortGroupsBySpecificity(kvp.Value, roomData.BoundingBox);
+            roomToGroupMap[roomId] = sortedGroups.First();
+        }
+        
+        // Add spatial containments (sorted by specificity, only for rooms without direct membership)
+        foreach (var kvp in roomSpatialContainment)
+        {
+            if (!roomToGroupMap.ContainsKey(kvp.Key))
+            {
+                ElementId roomId = kvp.Key;
+                RoomData roomData = _roomDataCache[roomId];
+                
+                // Sort groups by specificity (smaller bounding box = more specific)
+                List<Group> sortedGroups = SortGroupsBySpecificity(kvp.Value, roomData.BoundingBox);
+                roomToGroupMap[roomId] = sortedGroups.First();
+            }
+        }
+        
+        return roomToGroupMap;
+    }
+    
+    // Sort groups by specificity relative to a reference bounding box
+    private List<Group> SortGroupsBySpecificity(List<Group> groups, BoundingBoxXYZ referenceBB)
+    {
+        if (groups.Count <= 1) return groups;
+        
+        // Calculate reference volume (if available)
+        double refVolume = 1.0; // Default to 1 to avoid division by zero
+        if (referenceBB != null)
+        {
+            XYZ refSize = referenceBB.Max - referenceBB.Min;
+            refVolume = refSize.X * refSize.Y * refSize.Z;
+            if (refVolume <= 0) refVolume = 1.0;
+        }
+        
+        // Create list of groups with their specificity scores
+        List<(Group group, double score)> groupsWithScores = new List<(Group, double)>();
+        
+        foreach (Group group in groups)
+        {
+            BoundingBoxXYZ groupBB = _groupBoundingBoxCache.ContainsKey(group.Id) 
+                ? _groupBoundingBoxCache[group.Id] 
+                : null;
+            
+            if (groupBB != null)
+            {
+                XYZ groupSize = groupBB.Max - groupBB.Min;
+                double groupVolume = groupSize.X * groupSize.Y * groupSize.Z;
+                
+                // Specificity score: ratio of group volume to reference volume
+                // Smaller ratio = more specific (group is closer in size to reference)
+                double score = groupVolume / refVolume;
+                groupsWithScores.Add((group, score));
+            }
+            else
+            {
+                // If no bounding box, give it a high score (low priority)
+                groupsWithScores.Add((group, double.MaxValue));
+            }
+        }
+        
+        // Sort by score (ascending - smaller scores are more specific)
+        groupsWithScores.Sort((a, b) => a.score.CompareTo(b.score));
+        
+        return groupsWithScores.Select(gs => gs.group).ToList();
+    }
+    
+    // Get elements contained in group's rooms using filtered mapping
+    private List<Element> GetElementsContainedInGroupRoomsFiltered(
+        Group group, 
+        List<Element> candidateElements, 
+        Document doc,
+        Dictionary<ElementId, Group> roomToGroupMap)
+    {
+        List<Element> containedElements = new List<Element>();
+        
+        // Get all rooms that map to this group
+        List<Room> groupRooms = new List<Room>();
+        foreach (var kvp in roomToGroupMap)
+        {
+            if (kvp.Value.Id == group.Id)
+            {
+                Room room = doc.GetElement(kvp.Key) as Room;
+                if (room != null && room.Area > 0)
+                {
+                    groupRooms.Add(room);
+                }
+            }
+        }
+        
+        if (groupRooms.Count == 0)
+        {
+            return containedElements;
+        }
+        
+        // Get the overall height range of the group
+        ICollection<ElementId> memberIds = group.GetMemberIds();
+        double groupMinZ = double.MaxValue;
+        double groupMaxZ = double.MinValue;
+        
+        foreach (ElementId id in memberIds)
+        {
+            Element member = doc.GetElement(id);
+            BoundingBoxXYZ bb = member.get_BoundingBox(null);
+            if (bb != null)
+            {
+                groupMinZ = Math.Min(groupMinZ, bb.Min.Z);
+                groupMaxZ = Math.Max(groupMaxZ, bb.Max.Z);
+            }
+        }
+        
+        // Add some tolerance to the height bounds
+        groupMinZ -= 1.0; // 1 foot below
+        groupMaxZ += 1.0; // 1 foot above
+        
+        // Check each candidate element against all rooms
+        foreach (Element elem in candidateElements)
+        {
+            // Get cached test points
+            List<XYZ> testPoints = _elementTestPointsCache[elem.Id];
+            
+            foreach (Room room in groupRooms)
+            {
+                if (IsElementInRoomOptimized(elem, room, testPoints, groupMinZ, groupMaxZ))
+                {
+                    containedElements.Add(elem);
+                    break; // Element is in at least one room, no need to check others
+                }
+            }
+        }
+        
+        return containedElements;
+    }
+    
+    // Check if room is within bounding box
+    private bool IsRoomWithinBoundingBox(RoomData roomData, XYZ bbMin, XYZ bbMax)
+    {
+        BoundingBoxXYZ roomBB = roomData.BoundingBox;
+        if (roomBB == null) return false;
+        
+        return roomBB.Min.X >= bbMin.X && roomBB.Min.Y >= bbMin.Y && roomBB.Min.Z >= bbMin.Z &&
+               roomBB.Max.X <= bbMax.X && roomBB.Max.Y <= bbMax.Y && roomBB.Max.Z <= bbMax.Z;
     }
     
     // Pre-calculate all group bounding boxes and build spatial index
@@ -657,10 +936,11 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
         }
         else if (locCurve != null)
         {
-            // For curves, check endpoints
+            // For curves, check endpoints and midpoint
             Curve curve = locCurve.Curve;
             testPoints.Add(curve.GetEndPoint(0));
             testPoints.Add(curve.GetEndPoint(1));
+            testPoints.Add(curve.Evaluate(0.5, true));
         }
         else
         {
@@ -715,84 +995,6 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
         return !(bb1.Max.X < bb2.Min.X || bb2.Max.X < bb1.Min.X ||
                  bb1.Max.Y < bb2.Min.Y || bb2.Max.Y < bb1.Min.Y ||
                  bb1.Max.Z < bb2.Min.Z || bb2.Max.Z < bb1.Min.Z);
-    }
-    
-    // Optimized version that uses cached data
-    private List<Element> GetElementsContainedInGroupRoomsOptimized(Group group, List<Element> candidateElements, Document doc)
-    {
-        List<Element> containedElements = new List<Element>();
-        
-        // Get all rooms that are members of this group
-        List<Room> groupRooms = new List<Room>();
-        ICollection<ElementId> memberIds = group.GetMemberIds();
-        
-        // Also get the overall height range of the group
-        double groupMinZ = double.MaxValue;
-        double groupMaxZ = double.MinValue;
-        
-        foreach (ElementId id in memberIds)
-        {
-            Element member = doc.GetElement(id);
-            if (member is Room)
-            {
-                Room room = member as Room;
-                groupRooms.Add(room);
-                
-                // Cache room data if not already cached
-                if (!_roomDataCache.ContainsKey(room.Id))
-                {
-                    RoomData roomData = new RoomData();
-                    roomData.IsUnbound = room.Volume <= 0.001;
-                    roomData.BoundingBox = room.get_BoundingBox(null);
-                    
-                    if (room.LevelId != null && room.LevelId != ElementId.InvalidElementId)
-                    {
-                        Level roomLevel = doc.GetElement(room.LevelId) as Level;
-                        if (roomLevel != null)
-                        {
-                            roomData.LevelZ = roomLevel.Elevation;
-                        }
-                    }
-                    
-                    _roomDataCache[room.Id] = roomData;
-                }
-            }
-            
-            // Update group height bounds
-            BoundingBoxXYZ bb = member.get_BoundingBox(null);
-            if (bb != null)
-            {
-                groupMinZ = Math.Min(groupMinZ, bb.Min.Z);
-                groupMaxZ = Math.Max(groupMaxZ, bb.Max.Z);
-            }
-        }
-        
-        if (groupRooms.Count == 0)
-        {
-            return containedElements;
-        }
-        
-        // Add some tolerance to the height bounds
-        groupMinZ -= 1.0; // 1 foot below
-        groupMaxZ += 1.0; // 1 foot above
-        
-        // Check each candidate element against all rooms
-        foreach (Element elem in candidateElements)
-        {
-            // Get cached test points
-            List<XYZ> testPoints = _elementTestPointsCache[elem.Id];
-            
-            foreach (Room room in groupRooms)
-            {
-                if (IsElementInRoomOptimized(elem, room, testPoints, groupMinZ, groupMaxZ))
-                {
-                    containedElements.Add(elem);
-                    break; // Element is in at least one room, no need to check others
-                }
-            }
-        }
-        
-        return containedElements;
     }
     
     // Optimized version using cached test points and room data

@@ -1208,3 +1208,10 @@ graph theory
 ***** related commands
 FilterSelectedElementsByContainingGroupsWithRooms
 CopySelectedElementsAlongContainingGroupsByRooms
+*** 06
+**** =00:00= coming to conclusion that it is likely beneficial to use builtin room and area types in revit to construct and parametrize building graph/topology
+they are user friendly, easily debuggable and versatile
+fundamentally I want to believe that they were meant to be used for this type of analysis
+  just wasn't meant to be
+not sure if custom parameters will be available
+  may need to load it all into Comments parameter or similar
