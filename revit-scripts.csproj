@@ -156,6 +156,7 @@
     <Compile Include="revit-scripts\FilterPositionOnAreas.cs" />
     <Compile Include="revit-scripts\FilterPositionOnRooms.cs" />
     <Compile Include="revit-scripts\FilterRevisionClouds.cs" />
+    <Compile Include="revit-scripts\FilterSelectedElementsByContainingGroupsWithEnclosingWalls.cs" />
     <Compile Include="revit-scripts\FilterSheets.cs" />
     <Compile Include="revit-scripts\HandFlipSelectedDoors.cs" />
     <Compile Include="revit-scripts\ImportElementsFromFile.cs" />
@@ -190,6 +191,7 @@
     <Compile Include="revit-scripts\SelectOpenedViews.cs" />
     <Compile Include="revit-scripts\SelectRevisionCloudsOfSelectedSheets.cs" />
     <Compile Include="revit-scripts\SelectSameInstancesInGroups.cs" />
+    <Compile Include="revit-scripts\SelectSchedules.cs" />
     <Compile Include="revit-scripts\SelectSectionBoxInCurrentView.cs" />
     <Compile Include="revit-scripts\SelectSheetsBySelectedTitleBlocks.cs" />
     <Compile Include="revit-scripts\SelectViewportsOfViews.cs" />

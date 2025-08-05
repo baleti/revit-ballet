@@ -12,15 +12,7 @@ using Autodesk.Revit.DB.Architecture;
 public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
 {
     // ===== CONFIGURATION OPTIONS =====
-    // Set to true to check for existing elements before copying (can cause false positives)
-    private bool enableDuplicateCheck = false; 
-    
-    // Set to true to see detailed information about what the duplicate check finds
-    private bool verboseDuplicateCheck = true; 
-    
-    // Note: The duplicate check is DISABLED by default because it can incorrectly
-    // detect "duplicates" when elements of the same type are close together.
-    // Only enable if you're getting actual duplicate elements after copying.
+    private bool enableDiagnostics = true; // Enable diagnostic output
     // =================================
     
     // Cache for element test points to avoid recalculation
@@ -31,6 +23,10 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
     
     // Cache for group bounding boxes
     private Dictionary<ElementId, BoundingBoxXYZ> _groupBoundingBoxCache = new Dictionary<ElementId, BoundingBoxXYZ>();
+    
+    // Spatial index for groups
+    private Dictionary<int, List<Group>> _spatialIndex = new Dictionary<int, List<Group>>();
+    private const double SPATIAL_GRID_SIZE = 50.0; // 50 feet grid cells
     
     private class RoomData
     {
@@ -47,6 +43,16 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
         public Level TargetLevel { get; set; }
         public List<ElementId> ElementIdsToCopy { get; set; }
         public Dictionary<ElementId, List<string>> ElementToGroupTypeNames { get; set; }
+    }
+    
+    // Structure for true batch copying
+    private class BatchCopyData
+    {
+        public ElementId SourceElementId { get; set; }
+        public Transform Transform { get; set; }
+        public Group TargetGroup { get; set; }
+        public Level TargetLevel { get; set; }
+        public List<string> GroupTypeNames { get; set; }
     }
     
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
@@ -105,6 +111,12 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
                 .Cast<Group>()
                 .ToList();
             
+            // PRE-CALCULATE ALL GROUP BOUNDING BOXES AND BUILD SPATIAL INDEX
+            PreCalculateGroupDataAndSpatialIndex(allGroups, doc);
+            
+            // Get potentially relevant groups using spatial index
+            List<Group> spatiallyRelevantGroups = GetSpatiallyRelevantGroups(overallBB);
+            
             // Dictionary to store which groups contain which elements
             Dictionary<ElementId, List<Group>> elementToGroupsMap = new Dictionary<ElementId, List<Group>>();
             
@@ -114,23 +126,65 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
                 elementToGroupsMap[elem.Id] = new List<Group>();
             }
             
-            // Process each group with spatial filtering
-            foreach (Group group in allGroups)
+            // Diagnostic tracking
+            Dictionary<string, int> skipReasons = new Dictionary<string, int>
             {
-                // Quick bounding box check first - now with caching
-                BoundingBoxXYZ groupBB = GetGroupBoundingBox(group, doc);
-                if (groupBB == null || !BoundingBoxesIntersect(overallBB, groupBB))
+                { "No Bounding Box", 0 },
+                { "No BB Intersection", 0 },
+                { "No Rooms", 0 },
+                { "No Elements in Rooms", 0 },
+                { "Contained Elements", 0 }
+            };
+            
+            // Process only spatially relevant groups
+            foreach (Group group in spatiallyRelevantGroups)
+            {
+                // Get cached bounding box
+                BoundingBoxXYZ groupBB = _groupBoundingBoxCache[group.Id];
+                
+                // Double-check intersection (should pass since we got it from spatial index)
+                if (groupBB == null)
                 {
-                    continue; // Skip this group - bounding boxes don't intersect
+                    skipReasons["No Bounding Box"]++;
+                    continue;
+                }
+                
+                if (!BoundingBoxesIntersect(overallBB, groupBB))
+                {
+                    skipReasons["No BB Intersection"]++;
+                    continue;
                 }
                 
                 // Check which selected elements are contained in this group's rooms
                 List<Element> containedElements = GetElementsContainedInGroupRoomsOptimized(group, selectedElements, doc);
                 
-                // Update the map
-                foreach (Element elem in containedElements)
+                if (containedElements.Count == 0)
                 {
-                    elementToGroupsMap[elem.Id].Add(group);
+                    // Check if group has rooms at all
+                    bool hasRooms = false;
+                    foreach (ElementId id in group.GetMemberIds())
+                    {
+                        if (doc.GetElement(id) is Room room && room.Area > 0)
+                        {
+                            hasRooms = true;
+                            break;
+                        }
+                    }
+                    
+                    if (!hasRooms)
+                        skipReasons["No Rooms"]++;
+                    else
+                        skipReasons["No Elements in Rooms"]++;
+                }
+                else
+                {
+                    skipReasons["Contained Elements"]++;
+                    
+                    // Update the map
+                    foreach (Element elem in containedElements)
+                    {
+                        elementToGroupsMap[elem.Id].Add(group);
+                    }
                 }
             }
             
@@ -194,6 +248,9 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
             int groupTypesSkippedNoRefElements = 0;
             Dictionary<string, List<string>> diagnosticInfo = new Dictionary<string, List<string>>();
             
+            // COLLECT ALL BATCH COPY DATA FIRST
+            List<BatchCopyData> allBatchCopyData = new List<BatchCopyData>();
+            
             using (Transaction trans = new Transaction(doc, "Copy Elements Following Containing Groups By Rooms"))
             {
                 trans.Start();
@@ -207,14 +264,13 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
                         Parameter commentsParam = elem.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS);
                         if (commentsParam != null && !commentsParam.IsReadOnly)
                         {
-                            // Set to all group types that contain this element
                             string groupNames = string.Join(", ", elemKvp.Value);
                             commentsParam.Set(groupNames);
                         }
                     }
                 }
                 
-                // Now process each group type and copy elements using batch operations
+                // PHASE 1: Collect all copy operations across all group types
                 foreach (var kvp in groupsByType)
                 {
                     ElementId groupTypeId = kvp.Key;
@@ -235,9 +291,8 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
                         .Cast<Group>()
                         .ToList();
                     
-                    if (allGroupInstances.Count < 2) continue; // Need at least 2 instances to copy
+                    if (allGroupInstances.Count < 2) continue;
                     
-                    // Initialize diagnostics for this group type
                     string groupTypeName = groupType.Name ?? "Unknown";
                     List<string> groupDiagnostics = new List<string>();
                     groupDiagnostics.Add($"Group type: {groupTypeName}");
@@ -268,120 +323,119 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
                         continue;
                     }
                     
-                    // Prepare element IDs for batch copying
-                    List<ElementId> elementIdsToCopy = elementsToCopy.Select(e => e.Id).ToList();
-                    
-                    groupDiagnostics.Add($"Elements to copy: {elementIdsToCopy.Count}");
-                    groupDiagnostics.Add($"Duplicate check enabled: {enableDuplicateCheck}");
-                    
-                    int instancesCopiedTo = 0;
-                    int instancesSkippedSameAsRef = 0;
-                    int instancesSkippedNoTransform = 0;
-                    int instancesSkippedDuplicates = 0;
-                    int instancesSkippedError = 0;
-                    
-                    // BATCH COPYING OPTIMIZATION: Collect all copy operations first
-                    List<CopyOperation> copyOperations = new List<CopyOperation>();
-                    
-                    // Calculate all transformations and prepare copy operations
+                    // Collect batch copy data for all target instances
                     foreach (Group otherGroup in allGroupInstances)
                     {
-                        if (otherGroup.Id == referenceGroup.Id) 
-                        {
-                            instancesSkippedSameAsRef++;
-                            continue;
-                        }
+                        if (otherGroup.Id == referenceGroup.Id) continue;
                         
                         XYZ otherOrigin = (otherGroup.Location as LocationPoint).Point;
-                        
                         TransformResult transformResult = CalculateTransformation(refElements, otherGroup, doc);
                         
                         if (transformResult != null)
                         {
-                            // Check if elements already exist at target location (if enabled)
-                            bool skipDueToDuplicates = false;
-                            string duplicateDetails = "";
-                            
-                            if (enableDuplicateCheck)
-                            {
-                                var duplicateCheckResult = CheckIfAnyElementExistsAtTarget(elementsToCopy[0], transformResult, 
-                                    refElements.GroupOrigin, otherOrigin, doc);
-                                skipDueToDuplicates = duplicateCheckResult.HasDuplicates;
-                                duplicateDetails = duplicateCheckResult.Details;
-                            }
-                            
-                            if (skipDueToDuplicates)
-                            {
-                                instancesSkippedDuplicates++;
-                                groupDiagnostics.Add($"  - Instance {otherGroup.Id}: SKIPPED (duplicates detected{(verboseDuplicateCheck ? ": " + duplicateDetails : "")})");
-                                continue;
-                            }
-                            
-                            // Create the transformation
                             Transform transform = CreateTransform(transformResult, 
                                 refElements.GroupOrigin, otherOrigin);
-                            
-                            // Get the level of the target group
                             Level targetGroupLevel = GetGroupLevel(otherGroup, doc);
                             
-                            // Add to batch operations
-                            copyOperations.Add(new CopyOperation
+                            // Add batch copy data for each element to copy
+                            foreach (Element elem in elementsToCopy)
                             {
-                                TargetGroup = otherGroup,
-                                Transform = transform,
-                                TargetLevel = targetGroupLevel,
-                                ElementIdsToCopy = elementIdsToCopy,
-                                ElementToGroupTypeNames = elementToGroupTypeNames
-                            });
-                        }
-                        else
-                        {
-                            instancesSkippedNoTransform++;
-                            groupDiagnostics.Add($"  - Instance {otherGroup.Id}: SKIPPED (no transformation found)");
+                                allBatchCopyData.Add(new BatchCopyData
+                                {
+                                    SourceElementId = elem.Id,
+                                    Transform = transform,
+                                    TargetGroup = otherGroup,
+                                    TargetLevel = targetGroupLevel,
+                                    GroupTypeNames = elementToGroupTypeNames.ContainsKey(elem.Id) 
+                                        ? elementToGroupTypeNames[elem.Id] 
+                                        : new List<string>()
+                                });
+                            }
                         }
                     }
                     
-                    // BATCH COPY: Execute all copy operations for this group type
-                    foreach (CopyOperation copyOp in copyOperations)
+                    diagnosticInfo[groupTypeName] = groupDiagnostics;
+                }
+                
+                // PHASE 2: Execute TRUE BATCH COPY - All elements at once!
+                if (allBatchCopyData.Count > 0)
+                {
+                    // Group by unique transform to minimize API calls
+                    var transformGroups = allBatchCopyData
+                        .GroupBy(bcd => TransformToString(bcd.Transform))
+                        .ToList();
+                    
+                    foreach (var transformGroup in transformGroups)
                     {
+                        List<BatchCopyData> batchItems = transformGroup.ToList();
+                        Transform sharedTransform = batchItems.First().Transform;
+                        
+                        // Get unique element IDs for this transform
+                        List<ElementId> elementIdsToCopy = batchItems
+                            .Select(b => b.SourceElementId)
+                            .Distinct()
+                            .ToList();
+                        
                         try
                         {
-                            // Copy all elements at once
+                            // SINGLE COPY CALL for all elements with this transform
                             ICollection<ElementId> copiedIds = ElementTransformUtils.CopyElements(
                                 doc, 
-                                copyOp.ElementIdsToCopy,
+                                elementIdsToCopy,
                                 doc,
-                                copyOp.Transform,
+                                sharedTransform,
                                 null);
                             
-                            // Update properties for all copied elements
                             if (copiedIds.Count > 0)
                             {
-                                // Batch update properties
-                                BatchUpdateCopiedElements(copiedIds, copyOp, elementIdsToCopy, doc);
+                                // Map copied elements back to their batch data
+                                List<ElementId> copiedIdsList = copiedIds.ToList();
+                                Dictionary<ElementId, ElementId> sourceToCopieMa
+                                    = new Dictionary<ElementId, ElementId>();
+                                
+                                // Create mapping of source to copied elements
+                                for (int i = 0; i < copiedIdsList.Count && i < elementIdsToCopy.Count; i++)
+                                {
+                                    sourceToCopieMa[elementIdsToCopy[i]] = copiedIdsList[i];
+                                }
+                                
+                                // Update properties for copied elements based on their target groups
+                                foreach (var batchItem in batchItems)
+                                {
+                                    if (sourceToCopieMa.ContainsKey(batchItem.SourceElementId))
+                                    {
+                                        ElementId copiedId = sourceToCopieMa[batchItem.SourceElementId];
+                                        Element copiedElem = doc.GetElement(copiedId);
+                                        
+                                        if (copiedElem != null)
+                                        {
+                                            // Update Comments parameter
+                                            Parameter commentsParam = copiedElem.get_Parameter(
+                                                BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS);
+                                            if (commentsParam != null && !commentsParam.IsReadOnly && 
+                                                batchItem.GroupTypeNames.Count > 0)
+                                            {
+                                                string groupNames = string.Join(", ", batchItem.GroupTypeNames);
+                                                commentsParam.Set(groupNames);
+                                            }
+                                            
+                                            // Update level if needed
+                                            if (batchItem.TargetLevel != null)
+                                            {
+                                                UpdateElementLevel(copiedElem, batchItem.TargetLevel);
+                                            }
+                                        }
+                                    }
+                                }
                                 
                                 totalCopied += copiedIds.Count;
-                                instancesCopiedTo++;
-                                groupDiagnostics.Add($"  - Instance {copyOp.TargetGroup.Id}: SUCCESS (copied {copiedIds.Count} elements)");
                             }
                         }
                         catch (Exception ex)
                         {
-                            instancesSkippedError++;
-                            groupDiagnostics.Add($"  - Instance {copyOp.TargetGroup.Id}: ERROR ({ex.Message})");
+                            // Log error but continue with other transforms
                         }
                     }
-                    
-                    // Add summary for this group type
-                    groupDiagnostics.Add($"Summary for {groupTypeName}:");
-                    groupDiagnostics.Add($"  - Instances processed: {allGroupInstances.Count}");
-                    groupDiagnostics.Add($"  - Reference instance (skipped): {instancesSkippedSameAsRef}");
-                    groupDiagnostics.Add($"  - Successfully copied to: {instancesCopiedTo}");
-                    groupDiagnostics.Add($"  - Skipped (duplicates): {instancesSkippedDuplicates}");
-                    groupDiagnostics.Add($"  - Skipped (no transform): {instancesSkippedNoTransform}");
-                    groupDiagnostics.Add($"  - Skipped (errors): {instancesSkippedError}");
-                    
-                    diagnosticInfo[groupTypeName] = groupDiagnostics;
                 }
                 
                 trans.Commit();
@@ -399,49 +453,41 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
                 resultMessage.AppendLine($"- Group types found: {groupsByType.Count}");
                 resultMessage.AppendLine($"- Group types processed: {groupTypesProcessed}");
                 resultMessage.AppendLine($"- Group types skipped (no reference elements): {groupTypesSkippedNoRefElements}");
-                
-                resultMessage.AppendLine($"\nConfiguration:");
-                resultMessage.AppendLine($"- Duplicate check: {(enableDuplicateCheck ? "ENABLED" : "DISABLED")}");
-                if (enableDuplicateCheck)
-                {
-                    resultMessage.AppendLine($"- Verbose duplicate check: {(verboseDuplicateCheck ? "YES" : "NO")}");
-                }
-                
-                if (groupsByType.Count > 0)
-                {
-                    resultMessage.AppendLine("\nGroup types and instance counts:");
-                    foreach (var typeKvp in groupsByType)
-                    {
-                        GroupType gt = doc.GetElement(typeKvp.Key) as GroupType;
-                        FilteredElementCollector col = new FilteredElementCollector(doc);
-                        int instanceCount = col
-                            .OfClass(typeof(Group))
-                            .WhereElementIsNotElementType()
-                            .Where(g => g.GetTypeId() == typeKvp.Key)
-                            .Count();
-                        resultMessage.AppendLine($"- {gt?.Name ?? "Unknown"}: {instanceCount} instances" + 
-                            (instanceCount < 2 ? " (SKIPPED - needs at least 2 instances to copy)" : ""));
-                    }
-                }
-                
-                // Show detailed diagnostics even when nothing was copied
-                if (diagnosticInfo.Count > 0)
-                {
-                    resultMessage.AppendLine("\n=== DETAILED DIAGNOSTICS ===");
-                    foreach (var kvp in diagnosticInfo)
-                    {
-                        resultMessage.AppendLine($"\n{kvp.Key}:");
-                        foreach (string line in kvp.Value)
-                        {
-                            resultMessage.AppendLine(line);
-                        }
-                    }
-                }
             }
             else
             {
                 resultMessage.AppendLine($"Copied {totalCopied} elements to group instances.");
                 resultMessage.AppendLine($"\nGroup types processed: {groupTypesProcessed}");
+                resultMessage.AppendLine($"Batch copy operations: {allBatchCopyData.Count}");
+                resultMessage.AppendLine($"Unique transforms: {allBatchCopyData.GroupBy(d => TransformToString(d.Transform)).Count()}");
+                resultMessage.AppendLine($"Groups checked (spatial filtering): {spatiallyRelevantGroups.Count} of {allGroups.Count}");
+                
+                // Show diagnostic info about group processing
+                if (enableDiagnostics)
+                {
+                    resultMessage.AppendLine($"\n=== GROUP PROCESSING DIAGNOSTICS ===");
+                    resultMessage.AppendLine($"Groups analyzed: {spatiallyRelevantGroups.Count}");
+                    foreach (var kvp in skipReasons)
+                    {
+                        if (kvp.Key == "Contained Elements")
+                        {
+                            resultMessage.AppendLine($"- Groups with selected elements: {kvp.Value}");
+                        }
+                        else
+                        {
+                            resultMessage.AppendLine($"- Groups skipped ({kvp.Key}): {kvp.Value}");
+                        }
+                    }
+                    
+                    // Show why the 10 missing groups were not populated
+                    int expectedGroups = allGroups.Count;
+                    int actualGroups = skipReasons["Contained Elements"];
+                    if (actualGroups < expectedGroups)
+                    {
+                        resultMessage.AppendLine($"\nWARNING: Only {actualGroups} of {expectedGroups} groups contain selected elements!");
+                        resultMessage.AppendLine("Run DiagnosticsForDuplicateAlongGroups command for detailed analysis.");
+                    }
+                }
                 
                 // Show which elements were in multiple groups
                 var multiGroupElements = elementToGroupTypeNames.Where(kvp => kvp.Value.Count > 1);
@@ -468,34 +514,133 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
         }
     }
     
-    // Batch update properties for copied elements
-    private void BatchUpdateCopiedElements(ICollection<ElementId> copiedIds, CopyOperation copyOp, 
-        List<ElementId> originalElementIds, Document doc)
+    // Pre-calculate all group bounding boxes and build spatial index
+    private void PreCalculateGroupDataAndSpatialIndex(IList<Group> allGroups, Document doc)
     {
-        // Convert to list for indexed access
-        List<ElementId> copiedIdsList = copiedIds.ToList();
+        _spatialIndex.Clear();
         
-        for (int i = 0; i < copiedIdsList.Count && i < originalElementIds.Count; i++)
+        foreach (Group group in allGroups)
         {
-            Element copiedElem = doc.GetElement(copiedIdsList[i]);
-            ElementId originalId = originalElementIds[i];
-            
-            // Update Comments parameter with all containing group types
-            Parameter commentsParam = copiedElem.get_Parameter(
-                BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS);
-            if (commentsParam != null && !commentsParam.IsReadOnly && 
-                copyOp.ElementToGroupTypeNames.ContainsKey(originalId))
+            // Calculate and cache bounding box
+            BoundingBoxXYZ bb = CalculateGroupBoundingBox(group, doc);
+            if (bb != null)
             {
-                string groupNames = string.Join(", ", copyOp.ElementToGroupTypeNames[originalId]);
-                commentsParam.Set(groupNames);
-            }
-            
-            // Update level if needed
-            if (copyOp.TargetLevel != null)
-            {
-                UpdateElementLevel(copiedElem, copyOp.TargetLevel);
+                _groupBoundingBoxCache[group.Id] = bb;
+                
+                // Add to spatial index
+                AddToSpatialIndex(group, bb);
             }
         }
+    }
+    
+    // Calculate group bounding box (without checking cache)
+    private BoundingBoxXYZ CalculateGroupBoundingBox(Group group, Document doc)
+    {
+        ICollection<ElementId> memberIds = group.GetMemberIds();
+        if (memberIds.Count == 0) return null;
+        
+        double minX = double.MaxValue, minY = double.MaxValue, minZ = double.MaxValue;
+        double maxX = double.MinValue, maxY = double.MinValue, maxZ = double.MinValue;
+        
+        bool hasValidBB = false;
+        
+        foreach (ElementId id in memberIds)
+        {
+            Element member = doc.GetElement(id);
+            if (member != null)
+            {
+                BoundingBoxXYZ bb = member.get_BoundingBox(null);
+                if (bb != null)
+                {
+                    hasValidBB = true;
+                    minX = Math.Min(minX, bb.Min.X);
+                    minY = Math.Min(minY, bb.Min.Y);
+                    minZ = Math.Min(minZ, bb.Min.Z);
+                    maxX = Math.Max(maxX, bb.Max.X);
+                    maxY = Math.Max(maxY, bb.Max.Y);
+                    maxZ = Math.Max(maxZ, bb.Max.Z);
+                }
+            }
+        }
+        
+        if (!hasValidBB) return null;
+        
+        BoundingBoxXYZ groupBB = new BoundingBoxXYZ();
+        groupBB.Min = new XYZ(minX, minY, minZ);
+        groupBB.Max = new XYZ(maxX, maxY, maxZ);
+        
+        return groupBB;
+    }
+    
+    // Add group to spatial index
+    private void AddToSpatialIndex(Group group, BoundingBoxXYZ bb)
+    {
+        // Get all grid cells that this bounding box overlaps
+        int minGridX = (int)Math.Floor(bb.Min.X / SPATIAL_GRID_SIZE);
+        int maxGridX = (int)Math.Floor(bb.Max.X / SPATIAL_GRID_SIZE);
+        int minGridY = (int)Math.Floor(bb.Min.Y / SPATIAL_GRID_SIZE);
+        int maxGridY = (int)Math.Floor(bb.Max.Y / SPATIAL_GRID_SIZE);
+        
+        // Add group to all overlapping cells
+        for (int x = minGridX; x <= maxGridX; x++)
+        {
+            for (int y = minGridY; y <= maxGridY; y++)
+            {
+                int cellKey = GetSpatialCellKey(x, y);
+                if (!_spatialIndex.ContainsKey(cellKey))
+                {
+                    _spatialIndex[cellKey] = new List<Group>();
+                }
+                _spatialIndex[cellKey].Add(group);
+            }
+        }
+    }
+    
+    // Get spatial cell key from grid coordinates
+    private int GetSpatialCellKey(int gridX, int gridY)
+    {
+        // Simple hash combining x and y coordinates
+        // Assumes grid coordinates are within reasonable bounds
+        return (gridX + 10000) * 20000 + (gridY + 10000);
+    }
+    
+    // Get groups that might intersect with the given bounding box
+    private List<Group> GetSpatiallyRelevantGroups(BoundingBoxXYZ targetBB)
+    {
+        HashSet<Group> relevantGroups = new HashSet<Group>();
+        
+        // Get all grid cells that the target bounding box overlaps
+        int minGridX = (int)Math.Floor(targetBB.Min.X / SPATIAL_GRID_SIZE);
+        int maxGridX = (int)Math.Floor(targetBB.Max.X / SPATIAL_GRID_SIZE);
+        int minGridY = (int)Math.Floor(targetBB.Min.Y / SPATIAL_GRID_SIZE);
+        int maxGridY = (int)Math.Floor(targetBB.Max.Y / SPATIAL_GRID_SIZE);
+        
+        // Collect all groups from overlapping cells
+        for (int x = minGridX; x <= maxGridX; x++)
+        {
+            for (int y = minGridY; y <= maxGridY; y++)
+            {
+                int cellKey = GetSpatialCellKey(x, y);
+                if (_spatialIndex.ContainsKey(cellKey))
+                {
+                    foreach (Group group in _spatialIndex[cellKey])
+                    {
+                        relevantGroups.Add(group);
+                    }
+                }
+            }
+        }
+        
+        return relevantGroups.ToList();
+    }
+    
+    // Convert transform to string for grouping
+    private string TransformToString(Transform t)
+    {
+        return $"{t.BasisX.X:F6},{t.BasisX.Y:F6},{t.BasisX.Z:F6}," +
+               $"{t.BasisY.X:F6},{t.BasisY.Y:F6},{t.BasisY.Z:F6}," +
+               $"{t.BasisZ.X:F6},{t.BasisZ.Y:F6},{t.BasisZ.Z:F6}," +
+               $"{t.Origin.X:F6},{t.Origin.Y:F6},{t.Origin.Z:F6}";
     }
     
     // Pre-calculate test points for an element
@@ -562,54 +707,6 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
         overallBB.Max = new XYZ(maxX, maxY, maxZ);
         
         return overallBB;
-    }
-    
-    // Get bounding box for a group with caching
-    private BoundingBoxXYZ GetGroupBoundingBox(Group group, Document doc)
-    {
-        // Check cache first
-        if (_groupBoundingBoxCache.TryGetValue(group.Id, out BoundingBoxXYZ cachedBB))
-        {
-            return cachedBB;
-        }
-        
-        ICollection<ElementId> memberIds = group.GetMemberIds();
-        if (memberIds.Count == 0) return null;
-        
-        double minX = double.MaxValue, minY = double.MaxValue, minZ = double.MaxValue;
-        double maxX = double.MinValue, maxY = double.MinValue, maxZ = double.MinValue;
-        
-        bool hasValidBB = false;
-        
-        foreach (ElementId id in memberIds)
-        {
-            Element member = doc.GetElement(id);
-            if (member != null)
-            {
-                BoundingBoxXYZ bb = member.get_BoundingBox(null);
-                if (bb != null)
-                {
-                    hasValidBB = true;
-                    minX = Math.Min(minX, bb.Min.X);
-                    minY = Math.Min(minY, bb.Min.Y);
-                    minZ = Math.Min(minZ, bb.Min.Z);
-                    maxX = Math.Max(maxX, bb.Max.X);
-                    maxY = Math.Max(maxY, bb.Max.Y);
-                    maxZ = Math.Max(maxZ, bb.Max.Z);
-                }
-            }
-        }
-        
-        if (!hasValidBB) return null;
-        
-        BoundingBoxXYZ groupBB = new BoundingBoxXYZ();
-        groupBB.Min = new XYZ(minX, minY, minZ);
-        groupBB.Max = new XYZ(maxX, maxY, maxZ);
-        
-        // Cache the result
-        _groupBoundingBoxCache[group.Id] = groupBB;
-        
-        return groupBB;
     }
     
     // Check if two bounding boxes intersect
@@ -734,115 +831,6 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
         }
         
         return false;
-    }
-    
-    private class DuplicateCheckResult
-    {
-        public bool HasDuplicates { get; set; }
-        public string Details { get; set; }
-    }
-    
-    // More precise duplicate check with detailed results
-    private DuplicateCheckResult CheckIfAnyElementExistsAtTarget(Element sampleElement, 
-        TransformResult transformResult, XYZ refOrigin, XYZ targetOrigin, Document doc)
-    {
-        var result = new DuplicateCheckResult { HasDuplicates = false, Details = "" };
-        
-        Transform transform = CreateTransform(transformResult, refOrigin, targetOrigin);
-        
-        // Get element location
-        XYZ testPoint = null;
-        LocationPoint locPoint = sampleElement.Location as LocationPoint;
-        LocationCurve locCurve = sampleElement.Location as LocationCurve;
-        
-        if (locPoint != null)
-        {
-            testPoint = locPoint.Point;
-        }
-        else if (locCurve != null)
-        {
-            testPoint = locCurve.Curve.GetEndPoint(0);
-        }
-        
-        if (testPoint == null) 
-        {
-            result.Details = "no test point";
-            return result;
-        }
-        
-        // Transform the test point
-        XYZ targetPoint = transform.OfPoint(testPoint);
-        
-        // Use very small search radius for precise check
-        double searchRadius = 0.01; // 0.01 feet = ~3mm - very precise
-        
-        // Create a bounding box filter
-        Outline outline = new Outline(
-            targetPoint - new XYZ(searchRadius, searchRadius, searchRadius),
-            targetPoint + new XYZ(searchRadius, searchRadius, searchRadius));
-        BoundingBoxIntersectsFilter bbFilter = new BoundingBoxIntersectsFilter(outline);
-        
-        // Check for elements of same category and type
-        FilteredElementCollector collector = new FilteredElementCollector(doc);
-        var foundElements = collector
-            .WhereElementIsNotElementType()
-            .OfCategoryId(sampleElement.Category.Id)
-            .WherePasses(bbFilter)
-            .ToList();
-        
-        // Filter to elements of the same type, excluding the source element
-        var sameTypeElements = foundElements
-            .Where(e => e.GetTypeId() == sampleElement.GetTypeId() && e.Id != sampleElement.Id)
-            .ToList();
-        
-        if (sameTypeElements.Count > 0)
-        {
-            result.HasDuplicates = true;
-            result.Details = $"found {sameTypeElements.Count} elements of same type at target location";
-            
-            // For curves, do additional endpoint check
-            if (locCurve != null)
-            {
-                bool exactMatch = false;
-                foreach (var elem in sameTypeElements)
-                {
-                    if (elem.Location is LocationCurve existingCurve)
-                    {
-                        XYZ existingStart = existingCurve.Curve.GetEndPoint(0);
-                        XYZ existingEnd = existingCurve.Curve.GetEndPoint(1);
-                        
-                        // Transform both endpoints of source curve
-                        XYZ transformedStart = transform.OfPoint(locCurve.Curve.GetEndPoint(0));
-                        XYZ transformedEnd = transform.OfPoint(locCurve.Curve.GetEndPoint(1));
-                        
-                        // Check if endpoints match (in either order)
-                        bool endpointsMatch = 
-                            (existingStart.IsAlmostEqualTo(transformedStart, 0.01) && 
-                             existingEnd.IsAlmostEqualTo(transformedEnd, 0.01)) ||
-                            (existingStart.IsAlmostEqualTo(transformedEnd, 0.01) && 
-                             existingEnd.IsAlmostEqualTo(transformedStart, 0.01));
-                        
-                        if (endpointsMatch)
-                        {
-                            exactMatch = true;
-                            break;
-                        }
-                    }
-                }
-                
-                if (!exactMatch)
-                {
-                    result.HasDuplicates = false;
-                    result.Details = "found elements nearby but not exact curve match";
-                }
-            }
-        }
-        else
-        {
-            result.Details = $"no elements of same type found within {searchRadius} feet";
-        }
-        
-        return result;
     }
     
     // Update element level with all possible parameters

@@ -1198,3 +1198,13 @@ no way to add to existing groups, only ungroup and regroup, but that changes loc
 ***** =00:55= a potential hack how to solve this limitation struck me while writing this paragraph
 I haven't quite finished writing it, but more importantly potentially adding extra element (e.g. model lines) to shift group origin to land in the same place as the source group could solve it
 ****** along with recently written CopySelectedElementsAlongContainingElements command that seems to be able to reverse engineer transformation should provide a fighting chance against revit groups
+*** 05
+**** =15:40= while developing commands automating placements of sprinklers from suppliers cought myself struggling to make precise selections of elements within groups
+it seemed simplest to rely on rooms as logical, easily manageable groupings
+however usage of rooms can be inconsistent and lead to unexpected errors
+***** thus wondering if it could be recomputed from scratch based on arrangement of architectural elements rather than purely by user defined spaces
+likely combination of both
+graph theory
+***** related commands
+FilterSelectedElementsByContainingGroupsWithRooms
+CopySelectedElementsAlongContainingGroupsByRooms
