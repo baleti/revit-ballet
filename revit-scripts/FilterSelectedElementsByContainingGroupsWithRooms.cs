@@ -138,37 +138,30 @@ public class FilterSelectedElementsByContainingGroupsWithRooms : IExternalComman
             {
                 Dictionary<string, object> entry = new Dictionary<string, object>();
                 
-                // Type
-                ElementType elemType = doc.GetElement(elem.GetTypeId()) as ElementType;
-                entry["Type"] = elemType?.Name ?? "Unknown";
+                // Store the actual element object for later retrieval
+                entry["_Element"] = elem;
+                
+                // Type (Category)
+                entry["Type"] = elem.Category?.Name ?? "Unknown";
                 
                 // Family
-                string familyName = "Unknown";
-                if (elemType != null)
+                ElementType elemType = doc.GetElement(elem.GetTypeId()) as ElementType;
+                FamilySymbol famSymbol = elemType as FamilySymbol;
+                if (famSymbol != null)
                 {
-                    FamilySymbol famSymbol = elemType as FamilySymbol;
-                    if (famSymbol != null && famSymbol.Family != null)
-                    {
-                        familyName = famSymbol.Family.Name;
-                    }
-                    else
-                    {
-                        // For system families, use category name
-                        familyName = elem.Category?.Name ?? "System Family";
-                    }
+                    entry["Family"] = famSymbol.FamilyName ?? "Unknown";
                 }
-                entry["Family"] = familyName;
+                else
+                {
+                    entry["Family"] = elemType?.Name ?? "Unknown";
+                }
                 
                 // Id
                 entry["Id"] = elem.Id.IntegerValue.ToString();
                 
                 // Comments
                 Parameter commentsParam = elem.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS);
-                string comments = commentsParam?.AsString() ?? "";
-                entry["Comments"] = comments;
-                
-                // Store the actual element object for later retrieval
-                entry["_ElementObject"] = elem;
+                entry["Comments"] = commentsParam?.AsString() ?? "";
                 
                 // Get groups containing this element
                 List<Group> containingGroups = elementToGroupsMap[elem.Id];
@@ -219,10 +212,10 @@ public class FilterSelectedElementsByContainingGroupsWithRooms : IExternalComman
             
             foreach (var entry in selectedEntries)
             {
-                // Get the element object from the hidden key
-                if (entry.ContainsKey("_ElementObject") && entry["_ElementObject"] is Element)
+                // Get the element from the hidden key
+                if (entry.ContainsKey("_Element") && entry["_Element"] is Element)
                 {
-                    Element elem = entry["_ElementObject"] as Element;
+                    Element elem = entry["_Element"] as Element;
                     elementsToSelect.Add(elem);
                 }
             }
@@ -232,6 +225,9 @@ public class FilterSelectedElementsByContainingGroupsWithRooms : IExternalComman
             {
                 List<ElementId> elementIds = elementsToSelect.Select(e => e.Id).ToList();
                 uidoc.Selection.SetElementIds(elementIds);
+                
+                TaskDialog.Show("Success", 
+                    $"Selected {elementIds.Count} element(s) based on your selection.");
             }
             
             return Result.Succeeded;
