@@ -29,11 +29,24 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
     // Cache for room data
     private Dictionary<ElementId, RoomData> _roomDataCache = new Dictionary<ElementId, RoomData>();
     
+    // Cache for group bounding boxes
+    private Dictionary<ElementId, BoundingBoxXYZ> _groupBoundingBoxCache = new Dictionary<ElementId, BoundingBoxXYZ>();
+    
     private class RoomData
     {
         public double LevelZ { get; set; }
         public bool IsUnbound { get; set; }
         public BoundingBoxXYZ BoundingBox { get; set; }
+    }
+    
+    // Structure to hold copy operation data
+    private class CopyOperation
+    {
+        public Group TargetGroup { get; set; }
+        public Transform Transform { get; set; }
+        public Level TargetLevel { get; set; }
+        public List<ElementId> ElementIdsToCopy { get; set; }
+        public Dictionary<ElementId, List<string>> ElementToGroupTypeNames { get; set; }
     }
     
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
@@ -104,7 +117,7 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
             // Process each group with spatial filtering
             foreach (Group group in allGroups)
             {
-                // Quick bounding box check first
+                // Quick bounding box check first - now with caching
                 BoundingBoxXYZ groupBB = GetGroupBoundingBox(group, doc);
                 if (groupBB == null || !BoundingBoxesIntersect(overallBB, groupBB))
                 {
@@ -201,7 +214,7 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
                     }
                 }
                 
-                // Now process each group type and copy elements
+                // Now process each group type and copy elements using batch operations
                 foreach (var kvp in groupsByType)
                 {
                     ElementId groupTypeId = kvp.Key;
@@ -267,7 +280,10 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
                     int instancesSkippedDuplicates = 0;
                     int instancesSkippedError = 0;
                     
-                    // Copy elements to other instances
+                    // BATCH COPYING OPTIMIZATION: Collect all copy operations first
+                    List<CopyOperation> copyOperations = new List<CopyOperation>();
+                    
+                    // Calculate all transformations and prepare copy operations
                     foreach (Group otherGroup in allGroupInstances)
                     {
                         if (otherGroup.Id == referenceGroup.Id) 
@@ -298,78 +314,61 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
                             {
                                 instancesSkippedDuplicates++;
                                 groupDiagnostics.Add($"  - Instance {otherGroup.Id}: SKIPPED (duplicates detected{(verboseDuplicateCheck ? ": " + duplicateDetails : "")})");
-                                continue; // Skip this group - elements likely already exist
+                                continue;
                             }
                             
                             // Create the transformation
                             Transform transform = CreateTransform(transformResult, 
                                 refElements.GroupOrigin, otherOrigin);
                             
-                            try
+                            // Get the level of the target group
+                            Level targetGroupLevel = GetGroupLevel(otherGroup, doc);
+                            
+                            // Add to batch operations
+                            copyOperations.Add(new CopyOperation
                             {
-                                // BATCH COPY - Copy all elements at once
-                                ICollection<ElementId> copiedIds = ElementTransformUtils.CopyElements(
-                                    doc, 
-                                    elementIdsToCopy,
-                                    doc,
-                                    transform,
-                                    null);
-                                
-                                // Get the level of the target group
-                                Level targetGroupLevel = GetGroupLevel(otherGroup, doc);
-                                
-                                // Update properties for all copied elements in batch
-                                if (copiedIds.Count > 0)
-                                {
-                                    foreach (ElementId copiedId in copiedIds)
-                                    {
-                                        Element copiedElem = doc.GetElement(copiedId);
-                                        
-                                        // Find the original element to get its group names
-                                        ElementId originalId = ElementId.InvalidElementId;
-                                        for (int i = 0; i < elementIdsToCopy.Count; i++)
-                                        {
-                                            if (i < copiedIds.Count && copiedIds.ElementAt(i) == copiedId)
-                                            {
-                                                originalId = elementIdsToCopy[i];
-                                                break;
-                                            }
-                                        }
-                                        
-                                        // Update Comments parameter with all containing group types
-                                        Parameter commentsParam = copiedElem.get_Parameter(
-                                            BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS);
-                                        if (commentsParam != null && !commentsParam.IsReadOnly && 
-                                            originalId != ElementId.InvalidElementId && 
-                                            elementToGroupTypeNames.ContainsKey(originalId))
-                                        {
-                                            string groupNames = string.Join(", ", elementToGroupTypeNames[originalId]);
-                                            commentsParam.Set(groupNames);
-                                        }
-                                        
-                                        // Update level if needed
-                                        if (targetGroupLevel != null)
-                                        {
-                                            UpdateElementLevel(copiedElem, targetGroupLevel);
-                                        }
-                                    }
-                                    
-                                    totalCopied += copiedIds.Count;
-                                    instancesCopiedTo++;
-                                    groupDiagnostics.Add($"  - Instance {otherGroup.Id}: SUCCESS (copied {copiedIds.Count} elements)");
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                instancesSkippedError++;
-                                groupDiagnostics.Add($"  - Instance {otherGroup.Id}: ERROR ({ex.Message})");
-                                // Silent fail - continue with next group
-                            }
+                                TargetGroup = otherGroup,
+                                Transform = transform,
+                                TargetLevel = targetGroupLevel,
+                                ElementIdsToCopy = elementIdsToCopy,
+                                ElementToGroupTypeNames = elementToGroupTypeNames
+                            });
                         }
                         else
                         {
                             instancesSkippedNoTransform++;
                             groupDiagnostics.Add($"  - Instance {otherGroup.Id}: SKIPPED (no transformation found)");
+                        }
+                    }
+                    
+                    // BATCH COPY: Execute all copy operations for this group type
+                    foreach (CopyOperation copyOp in copyOperations)
+                    {
+                        try
+                        {
+                            // Copy all elements at once
+                            ICollection<ElementId> copiedIds = ElementTransformUtils.CopyElements(
+                                doc, 
+                                copyOp.ElementIdsToCopy,
+                                doc,
+                                copyOp.Transform,
+                                null);
+                            
+                            // Update properties for all copied elements
+                            if (copiedIds.Count > 0)
+                            {
+                                // Batch update properties
+                                BatchUpdateCopiedElements(copiedIds, copyOp, elementIdsToCopy, doc);
+                                
+                                totalCopied += copiedIds.Count;
+                                instancesCopiedTo++;
+                                groupDiagnostics.Add($"  - Instance {copyOp.TargetGroup.Id}: SUCCESS (copied {copiedIds.Count} elements)");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            instancesSkippedError++;
+                            groupDiagnostics.Add($"  - Instance {copyOp.TargetGroup.Id}: ERROR ({ex.Message})");
                         }
                     }
                     
@@ -460,15 +459,42 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
             
             TaskDialog.Show("Copy Complete", resultMessage.ToString());
             
-            // Note: If some instances were missed, you can run the command again
-            // with elements from those instances selected.
-            
             return Result.Succeeded;
         }
         catch (Exception ex)
         {
             message = ex.Message;
             return Result.Failed;
+        }
+    }
+    
+    // Batch update properties for copied elements
+    private void BatchUpdateCopiedElements(ICollection<ElementId> copiedIds, CopyOperation copyOp, 
+        List<ElementId> originalElementIds, Document doc)
+    {
+        // Convert to list for indexed access
+        List<ElementId> copiedIdsList = copiedIds.ToList();
+        
+        for (int i = 0; i < copiedIdsList.Count && i < originalElementIds.Count; i++)
+        {
+            Element copiedElem = doc.GetElement(copiedIdsList[i]);
+            ElementId originalId = originalElementIds[i];
+            
+            // Update Comments parameter with all containing group types
+            Parameter commentsParam = copiedElem.get_Parameter(
+                BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS);
+            if (commentsParam != null && !commentsParam.IsReadOnly && 
+                copyOp.ElementToGroupTypeNames.ContainsKey(originalId))
+            {
+                string groupNames = string.Join(", ", copyOp.ElementToGroupTypeNames[originalId]);
+                commentsParam.Set(groupNames);
+            }
+            
+            // Update level if needed
+            if (copyOp.TargetLevel != null)
+            {
+                UpdateElementLevel(copiedElem, copyOp.TargetLevel);
+            }
         }
     }
     
@@ -538,9 +564,15 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
         return overallBB;
     }
     
-    // Get bounding box for a group
+    // Get bounding box for a group with caching
     private BoundingBoxXYZ GetGroupBoundingBox(Group group, Document doc)
     {
+        // Check cache first
+        if (_groupBoundingBoxCache.TryGetValue(group.Id, out BoundingBoxXYZ cachedBB))
+        {
+            return cachedBB;
+        }
+        
         ICollection<ElementId> memberIds = group.GetMemberIds();
         if (memberIds.Count == 0) return null;
         
@@ -573,6 +605,9 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
         BoundingBoxXYZ groupBB = new BoundingBoxXYZ();
         groupBB.Min = new XYZ(minX, minY, minZ);
         groupBB.Max = new XYZ(maxX, maxY, maxZ);
+        
+        // Cache the result
+        _groupBoundingBoxCache[group.Id] = groupBB;
         
         return groupBB;
     }
