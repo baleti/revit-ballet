@@ -1,6 +1,4 @@
-﻿// File: SelectViewFiltersCommand.cs
-// Place this file in your project alongside FilterCommands.cs
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -87,8 +85,8 @@ namespace MyRevitCommands
             maxRuleCount = Math.Max(maxRuleCount, filterRules.Count);
             
             // Initialize all override columns with default values
-            entry["Enabled"] = "N/A";
-            entry["Visible"] = "";
+            entry["Enabled"] = "";     // Is filter enabled (checked)?
+            entry["Visibility"] = "";  // Visibility setting
             entry["Halftone"] = "";
             entry["Proj Line Color"] = "";
             entry["Proj Weight"] = "";
@@ -101,14 +99,27 @@ namespace MyRevitCommands
             entry["Cut Color"] = "";
             
             // Get override information if filter is applied to target view
-            if (targetView != null && targetView.GetFilters().Contains(filter.Id))
+            if (targetView != null)
             {
-               bool isVisible = targetView.GetFilterVisibility(filter.Id);
-               entry["Enabled"] = isVisible ? "Yes" : "No";
-               entry["Visible"] = isVisible ? "Yes" : "No";
+               ICollection<ElementId> viewFilters = targetView.GetFilters();
                
-               // Get detailed overrides
-               GetDetailedFilterOverrides(targetView, filter.Id, entry);
+               if (viewFilters.Contains(filter.Id))
+               {
+                  // Check if filter is enabled (this is the checkbox in the UI)
+                  // Use GetIsFilterEnabled to check if filter is enabled
+                  bool isEnabled = targetView.GetIsFilterEnabled(filter.Id);
+                  entry["Enabled"] = isEnabled ? "Yes" : "No";
+                  
+                  // Check visibility using GetFilterVisibility
+                  bool isVisible = targetView.GetFilterVisibility(filter.Id);
+                  entry["Visibility"] = isVisible ? "Yes" : "No";
+                  
+                  // Get detailed overrides only if filter is enabled
+                  if (isEnabled)
+                  {
+                     GetDetailedFilterOverrides(targetView, filter.Id, entry);
+                  }
+               }
             }
             
             entries.Add(entry);
@@ -160,20 +171,20 @@ namespace MyRevitCommands
             
             // Transparency
             int transp = ogs.Transparency;
-            if (transp > 0)
+            if (transp > 0 && transp < 100)
             {
                entry["Transparency"] = $"{transp}%";
             }
             
             // Line weights
             int projWeight = ogs.ProjectionLineWeight;
-            if (projWeight > 0)
+            if (projWeight > 0 && projWeight != -1)
             {
                entry["Proj Weight"] = projWeight.ToString();
             }
             
             int cutWeight = ogs.CutLineWeight;
-            if (cutWeight > 0)
+            if (cutWeight > 0 && cutWeight != -1)
             {
                entry["Cut Weight"] = cutWeight.ToString();
             }
@@ -186,7 +197,9 @@ namespace MyRevitCommands
                {
                   FillPatternElement pattern = view.Document.GetElement(projPatternId) as FillPatternElement;
                   if (pattern != null)
+                  {
                      entry["Surface Pattern"] = pattern.Name;
+                  }
                }
                
                Color surfaceColor = ogs.SurfaceForegroundPatternColor;
@@ -205,7 +218,9 @@ namespace MyRevitCommands
                {
                   FillPatternElement pattern = view.Document.GetElement(cutPatternId) as FillPatternElement;
                   if (pattern != null)
+                  {
                      entry["Cut Pattern"] = pattern.Name;
+                  }
                }
                
                Color cutColor = ogs.CutForegroundPatternColor;
@@ -216,7 +231,10 @@ namespace MyRevitCommands
             }
             catch { }
          }
-         catch { }
+         catch (Exception ex)
+         {
+            // Log error but don't fail
+         }
       }
 
       /// <summary>
@@ -515,8 +533,6 @@ namespace MyRevitCommands
          
          return $"Param({paramId.IntegerValue})";
       }
-      
-
 
       /// <summary>
       /// Custom DataGrid with color cell backgrounds
@@ -539,115 +555,6 @@ namespace MyRevitCommands
          }
          
          return CustomGUIs.DataGrid(entries, propertyNames, spanAllScreens: false);
-      }
-      
-      /// <summary>
-      /// Gets override information for a filter applied to a view
-      /// </summary>
-      private static string GetFilterOverrideInfo(View view, ElementId filterId)
-      {
-         try
-         {
-            OverrideGraphicSettings ogs = view.GetFilterOverrides(filterId);
-            List<string> overrides = new List<string>();
-            
-            // Check projection line color (using property that exists in most versions)
-            Color projLineColor = ogs.ProjectionLineColor;
-            if (projLineColor != null && projLineColor.IsValid)
-            {
-               overrides.Add($"ProjLine:RGB({projLineColor.Red},{projLineColor.Green},{projLineColor.Blue})");
-            }
-            
-            // Check cut line color
-            Color cutLineColor = ogs.CutLineColor;
-            if (cutLineColor != null && cutLineColor.IsValid)
-            {
-               overrides.Add($"CutLine:RGB({cutLineColor.Red},{cutLineColor.Green},{cutLineColor.Blue})");
-            }
-            
-            // Check transparency
-            int transp = ogs.Transparency;
-            if (transp > 0)
-            {
-               overrides.Add($"Transp:{transp}%");
-            }
-            
-            // Check halftone
-            bool halftone = ogs.Halftone;
-            if (halftone)
-            {
-               overrides.Add("Halftone");
-            }
-            
-            // Check line weights
-            int projWeight = ogs.ProjectionLineWeight;
-            if (projWeight > 0)
-            {
-               overrides.Add($"ProjWeight:{projWeight}");
-            }
-            
-            int cutWeight = ogs.CutLineWeight;
-            if (cutWeight > 0)
-            {
-               overrides.Add($"CutWeight:{cutWeight}");
-            }
-            
-            // Try to get fill pattern information
-            // Note: These properties may not exist in all versions
-            try
-            {
-               ElementId projPatternId = ogs.SurfaceForegroundPatternId;
-               if (projPatternId != null && projPatternId != ElementId.InvalidElementId)
-               {
-                  FillPatternElement pattern = view.Document.GetElement(projPatternId) as FillPatternElement;
-                  if (pattern != null)
-                     overrides.Add($"SurfacePattern:{pattern.Name}");
-               }
-            }
-            catch { }
-            
-            try
-            {
-               ElementId cutPatternId = ogs.CutForegroundPatternId;
-               if (cutPatternId != null && cutPatternId != ElementId.InvalidElementId)
-               {
-                  FillPatternElement pattern = view.Document.GetElement(cutPatternId) as FillPatternElement;
-                  if (pattern != null)
-                     overrides.Add($"CutPattern:{pattern.Name}");
-               }
-            }
-            catch { }
-            
-            // Try to get fill colors
-            try
-            {
-               Color surfaceColor = ogs.SurfaceForegroundPatternColor;
-               if (surfaceColor != null && surfaceColor.IsValid)
-               {
-                  overrides.Add($"SurfaceColor:RGB({surfaceColor.Red},{surfaceColor.Green},{surfaceColor.Blue})");
-               }
-            }
-            catch { }
-            
-            try
-            {
-               Color cutColor = ogs.CutForegroundPatternColor;
-               if (cutColor != null && cutColor.IsValid)
-               {
-                  overrides.Add($"CutColor:RGB({cutColor.Red},{cutColor.Green},{cutColor.Blue})");
-               }
-            }
-            catch { }
-            
-            if (overrides.Count == 0)
-               return "No overrides";
-            
-            return string.Join(", ", overrides);
-         }
-         catch (Exception ex)
-         {
-            return $"Error: {ex.Message}";
-         }
       }
    }
 
@@ -705,7 +612,7 @@ namespace MyRevitCommands
             "Id", 
             "Categories",
             "Enabled",
-            "Visible",
+            "Visibility",
             "Halftone",
             "Proj Line Color",
             "Proj Weight",
