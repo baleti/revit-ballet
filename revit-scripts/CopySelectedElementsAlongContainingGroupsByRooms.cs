@@ -15,6 +15,17 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
     private bool enableDiagnostics = true; // Enable diagnostic output
     // =================================
     
+    // Diagnostic tracking
+    private StringBuilder diagnosticLog = new StringBuilder();
+    private Dictionary<string, int> transformFailureReasons = new Dictionary<string, int>
+    {
+        { "No Reference Elements", 0 },
+        { "No Corresponding Elements", 0 },
+        { "Insufficient Matching Elements", 0 },
+        { "Transform Calculation Failed", 0 },
+        { "Exception During Transform", 0 }
+    };
+    
     // Cache for element test points to avoid recalculation
     private Dictionary<ElementId, List<XYZ>> _elementTestPointsCache = new Dictionary<ElementId, List<XYZ>>();
     
@@ -39,16 +50,6 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
         public double MaxZ { get; set; }
     }
     
-    // Structure to hold copy operation data
-    private class CopyOperation
-    {
-        public Group TargetGroup { get; set; }
-        public Transform Transform { get; set; }
-        public Level TargetLevel { get; set; }
-        public List<ElementId> ElementIdsToCopy { get; set; }
-        public Dictionary<ElementId, List<string>> ElementToGroupTypeNames { get; set; }
-    }
-    
     // Structure for true batch copying
     private class BatchCopyData
     {
@@ -66,6 +67,9 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
         
         try
         {
+            diagnosticLog.Clear();
+            diagnosticLog.AppendLine("=== DIAGNOSTIC LOG START ===");
+            
             // Get selected elements
             ICollection<ElementId> selectedIds = uidoc.Selection.GetElementIds();
             
@@ -93,6 +97,8 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
                 return Result.Failed;
             }
             
+            diagnosticLog.AppendLine($"Selected elements: {selectedElements.Count}");
+            
             // Pre-calculate test points for all selected elements
             foreach (Element elem in selectedElements)
             {
@@ -115,6 +121,8 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
                 .Cast<Group>()
                 .ToList();
             
+            diagnosticLog.AppendLine($"Total groups in document: {allGroups.Count}");
+            
             // Build room cache for ALL rooms in the document
             BuildRoomCache(doc);
             
@@ -123,6 +131,8 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
             
             // Get potentially relevant groups using spatial index
             List<Group> spatiallyRelevantGroups = GetSpatiallyRelevantGroups(overallBB);
+            
+            diagnosticLog.AppendLine($"Spatially relevant groups: {spatiallyRelevantGroups.Count}");
             
             // Dictionary to store which groups contain which elements
             Dictionary<ElementId, List<Group>> elementToGroupsMap = new Dictionary<ElementId, List<Group>>();
@@ -165,7 +175,6 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
                 }
                 
                 // Check which selected elements are contained in this group's rooms
-                // Using the single room-to-group mapping to avoid duplicates
                 List<Element> containedElements = GetElementsContainedInGroupRoomsFiltered(
                     group, selectedElements, doc, roomToSingleGroupMap);
                 
@@ -200,7 +209,6 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
             }
             
             // Sort groups consistently by name when there are multiple groups per element
-            // (This can still happen if an element is in multiple rooms that belong to different groups)
             foreach (var kvp in elementToGroupsMap)
             {
                 kvp.Value.Sort((g1, g2) =>
@@ -223,6 +231,8 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
                 message = "No selected elements are contained within rooms of any groups";
                 return Result.Failed;
             }
+            
+            diagnosticLog.AppendLine($"Elements found in groups: {elementsInGroups.Count}");
             
             // Build element to group types mapping for Comments parameter
             Dictionary<ElementId, List<string>> elementToGroupTypeNames = new Dictionary<ElementId, List<string>>();
@@ -267,10 +277,15 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
                 }
             }
             
+            diagnosticLog.AppendLine($"Unique group types containing elements: {groupsByType.Count}");
+            
             // Process each group type and copy elements
             int totalCopied = 0;
             int groupTypesProcessed = 0;
             int groupTypesSkippedNoRefElements = 0;
+            int totalGroupInstancesProcessed = 0;
+            int totalGroupInstancesSkipped = 0;
+            int totalCopyOperations = 0;  // Track total copy operations
             Dictionary<string, List<string>> diagnosticInfo = new Dictionary<string, List<string>>();
             
             // COLLECT ALL BATCH COPY DATA FIRST
@@ -304,8 +319,12 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
                     GroupType groupType = doc.GetElement(groupTypeId) as GroupType;
                     if (groupType == null) continue;
                     
+                    string groupTypeName = groupType.Name ?? "Unknown";
+                    diagnosticLog.AppendLine($"\n--- Processing Group Type: {groupTypeName} ---");
+                    
                     // Use the first containing group as reference
                     Group referenceGroup = containingGroupsOfThisType.First();
+                    diagnosticLog.AppendLine($"Reference group ID: {referenceGroup.Id}");
                     
                     // Get all instances of this group type
                     FilteredElementCollector collector = new FilteredElementCollector(doc);
@@ -316,9 +335,14 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
                         .Cast<Group>()
                         .ToList();
                     
-                    if (allGroupInstances.Count < 2) continue;
+                    diagnosticLog.AppendLine($"Total instances of this group type: {allGroupInstances.Count}");
                     
-                    string groupTypeName = groupType.Name ?? "Unknown";
+                    if (allGroupInstances.Count < 2)
+                    {
+                        diagnosticLog.AppendLine("Skipped: Less than 2 instances");
+                        continue;
+                    }
+                    
                     List<string> groupDiagnostics = new List<string>();
                     groupDiagnostics.Add($"Group type: {groupTypeName}");
                     groupDiagnostics.Add($"Total instances found: {allGroupInstances.Count}");
@@ -335,7 +359,13 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
                         }
                     }
                     
-                    if (elementsToCopy.Count == 0) continue;
+                    diagnosticLog.AppendLine($"Elements to copy from reference group: {elementsToCopy.Count}");
+                    
+                    if (elementsToCopy.Count == 0)
+                    {
+                        diagnosticLog.AppendLine("Skipped: No elements to copy");
+                        continue;
+                    }
                     
                     groupTypesProcessed++;
                     
@@ -345,15 +375,34 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
                     if (refElements == null || refElements.Elements.Count < 2)
                     {
                         groupTypesSkippedNoRefElements++;
+                        diagnosticLog.AppendLine($"Skipped: Insufficient reference elements (found {refElements?.Elements.Count ?? 0})");
+                        transformFailureReasons["No Reference Elements"]++;
                         continue;
                     }
+                    
+                    diagnosticLog.AppendLine($"Reference elements found: {refElements.Elements.Count}");
+                    foreach (var refElem in refElements.Elements)
+                    {
+                        diagnosticLog.AppendLine($"  - {refElem.UniqueKey}");
+                    }
+                    
+                    // Track successful and failed transformations
+                    int successfulTransforms = 0;
+                    int failedTransforms = 0;
+                    List<string> failedGroupIds = new List<string>();
                     
                     // Collect batch copy data for all target instances
                     foreach (Group otherGroup in allGroupInstances)
                     {
                         if (otherGroup.Id == referenceGroup.Id) continue;
                         
+                        totalGroupInstancesProcessed++;
+                        
                         XYZ otherOrigin = (otherGroup.Location as LocationPoint).Point;
+                        
+                        // Log which group we're processing
+                        diagnosticLog.AppendLine($"  Processing target group {otherGroup.Id} at Z={otherOrigin.Z:F2}");
+                        
                         TransformResult transformResult = CalculateTransformation(refElements, otherGroup, doc);
                         
                         if (transformResult != null)
@@ -361,6 +410,9 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
                             Transform transform = CreateTransform(transformResult, 
                                 refElements.GroupOrigin, otherOrigin);
                             Level targetGroupLevel = GetGroupLevel(otherGroup, doc);
+                            
+                            // Log the transform details
+                            diagnosticLog.AppendLine($"    Transform created: Origin Z={transform.Origin.Z:F6}");
                             
                             // Add batch copy data for each element to copy
                             foreach (Element elem in elementsToCopy)
@@ -376,26 +428,57 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
                                         : new List<string>()
                                 });
                             }
+                            successfulTransforms++;
                         }
+                        else
+                        {
+                            failedTransforms++;
+                            failedGroupIds.Add(otherGroup.Id.ToString());
+                            totalGroupInstancesSkipped++;
+                            
+                            // Log why this specific group failed
+                            diagnosticLog.AppendLine($"  Failed to transform to group {otherGroup.Id}");
+                        }
+                    }
+                    
+                    diagnosticLog.AppendLine($"Transformation results: {successfulTransforms} successful, {failedTransforms} failed");
+                    if (failedGroupIds.Count > 0 && failedGroupIds.Count <= 20)
+                    {
+                        diagnosticLog.AppendLine($"Failed group IDs: {string.Join(", ", failedGroupIds)}");
                     }
                     
                     diagnosticInfo[groupTypeName] = groupDiagnostics;
                 }
                 
+                diagnosticLog.AppendLine($"\n=== TRANSFORMATION FAILURE SUMMARY ===");
+                foreach (var kvp in transformFailureReasons)
+                {
+                    if (kvp.Value > 0)
+                    {
+                        diagnosticLog.AppendLine($"{kvp.Key}: {kvp.Value}");
+                    }
+                }
+                
                 // PHASE 2: Execute TRUE BATCH COPY - All elements at once!
                 if (allBatchCopyData.Count > 0)
                 {
-                    // Group by unique transform to minimize API calls
+                    // IMPORTANT: For vertically stacked groups, we need to ensure each group gets its own transform
+                    // Instead of grouping by transform string, group by target group to ensure unique copies
                     var transformGroups = allBatchCopyData
-                        .GroupBy(bcd => TransformToString(bcd.Transform))
+                        .GroupBy(bcd => bcd.TargetGroup.Id)
                         .ToList();
+                    
+                    totalCopyOperations = transformGroups.Count;  // Store count for use outside transaction
+                    
+                    diagnosticLog.AppendLine($"\nUnique target groups to receive copies: {transformGroups.Count}");
                     
                     foreach (var transformGroup in transformGroups)
                     {
                         List<BatchCopyData> batchItems = transformGroup.ToList();
+                        Group targetGroup = batchItems.First().TargetGroup;
                         Transform sharedTransform = batchItems.First().Transform;
                         
-                        // Get unique element IDs for this transform
+                        // Get unique element IDs for this group
                         List<ElementId> elementIdsToCopy = batchItems
                             .Select(b => b.SourceElementId)
                             .Distinct()
@@ -403,13 +486,86 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
                         
                         try
                         {
-                            // SINGLE COPY CALL for all elements with this transform
+                            // Log transform details
+                            diagnosticLog.AppendLine($"\nCopying to group {targetGroup.Id}:");
+                            diagnosticLog.AppendLine($"  Elements to copy: {elementIdsToCopy.Count}");
+                            diagnosticLog.AppendLine($"  Transform Origin Z: {sharedTransform.Origin.Z:F6}");
+                            
+                            // SINGLE COPY CALL for all elements for this specific group
                             ICollection<ElementId> copiedIds = ElementTransformUtils.CopyElements(
                                 doc, 
                                 elementIdsToCopy,
                                 doc,
                                 sharedTransform,
                                 null);
+                            
+                            diagnosticLog.AppendLine($"  Copy result: {copiedIds.Count} elements created (expected {elementIdsToCopy.Count})");
+                            
+                            // Log the actual copied element IDs and their locations
+                            if (copiedIds.Count > 0)
+                            {
+                                diagnosticLog.AppendLine($"  Copied element IDs: {string.Join(", ", copiedIds.Take(3))}...");
+                                
+                                // Check positions of copied elements
+                                Element firstCopied = doc.GetElement(copiedIds.First());
+                                Element firstSource = doc.GetElement(elementIdsToCopy.First());
+                                
+                                if (firstCopied != null && firstSource != null)
+                                {
+                                    // Get locations
+                                    XYZ copiedLoc = null;
+                                    XYZ sourceLoc = null;
+                                    
+                                    if (firstCopied.Location is LocationPoint copiedLocPt)
+                                        copiedLoc = copiedLocPt.Point;
+                                    else if (firstCopied.Location is LocationCurve copiedLocCrv)
+                                        copiedLoc = copiedLocCrv.Curve.GetEndPoint(0);
+                                    
+                                    if (firstSource.Location is LocationPoint sourceLocPt)
+                                        sourceLoc = sourceLocPt.Point;
+                                    else if (firstSource.Location is LocationCurve sourceLocCrv)
+                                        sourceLoc = sourceLocCrv.Curve.GetEndPoint(0);
+                                    
+                                    if (copiedLoc != null && sourceLoc != null)
+                                    {
+                                        diagnosticLog.AppendLine($"  Source element at: X={sourceLoc.X:F2}, Y={sourceLoc.Y:F2}, Z={sourceLoc.Z:F2}");
+                                        diagnosticLog.AppendLine($"  Copied element at: X={copiedLoc.X:F2}, Y={copiedLoc.Y:F2}, Z={copiedLoc.Z:F2}");
+                                        
+                                        XYZ actualDisplacement = copiedLoc - sourceLoc;
+                                        diagnosticLog.AppendLine($"  Actual displacement: X={actualDisplacement.X:F2}, Y={actualDisplacement.Y:F2}, Z={actualDisplacement.Z:F2}");
+                                        
+                                        // Compare with expected displacement
+                                        XYZ expectedDisplacement = targetGroup.Location is LocationPoint grpLoc 
+                                            ? grpLoc.Point - (batchItems.First().TargetGroup.Location as LocationPoint).Point
+                                            : XYZ.Zero;
+                                        
+                                        // Check if position is correct relative to target group
+                                        XYZ targetGroupOrigin = (targetGroup.Location as LocationPoint)?.Point ?? XYZ.Zero;
+                                        XYZ relativePos = copiedLoc - targetGroupOrigin;
+                                        diagnosticLog.AppendLine($"  Position relative to target group: X={relativePos.X:F2}, Y={relativePos.Y:F2}, Z={relativePos.Z:F2}");
+                                    }
+                                    
+                                    // Check if element is visible
+                                    if (firstCopied.IsHidden(doc.ActiveView))
+                                    {
+                                        diagnosticLog.AppendLine($"  WARNING: Copied element is hidden in active view!");
+                                    }
+                                    
+                                    // Check element's level
+                                    Parameter levelParam = firstCopied.get_Parameter(BuiltInParameter.FAMILY_LEVEL_PARAM);
+                                    if (levelParam != null && levelParam.HasValue)
+                                    {
+                                        ElementId levelId = levelParam.AsElementId();
+                                        Level level = doc.GetElement(levelId) as Level;
+                                        diagnosticLog.AppendLine($"  Copied element level: {level?.Name ?? "Unknown"}");
+                                    }
+                                }
+                            }
+                            
+                            if (copiedIds.Count != elementIdsToCopy.Count)
+                            {
+                                diagnosticLog.AppendLine($"  WARNING: Mismatch in copy count!");
+                            }
                             
                             if (copiedIds.Count > 0)
                             {
@@ -425,6 +581,7 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
                                 }
                                 
                                 // Update properties for copied elements based on their target groups
+                                int updatedCount = 0;
                                 foreach (var batchItem in batchItems)
                                 {
                                     if (sourceToCopieMa.ContainsKey(batchItem.SourceElementId))
@@ -434,6 +591,8 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
                                         
                                         if (copiedElem != null)
                                         {
+                                            updatedCount++;
+                                            
                                             // Update Comments parameter
                                             Parameter commentsParam = copiedElem.get_Parameter(
                                                 BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS);
@@ -453,13 +612,97 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
                                     }
                                 }
                                 
+                                diagnosticLog.AppendLine($"  Updated properties for {updatedCount} copied elements");
                                 totalCopied += copiedIds.Count;
+                            }
+                            else
+                            {
+                                diagnosticLog.AppendLine($"  WARNING: No elements were copied!");
                             }
                         }
                         catch (Exception ex)
                         {
-                            // Log error but continue with other transforms
+                            diagnosticLog.AppendLine($"  ERROR in copy operation: {ex.Message}");
+                            diagnosticLog.AppendLine($"  Stack trace: {ex.StackTrace}");
                         }
+                    }
+                }
+                
+                // Add final verification check
+                diagnosticLog.AppendLine($"\n=== FINAL VERIFICATION ===");
+                
+                // Count how many groups actually have the copied elements
+                int groupsWithCopiedElements = 0;
+                List<string> groupsWithoutElements = new List<string>();
+                
+                // Store reference group IDs to skip them
+                HashSet<ElementId> referenceGroupIds = new HashSet<ElementId>();
+                foreach (var kvp in elementsInGroups)
+                {
+                    foreach (Group g in kvp.Value)
+                    {
+                        referenceGroupIds.Add(g.Id);
+                    }
+                }
+                
+                foreach (var kvp in groupsByType)
+                {
+                    ElementId groupTypeId = kvp.Key;
+                    
+                    // Get all instances of this group type
+                    FilteredElementCollector collector = new FilteredElementCollector(doc);
+                    IList<Group> allGroupInstances = collector
+                        .OfClass(typeof(Group))
+                        .WhereElementIsNotElementType()
+                        .Where(g => g.GetTypeId() == groupTypeId)
+                        .Cast<Group>()
+                        .ToList();
+                    
+                    foreach (Group group in allGroupInstances)
+                    {
+                        // Skip any reference groups
+                        if (referenceGroupIds.Contains(group.Id)) continue;
+                        
+                        // Check if this group's location has any of the copied elements nearby
+                        XYZ groupOrigin = (group.Location as LocationPoint)?.Point;
+                        if (groupOrigin != null)
+                        {
+                            // Create a small bounding box around the group origin
+                            BoundingBoxXYZ searchBox = new BoundingBoxXYZ();
+                            searchBox.Min = new XYZ(groupOrigin.X - 50, groupOrigin.Y - 50, groupOrigin.Z - 5);
+                            searchBox.Max = new XYZ(groupOrigin.X + 50, groupOrigin.Y + 50, groupOrigin.Z + 15);
+                            
+                            // Use a collector to find sprinklers in this area
+                            BoundingBoxIntersectsFilter bbFilter = new BoundingBoxIntersectsFilter(new Outline(searchBox.Min, searchBox.Max));
+                            FilteredElementCollector sprinklerCollector = new FilteredElementCollector(doc);
+                            
+                            // Assuming sprinklers are in the Fire Protection category
+                            var nearbyElements = sprinklerCollector
+                                .OfCategory(BuiltInCategory.OST_Sprinklers)
+                                .WherePasses(bbFilter)
+                                .ToElements();
+                            
+                            if (nearbyElements.Count > 0)
+                            {
+                                groupsWithCopiedElements++;
+                                diagnosticLog.AppendLine($"Group {group.Id} at Z={groupOrigin.Z:F2}: Found {nearbyElements.Count} sprinklers");
+                            }
+                            else
+                            {
+                                groupsWithoutElements.Add($"{group.Id} (Z={groupOrigin.Z:F2})");
+                                diagnosticLog.AppendLine($"Group {group.Id} at Z={groupOrigin.Z:F2}: NO SPRINKLERS FOUND!");
+                            }
+                        }
+                    }
+                }
+                
+                diagnosticLog.AppendLine($"\nGroups with copied elements: {groupsWithCopiedElements}");
+                if (groupsWithoutElements.Count > 0)
+                {
+                    diagnosticLog.AppendLine($"Groups WITHOUT elements: {string.Join(", ", groupsWithoutElements.Take(10))}");
+                    if (groupsWithoutElements.Count > 10)
+                    {
+                        diagnosticLog.AppendLine($"  ... and {groupsWithoutElements.Count - 10} more");
                     }
                 }
                 
@@ -483,14 +726,31 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
             {
                 resultMessage.AppendLine($"Copied {totalCopied} elements to group instances.");
                 resultMessage.AppendLine($"\nGroup types processed: {groupTypesProcessed}");
-                resultMessage.AppendLine($"Batch copy operations: {allBatchCopyData.Count}");
-                resultMessage.AppendLine($"Unique transforms: {allBatchCopyData.GroupBy(d => TransformToString(d.Transform)).Count()}");
+                resultMessage.AppendLine($"Total copy operations: {totalCopyOperations}");
                 resultMessage.AppendLine($"Groups checked (spatial filtering): {spatiallyRelevantGroups.Count} of {allGroups.Count}");
+                
+                // NEW: Show group instance processing stats
+                resultMessage.AppendLine($"\n=== GROUP INSTANCE PROCESSING ===");
+                resultMessage.AppendLine($"Total group instances processed: {totalGroupInstancesProcessed}");
+                resultMessage.AppendLine($"Successful transformations: {totalGroupInstancesProcessed - totalGroupInstancesSkipped}");
+                resultMessage.AppendLine($"Failed transformations: {totalGroupInstancesSkipped}");
+                
+                if (transformFailureReasons.Any(kvp => kvp.Value > 0))
+                {
+                    resultMessage.AppendLine($"\nTransformation Failure Reasons:");
+                    foreach (var kvp in transformFailureReasons)
+                    {
+                        if (kvp.Value > 0)
+                        {
+                            resultMessage.AppendLine($"- {kvp.Key}: {kvp.Value}");
+                        }
+                    }
+                }
                 
                 // Show diagnostic info about group processing
                 if (enableDiagnostics)
                 {
-                    resultMessage.AppendLine($"\n=== GROUP PROCESSING DIAGNOSTICS ===");
+                    resultMessage.AppendLine($"\n=== GROUP FILTERING DIAGNOSTICS ===");
                     resultMessage.AppendLine($"Groups analyzed: {spatiallyRelevantGroups.Count}");
                     foreach (var kvp in skipReasons)
                     {
@@ -503,9 +763,6 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
                             resultMessage.AppendLine($"- Groups skipped ({kvp.Key}): {kvp.Value}");
                         }
                     }
-                    
-                    // Show spatial containment info
-                    resultMessage.AppendLine($"\nNote: Now includes rooms that are spatially contained within groups (not just direct members).");
                 }
                 
                 // Show which elements were in multiple groups
@@ -520,9 +777,48 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
                         resultMessage.AppendLine($"- {elemDesc}: {string.Join(", ", kvp.Value)}");
                     }
                 }
+                
+                // Add option to save detailed log
+                if (enableDiagnostics && diagnosticLog.Length > 0)
+                {
+                    resultMessage.AppendLine("\n[Detailed diagnostic log available - check journal file or copy from next dialog]");
+                }
             }
             
             TaskDialog.Show("Copy Complete", resultMessage.ToString());
+            
+            // ALWAYS show detailed diagnostics if we have any log content
+            if (enableDiagnostics && diagnosticLog.Length > 0)
+            {
+                // Write to file as well
+                string desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+                string fileName = $"RevitCopyDiagnostics_{DateTime.Now:yyyyMMdd_HHmmss}.txt";
+                string filePath = System.IO.Path.Combine(desktopPath, fileName);
+                
+                try
+                {
+                    System.IO.File.WriteAllText(filePath, diagnosticLog.ToString());
+                    
+                    TaskDialog detailedDialog = new TaskDialog("Detailed Diagnostics");
+                    detailedDialog.MainInstruction = "Transformation Diagnostic Details";
+                    detailedDialog.MainContent = $"Diagnostics saved to:\n{filePath}\n\n" + 
+                                                 "First 5000 characters shown below:\n\n" +
+                                                 (diagnosticLog.Length > 5000 
+                                                    ? diagnosticLog.ToString().Substring(0, 5000) + "\n\n[... truncated, see file for full log]"
+                                                    : diagnosticLog.ToString());
+                    detailedDialog.ExpandedContent = "Full diagnostics have been saved to your desktop.";
+                    detailedDialog.Show();
+                }
+                catch (Exception ex)
+                {
+                    // If file write fails, still show dialog
+                    TaskDialog detailedDialog = new TaskDialog("Detailed Diagnostics");
+                    detailedDialog.MainInstruction = "Transformation Diagnostic Details";
+                    detailedDialog.MainContent = diagnosticLog.ToString();
+                    detailedDialog.ExpandedContent = $"Could not save to file: {ex.Message}\n\nCopy this text manually if needed.";
+                    detailedDialog.Show();
+                }
+            }
             
             return Result.Succeeded;
         }
@@ -570,7 +866,6 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
     }
     
     // Build comprehensive room-to-group mapping with priority handling
-    // Each room maps to exactly ONE group (direct member > most specific spatial containment)
     private Dictionary<ElementId, Group> BuildRoomToGroupMapping(IList<Group> allGroups, Document doc)
     {
         Dictionary<ElementId, Group> roomToGroupMap = new Dictionary<ElementId, Group>();
@@ -638,11 +933,7 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
             }
         }
         
-        // Build final mapping with priority:
-        // 1. Direct membership takes priority (use most specific if multiple)
-        // 2. Spatial containment is secondary (use most specific if multiple)
-        
-        // Add direct memberships (sorted by specificity)
+        // Build final mapping with priority
         foreach (var kvp in roomDirectMembership)
         {
             ElementId roomId = kvp.Key;
@@ -1066,84 +1357,19 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
     
     private Transform CreateTransform(TransformResult transformResult, XYZ refOrigin, XYZ targetOrigin)
     {
-        // For mirrored transformations with no rotation
-        if (transformResult.IsMirrored && Math.Abs(transformResult.Rotation) < 0.01)
-        {
-            // Determine which axis is mirrored based on the translation
-            XYZ midpoint = (refOrigin + targetOrigin) * 0.5;
-            
-            // Check which coordinates changed
-            double xDiff = Math.Abs(refOrigin.X - targetOrigin.X);
-            double yDiff = Math.Abs(refOrigin.Y - targetOrigin.Y);
-            double zDiff = Math.Abs(refOrigin.Z - targetOrigin.Z);
-            
-            Transform mirror;
-            
-            if (xDiff > yDiff && xDiff > zDiff)
-            {
-                // X coordinates differ most - mirror about Y-Z plane
-                Plane mirrorPlane = Plane.CreateByNormalAndOrigin(XYZ.BasisX, midpoint);
-                mirror = Transform.CreateReflection(mirrorPlane);
-            }
-            else if (yDiff > xDiff && yDiff > zDiff)
-            {
-                // Y coordinates differ most - mirror about X-Z plane
-                Plane mirrorPlane = Plane.CreateByNormalAndOrigin(XYZ.BasisY, midpoint);
-                mirror = Transform.CreateReflection(mirrorPlane);
-            }
-            else
-            {
-                // Z coordinates differ most - mirror about X-Y plane
-                Plane mirrorPlane = Plane.CreateByNormalAndOrigin(XYZ.BasisZ, midpoint);
-                mirror = Transform.CreateReflection(mirrorPlane);
-            }
-            
-            return mirror;
-        }
+        // Calculate the translation needed
+        XYZ translation = targetOrigin - refOrigin;
         
-        // For complex transformations involving both rotation and mirroring
-        if (Math.Abs(Math.Abs(transformResult.Rotation) - 180.0) < 1.0 && transformResult.IsMirrored)
-        {
-            // This is equivalent to a mirror about Y axis
-            Transform t = Transform.Identity;
-            
-            // Set the basis vectors
-            t.BasisX = -XYZ.BasisX;  // (-1, 0, 0)
-            t.BasisY = XYZ.BasisY;   // (0, 1, 0) 
-            t.BasisZ = XYZ.BasisZ;   // (0, 0, 1)
-            
-            // Set the translation
-            t.Origin = new XYZ(
-                2 * ((refOrigin.X + targetOrigin.X) / 2) - refOrigin.X,
-                targetOrigin.Y - refOrigin.Y,
-                targetOrigin.Z - refOrigin.Z
-            );
-            
-            return t;
-        }
+        // Log the translation for debugging
+        diagnosticLog.AppendLine($"      Translation: X={translation.X:F3}, Y={translation.Y:F3}, Z={translation.Z:F3}");
+        diagnosticLog.AppendLine($"      Rotation: {transformResult.Rotation:F2} degrees, Mirrored: {transformResult.IsMirrored}");
         
-        // Standard case: build transformation step by step
-        Transform transform = Transform.Identity;
+        // BACK TO SIMPLE TRANSLATION - the mirroring is already handled by the group itself!
+        // Groups maintain their own internal coordinate system
+        Transform transform = Transform.CreateTranslation(translation);
         
-        // Move to origin
-        transform = transform.Multiply(Transform.CreateTranslation(-refOrigin));
-        
-        // Apply rotation
-        if (Math.Abs(transformResult.Rotation) > 0.01)
-        {
-            double radians = transformResult.Rotation * Math.PI / 180;
-            transform = transform.Multiply(Transform.CreateRotation(XYZ.BasisZ, radians));
-        }
-        
-        // Apply mirror if needed
-        if (transformResult.IsMirrored)
-        {
-            Plane mirrorPlane = Plane.CreateByNormalAndOrigin(XYZ.BasisX, XYZ.Zero);
-            transform = transform.Multiply(Transform.CreateReflection(mirrorPlane));
-        }
-        
-        // Move to target
-        transform = transform.Multiply(Transform.CreateTranslation(targetOrigin));
+        diagnosticLog.AppendLine($"      Using simple translation (ignoring mirror/rotation - handled by group)");
+        diagnosticLog.AppendLine($"      Transform Origin: X={transform.Origin.X:F3}, Y={transform.Origin.Y:F3}, Z={transform.Origin.Z:F3}");
         
         return transform;
     }
@@ -1402,6 +1628,13 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
             // We need at least 2 matching elements to calculate transformation
             if (otherElements == null || otherElements.Count < 2) 
             {
+                diagnosticLog.AppendLine($"    Group {otherGroup.Id}: Only {otherElements?.Count ?? 0} corresponding elements found");
+                
+                if (otherElements == null || otherElements.Count == 0)
+                    transformFailureReasons["No Corresponding Elements"]++;
+                else
+                    transformFailureReasons["Insufficient Matching Elements"]++;
+                
                 return null;
             }
             
@@ -1464,6 +1697,9 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
                     
                     return result;
                 }
+                
+                diagnosticLog.AppendLine($"    Group {otherGroup.Id}: Could not find sufficient matching element pairs");
+                transformFailureReasons["Insufficient Matching Elements"]++;
                 return null;
             }
             
@@ -1530,6 +1766,8 @@ public class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
         }
         catch (Exception ex)
         {
+            diagnosticLog.AppendLine($"    Group {otherGroup.Id}: Exception during transform calculation: {ex.Message}");
+            transformFailureReasons["Exception During Transform"]++;
             return null;
         }
     }
