@@ -131,6 +131,7 @@
     <Compile Include="revit-scripts\DataGrid2_Helpers.cs" />
     <Compile Include="revit-scripts\DataGrid2_Sorting.cs" />
     <Compile Include="revit-scripts\DataGrid2_VirtualMode.cs" />
+    <Compile Include="revit-scripts\DeleteDuplicatesFromSelectedElements.cs" />
     <Compile Include="revit-scripts\DirectShapesFromSelectedAreas.cs" />
     <Compile Include="revit-scripts\DirectShapesFromSelectedRooms.cs" />
     <Compile Include="revit-scripts\DirectShapesFromVisibleAreas.cs" />
