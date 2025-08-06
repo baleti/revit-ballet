@@ -24,7 +24,7 @@ namespace YourNamespace   // ← adjust
 
     [Transaction(TransactionMode.Manual)]
     [Regeneration(RegenerationOption.Manual)]
-    public class SelectByFilterInView : IExternalCommand
+    public class SelectByViewFilterInView : IExternalCommand
     {
         #region IExternalCommand
         public Result Execute(ExternalCommandData commandData,

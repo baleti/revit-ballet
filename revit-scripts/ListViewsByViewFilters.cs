@@ -319,7 +319,7 @@ public abstract class BaseFilterCommand : IExternalCommand
 /// Opens the views themselves.
 /// </summary>
 [Transaction(TransactionMode.Manual)]
-public class OpenViewsByFilters : BaseFilterCommand
+public class OpenViewsByViewFilters : BaseFilterCommand
 {
     protected override void OpenTarget(
         List<UsageGridRow> selectedUsage, 
@@ -342,7 +342,7 @@ public class OpenViewsByFilters : BaseFilterCommand
 /// Opens the sheets on which the selected views are placed.
 /// </summary>
 [Transaction(TransactionMode.Manual)]
-public class OpenSheetsByFilters : BaseFilterCommand
+public class OpenSheetsByViewFilters : BaseFilterCommand
 {
     protected override void OpenTarget(
         List<UsageGridRow> selectedUsage,

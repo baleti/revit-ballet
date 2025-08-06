@@ -172,7 +172,7 @@
     <Compile Include="revit-scripts\SectionBox3DAroundSelectedElements.cs" />
     <Compile Include="revit-scripts\SectionBox3DFromViewsInLinkedModels.cs" />
     <Compile Include="revit-scripts\SectionBox3DFromViewsInSelectedLinkedModels.cs" />
-    <Compile Include="revit-scripts\SelectByFilterInView.cs" />
+    <Compile Include="revit-scripts\SelectByViewFilterInView.cs" />
     <Compile Include="revit-scripts\SelectElementsOfSameTypeInLinkedModelsInProject.cs" />
     <Compile Include="revit-scripts\SelectAllRevisionCloudsInProject.cs" />
     <Compile Include="revit-scripts\SelectAllVisibleRevisionCloudsInProject.cs" />
@@ -181,7 +181,7 @@
     <Compile Include="revit-scripts\SelectElementsOfSameTypeInLinkedModelsInView.cs" />
     <Compile Include="revit-scripts\SelectFamilyTypeInstancesInLinkedModels.cs" />
     <Compile Include="revit-scripts\SelectFamilyTypesInProjectByCategory.cs" />
-    <Compile Include="revit-scripts\SelectFiltersMatchingSelectedElements.cs" />
+    <Compile Include="revit-scripts\SelectViewFiltersMatchingSelectedElements.cs" />
     <Compile Include="revit-scripts\FilterSelectedElementsByContainingGroupsWithRooms.cs" />
     <Compile Include="revit-scripts\SelectHostsOfSelectedElements.cs" />
     <Compile Include="revit-scripts\SelectionModeManager.cs" />
@@ -224,7 +224,7 @@
     <Compile Include="revit-scripts\ToggleLevelBubblesInSelectedViews.cs">
       <SubType>Form</SubType>
     </Compile>
-    <Compile Include="revit-scripts\ManageFiltersOnSelectedViewsOrViewTemplates.cs" />
+    <Compile Include="revit-scripts\ManageViewFiltersOnSelectedViewsOrViewTemplates.cs" />
     <Compile Include="revit-scripts\OffsetCropRegionOfSelectedViews.cs" />
     <Compile Include="revit-scripts\SectionBox3DFromView.cs" />
     <Compile Include="revit-scripts\CloseCurrentView.cs" />
@@ -242,7 +242,7 @@
     <Compile Include="revit-scripts\DataGrid1.cs" />
     <Compile Include="revit-scripts\CutGeometryWithGroup.cs" />
     <Compile Include="revit-scripts\DataGrid2_Main.cs" />
-    <Compile Include="revit-scripts\DeleteFiltersFromProject.cs" />
+    <Compile Include="revit-scripts\DeleteViewFiltersFromProject.cs" />
     <Compile Include="revit-scripts\DeleteRevisionCloudsFromSheets.cs" />
     <Compile Include="revit-scripts\DeselectRandomly.cs" />
     <Compile Include="revit-scripts\DrawCircleAtOrigin.cs" />
@@ -252,7 +252,7 @@
     <Compile Include="revit-scripts\FilterTags.cs" />
     <Compile Include="revit-scripts\ListBoundingBoxCoordinates.cs" />
     <Compile Include="revit-scripts\ListSheetsWithRevisions.cs" />
-    <Compile Include="revit-scripts\ListViewsByFilters.cs" />
+    <Compile Include="revit-scripts\ListViewsByViewFilters.cs" />
     <Compile Include="revit-scripts\OffsetWorkplane.cs" />
     <Compile Include="revit-scripts\PasteCrossSession.cs" />
     <Compile Include="revit-scripts\RenameGroups.cs" />
