@@ -196,6 +196,7 @@
     <Compile Include="revit-scripts\SelectSchedules.cs" />
     <Compile Include="revit-scripts\SelectSectionBoxInCurrentView.cs" />
     <Compile Include="revit-scripts\SelectSheetsBySelectedTitleBlocks.cs" />
+    <Compile Include="revit-scripts\SelectViewFiltersOnSelectedViewOrViewTemplates.cs" />
     <Compile Include="revit-scripts\SelectViewportsOfViews.cs" />
     <Compile Include="revit-scripts\SelectViewsByViewTemplates.cs" />
     <Compile Include="revit-scripts\SelectViewsFromSets.cs" />
