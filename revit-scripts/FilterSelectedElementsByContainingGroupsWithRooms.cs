@@ -114,7 +114,7 @@ public class FilterSelectedElementsByContainingGroupsWithRooms : IExternalComman
         try
         {
             // Get selected elements
-            ICollection<ElementId> selectedIds = uidoc.Selection.GetElementIds();
+            ICollection<ElementId> selectedIds = uidoc.GetSelectionIds();
             
             if (selectedIds.Count == 0)
             {
@@ -287,7 +287,7 @@ public class FilterSelectedElementsByContainingGroupsWithRooms : IExternalComman
             if (elementsToSelect.Count > 0)
             {
                 List<ElementId> elementIds = elementsToSelect.Select(e => e.Id).ToList();
-                uidoc.Selection.SetElementIds(elementIds);
+                uidoc.SetSelectionIds(elementIds);
                 
                 TaskDialog.Show("Success", 
                     $"Selected {elementIds.Count} element(s) based on your selection.");
