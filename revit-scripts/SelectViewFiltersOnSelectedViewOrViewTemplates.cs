@@ -765,11 +765,6 @@ namespace MyRevitCommands
             // Update selection
             uiDoc.Selection.SetElementIds(newSelection);
             
-            string resultMessage = selectedFilterIds.Count == 1 ? 
-               "1 filter added to selection." : 
-               $"{selectedFilterIds.Count} filters added to selection.";
-            
-            TaskDialog.Show("Success", resultMessage);
             return Result.Succeeded;
          }
          catch (Exception ex)

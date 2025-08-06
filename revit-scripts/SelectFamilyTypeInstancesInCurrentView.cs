@@ -248,7 +248,6 @@ public class SelectFamilyTypeInstancesInCurrentView : IExternalCommand
         if (combinedSelection.Any())
         {
             uidoc.SetSelectionIds(combinedSelection);
-            TaskDialog.Show("Selection", $"Selected {selectedInstances.Count} instance(s) of {selectedEntries.Count} type(s).");
         }
         else
         {
