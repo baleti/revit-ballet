@@ -182,32 +182,5 @@ namespace RevitCommands
                 return Result.Failed;
             }
         }
-        
-        // Custom DataGrid method as provided
-        public static List<Dictionary<string, object>> DataGrid(
-            List<Dictionary<string, object>> entries,
-            List<string> propertyNames,
-            bool spanAllScreens,
-            List<int> initialSelectionIndices = null)
-        {
-            // Implementation would go here
-            // This is a placeholder that returns the selected entries
-            // In actual implementation, this would show a WPF DataGrid dialog
-            
-            return new List<Dictionary<string, object>>();
-        }
-    }
-    
-    // Extension method for custom GetSelectionIds
-    public static class UIDocumentExtensions
-    {
-        public static ICollection<ElementId> GetSelectionIds(this UIDocument uidoc)
-        {
-            // Custom implementation to get selection IDs
-            // This might be a wrapper around uidoc.Selection.GetElementIds()
-            // or a custom selection method
-            
-            return uidoc.Selection.GetElementIds();
-        }
     }
 }
