@@ -1215,3 +1215,16 @@ fundamentally I want to believe that they were meant to be used for this type of
   just wasn't meant to be
 not sure if custom parameters will be available
   may need to load it all into Comments parameter or similar
+**** =14:40= finding myself too often repeat these instructions in prompts
+write a c# 7.3 revit api 2024 command called <name>
+make it obtain current selection using var selectedIds = uidoc.GetSelectionIds();
+make it display user a datagrid to choose workset to change using this custom code:
+public partial class CustomGUIs
+{
+public static List<Dictionary<string, object>> DataGrid(
+    List<Dictionary<string, object>> entries,
+    List<string> propertyNames,
+    bool spanAllScreens,
+    List<int> initialSelectionIndices = null)
+{return List<Dictionary<string, object>>()}
+}
