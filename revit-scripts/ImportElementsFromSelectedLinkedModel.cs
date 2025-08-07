@@ -19,7 +19,7 @@ public class ImportElementsFromSelectedLinkedModel : IExternalCommand
         try
         {
             // Get all selected elements
-            ICollection<ElementId> selectedIds = uiDoc.Selection.GetElementIds();
+            ICollection<ElementId> selectedIds = uiDoc.GetSelectionIds();
             if (selectedIds.Count == 0)
             {
                 TaskDialog.Show("Error", "Please select one or more linked Revit model instances.");
