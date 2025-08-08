@@ -1,5 +1,5 @@
 ﻿// *************************************************************************************************
-//  RenameInstanceParametersOfSelectedElements.cs
+//  RenameParametersOfSelectedElements.cs
 //  Revit add-in (C# 7.3 / .NET 4.8 compliant)
 // *************************************************************************************************
 using System;
@@ -151,7 +151,8 @@ namespace MyRevitAddin
 
         /// <summary>
         /// Parses pattern string and replaces parameter references.
-        /// Supports: {} for current value, $"Parameter Name" or $ParameterName for other parameters
+        /// Supports: {} for current value, $"Parameter Name" or $ParameterName for other parameters.
+        /// Also supports pseudo parameters on element types: "Type Name", "Family Name".
         /// </summary>
         private static string ParsePatternWithParameterReferences(string pattern, string currentValue, Element element)
         {
@@ -162,24 +163,44 @@ namespace MyRevitAddin
             string result = pattern.Replace("{}", currentValue);
 
             // Regex to match $"Parameter Name" or $ParameterNameWithoutSpaces
-            // This matches: $"anything in quotes" OR $word (alphanumeric and underscore)
             var regex = new Regex(@"\$""([^""]+)""|(?<!\$)\$(\w+)");
-            
+
             result = regex.Replace(result, match =>
             {
-                // Get the parameter name from either the quoted group or the unquoted group
-                string paramName = !string.IsNullOrEmpty(match.Groups[1].Value) 
-                    ? match.Groups[1].Value 
+                string paramName = !string.IsNullOrEmpty(match.Groups[1].Value)
+                    ? match.Groups[1].Value
                     : match.Groups[2].Value;
 
-                // Look up the parameter on the element
-                Parameter param = element.LookupParameter(paramName);
+                // Try real parameter first
+                Parameter param = element?.LookupParameter(paramName);
                 if (param != null)
-                {
                     return GetParameterValueAsString(param);
+
+                // Pseudo parameters for element types and families
+                if (element is ElementType et)
+                {
+                    // Treat $TypeName and $"Type Name" as ElementType.Name
+                    if (paramName.Equals("TypeName", StringComparison.OrdinalIgnoreCase) ||
+                        paramName.Equals("Type Name", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return et.Name ?? match.Value;
+                    }
+
+                    // Convenience: accept $Name as Type Name in patterns (not shown in picker)
+                    if (paramName.Equals("Name", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return et.Name ?? match.Value;
+                    }
+
+                    // Family Name (FamilySymbol only)
+                    if ((paramName.Equals("FamilyName", StringComparison.OrdinalIgnoreCase) ||
+                         paramName.Equals("Family Name", StringComparison.OrdinalIgnoreCase)) &&
+                        et is FamilySymbol fs)
+                    {
+                        return fs.Family?.Name ?? match.Value;
+                    }
                 }
-                
-                // If parameter not found, return the original text
+
                 return match.Value;
             });
 
@@ -200,12 +221,11 @@ namespace MyRevitAddin
             else if (!string.IsNullOrEmpty(form.ReplaceText))
                 value = form.ReplaceText;
 
-            // 2. Pattern (now with parameter reference support)
+            // 2. Pattern (with parameter/pseudo-parameter support)
             if (!string.IsNullOrEmpty(form.PatternText))
             {
                 if (element != null)
                 {
-                    // Use the new pattern parser that supports parameter references
                     value = ParsePatternWithParameterReferences(form.PatternText, value, element);
                 }
                 else
@@ -241,11 +261,13 @@ namespace MyRevitAddin
                 case StorageType.Double:
                     if (double.TryParse(newVal, NumberStyles.Any, CultureInfo.InvariantCulture, out double d))
                     {
-                        // convert mm → ft if necessary
-                        ForgeTypeId ut = p.GetUnitTypeId();
-                        if (isMetric &&
-                            (ut == UnitTypeId.Millimeters || ut == UnitTypeId.Meters))
-                            d = d / 304.8;
+                        // convert metric project entry (mm or m) → internal feet for length params
+                        if (isMetric)
+                        {
+                            ForgeTypeId ut = p.GetUnitTypeId();
+                            if (ut == UnitTypeId.Millimeters) d = d / 304.8;   // mm → ft
+                            else if (ut == UnitTypeId.Meters) d = d / 0.3048; // m  → ft (bug fix)
+                        }
                         p.Set(d);
                     }
                     break;
@@ -267,17 +289,19 @@ namespace MyRevitAddin
 
         #endregion
 
-        #region Main worker – RenameParameters (instance only) ------------------------------------
+        #region Main worker – RenameParameters (instances & types; supports pseudo names) ---------
 
         /// <summary>
-        /// Lets the user pick instance parameters and renames them.
-        /// Two-pass scheme prevents temporary duplicates (e.g. when renumbering sheets).
+        /// Lets the user pick parameters and renames them for all selected elements.
+        /// - Real parameters come from el.Parameters (excludes ElementId).
+        /// - Pseudo parameters for ElementType: "Type Name"; and "Family Name" for FamilySymbol.
+        /// Two-pass scheme prevents temporary duplicates for string parameters (real params only).
         /// </summary>
-        public static Result RenameInstanceParameters(Document doc, List<Element> elements)
+        public static Result RenameParameters(Document doc, List<Element> elements)
         {
             try
             {
-                // ---------- project units (needed for mm → ft conversion) ----------------------
+                // ---------- project units (needed for mm/m → ft conversion) ------------------
                 Units         projUnits = doc.GetUnits();
                 FormatOptions lenOpts   = projUnits.GetFormatOptions(SpecTypeId.Length);
                 bool isMetric = lenOpts.GetUnitTypeId() == UnitTypeId.Millimeters ||
@@ -295,6 +319,8 @@ namespace MyRevitAddin
                     elements.SelectMany(el =>
                     {
                         List<ParameterInfo> list = new List<ParameterInfo>();
+
+                        // Real parameters
                         foreach (Parameter p in el.Parameters)
                         {
                             if (p.IsReadOnly || p.StorageType == StorageType.ElementId) continue;
@@ -305,9 +331,21 @@ namespace MyRevitAddin
                                 IsShared = p.IsShared
                             });
                         }
+
+                        // Pseudo parameters for ElementType (type-level renaming)
+                        if (el is ElementType)
+                        {
+                            // Only "Type Name" (no separate "Name" in picker)
+                            list.Add(new ParameterInfo { Name = "Type Name", Group = "PG_GENERAL", IsShared = false });
+
+                            // "Family Name" only where applicable (FamilySymbol)
+                            if (el is FamilySymbol fs && fs.Family != null)
+                                list.Add(new ParameterInfo { Name = "Family Name", Group = "PG_GENERAL", IsShared = false });
+                        }
+
                         return list;
                     })
-                    .GroupBy(info => info.Name)
+                    .GroupBy(info => info.Name) // unique by name across selection
                     .Select(g => g.First())
                     .OrderBy(info => info.Group)
                     .ThenBy(info => info.Name)
@@ -343,6 +381,36 @@ namespace MyRevitAddin
                     foreach (Dictionary<string, object> d in picked)
                     {
                         string pName = d["Name"].ToString();
+
+                        // PSEUDO: Type Name (ElementType only)
+                        if (pName == "Type Name" && el is ElementType et)
+                        {
+                            pVals.Add(new ParameterValueInfo
+                            {
+                                Element       = el,
+                                Parameter     = null, // pseudo
+                                ParameterName = pName,
+                                CurrentValue  = et.Name ?? string.Empty,
+                                IsShared      = false
+                            });
+                            continue;
+                        }
+
+                        // PSEUDO: Family Name (FamilySymbol only)
+                        if (pName == "Family Name" && el is FamilySymbol fs && fs.Family != null)
+                        {
+                            pVals.Add(new ParameterValueInfo
+                            {
+                                Element       = el,
+                                Parameter     = null, // pseudo
+                                ParameterName = pName,
+                                CurrentValue  = fs.Family.Name ?? string.Empty,
+                                IsShared      = false
+                            });
+                            continue;
+                        }
+
+                        // REAL parameter
                         Parameter p  = el.LookupParameter(pName);
                         if (p != null && !p.IsReadOnly && p.StorageType != StorageType.ElementId)
                         {
@@ -373,7 +441,6 @@ namespace MyRevitAddin
                     var updates = new List<(ParameterValueInfo Pv, string NewVal)>();
                     foreach (ParameterValueInfo pv in pVals)
                     {
-                        // Pass the element to TransformValue for parameter reference support
                         string newVal = TransformValue(pv.CurrentValue, form, pv.Element);
                         if (newVal != pv.CurrentValue)
                             updates.Add((pv, newVal));
@@ -384,7 +451,7 @@ namespace MyRevitAddin
                     {
                         tx.Start();
 
-                        // === PASS 1 – temporary unique placeholders (string params) ===============
+                        // === PASS 1 – temporary unique placeholders (string params only) =========
                         foreach (var u in updates)
                         {
                             if (u.Pv.Parameter != null &&
@@ -396,12 +463,34 @@ namespace MyRevitAddin
                             }
                         }
 
-                        // === PASS 2 – final values ================================================
+                        // === PASS 2 – final values (handles pseudo names too) =====================
                         foreach (var u in updates)
                         {
                             try
                             {
-                                SetParameterValue(u.Pv.Parameter, u.NewVal, isMetric);
+                                // PSEUDO write-back
+                                if (u.Pv.Parameter == null)
+                                {
+                                    // Type Name -> ElementType.Name
+                                    if (u.Pv.ParameterName == "Type Name" &&
+                                        u.Pv.Element is ElementType et)
+                                    {
+                                        et.Name = u.NewVal; // rename the type
+                                        continue;
+                                    }
+
+                                    // Family Name -> Family.Name (FamilySymbol only)
+                                    if (u.Pv.ParameterName == "Family Name" &&
+                                        u.Pv.Element is FamilySymbol fs && fs.Family != null)
+                                    {
+                                        fs.Family.Name = u.NewVal; // rename the family
+                                        continue;
+                                    }
+                                }
+
+                                // REAL parameter write-back
+                                if (u.Pv.Parameter != null)
+                                    SetParameterValue(u.Pv.Parameter, u.NewVal, isMetric);
                             }
                             catch (Exception ex)
                             {
@@ -493,7 +582,7 @@ namespace MyRevitAddin
             _txtPattern = MakeTextBox("{}");   // default
             grid.Controls.Add(_txtPattern, 1, 2);
 
-            grid.Controls.Add(MakeHint("Use {} for current value. Use $\"Parameter Name\" or $ParameterName to reference other parameters."), 1, 3);
+            grid.Controls.Add(MakeHint("Use {} for current value. Use $\"Parameter Name\" or $ParameterName to reference other parameters. Supports $\"Type Name\" and $\"Family Name\" on types."), 1, 3);
 
             // Math
             grid.Controls.Add(MakeLabel("Math:"), 0, 4);
@@ -605,17 +694,18 @@ namespace MyRevitAddin
     }
 
     // =============================================================================================
-    // 3. External command – rename instance parameters of selection
+    // 3. External command – rename parameters of selection (instances & types)
     // =============================================================================================
     [Transaction(TransactionMode.Manual)]
-    public class RenameInstanceParametersOfSelectedElements : IExternalCommand
+    public class RenameParametersOfSelectedElements : IExternalCommand
     {
         public Result Execute(ExternalCommandData cData, ref string msg, ElementSet set)
         {
             UIDocument uiDoc = cData.Application.ActiveUIDocument;
             Document   doc   = uiDoc.Document;
 
-            IList<ElementId> selIds = uiDoc.GetSelectionIds().ToList();
+            // Use the standard Revit API selection; replace with your helper if preferred
+            IList<ElementId> selIds = uiDoc.Selection.GetElementIds().ToList();
             if (selIds.Count == 0)
             {
                 WinForms.MessageBox.Show("Please select elements first.");
@@ -627,7 +717,7 @@ namespace MyRevitAddin
                                   .Where(e => e != null)
                                   .ToList();
 
-            return ParameterRenamerHelper.RenameInstanceParameters(doc, elems);
+            return ParameterRenamerHelper.RenameParameters(doc, elems);
         }
     }
 }

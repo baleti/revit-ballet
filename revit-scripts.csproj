@@ -263,7 +263,7 @@
     <Compile Include="revit-scripts\OffsetWorkplane.cs" />
     <Compile Include="revit-scripts\PasteCrossSession.cs" />
     <Compile Include="revit-scripts\RenameGroups.cs" />
-    <Compile Include="revit-scripts\RenameInstanceParametersOfSelectedElements.cs" />
+    <Compile Include="revit-scripts\RenameParametersOfSelectedElements.cs" />
     <Compile Include="revit-scripts\SelectDetailGroups.cs" />
     <Compile Include="revit-scripts\SelectDetailGroupsInCurrentView.cs" />
     <Compile Include="revit-scripts\SelectElementsHostedByTags.cs" />
@@ -317,7 +317,6 @@
     <Compile Include="revit-scripts\ListChildViews.cs" />
     <Compile Include="revit-scripts\FilterSelectedElements.cs" />
     <Compile Include="revit-scripts\ImportViewTemplatesFromRvt.cs" />
-    <Compile Include="revit-scripts\ListFamilyTypes.cs" />
     <Compile Include="revit-scripts\LogViewChanges.cs" />
     <Compile Include="revit-scripts\NewFamily.cs" />
     <Compile Include="revit-scripts\OpenLastSessionViews.cs" />
