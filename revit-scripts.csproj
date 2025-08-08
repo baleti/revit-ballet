@@ -187,6 +187,7 @@
     <Compile Include="revit-scripts\SelectElementsOfSameTypeInLinkedModelsInView.cs" />
     <Compile Include="revit-scripts\SelectFamilyTypeInstancesInLinkedModels.cs" />
     <Compile Include="revit-scripts\SelectFamilyTypesInProjectByCategory.cs" />
+    <Compile Include="revit-scripts\SelectFamilyTypesOfSelectedElements.cs" />
     <Compile Include="revit-scripts\SelectViewFiltersMatchingSelectedElements.cs" />
     <Compile Include="revit-scripts\FilterSelectedElementsByContainingGroupsWithRooms.cs" />
     <Compile Include="revit-scripts\SelectHostsOfSelectedElements.cs" />
