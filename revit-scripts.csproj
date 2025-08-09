@@ -163,7 +163,7 @@
     <Compile Include="revit-scripts\FilterPositionOnAreas.cs" />
     <Compile Include="revit-scripts\FilterPositionOnRooms.cs" />
     <Compile Include="revit-scripts\FilterRevisionClouds.cs" />
-    <Compile Include="revit-scripts\FilterSelectedElementsByContainingGroupsWithEnclosingWalls.cs" />
+    <Compile Include="revit-scripts\FilterSelectedElementsByContainingGroupsWithRooms_RoomAnalysis.cs" />
     <Compile Include="revit-scripts\FilterSheets.cs" />
     <Compile Include="revit-scripts\HandFlipSelectedDoors.cs" />
     <Compile Include="revit-scripts\ImportElementsFromFile.cs" />
@@ -189,7 +189,7 @@
     <Compile Include="revit-scripts\SelectFamilyTypesInProjectByCategory.cs" />
     <Compile Include="revit-scripts\SelectFamilyTypesOfSelectedElements.cs" />
     <Compile Include="revit-scripts\SelectViewFiltersMatchingSelectedElements.cs" />
-    <Compile Include="revit-scripts\FilterSelectedElementsByContainingGroupsWithRooms.cs" />
+    <Compile Include="revit-scripts\FilterSelectedElementsByContainingGroupsWithRooms_Main.cs" />
     <Compile Include="revit-scripts\SelectHostsOfSelectedElements.cs" />
     <Compile Include="revit-scripts\SelectionModeManager.cs" />
     <Compile Include="revit-scripts\SelectLast300CreatedElements.cs" />

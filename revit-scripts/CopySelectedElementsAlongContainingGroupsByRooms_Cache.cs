@@ -39,6 +39,8 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
         public Group TargetGroup { get; set; }
         public Level TargetLevel { get; set; }
         public List<string> GroupTypeNames { get; set; }
+        public Group SourceGroup { get; set; } // Track which group instance this element came from
+        public string SourceScopeBox { get; set; } // Track source group's scope box
     }
     
     // Build room cache for all rooms

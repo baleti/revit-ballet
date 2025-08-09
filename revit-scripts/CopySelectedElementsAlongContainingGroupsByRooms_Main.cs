@@ -37,7 +37,7 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms : IExterna
             diagnosticLog.AppendLine("=== DIAGNOSTIC LOG START ===");
             
             // Get selected elements
-            ICollection<ElementId> selectedIds = uidoc.Selection.GetElementIds();
+            ICollection<ElementId> selectedIds = uidoc.GetSelectionIds();
             
             if (selectedIds.Count == 0)
             {
@@ -262,6 +262,35 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms : IExterna
         }
     }
     
+    
+    // NEW METHOD: Get scope box name for a group
+    private string GetGroupScopeBox(Group group, Document doc)
+    {
+        // Try to get scope box from group members
+        ICollection<ElementId> memberIds = group.GetMemberIds();
+        foreach (ElementId id in memberIds)
+        {
+            Element member = doc.GetElement(id);
+            if (member != null)
+            {
+                Parameter scopeBoxParam = member.get_Parameter(BuiltInParameter.ELEM_PARTITION_PARAM);
+                if (scopeBoxParam != null && scopeBoxParam.HasValue)
+                {
+                    ElementId scopeBoxId = scopeBoxParam.AsElementId();
+                    if (scopeBoxId != null && scopeBoxId != ElementId.InvalidElementId)
+                    {
+                        Element scopeBox = doc.GetElement(scopeBoxId);
+                        if (scopeBox != null)
+                        {
+                            return scopeBox.Name;
+                        }
+                    }
+                }
+            }
+        }
+        return "None";
+    }
+    
     private CopyResult ProcessCopying(Document doc, 
                                       Dictionary<ElementId, List<Group>> groupsByType,
                                       Dictionary<ElementId, List<Group>> elementsInGroups,
@@ -269,6 +298,10 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms : IExterna
     {
         CopyResult result = new CopyResult();
         List<BatchCopyData> allBatchCopyData = new List<BatchCopyData>();
+        
+        // Track all unique target groups across all group types
+        HashSet<ElementId> allPossibleTargetGroups = new HashSet<ElementId>();
+        HashSet<ElementId> successfulTargetGroups = new HashSet<ElementId>();
         
         using (Transaction trans = new Transaction(doc, "Copy Elements Following Containing Groups By Rooms"))
         {
@@ -283,8 +316,32 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms : IExterna
                     Parameter commentsParam = elem.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS);
                     if (commentsParam != null && !commentsParam.IsReadOnly)
                     {
-                        string groupNames = string.Join(", ", elemKvp.Value);
-                        commentsParam.Set(groupNames);
+                        // Build enhanced comment for source elements
+                        List<string> commentParts = new List<string>();
+                        
+                        // Add group type names
+                        commentParts.Add(string.Join(", ", elemKvp.Value));
+                        
+                        // Add source group IDs and scope boxes for this element
+                        if (elementsInGroups.ContainsKey(elemKvp.Key))
+                        {
+                            List<Group> containingGroups = elementsInGroups[elemKvp.Key];
+                            if (containingGroups.Count > 0)
+                            {
+                                // Get first containing group for source info
+                                Group sourceGroup = containingGroups.First();
+                                commentParts.Add($"source id: {sourceGroup.Id}");
+                                
+                                string scopeBox = GetGroupScopeBox(sourceGroup, doc);
+                                if (!string.IsNullOrEmpty(scopeBox) && scopeBox != "None")
+                                {
+                                    commentParts.Add($"source scope box: {scopeBox}");
+                                }
+                            }
+                        }
+                        
+                        string fullComment = string.Join(", ", commentParts);
+                        commentsParam.Set(fullComment);
                     }
                 }
             }
@@ -301,10 +358,6 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms : IExterna
                 string groupTypeName = groupType.Name ?? "Unknown";
                 diagnosticLog.AppendLine($"\n--- Processing Group Type: {groupTypeName} ---");
                 
-                // Use the first containing group as reference
-                Group referenceGroup = containingGroupsOfThisType.First();
-                diagnosticLog.AppendLine($"Reference group ID: {referenceGroup.Id}");
-                
                 // Get all instances of this group type
                 FilteredElementCollector collector = new FilteredElementCollector(doc);
                 IList<Group> allGroupInstances = collector
@@ -315,6 +368,7 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms : IExterna
                     .ToList();
                 
                 diagnosticLog.AppendLine($"Total instances of this group type: {allGroupInstances.Count}");
+                diagnosticLog.AppendLine($"Source groups containing selected elements: {containingGroupsOfThisType.Count}");
                 
                 if (allGroupInstances.Count < 2)
                 {
@@ -322,35 +376,48 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms : IExterna
                     continue;
                 }
                 
-                // Determine which elements to copy from this reference group
-                List<Element> elementsToCopy = new List<Element>();
-                foreach (var elemKvp in elementsInGroups)
+                // NEW: Process EACH containing group as a potential source
+                int sourceGroupCount = 0;
+                foreach (Group sourceGroup in containingGroupsOfThisType)
                 {
-                    Element elem = doc.GetElement(elemKvp.Key);
-                    if (elemKvp.Value.Contains(referenceGroup))
+                    sourceGroupCount++;
+                    diagnosticLog.AppendLine($"\n  Processing source group {sourceGroupCount}/{containingGroupsOfThisType.Count} - ID: {sourceGroup.Id}");
+                    
+                    // Determine which elements to copy from THIS specific source group
+                    List<Element> elementsToCopyFromThisGroup = new List<Element>();
+                    foreach (var elemKvp in elementsInGroups)
                     {
-                        elementsToCopy.Add(elem);
+                        Element elem = doc.GetElement(elemKvp.Key);
+                        if (elemKvp.Value.Contains(sourceGroup))
+                        {
+                            elementsToCopyFromThisGroup.Add(elem);
+                        }
                     }
-                }
-                
-                diagnosticLog.AppendLine($"Elements to copy from reference group: {elementsToCopy.Count}");
-                
-                if (elementsToCopy.Count == 0)
-                {
-                    diagnosticLog.AppendLine("Skipped: No elements to copy");
-                    continue;
+                    
+                    diagnosticLog.AppendLine($"  Elements to copy from this source group: {elementsToCopyFromThisGroup.Count}");
+                    
+                    if (elementsToCopyFromThisGroup.Count == 0)
+                    {
+                        diagnosticLog.AppendLine("  Skipped: No elements to copy from this source");
+                        continue;
+                    }
+                    
+                    // Process transformations using this source group as reference
+                    ProcessGroupTypeTransformations(sourceGroup, allGroupInstances, 
+                                                   elementsToCopyFromThisGroup, elementToGroupTypeNames,
+                                                   doc, allBatchCopyData, result,
+                                                   allPossibleTargetGroups, successfulTargetGroups);
                 }
                 
                 result.GroupTypesProcessed++;
-                
-                // Process transformations for this group type
-                ProcessGroupTypeTransformations(referenceGroup, allGroupInstances, 
-                                               elementsToCopy, elementToGroupTypeNames,
-                                               doc, allBatchCopyData, result);
             }
             
             // PHASE 2: Execute batch copy
             ExecuteBatchCopy(doc, allBatchCopyData, result);
+            
+            // Calculate final statistics from tracked groups
+            result.TotalGroupInstancesProcessed = successfulTargetGroups.Count;
+            result.TotalGroupInstancesSkipped = allPossibleTargetGroups.Count - successfulTargetGroups.Count;
             
             trans.Commit();
         }
@@ -364,7 +431,9 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms : IExterna
                                                  Dictionary<ElementId, List<string>> elementToGroupTypeNames,
                                                  Document doc,
                                                  List<BatchCopyData> allBatchCopyData,
-                                                 CopyResult result)
+                                                 CopyResult result,
+                                                 HashSet<ElementId> allPossibleTargetGroups,
+                                                 HashSet<ElementId> successfulTargetGroups)
     {
         // Get reference elements for transformation calculation
         ReferenceElements refElements = GetReferenceElements(referenceGroup, doc);
@@ -383,6 +452,9 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms : IExterna
             diagnosticLog.AppendLine($"  - {refElem.UniqueKey}");
         }
         
+        // Get scope box for the reference group
+        string sourceScopeBox = GetGroupScopeBox(referenceGroup, doc);
+        
         // Track successful and failed transformations
         int successfulTransforms = 0;
         int failedTransforms = 0;
@@ -391,9 +463,11 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms : IExterna
         // Collect batch copy data for all target instances
         foreach (Group otherGroup in allGroupInstances)
         {
+            // Skip the source group itself
             if (otherGroup.Id == referenceGroup.Id) continue;
             
-            result.TotalGroupInstancesProcessed++;
+            // Track this as a possible target
+            allPossibleTargetGroups.Add(otherGroup.Id);
             
             XYZ otherOrigin = (otherGroup.Location as LocationPoint).Point;
             
@@ -411,6 +485,9 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms : IExterna
                 // Log the transform details
                 diagnosticLog.AppendLine($"    Transform created: Origin Z={transform.Origin.Z:F6}");
                 
+                // Track as successful
+                successfulTargetGroups.Add(otherGroup.Id);
+                
                 // Add batch copy data for each element to copy
                 foreach (Element elem in elementsToCopy)
                 {
@@ -422,7 +499,9 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms : IExterna
                         TargetLevel = targetGroupLevel,
                         GroupTypeNames = elementToGroupTypeNames.ContainsKey(elem.Id) 
                             ? elementToGroupTypeNames[elem.Id] 
-                            : new List<string>()
+                            : new List<string>(),
+                        SourceGroup = referenceGroup,
+                        SourceScopeBox = sourceScopeBox
                     });
                 }
                 successfulTransforms++;
@@ -431,7 +510,6 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms : IExterna
             {
                 failedTransforms++;
                 failedGroupIds.Add(otherGroup.Id.ToString());
-                result.TotalGroupInstancesSkipped++;
                 
                 // Log why this specific group failed
                 diagnosticLog.AppendLine($"  Failed to transform to group {otherGroup.Id}");
@@ -539,14 +617,34 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms : IExterna
                 {
                     updatedCount++;
                     
-                    // Update Comments parameter
+                    // Update Comments parameter with enhanced information
                     Parameter commentsParam = copiedElem.get_Parameter(
                         BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS);
-                    if (commentsParam != null && !commentsParam.IsReadOnly && 
-                        batchItem.GroupTypeNames.Count > 0)
+                    if (commentsParam != null && !commentsParam.IsReadOnly)
                     {
-                        string groupNames = string.Join(", ", batchItem.GroupTypeNames);
-                        commentsParam.Set(groupNames);
+                        // Build enhanced comment string
+                        List<string> commentParts = new List<string>();
+                        
+                        // Add group type names
+                        if (batchItem.GroupTypeNames.Count > 0)
+                        {
+                            commentParts.Add(string.Join(", ", batchItem.GroupTypeNames));
+                        }
+                        
+                        // Add source group ID
+                        if (batchItem.SourceGroup != null)
+                        {
+                            commentParts.Add($"source id: {batchItem.SourceGroup.Id}");
+                        }
+                        
+                        // Add source scope box
+                        if (!string.IsNullOrEmpty(batchItem.SourceScopeBox))
+                        {
+                            commentParts.Add($"source scope box: {batchItem.SourceScopeBox}");
+                        }
+                        
+                        string fullComment = string.Join(", ", commentParts);
+                        commentsParam.Set(fullComment);
                     }
                     
                     // Update level if needed
