@@ -997,6 +997,9 @@ maybe I will address it later (if manage to reproduce)
 ** June
 *** 27
 **** =19:00= thinking about graph structure of buildings
+:PROPERTIES:
+:ID:       91860881-9034-4fff-aebd-8d4a0823f548
+:END:
 ***** graph comes up for the third time
 first when enumerating communal doors in hallways
 second when establishing direction (inside/outside orientation) of apartment doors
@@ -1228,3 +1231,20 @@ public static List<Dictionary<string, object>> DataGrid(
     List<int> initialSelectionIndices = null)
 {return List<Dictionary<string, object>>()}
 }
+*** 09
+**** =19:31= thinking of [[id:91860881-9034-4fff-aebd-8d4a0823f548][past explorations]] of graphs and topologies simply as an exercise in sorting and grouping of rooms
+***** examples where sorting of room was needed
+****** numbering apartments
+apartment can be thought of as a higher-level concept derived from certain grouping of rooms
+****** numbering doors
+rooms within communal spaces need to have consistent order
+communal space/area again as a higher-level concept dervied from a certain grouping of rooms
+******* commands
+SetInstanceParameterToNumberSequenceAlongX
+SetInstanceParameterToNumberSequenceAlongXWithPadding
+****** assigning sprinklers to flat type and core groups
+sprinkler elements have been modeled only in certain typical flat layouts and requrie replicating across other spaces represented as revit groups
+grouping of rooms was complex and required many heuristic rules to ascertain that any one elements is assigned to a correct group
+******* commands
+FilterSelectedElementsByContainingGroupsWithRooms
+CopySelectedElementsAlongContainingGroupsByRooms
