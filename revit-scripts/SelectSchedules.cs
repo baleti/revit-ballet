@@ -170,6 +170,48 @@ public class SelectSchedules : IExternalCommand
     }
 
     /// <summary>
+    /// Helper method to get filter value as string
+    /// </summary>
+    private string GetFilterValueString(ScheduleFilter filter)
+    {
+        try
+        {
+            // Check if filter has a string value
+            if (filter.IsStringValue)
+            {
+                return filter.GetStringValue();
+            }
+            // Check if filter has a double value
+            else if (filter.IsDoubleValue)
+            {
+                double value = filter.GetDoubleValue();
+                return value.ToString("0.##");
+            }
+            // Check if filter has an integer value
+            else if (filter.IsIntegerValue)
+            {
+                int value = filter.GetIntegerValue();
+                return value.ToString();
+            }
+            // Check if filter has an ElementId value
+            else if (filter.IsElementIdValue)
+            {
+                ElementId elemId = filter.GetElementIdValue();
+                if (elemId != null && elemId != ElementId.InvalidElementId)
+                {
+                    return elemId.ToString();
+                }
+            }
+        }
+        catch
+        {
+            // If we can't get the value for any reason
+        }
+        
+        return "";
+    }
+
+    /// <summary>
     /// Helper method to get detailed schedule properties
     /// </summary>
     private (string columns, string filters, string sorting, string grouping) GetScheduleDetails(ViewSchedule schedule)
@@ -206,44 +248,46 @@ public class SelectSchedules : IExternalCommand
                     ScheduleField filterField = definition.GetField(filter.FieldId);
                     string filterDesc = filterField.GetName();
                     
-                    // Add filter type
+                    // Add filter type and value
+                    string filterValue = GetFilterValueString(filter);
+                    
                     switch (filter.FilterType)
                     {
                         case ScheduleFilterType.Equal:
-                            filterDesc += " =";
+                            filterDesc += " = " + filterValue;
                             break;
                         case ScheduleFilterType.NotEqual:
-                            filterDesc += " ≠";
+                            filterDesc += " ≠ " + filterValue;
                             break;
                         case ScheduleFilterType.GreaterThan:
-                            filterDesc += " >";
+                            filterDesc += " > " + filterValue;
                             break;
                         case ScheduleFilterType.GreaterThanOrEqual:
-                            filterDesc += " ≥";
+                            filterDesc += " ≥ " + filterValue;
                             break;
                         case ScheduleFilterType.LessThan:
-                            filterDesc += " <";
+                            filterDesc += " < " + filterValue;
                             break;
                         case ScheduleFilterType.LessThanOrEqual:
-                            filterDesc += " ≤";
+                            filterDesc += " ≤ " + filterValue;
                             break;
                         case ScheduleFilterType.Contains:
-                            filterDesc += " contains";
+                            filterDesc += " contains " + filterValue;
                             break;
                         case ScheduleFilterType.NotContains:
-                            filterDesc += " !contains";
+                            filterDesc += " !contains " + filterValue;
                             break;
                         case ScheduleFilterType.BeginsWith:
-                            filterDesc += " begins";
+                            filterDesc += " begins " + filterValue;
                             break;
                         case ScheduleFilterType.NotBeginsWith:
-                            filterDesc += " !begins";
+                            filterDesc += " !begins " + filterValue;
                             break;
                         case ScheduleFilterType.EndsWith:
-                            filterDesc += " ends";
+                            filterDesc += " ends " + filterValue;
                             break;
                         case ScheduleFilterType.NotEndsWith:
-                            filterDesc += " !ends";
+                            filterDesc += " !ends " + filterValue;
                             break;
                         case ScheduleFilterType.HasValue:
                             filterDesc += " has value";
