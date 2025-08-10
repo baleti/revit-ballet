@@ -6,15 +6,43 @@ using Autodesk.Revit.DB.Architecture;
 
 public partial class CopySelectedElementsAlongContainingGroupsByRooms
 {
-    // Build comprehensive room-to-group mapping with improved priority handling
-    private Dictionary<ElementId, Group> BuildRoomToGroupMapping(IList<Group> allGroups, Document doc)
+    // Configurable validation thresholds
+    private double ROOM_POSITION_TOLERANCE = 5.0; // feet
+    private double ROOM_POSITION_TOLERANCE_RELAXED = 10.0; // feet for relaxed mode
+    private double ROOM_AREA_TOLERANCE = 0.3; // 30%
+    private double ROOM_AREA_TOLERANCE_RELAXED = 0.5; // 50% for relaxed mode
+    private double ROOM_VALIDATION_THRESHOLD = 0.3; // Require 30% of instances instead of 50%
+    private int ROOM_VALIDATION_MIN_MATCHES = 1; // At least 1 other instance must have the room
+
+    // Structure to track room mapping with metadata
+    private class RoomMappingInfo
     {
-        Dictionary<ElementId, Group> roomToGroupMap = new Dictionary<ElementId, Group>();
+        public Group MappedGroup { get; set; }
+        public bool IsDirectMember { get; set; }
+        public XYZ RelativePosition { get; set; }
+        public double Area { get; set; }
+        public string RoomName { get; set; }
+        public string RoomNumber { get; set; }
+        public ElementId RoomId { get; set; }
+        public XYZ RoomLocation { get; set; }
+    }
+
+    // Cache for room locations indexed by spatial grid
+    private Dictionary<int, List<RoomMappingInfo>> _roomSpatialIndex = new Dictionary<int, List<RoomMappingInfo>>();
+    private const double ROOM_SPATIAL_GRID_SIZE = 10.0; // 10 feet grid for room lookups
+
+    // Build comprehensive room-to-group mapping with validation for spatial containment
+    private Dictionary<ElementId, Group> BuildRoomToGroupMapping(IList<Group> relevantGroups, Document doc)
+    {
+        Dictionary<ElementId, RoomMappingInfo> roomMappingInfo = new Dictionary<ElementId, RoomMappingInfo>();
         Dictionary<ElementId, List<Group>> roomDirectMembership = new Dictionary<ElementId, List<Group>>();
         Dictionary<ElementId, List<Group>> roomSpatialContainment = new Dictionary<ElementId, List<Group>>();
 
+        // Build spatial index for all rooms first
+        BuildRoomSpatialIndex(doc);
+
         // First pass: identify direct memberships
-        foreach (Group group in allGroups)
+        foreach (Group group in relevantGroups)
         {
             foreach (ElementId memberId in group.GetMemberIds())
             {
@@ -26,56 +54,51 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
                         roomDirectMembership[memberId] = new List<Group>();
                     }
                     roomDirectMembership[memberId].Add(group);
+                    roomsAsDirectMembers++;
                 }
             }
         }
 
         // Second pass: identify spatial containments
-        foreach (Group group in allGroups)
+        foreach (Group group in relevantGroups)
         {
-            BoundingBoxXYZ groupBB = _groupBoundingBoxCache.ContainsKey(group.Id)
-                ? _groupBoundingBoxCache[group.Id]
-                : group.get_BoundingBox(null);
+            if (!_groupBoundingBoxCache.ContainsKey(group.Id)) continue;
 
+            BoundingBoxXYZ groupBB = _groupBoundingBoxCache[group.Id];
             if (groupBB == null) continue;
 
-            // Expand bounding box slightly for tolerance
-            double tolerance = 0.1;
-            XYZ minExpanded = new XYZ(
-                groupBB.Min.X - tolerance,
-                groupBB.Min.Y - tolerance,
-                groupBB.Min.Z - tolerance
-            );
-            XYZ maxExpanded = new XYZ(
-                groupBB.Max.X + tolerance,
-                groupBB.Max.Y + tolerance,
-                groupBB.Max.Z + tolerance
-            );
+            // Use spatial index to find potentially contained rooms
+            var potentialRooms = GetRoomsInBoundingBox(groupBB);
 
-            // Check all rooms for spatial containment
-            foreach (var kvp in _roomDataCache)
+            foreach (var roomInfo in potentialRooms)
             {
-                ElementId roomId = kvp.Key;
-                RoomData roomData = kvp.Value;
+                ElementId roomId = roomInfo.RoomId;
 
                 // Skip if this room has direct membership in ANY group
                 if (roomDirectMembership.ContainsKey(roomId))
                     continue;
 
-                // Check spatial containment
-                if (IsRoomWithinBoundingBox(roomData, minExpanded, maxExpanded))
+                // Check if room is actually within the group's bounding box
+                RoomData roomData = _roomDataCache[roomId];
+                if (roomData != null && IsRoomWithinBoundingBox(roomData, groupBB.Min, groupBB.Max))
                 {
-                    if (!roomSpatialContainment.ContainsKey(roomId))
+                    // Additional check: does the room have significant boundary overlap with group members?
+                    Room room = doc.GetElement(roomId) as Room;
+                    if (room != null && ShouldForceIncludeRoom(room, group, doc))
                     {
-                        roomSpatialContainment[roomId] = new List<Group>();
+                        if (!roomSpatialContainment.ContainsKey(roomId))
+                        {
+                            roomSpatialContainment[roomId] = new List<Group>();
+                        }
+                        roomSpatialContainment[roomId].Add(group);
                     }
-                    roomSpatialContainment[roomId].Add(group);
                 }
             }
         }
 
-        // Build final mapping with improved priority
-        // Direct memberships first (these are definitive)
+        // Build mapping with direct memberships
+        Dictionary<ElementId, Group> roomToGroupMap = new Dictionary<ElementId, Group>();
+
         foreach (var kvp in roomDirectMembership)
         {
             ElementId roomId = kvp.Key;
@@ -83,27 +106,29 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
 
             if (kvp.Value.Count == 1)
             {
-                // Only one group claims direct membership - use it
-                roomToGroupMap[roomId] = kvp.Value.First();
+                Group group = kvp.Value.First();
+                roomToGroupMap[roomId] = group;
             }
             else
             {
-                // Multiple groups claim direct membership - use boundary analysis
                 Group bestGroup = SelectBestGroupForRoom(room, kvp.Value, doc);
-                if (bestGroup != null)
-                {
-                    roomToGroupMap[roomId] = bestGroup;
-                    diagnosticLog.AppendLine($"Room {room.Name ?? roomId.ToString()} has multiple direct memberships - selected {GetGroupTypeName(bestGroup, doc)} based on boundary analysis");
-                }
-                else
-                {
-                    diagnosticLog.AppendLine($"Room {room.Name ?? roomId.ToString()} has multiple direct memberships but no valid group assignment");
-                }
+                roomToGroupMap[roomId] = bestGroup;
             }
         }
 
-        // Add spatial containments (only for rooms without direct membership)
-        foreach (var kvp in roomSpatialContainment)
+        // Validate spatially contained rooms
+        FilteredElementCollector allGroupsCollector = new FilteredElementCollector(doc);
+        IList<Group> allGroups = allGroupsCollector
+            .OfClass(typeof(Group))
+            .WhereElementIsNotElementType()
+            .Cast<Group>()
+            .ToList();
+
+        Dictionary<ElementId, List<Group>> validatedSpatialContainments = ValidateSpatialContainmentsEnhanced(
+            roomSpatialContainment, allGroups, doc);
+
+        // Add validated spatial containments
+        foreach (var kvp in validatedSpatialContainments)
         {
             if (!roomToGroupMap.ContainsKey(kvp.Key))
             {
@@ -112,30 +137,13 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
 
                 if (kvp.Value.Count == 1)
                 {
-                    // Only one group spatially contains this room - but verify it actually has walls near it
                     Group group = kvp.Value.First();
-                    if (DoesGroupHaveWallsNearRoom(group, room, doc))
-                    {
-                        roomToGroupMap[roomId] = group;
-                    }
-                    else
-                    {
-                        diagnosticLog.AppendLine($"Room {room.Name ?? roomId.ToString()} is spatially contained by {GetGroupTypeName(group, doc)} but has no nearby walls - NOT assigned");
-                    }
+                    roomToGroupMap[roomId] = group;
                 }
                 else
                 {
-                    // Multiple groups spatially contain this room - use boundary analysis
                     Group bestGroup = SelectBestGroupForRoom(room, kvp.Value, doc);
-                    if (bestGroup != null)
-                    {
-                        roomToGroupMap[roomId] = bestGroup;
-                        diagnosticLog.AppendLine($"Room {room.Name ?? roomId.ToString()} is spatially contained by multiple groups - selected {GetGroupTypeName(bestGroup, doc)} based on boundary analysis");
-                    }
-                    else
-                    {
-                        diagnosticLog.AppendLine($"Room {room.Name ?? roomId.ToString()} is spatially contained by multiple groups but no valid group assignment");
-                    }
+                    roomToGroupMap[roomId] = bestGroup;
                 }
             }
         }
@@ -143,82 +151,337 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
         return roomToGroupMap;
     }
 
-    // Check if a group has walls near a room (more strict version)
-    private bool DoesGroupHaveWallsNearRoom(Group group, Room room, Document doc)
+    // Build spatial index for all rooms
+    private void BuildRoomSpatialIndex(Document doc)
     {
-        // Get room level for proper Z-coordinate checking
-        Level roomLevel = doc.GetElement(room.LevelId) as Level;
-        if (roomLevel == null) return false;
-        
-        double roomLevelZ = roomLevel.Elevation;
-        double tolerance = 2.0; // 2 feet horizontal tolerance
-        double verticalTolerance = 5.0; // 5 feet vertical tolerance
-        
-        // Get room bounding box
-        BoundingBoxXYZ roomBB = room.get_BoundingBox(null);
-        if (roomBB == null) return false;
+        _roomSpatialIndex.Clear();
 
-        // Count walls from group that are near the room
-        int nearbyWallCount = 0;
-        ICollection<ElementId> memberIds = group.GetMemberIds();
-        
-        foreach (ElementId memberId in memberIds)
+        foreach (var kvp in _roomDataCache)
         {
-            Element member = doc.GetElement(memberId);
-            if (member is Wall wall)
+            ElementId roomId = kvp.Key;
+            RoomData roomData = kvp.Value;
+            Room room = doc.GetElement(roomId) as Room;
+
+            if (room == null || room.Area <= 0) continue;
+
+            XYZ roomLocation = (room.Location as LocationPoint)?.Point ?? GetRoomCentroid(room);
+
+            var roomInfo = new RoomMappingInfo
             {
-                LocationCurve wallLocation = wall.Location as LocationCurve;
-                if (wallLocation != null)
+                RoomId = roomId,
+                RoomLocation = roomLocation,
+                Area = room.Area,
+                RoomName = room.Name,
+                RoomNumber = room.Number
+            };
+
+            // Add to spatial index
+            int gridX = (int)Math.Floor(roomLocation.X / ROOM_SPATIAL_GRID_SIZE);
+            int gridY = (int)Math.Floor(roomLocation.Y / ROOM_SPATIAL_GRID_SIZE);
+            int cellKey = GetRoomSpatialCellKey(gridX, gridY);
+
+            if (!_roomSpatialIndex.ContainsKey(cellKey))
+            {
+                _roomSpatialIndex[cellKey] = new List<RoomMappingInfo>();
+            }
+            _roomSpatialIndex[cellKey].Add(roomInfo);
+        }
+    }
+
+    // Get rooms in bounding box using spatial index
+    private List<RoomMappingInfo> GetRoomsInBoundingBox(BoundingBoxXYZ bb)
+    {
+        List<RoomMappingInfo> rooms = new List<RoomMappingInfo>();
+
+        int minGridX = (int)Math.Floor(bb.Min.X / ROOM_SPATIAL_GRID_SIZE);
+        int maxGridX = (int)Math.Floor(bb.Max.X / ROOM_SPATIAL_GRID_SIZE);
+        int minGridY = (int)Math.Floor(bb.Min.Y / ROOM_SPATIAL_GRID_SIZE);
+        int maxGridY = (int)Math.Floor(bb.Max.Y / ROOM_SPATIAL_GRID_SIZE);
+
+        for (int x = minGridX; x <= maxGridX; x++)
+        {
+            for (int y = minGridY; y <= maxGridY; y++)
+            {
+                int cellKey = GetRoomSpatialCellKey(x, y);
+                if (_roomSpatialIndex.ContainsKey(cellKey))
                 {
-                    Curve wallCurve = wallLocation.Curve;
-                    XYZ wallStart = wallCurve.GetEndPoint(0);
-                    XYZ wallEnd = wallCurve.GetEndPoint(1);
-                    XYZ wallMid = wallCurve.Evaluate(0.5, true);
-                    
-                    // Check if wall is at approximately the same level as the room
-                    double wallZ = (wallStart.Z + wallEnd.Z) / 2.0;
-                    if (Math.Abs(wallZ - roomLevelZ) > verticalTolerance)
-                        continue;
-                    
-                    // Check horizontal proximity
-                    bool nearRoom = false;
-                    
-                    // Check if wall endpoints or midpoint are near room bounding box
-                    XYZ[] checkPoints = { wallStart, wallEnd, wallMid };
-                    foreach (XYZ point in checkPoints)
-                    {
-                        if (point.X >= roomBB.Min.X - tolerance && point.X <= roomBB.Max.X + tolerance &&
-                            point.Y >= roomBB.Min.Y - tolerance && point.Y <= roomBB.Max.Y + tolerance)
-                        {
-                            nearRoom = true;
-                            break;
-                        }
-                    }
-                    
-                    if (nearRoom)
-                        nearbyWallCount++;
+                    rooms.AddRange(_roomSpatialIndex[cellKey]);
                 }
             }
         }
-        
-        // Require at least 2 walls to consider the group as defining the room
-        return nearbyWallCount >= 2;
+
+        return rooms;
     }
 
-    // Select the best group for a room based on which group has more walls forming the room boundary
+    // Get spatial cell key for room grid
+    private int GetRoomSpatialCellKey(int gridX, int gridY)
+    {
+        return (gridX + 10000) * 20000 + (gridY + 10000);
+    }
+
+    // Enhanced validation result with detailed information
+    private class DetailedValidationResult
+    {
+        public bool IsValid { get; set; }
+        public int InstancesChecked { get; set; }
+        public int InstancesWithRoom { get; set; }
+        public double PercentageMatch => InstancesChecked > 0 ? (double)InstancesWithRoom / InstancesChecked * 100 : 0;
+        public string PrimaryFailureReason { get; set; }
+        public List<string> MatchDetails { get; set; } = new List<string>();
+        public List<string> MismatchDetails { get; set; } = new List<string>();
+    }
+
+    // Enhanced validation with better diagnostics and relaxed thresholds
+    private Dictionary<ElementId, List<Group>> ValidateSpatialContainmentsEnhanced(
+        Dictionary<ElementId, List<Group>> roomSpatialContainment,
+        IList<Group> allGroups,
+        Document doc)
+    {
+        Dictionary<ElementId, List<Group>> validatedContainments = new Dictionary<ElementId, List<Group>>();
+
+        // Group all groups by their type
+        Dictionary<ElementId, List<Group>> groupsByType = new Dictionary<ElementId, List<Group>>();
+        foreach (Group group in allGroups)
+        {
+            ElementId typeId = group.GetTypeId();
+            if (!groupsByType.ContainsKey(typeId))
+            {
+                groupsByType[typeId] = new List<Group>();
+            }
+            groupsByType[typeId].Add(group);
+        }
+
+        foreach (var kvp in roomSpatialContainment)
+        {
+            ElementId roomId = kvp.Key;
+            List<Group> candidateGroups = kvp.Value;
+            Room room = doc.GetElement(roomId) as Room;
+
+            if (room == null) continue;
+
+            List<Group> validatedGroups = new List<Group>();
+
+            foreach (Group candidateGroup in candidateGroups)
+            {
+                ElementId groupTypeId = candidateGroup.GetTypeId();
+                List<Group> sameTypeGroups = groupsByType[groupTypeId];
+
+                // Skip if there's only one instance of this group type
+                if (sameTypeGroups.Count < 2)
+                {
+                    TrackStat("Single Instance Group Type");
+                    continue;
+                }
+
+                // Check if similar rooms exist in other instances
+                var validationResult = ValidateRoomInOtherInstancesWithDetails(
+                    room, candidateGroup, sameTypeGroups, doc);
+
+                if (validationResult.IsValid)
+                {
+                    validatedGroups.Add(candidateGroup);
+                    roomsValidatedBySimilarity++;
+                    LogRoomValidationSuccess(room, candidateGroup, validationResult, doc);
+                }
+                else
+                {
+                    roomsInvalidatedByDissimilarity++;
+                    LogRoomValidationFailure(room, candidateGroup, sameTypeGroups, validationResult, doc);
+                }
+            }
+
+            if (validatedGroups.Count > 0)
+            {
+                validatedContainments[roomId] = validatedGroups;
+            }
+        }
+
+        return validatedContainments;
+    }
+
+    // Enhanced room validation with relaxed thresholds
+    private DetailedValidationResult ValidateRoomInOtherInstancesWithDetails(
+        Room testRoom, Group candidateGroup, List<Group> sameTypeGroups, Document doc)
+    {
+        var result = new DetailedValidationResult();
+
+        // Get test room properties
+        XYZ candidateGroupOrigin = (candidateGroup.Location as LocationPoint)?.Point ?? XYZ.Zero;
+        XYZ testRoomLocation = (testRoom.Location as LocationPoint)?.Point ?? GetRoomCentroid(testRoom);
+        XYZ relativePosition = testRoomLocation - candidateGroupOrigin;
+        double testRoomArea = testRoom.Area;
+        string testRoomName = testRoom.Name;
+
+        foreach (Group otherGroup in sameTypeGroups)
+        {
+            if (otherGroup.Id == candidateGroup.Id) continue;
+
+            result.InstancesChecked++;
+            XYZ otherGroupOrigin = (otherGroup.Location as LocationPoint)?.Point ?? XYZ.Zero;
+            XYZ expectedRoomLocation = otherGroupOrigin + relativePosition;
+
+            bool foundMatch = false;
+
+            // Use spatial index to find rooms near expected location
+            int gridX = (int)Math.Floor(expectedRoomLocation.X / ROOM_SPATIAL_GRID_SIZE);
+            int gridY = (int)Math.Floor(expectedRoomLocation.Y / ROOM_SPATIAL_GRID_SIZE);
+
+            // Check a wider area (3x3 grid)
+            for (int dx = -1; dx <= 1; dx++)
+            {
+                for (int dy = -1; dy <= 1; dy++)
+                {
+                    int cellKey = GetRoomSpatialCellKey(gridX + dx, gridY + dy);
+                    if (!_roomSpatialIndex.ContainsKey(cellKey)) continue;
+
+                    foreach (var roomInfo in _roomSpatialIndex[cellKey])
+                    {
+                        double distance = roomInfo.RoomLocation.DistanceTo(expectedRoomLocation);
+
+                        // Try strict tolerance first
+                        if (distance <= ROOM_POSITION_TOLERANCE)
+                        {
+                            double areaDifference = Math.Abs(roomInfo.Area - testRoomArea) / testRoomArea;
+
+                            if (areaDifference <= ROOM_AREA_TOLERANCE)
+                            {
+                                // Check name/number if available
+                                bool nameMatches = string.IsNullOrEmpty(testRoomName) ||
+                                                 string.IsNullOrEmpty(roomInfo.RoomName) ||
+                                                 roomInfo.RoomName.Equals(testRoomName, StringComparison.OrdinalIgnoreCase);
+
+                                if (nameMatches)
+                                {
+                                    foundMatch = true;
+                                    result.MatchDetails.Add($"Group {otherGroup.Id}: Room at {distance:F2}ft");
+                                    break;
+                                }
+                                else
+                                {
+                                    TrackStat("Name Mismatch");
+                                }
+                            }
+                            else if (areaDifference <= ROOM_AREA_TOLERANCE_RELAXED)
+                            {
+                                // Try with relaxed area tolerance
+                                foundMatch = true;
+                                result.MatchDetails.Add($"Group {otherGroup.Id}: Room with relaxed area tolerance");
+                                break;
+                            }
+                            else
+                            {
+                                result.MismatchDetails.Add(GetRoomMismatchReason(testRoom, expectedRoomLocation, 
+                                    roomInfo, distance, areaDifference));
+                                TrackStat("Area Mismatch");
+                            }
+                        }
+                        else if (distance <= ROOM_POSITION_TOLERANCE_RELAXED)
+                        {
+                            // Try with relaxed position tolerance
+                            double areaDifference = Math.Abs(roomInfo.Area - testRoomArea) / testRoomArea;
+                            if (areaDifference <= ROOM_AREA_TOLERANCE_RELAXED)
+                            {
+                                foundMatch = true;
+                                result.MatchDetails.Add($"Group {otherGroup.Id}: Room with relaxed tolerances");
+                                break;
+                            }
+                        }
+                    }
+                    if (foundMatch) break;
+                }
+                if (foundMatch) break;
+            }
+
+            if (!foundMatch)
+            {
+                result.MismatchDetails.Add($"Group {otherGroup.Id}: No room found near expected location");
+                TrackStat("Position Mismatch");
+            }
+            else
+            {
+                result.InstancesWithRoom++;
+            }
+        }
+
+        // Determine if validation passes with relaxed thresholds
+        double ratio = result.InstancesChecked > 0 ? (double)result.InstancesWithRoom / result.InstancesChecked : 0;
+
+        if (ratio >= ROOM_VALIDATION_THRESHOLD && result.InstancesWithRoom >= ROOM_VALIDATION_MIN_MATCHES)
+        {
+            result.IsValid = true;
+            result.PrimaryFailureReason = "N/A - Validated";
+        }
+        else
+        {
+            result.IsValid = false;
+            if (result.InstancesWithRoom == 0)
+            {
+                result.PrimaryFailureReason = "No similar rooms found in any other instance";
+                TrackStat("No Similar Rooms Found");
+            }
+            else
+            {
+                result.PrimaryFailureReason = $"Below threshold: only {ratio:P0} of instances have similar rooms (need {ROOM_VALIDATION_THRESHOLD:P0})";
+                TrackStat("Below Threshold");
+            }
+        }
+
+        return result;
+    }
+
+    // Check if room boundaries are mostly formed by group members
+    private bool ShouldForceIncludeRoom(Room room, Group group, Document doc)
+    {
+        SpatialElementBoundaryOptions options = new SpatialElementBoundaryOptions();
+        options.SpatialElementBoundaryLocation = SpatialElementBoundaryLocation.Finish;
+
+        IList<IList<BoundarySegment>> boundaries = room.GetBoundarySegments(options);
+        if (boundaries == null || boundaries.Count == 0) return false;
+
+        ICollection<ElementId> groupMemberIds = group.GetMemberIds();
+        int totalSegments = 0;
+        int groupSegments = 0;
+
+        foreach (IList<BoundarySegment> loop in boundaries)
+        {
+            foreach (BoundarySegment segment in loop)
+            {
+                totalSegments++;
+                if (groupMemberIds.Contains(segment.ElementId))
+                {
+                    groupSegments++;
+                }
+            }
+        }
+
+        // If more than 50% of room boundaries are from group members, include it
+        double ratio = totalSegments > 0 ? (double)groupSegments / totalSegments : 0;
+        return ratio > 0.5;
+    }
+
+    // Get room centroid
+    private XYZ GetRoomCentroid(Room room)
+    {
+        BoundingBoxXYZ bb = room.get_BoundingBox(null);
+        if (bb != null)
+        {
+            return (bb.Min + bb.Max) * 0.5;
+        }
+
+        LocationPoint locPoint = room.Location as LocationPoint;
+        if (locPoint != null)
+        {
+            return locPoint.Point;
+        }
+
+        return XYZ.Zero;
+    }
+
+    // Select the best group for a room based on boundary analysis
     private Group SelectBestGroupForRoom(Room room, List<Group> candidateGroups, Document doc)
     {
         if (candidateGroups.Count == 1)
-        {
-            Group singleGroup = candidateGroups.First();
-            // Even for single candidate, verify it has walls near the room
-            if (!DoesGroupHaveWallsNearRoom(singleGroup, room, doc))
-            {
-                diagnosticLog.AppendLine($"  Single candidate group {GetGroupTypeName(singleGroup, doc)} has no walls near room {room.Name ?? room.Id.ToString()} - excluding");
-                return null;
-            }
-            return singleGroup;
-        }
+            return candidateGroups.First();
 
         // Get room boundary segments
         SpatialElementBoundaryOptions options = new SpatialElementBoundaryOptions();
@@ -228,40 +491,10 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
 
         if (boundaries == null || boundaries.Count == 0)
         {
-            // No boundaries - this room might be unbound or defined by room separation lines
-            diagnosticLog.AppendLine($"  Room {room.Name ?? room.Id.ToString()} has no boundaries - checking for nearby walls");
-            
-            // Filter to only groups that actually have walls near this room
-            List<Group> validGroups = new List<Group>();
-            foreach (Group group in candidateGroups)
-            {
-                if (DoesGroupHaveWallsNearRoom(group, room, doc))
-                {
-                    validGroups.Add(group);
-                }
-            }
-            
-            if (validGroups.Count == 0)
-            {
-                diagnosticLog.AppendLine($"    No groups have walls near room {room.Name ?? room.Id.ToString()} - excluding from group assignment");
-                return null;
-            }
-            else if (validGroups.Count == 1)
-            {
-                Group selected = validGroups.First();
-                diagnosticLog.AppendLine($"    Selected {GetGroupTypeName(selected, doc)} as only group with walls near room");
-                return selected;
-            }
-            else
-            {
-                // Multiple groups with walls - use the one with smallest bounding box
-                Group best = SelectGroupBySmallestBoundingBox(validGroups);
-                diagnosticLog.AppendLine($"    Selected {GetGroupTypeName(best, doc)} based on smallest bounding box");
-                return best;
-            }
+            return SelectGroupBySmallestBoundingBox(candidateGroups);
         }
 
-        // Count how many boundary elements each group contains
+        // Count boundary elements for each group
         Dictionary<Group, int> groupBoundaryCount = new Dictionary<Group, int>();
         Dictionary<Group, double> groupBoundaryLength = new Dictionary<Group, double>();
 
@@ -271,7 +504,6 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
             double totalLength = 0.0;
             HashSet<ElementId> memberIds = new HashSet<ElementId>(group.GetMemberIds());
 
-            // Check each boundary segment
             foreach (IList<BoundarySegment> loop in boundaries)
             {
                 foreach (BoundarySegment segment in loop)
@@ -279,8 +511,6 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
                     if (memberIds.Contains(segment.ElementId))
                     {
                         count++;
-
-                        // Get segment length
                         Curve segmentCurve = segment.GetCurve();
                         if (segmentCurve != null)
                         {
@@ -296,35 +526,6 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
 
         // Find the group with the most boundary elements
         int maxCount = groupBoundaryCount.Values.Max();
-        
-        // If no group has any boundary segments, check for nearby walls
-        if (maxCount == 0)
-        {
-            diagnosticLog.AppendLine($"    No groups have boundary segments for room {room.Name ?? room.Id.ToString()}");
-            
-            // Filter to only groups with walls near the room
-            List<Group> validGroups = new List<Group>();
-            foreach (Group group in candidateGroups)
-            {
-                if (DoesGroupHaveWallsNearRoom(group, room, doc))
-                {
-                    validGroups.Add(group);
-                }
-            }
-            
-            if (validGroups.Count == 0)
-            {
-                diagnosticLog.AppendLine($"    No groups have walls near room - excluding from assignment");
-                return null;
-            }
-            else
-            {
-                Group best = SelectGroupBySmallestBoundingBox(validGroups);
-                diagnosticLog.AppendLine($"    Selected {GetGroupTypeName(best, doc)} based on smallest bounding box among groups with nearby walls");
-                return best;
-            }
-        }
-        
         List<Group> groupsWithMaxCount = groupBoundaryCount
             .Where(kvp => kvp.Value == maxCount)
             .Select(kvp => kvp.Key)
@@ -332,19 +533,56 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
 
         if (groupsWithMaxCount.Count == 1)
         {
-            // Clear winner
-            Group winner = groupsWithMaxCount.First();
-            diagnosticLog.AppendLine($"  Selected {GetGroupTypeName(winner, doc)} with {maxCount} boundary segments");
-            return winner;
+            return groupsWithMaxCount.First();
         }
 
         // If there's still a tie, use total boundary length
-        Group bestByLength = groupsWithMaxCount
-            .OrderByDescending(g => groupBoundaryLength[g])
-            .First();
+        if (maxCount > 0)
+        {
+            Group bestByLength = groupsWithMaxCount
+                .OrderByDescending(g => groupBoundaryLength[g])
+                .First();
 
-        diagnosticLog.AppendLine($"  Selected {GetGroupTypeName(bestByLength, doc)} with {maxCount} boundary segments and {groupBoundaryLength[bestByLength]:F2} ft total length");
-        return bestByLength;
+            return bestByLength;
+        }
+
+        // Check which group has more walls near the room
+        Dictionary<Group, int> groupWallCount = new Dictionary<Group, int>();
+
+        foreach (Group group in candidateGroups)
+        {
+            int wallCount = 0;
+            ICollection<ElementId> memberIds = group.GetMemberIds();
+
+            foreach (ElementId memberId in memberIds)
+            {
+                Element member = doc.GetElement(memberId);
+                if (member is Wall wall)
+                {
+                    LocationCurve wallLocation = wall.Location as LocationCurve;
+                    if (wallLocation != null)
+                    {
+                        Curve wallCurve = wallLocation.Curve;
+                        XYZ wallMidpoint = wallCurve.Evaluate(0.5, true);
+
+                        if (IsPointNearRoomBoundary(wallMidpoint, room, 2.0)) // 2 feet tolerance
+                        {
+                            wallCount++;
+                        }
+                    }
+                }
+            }
+
+            groupWallCount[group] = wallCount;
+        }
+
+        // Select group with most walls near the room
+        Group bestByWalls = groupWallCount
+            .OrderByDescending(kvp => kvp.Value)
+            .ThenBy(kvp => GetGroupBoundingBoxVolume(kvp.Key))
+            .First().Key;
+
+        return bestByWalls;
     }
 
     // Check if a point is near a room boundary
@@ -362,7 +600,6 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
                 Curve segmentCurve = segment.GetCurve();
                 if (segmentCurve != null)
                 {
-                    // Find closest point on curve to the given point
                     IntersectionResult result = segmentCurve.Project(point);
                     if (result != null)
                     {
@@ -379,7 +616,7 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
         return false;
     }
 
-    // Fallback: Select group by smallest bounding box
+    // Select group by smallest bounding box
     private Group SelectGroupBySmallestBoundingBox(List<Group> groups)
     {
         Group bestGroup = null;
@@ -419,7 +656,24 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
         return gt?.Name ?? "Unknown";
     }
 
-    // Get elements contained in group's rooms using filtered mapping
+    // Check if room is within bounding box
+    private bool IsRoomWithinBoundingBox(RoomData roomData, XYZ bbMin, XYZ bbMax)
+    {
+        BoundingBoxXYZ roomBB = roomData.BoundingBox;
+        if (roomBB == null) return false;
+
+        // Add small tolerance
+        double tolerance = 0.1;
+
+        return roomBB.Min.X >= bbMin.X - tolerance &&
+               roomBB.Min.Y >= bbMin.Y - tolerance &&
+               roomBB.Min.Z >= bbMin.Z - tolerance &&
+               roomBB.Max.X <= bbMax.X + tolerance &&
+               roomBB.Max.Y <= bbMax.Y + tolerance &&
+               roomBB.Max.Z <= bbMax.Z + tolerance;
+    }
+
+    // Enhanced: Get elements contained in group's rooms with simplified diagnostics
     private List<Element> GetElementsContainedInGroupRoomsFiltered(
         Group group,
         List<Element> candidateElements,
@@ -447,47 +701,56 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
             return containedElements;
         }
 
-        // Get the group's location for better vertical filtering
-        LocationPoint groupLocation = group.Location as LocationPoint;
-        double groupZ = groupLocation?.Point.Z ?? 0;
-        
-        // Use tighter vertical bounds based on typical floor height
-        double typicalFloorHeight = 15.0; // 15 feet typical floor-to-floor height
-        double groupMinZ = groupZ - 2.0; // 2 feet below group origin
-        double groupMaxZ = groupZ + typicalFloorHeight; // One floor height above
+        // Get the overall height range of the group
+        ICollection<ElementId> memberIds = group.GetMemberIds();
+        double groupMinZ = double.MaxValue;
+        double groupMaxZ = double.MinValue;
+
+        foreach (ElementId id in memberIds)
+        {
+            Element member = doc.GetElement(id);
+            BoundingBoxXYZ bb = member?.get_BoundingBox(null);
+            if (bb != null)
+            {
+                groupMinZ = Math.Min(groupMinZ, bb.Min.Z);
+                groupMaxZ = Math.Max(groupMaxZ, bb.Max.Z);
+            }
+        }
+
+        // Add tolerance to height bounds
+        groupMinZ -= 1.0; // 1 foot below
+        groupMaxZ += 1.0; // 1 foot above
 
         // Check each candidate element against all rooms
         foreach (Element elem in candidateElements)
         {
-            // Get cached test points
             List<XYZ> testPoints = _elementTestPointsCache[elem.Id];
+            bool foundInRoom = false;
+            string containingRoomName = "";
 
             foreach (Room room in groupRooms)
             {
-                if (IsElementInRoomWithStrictZCheck(elem, room, testPoints, groupMinZ, groupMaxZ, groupZ))
+                if (IsElementInRoomOptimized(elem, room, testPoints, groupMinZ, groupMaxZ))
                 {
                     containedElements.Add(elem);
-                    break; // Element is in at least one room, no need to check others
+                    foundInRoom = true;
+                    containingRoomName = room.Name ?? room.Number ?? "Unnamed";
+                    break;
                 }
+            }
+
+            // Log only if element not found (using simplified diagnostic)
+            if (!foundInRoom)
+            {
+                LogElementContainmentCheck(elem, group, false, "", doc);
             }
         }
 
         return containedElements;
     }
 
-    // Check if room is within bounding box
-    private bool IsRoomWithinBoundingBox(RoomData roomData, XYZ bbMin, XYZ bbMax)
-    {
-        BoundingBoxXYZ roomBB = roomData.BoundingBox;
-        if (roomBB == null) return false;
-
-        return roomBB.Min.X >= bbMin.X && roomBB.Min.Y >= bbMin.Y && roomBB.Min.Z >= bbMin.Z &&
-               roomBB.Max.X <= bbMax.X && roomBB.Max.Y <= bbMax.Y && roomBB.Max.Z <= bbMax.Z;
-    }
-
-    // More strict version of element-in-room check with better Z filtering
-    private bool IsElementInRoomWithStrictZCheck(Element element, Room room, List<XYZ> testPoints, 
-                                                 double groupMinZ, double groupMaxZ, double groupOriginZ)
+    // Optimized element-in-room check
+    private bool IsElementInRoomOptimized(Element element, Room room, List<XYZ> testPoints, double groupMinZ, double groupMaxZ)
     {
         // Skip unplaced or unenclosed rooms
         if (room.Area <= 0)
@@ -495,36 +758,16 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
 
         // Get cached room data
         RoomData roomData = _roomDataCache[room.Id];
-        
-        // Get room level
-        Level roomLevel = room.Level;
-        if (roomLevel == null) return false;
-        
-        double roomLevelZ = roomLevel.Elevation;
-        
-        // Check if room is at approximately the same level as the group
-        // Allow for some vertical tolerance but not entire floors
-        double levelDifference = Math.Abs(roomLevelZ - groupOriginZ);
-        if (levelDifference > 5.0) // More than 5 feet difference in levels
-        {
-            // This room is on a different floor than the group
-            return false;
-        }
 
         // Check if any test point is within the room
         foreach (XYZ point in testPoints)
         {
-            // Strict Z check - element must be within the group's vertical range
+            // First check Z coordinate against group bounds
             if (point.Z < groupMinZ || point.Z > groupMaxZ)
                 continue;
-            
-            // Additional check: element should be close to room level
-            double elementToRoomLevelDist = Math.Abs(point.Z - roomLevelZ);
-            if (elementToRoomLevelDist > 10.0) // Element more than 10 feet from room level
-                continue;
 
-            // For ALL rooms (bounded or unbound), check XY containment at room level
-            double testZ = roomLevelZ + 1.0; // 1 foot above room level
+            // For ALL rooms, check XY containment at room level
+            double testZ = roomData.LevelZ + 1.0; // 1 foot above room level
             if (!roomData.IsUnbound && roomData.BoundingBox != null)
             {
                 // For bounded rooms, use a point within the room's height range

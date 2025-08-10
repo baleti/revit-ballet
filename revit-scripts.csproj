@@ -125,6 +125,7 @@
     <Compile Include="revit-scripts\CombineViewSetsIntoANewSet.cs" />
     <Compile Include="revit-scripts\CopyCropRegionOfSelectedView.cs" />
     <Compile Include="revit-scripts\CopySelectedElementsAlongContainingGroupsByRooms_Cache.cs" />
+    <Compile Include="revit-scripts\CopySelectedElementsAlongContainingGroupsByRooms_Diagnostics.cs" />
     <Compile Include="revit-scripts\CopySelectedElementsAlongContainingGroupsByRooms_Main.cs" />
     <Compile Include="revit-scripts\CopySelectedElementsAlongContainingGroupsByRooms_RoomContainment.cs" />
     <Compile Include="revit-scripts\CopySelectedElementsAlongContainingGroupsByRooms_Transform.cs" />

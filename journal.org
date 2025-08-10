@@ -1248,3 +1248,7 @@ grouping of rooms was complex and required many heuristic rules to ascertain tha
 ******* commands
 FilterSelectedElementsByContainingGroupsWithRooms
 CopySelectedElementsAlongContainingGroupsByRooms
+*** 10
+**** =00:29= little progress in getting CopySelectedElementsAlongContainingGroupsByRooms command to work
+it became long and complex and tests are slow
+determined to get it to work, although investment isn't likely to be returned at this point
