@@ -8,17 +8,17 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
 {
     // Cache for element test points to avoid recalculation
     private Dictionary<ElementId, List<XYZ>> _elementTestPointsCache = new Dictionary<ElementId, List<XYZ>>();
-    
+
     // Cache for room data
     private Dictionary<ElementId, RoomData> _roomDataCache = new Dictionary<ElementId, RoomData>();
-    
+
     // Cache for group bounding boxes
     private Dictionary<ElementId, BoundingBoxXYZ> _groupBoundingBoxCache = new Dictionary<ElementId, BoundingBoxXYZ>();
-    
+
     // Spatial index for groups
     private Dictionary<int, List<Group>> _spatialIndex = new Dictionary<int, List<Group>>();
     private const double SPATIAL_GRID_SIZE = 50.0; // 50 feet grid cells
-    
+
     // Data structure for room information
     private class RoomData
     {
@@ -30,19 +30,9 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
         public double MinZ { get; set; }
         public double MaxZ { get; set; }
     }
-    
-    // Structure for true batch copying
-    private class BatchCopyData
-    {
-        public ElementId SourceElementId { get; set; }
-        public Transform Transform { get; set; }
-        public Group TargetGroup { get; set; }
-        public Level TargetLevel { get; set; }
-        public List<string> GroupTypeNames { get; set; }
-        public Group SourceGroup { get; set; } // Track which group instance this element came from
-        public string SourceScopeBox { get; set; } // Track source group's scope box
-    }
-    
+
+    // DELETE THE BatchCopyData CLASS FROM HERE - IT'S ALREADY IN Copying.cs
+
     // Build room cache for all rooms
     private void BuildRoomCache(Document doc)
     {
@@ -53,17 +43,17 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
             .OfType<Room>()
             .Where(r => r != null && r.Area > 0)
             .ToList();
-        
+
         foreach (Room room in allRooms)
         {
             Level roomLevel = doc.GetElement(room.LevelId) as Level;
             if (roomLevel == null) continue;
-            
+
             double roomLevelElevation = roomLevel.Elevation;
-            double roomHeight = room.LookupParameter("Height")?.AsDouble() 
+            double roomHeight = room.LookupParameter("Height")?.AsDouble()
                 ?? room.get_Parameter(BuiltInParameter.ROOM_HEIGHT)?.AsDouble()
                 ?? UnitUtils.ConvertToInternalUnits(10.0, UnitTypeId.Feet);
-            
+
             RoomData data = new RoomData
             {
                 Level = roomLevel,
@@ -74,16 +64,17 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
                 BoundingBox = room.get_BoundingBox(null),
                 IsUnbound = room.Volume <= 0.001
             };
-            
+
             _roomDataCache[room.Id] = data;
         }
     }
-    
+
+    // Rest of the file continues unchanged...
     // Pre-calculate all group bounding boxes and build spatial index
     private void PreCalculateGroupDataAndSpatialIndex(IList<Group> allGroups, Document doc)
     {
         _spatialIndex.Clear();
-        
+
         foreach (Group group in allGroups)
         {
             // Calculate and cache bounding box
@@ -91,24 +82,24 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
             if (bb != null)
             {
                 _groupBoundingBoxCache[group.Id] = bb;
-                
+
                 // Add to spatial index
                 AddToSpatialIndex(group, bb);
             }
         }
     }
-    
+
     // Calculate group bounding box (without checking cache)
     private BoundingBoxXYZ CalculateGroupBoundingBox(Group group, Document doc)
     {
         ICollection<ElementId> memberIds = group.GetMemberIds();
         if (memberIds.Count == 0) return null;
-        
+
         double minX = double.MaxValue, minY = double.MaxValue, minZ = double.MaxValue;
         double maxX = double.MinValue, maxY = double.MinValue, maxZ = double.MinValue;
-        
+
         bool hasValidBB = false;
-        
+
         foreach (ElementId id in memberIds)
         {
             Element member = doc.GetElement(id);
@@ -127,16 +118,16 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
                 }
             }
         }
-        
+
         if (!hasValidBB) return null;
-        
+
         BoundingBoxXYZ groupBB = new BoundingBoxXYZ();
         groupBB.Min = new XYZ(minX, minY, minZ);
         groupBB.Max = new XYZ(maxX, maxY, maxZ);
-        
+
         return groupBB;
     }
-    
+
     // Add group to spatial index
     private void AddToSpatialIndex(Group group, BoundingBoxXYZ bb)
     {
@@ -145,7 +136,7 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
         int maxGridX = (int)Math.Floor(bb.Max.X / SPATIAL_GRID_SIZE);
         int minGridY = (int)Math.Floor(bb.Min.Y / SPATIAL_GRID_SIZE);
         int maxGridY = (int)Math.Floor(bb.Max.Y / SPATIAL_GRID_SIZE);
-        
+
         // Add group to all overlapping cells
         for (int x = minGridX; x <= maxGridX; x++)
         {
@@ -160,7 +151,7 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
             }
         }
     }
-    
+
     // Get spatial cell key from grid coordinates
     private int GetSpatialCellKey(int gridX, int gridY)
     {
@@ -168,18 +159,18 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
         // Assumes grid coordinates are within reasonable bounds
         return (gridX + 10000) * 20000 + (gridY + 10000);
     }
-    
+
     // Get groups that might intersect with the given bounding box
     private List<Group> GetSpatiallyRelevantGroups(BoundingBoxXYZ targetBB)
     {
         HashSet<Group> relevantGroups = new HashSet<Group>();
-        
+
         // Get all grid cells that the target bounding box overlaps
         int minGridX = (int)Math.Floor(targetBB.Min.X / SPATIAL_GRID_SIZE);
         int maxGridX = (int)Math.Floor(targetBB.Max.X / SPATIAL_GRID_SIZE);
         int minGridY = (int)Math.Floor(targetBB.Min.Y / SPATIAL_GRID_SIZE);
         int maxGridY = (int)Math.Floor(targetBB.Max.Y / SPATIAL_GRID_SIZE);
-        
+
         // Collect all groups from overlapping cells
         for (int x = minGridX; x <= maxGridX; x++)
         {
@@ -195,18 +186,18 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
                 }
             }
         }
-        
+
         return relevantGroups.ToList();
     }
-    
+
     // Pre-calculate test points for an element
     private List<XYZ> GetElementTestPoints(Element element)
     {
         List<XYZ> testPoints = new List<XYZ>();
-        
+
         LocationPoint locPoint = element.Location as LocationPoint;
         LocationCurve locCurve = element.Location as LocationCurve;
-        
+
         if (locPoint != null)
         {
             testPoints.Add(locPoint.Point);
@@ -228,20 +219,20 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
                 testPoints.Add((bb.Min + bb.Max) * 0.5);
             }
         }
-        
+
         return testPoints;
     }
-    
+
     // Get overall bounding box for a list of elements
     private BoundingBoxXYZ GetOverallBoundingBox(List<Element> elements)
     {
         if (elements.Count == 0) return null;
-        
+
         double minX = double.MaxValue, minY = double.MaxValue, minZ = double.MaxValue;
         double maxX = double.MinValue, maxY = double.MinValue, maxZ = double.MinValue;
-        
+
         bool hasValidBB = false;
-        
+
         foreach (Element elem in elements)
         {
             BoundingBoxXYZ bb = elem.get_BoundingBox(null);
@@ -256,16 +247,16 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
                 maxZ = Math.Max(maxZ, bb.Max.Z);
             }
         }
-        
+
         if (!hasValidBB) return null;
-        
+
         BoundingBoxXYZ overallBB = new BoundingBoxXYZ();
         overallBB.Min = new XYZ(minX, minY, minZ);
         overallBB.Max = new XYZ(maxX, maxY, maxZ);
-        
+
         return overallBB;
     }
-    
+
     // Check if two bounding boxes intersect
     private bool BoundingBoxesIntersect(BoundingBoxXYZ bb1, BoundingBoxXYZ bb2)
     {
