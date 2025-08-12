@@ -1,4 +1,4 @@
-﻿// AssignViewTemplateToSelectedViews.cs
+// AssignViewTemplateToSelectedViews.cs
 //
 // C# 7.3 command for Revit 2024 – assigns a single view template
 // to every view or viewport currently selected.

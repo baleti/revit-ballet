@@ -1,4 +1,4 @@
-﻿#region Namespaces
+#region Namespaces
 using System;
 using System.Linq;
 using System.Collections.Generic;

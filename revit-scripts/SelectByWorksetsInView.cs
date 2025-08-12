@@ -1,4 +1,4 @@
-﻿//
+//
 //  SelectByWorksetsInView.cs
 //  Revit 2024 – C# 7.3
 //

@@ -1,4 +1,4 @@
-﻿// MoveSelectedToCentroid.cs  – Revit 2024 / .NET 4.8 / C# 7.3
+// MoveSelectedToCentroid.cs  – Revit 2024 / .NET 4.8 / C# 7.3
 using System;
 using System.Collections.Generic;
 using System.IO;

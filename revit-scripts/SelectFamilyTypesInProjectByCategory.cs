@@ -1,4 +1,4 @@
-﻿// SelectFamilyTypesInProjectByCategory.cs
+// SelectFamilyTypesInProjectByCategory.cs
 // C# 7.3 – Revit API 2024
 
 using Autodesk.Revit.Attributes;

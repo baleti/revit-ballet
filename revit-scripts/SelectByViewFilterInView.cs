@@ -1,4 +1,4 @@
-﻿// SelectByFilterInView.cs
+// SelectByFilterInView.cs
 //
 // Revit 2024 API – C# 7.3
 // Select all elements *visible in the active view* that pass one or more

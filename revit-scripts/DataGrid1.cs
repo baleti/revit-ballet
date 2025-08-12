@@ -1,4 +1,4 @@
-﻿using Autodesk.Revit.UI;            // for TaskDialog
+using Autodesk.Revit.UI;            // for TaskDialog
 using System;
 using System.Collections.Generic;
 using System.Linq;

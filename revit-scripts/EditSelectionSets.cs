@@ -1,4 +1,4 @@
-﻿// EditSelectionSets.cs  –  Revit 2024 / C# 7.3 compatible
+// EditSelectionSets.cs  –  Revit 2024 / C# 7.3 compatible
 using System;
 using System.Collections.Generic;
 using System.Drawing;

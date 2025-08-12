@@ -1,4 +1,4 @@
-﻿// PlaceSelectedViewsOnSheets.cs – Revit 2024, C# 7.3
+// PlaceSelectedViewsOnSheets.cs – Revit 2024, C# 7.3
 // Author: ChatGPT (o3)
 // Natural‑sort enabled (e.g. "1", "1A", "10" → 1, 1A, 10)
 

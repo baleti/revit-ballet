@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using Autodesk.Revit.Attributes;

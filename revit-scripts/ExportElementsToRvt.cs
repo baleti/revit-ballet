@@ -1,4 +1,4 @@
-﻿// doesn't work ModificationOutsideTransactoionException
+// doesn't work ModificationOutsideTransactoionException
 // also doesn't work for view specific objects
 using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;

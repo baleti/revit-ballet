@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Windows.Forms; // For the simple input dialog
 using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;

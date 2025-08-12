@@ -1,4 +1,4 @@
-﻿// DON'T USE IT
+// DON'T USE IT
 // EXPLODE IMPORTED CAD AND COPY ELEMENTS INTO A NEW FAMILY
 // CLEANING IT UP ISN'T DANGEROUS AND IT'S MUCH FASTER THAN THIS SCRIPT DUE TO REVIT API LIMITATIONS
 // https://forums.autodesk.com/t5/revit-api-forum/creating-lines-increasingly-slower-from-3ms-to-200ms/td-p/12895581

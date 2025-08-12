@@ -1,4 +1,4 @@
-﻿// File: FilterCommands.cs
+// File: FilterCommands.cs
 // Place this single file in your project.
 using System;
 using System.Collections.Generic;

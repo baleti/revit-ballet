@@ -1,4 +1,4 @@
-﻿// C# 7.3 — Revit 2024 API
+// C# 7.3 — Revit 2024 API
 using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
