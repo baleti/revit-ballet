@@ -19,6 +19,12 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
     private Dictionary<int, List<Group>> _spatialIndex = new Dictionary<int, List<Group>>();
     private const double SPATIAL_GRID_SIZE = 50.0; // 50 feet grid cells
 
+    // Performance optimization caches
+    private Dictionary<string, double> _floorToFloorHeightCache = new Dictionary<string, double>();
+    private Dictionary<string, bool> _roomPointContainmentCache = new Dictionary<string, bool>();
+    private Dictionary<ElementId, IList<IList<BoundarySegment>>> _roomBoundaryCache = 
+        new Dictionary<ElementId, IList<IList<BoundarySegment>>>();
+
     // Data structure for room information
     private class RoomData
     {
@@ -36,6 +42,8 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
     // Build room cache for all rooms
     private void BuildRoomCache(Document doc)
     {
+        StartTiming("BuildRoomCache");
+        
         FilteredElementCollector roomCollector = new FilteredElementCollector(doc);
         List<Room> allRooms = roomCollector
             .OfClass(typeof(SpatialElement))
@@ -67,6 +75,8 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
 
             _roomDataCache[room.Id] = data;
         }
+        
+        EndTiming("BuildRoomCache");
     }
 
     // Rest of the file continues unchanged...

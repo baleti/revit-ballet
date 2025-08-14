@@ -32,8 +32,10 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
     private const double ROOM_SPATIAL_GRID_SIZE = 10.0; // 10 feet grid for room lookups
 
     // Build comprehensive room-to-group mapping with validation for spatial containment
-    private Dictionary<ElementId, Group> BuildRoomToGroupMapping(IList<Group> relevantGroups, Document doc)
+    private Dictionary<ElementId, Group> BuildRoomToGroupMapping(IList<Group> relevantGroups, Document doc, BoundingBoxXYZ selectedElementsBounds = null)
     {
+        StartTiming("BuildRoomToGroupMapping");
+        
         Dictionary<ElementId, RoomMappingInfo> roomMappingInfo = new Dictionary<ElementId, RoomMappingInfo>();
         Dictionary<ElementId, List<Group>> roomDirectMembership = new Dictionary<ElementId, List<Group>>();
         Dictionary<ElementId, List<Group>> roomSpatialContainment = new Dictionary<ElementId, List<Group>>();
@@ -42,6 +44,7 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
         BuildRoomSpatialIndex(doc);
 
         // First pass: identify direct memberships
+        StartTiming("DirectMembershipPass");
         foreach (Group group in relevantGroups)
         {
             foreach (ElementId memberId in group.GetMemberIds())
@@ -58,8 +61,10 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
                 }
             }
         }
+        EndTiming("DirectMembershipPass");
 
         // Second pass: identify spatial containments
+        StartTiming("SpatialContainmentPass");
         foreach (Group group in relevantGroups)
         {
             if (!_groupBoundingBoxCache.ContainsKey(group.Id)) continue;
@@ -95,6 +100,7 @@ if (roomData != null && IsRoomWithinBoundingBox(roomData, groupBB.Min, groupBB.M
                }
            }
        }
+       EndTiming("SpatialContainmentPass");
 
        // Build mapping with direct memberships
        Dictionary<ElementId, Group> roomToGroupMap = new Dictionary<ElementId, Group>();
@@ -117,6 +123,7 @@ if (roomData != null && IsRoomWithinBoundingBox(roomData, groupBB.Min, groupBB.M
        }
 
        // Validate spatially contained rooms
+       StartTiming("ValidateSpatialContainments");
        FilteredElementCollector allGroupsCollector = new FilteredElementCollector(doc);
        IList<Group> allGroups = allGroupsCollector
            .OfClass(typeof(Group))
@@ -126,6 +133,7 @@ if (roomData != null && IsRoomWithinBoundingBox(roomData, groupBB.Min, groupBB.M
 
        Dictionary<ElementId, List<Group>> validatedSpatialContainments = ValidateSpatialContainmentsEnhanced(
            roomSpatialContainment, allGroups, doc);
+       EndTiming("ValidateSpatialContainments");
 
        // Add validated spatial containments
        foreach (var kvp in validatedSpatialContainments)
@@ -152,8 +160,10 @@ if (roomData != null && IsRoomWithinBoundingBox(roomData, groupBB.Min, groupBB.M
        Dictionary<ElementId, Group> finalMapping = MapRoomsByBoundaryWalls(
            roomToGroupMap, 
            relevantGroups, 
-           doc);
+           doc,
+           selectedElementsBounds);  // Pass bounds for filtering
 
+       EndTiming("BuildRoomToGroupMapping");
        return finalMapping;
    }
 
@@ -259,10 +269,39 @@ if (roomData != null && IsRoomWithinBoundingBox(roomData, groupBB.Min, groupBB.M
    private Dictionary<ElementId, Group> MapRoomsByBoundaryWalls(
        Dictionary<ElementId, Group> existingMapping,
        IList<Group> allGroups,
-       Document doc)
+       Document doc,
+       BoundingBoxXYZ selectedElementsBounds = null)  // ADD PARAMETER
    {
+       StartTiming("MapRoomsByBoundaryWalls");
+       
        // Start with existing mappings
        Dictionary<ElementId, Group> enhancedMapping = new Dictionary<ElementId, Group>(existingMapping);
+       
+       // OPTIMIZATION: Pre-filter rooms to only those near selected elements
+       List<ElementId> roomsToCheck = new List<ElementId>();
+       if (selectedElementsBounds != null)
+       {
+           double buffer = 20.0; // 20 feet buffer
+           foreach (var kvp in _roomDataCache)
+           {
+               RoomData roomData = kvp.Value;
+               if (roomData.BoundingBox != null)
+               {
+                   // Quick bounds check
+                   if (!(roomData.BoundingBox.Max.X < selectedElementsBounds.Min.X - buffer ||
+                         roomData.BoundingBox.Min.X > selectedElementsBounds.Max.X + buffer ||
+                         roomData.BoundingBox.Max.Y < selectedElementsBounds.Min.Y - buffer ||
+                         roomData.BoundingBox.Min.Y > selectedElementsBounds.Max.Y + buffer))
+                   {
+                       roomsToCheck.Add(kvp.Key);
+                   }
+               }
+           }
+       }
+       else
+       {
+           roomsToCheck = _roomDataCache.Keys.ToList();
+       }
        
        // Build a map of wall IDs to their containing groups
        Dictionary<ElementId, List<Group>> wallToGroups = new Dictionary<ElementId, List<Group>>();
@@ -283,9 +322,9 @@ if (roomData != null && IsRoomWithinBoundingBox(roomData, groupBB.Min, groupBB.M
        }
        
        // Check unmapped rooms
-       foreach (var kvp in _roomDataCache)
+       // OPTIMIZATION: Only check filtered rooms
+       foreach (ElementId roomId in roomsToCheck)
        {
-           ElementId roomId = kvp.Key;
            
            // Skip if already mapped
            if (enhancedMapping.ContainsKey(roomId))
@@ -296,10 +335,23 @@ if (roomData != null && IsRoomWithinBoundingBox(roomData, groupBB.Min, groupBB.M
                continue;
            
            // Get room boundaries
-           SpatialElementBoundaryOptions options = new SpatialElementBoundaryOptions();
-           options.SpatialElementBoundaryLocation = SpatialElementBoundaryLocation.Finish;
+           // OPTIMIZATION: Cache boundary segments
+           IList<IList<BoundarySegment>> boundaries;
+           if (!_roomBoundaryCache.ContainsKey(roomId))
+           {
+               StartTiming("GetBoundarySegments");
+               SpatialElementBoundaryOptions options = new SpatialElementBoundaryOptions();
+               options.SpatialElementBoundaryLocation = SpatialElementBoundaryLocation.Finish;
+               
+               boundaries = room.GetBoundarySegments(options);
+               _roomBoundaryCache[roomId] = boundaries;
+               EndTiming("GetBoundarySegments");
+           }
+           else
+           {
+               boundaries = _roomBoundaryCache[roomId];
+           }
            
-           IList<IList<BoundarySegment>> boundaries = room.GetBoundarySegments(options);
            if (boundaries == null || boundaries.Count == 0)
                continue;
            
@@ -360,6 +412,7 @@ if (roomData != null && IsRoomWithinBoundingBox(roomData, groupBB.Min, groupBB.M
            }
        }
        
+       EndTiming("MapRoomsByBoundaryWalls");
        return enhancedMapping;
    }
 
@@ -405,8 +458,29 @@ if (roomData != null && IsRoomWithinBoundingBox(roomData, groupBB.Min, groupBB.M
        Document doc,
        Dictionary<ElementId, Group> roomToGroupMap)
    {
+       StartTiming("GetElementsContainedInGroupRoomsFiltered");
        List<Element> containedElements = new List<Element>();
 
+       // OPTIMIZATION: Early exit if group has no rooms
+       if (!roomToGroupMap.Any(kvp => kvp.Value.Id == group.Id))
+       {
+           EndTiming("GetElementsContainedInGroupRoomsFiltered");
+           return containedElements;
+       }
+       
+       // OPTIMIZATION: Pre-filter candidates by elevation
+       BoundingBoxXYZ groupBB = _groupBoundingBoxCache.ContainsKey(group.Id) 
+           ? _groupBoundingBoxCache[group.Id] 
+           : null;
+           
+       if (groupBB == null)
+       {
+           EndTiming("GetElementsContainedInGroupRoomsFiltered");
+           return containedElements;
+       }
+       
+       List<Element> elevationFilteredElements = new List<Element>();
+       
        // Get all rooms that map to this group
        List<Room> groupRooms = new List<Room>();
        foreach (var kvp in roomToGroupMap)
@@ -445,9 +519,24 @@ if (roomData != null && IsRoomWithinBoundingBox(roomData, groupBB.Min, groupBB.M
        // Add tolerance to height bounds
        groupMinZ -= 1.0; // 1 foot below
        groupMaxZ += 1.0; // 1 foot above
-
-       // Check each candidate element against all rooms
+       
+       // OPTIMIZATION: Filter elements by Z elevation FIRST
        foreach (Element elem in candidateElements)
+       {
+           List<XYZ> testPoints = _elementTestPointsCache[elem.Id];
+           if (testPoints.Count > 0)
+           {
+               double elemZ = testPoints[0].Z;
+               // Quick elevation check
+               if (elemZ >= groupMinZ && elemZ <= groupMaxZ)
+               {
+                   elevationFilteredElements.Add(elem);
+               }
+           }
+       }
+
+       // Check only elevation-filtered elements
+       foreach (Element elem in elevationFilteredElements)
        {
            List<XYZ> testPoints = _elementTestPointsCache[elem.Id];
            bool foundInRoom = false;
@@ -471,12 +560,29 @@ if (roomData != null && IsRoomWithinBoundingBox(roomData, groupBB.Min, groupBB.M
            }
        }
 
+       EndTiming("GetElementsContainedInGroupRoomsFiltered");
        return containedElements;
    }
 
    // Get actual floor-to-floor height based on floor slabs above and below the element
    private double GetActualFloorToFloorHeight(Level currentLevel, Document doc, XYZ testPoint)
    {
+       StartTiming("GetActualFloorToFloorHeight");
+       
+       // OPTIMIZATION: Cache by grid location
+       // Use coarser grid (50ft instead of 10ft) for better cache hits
+       int gridX = (int)Math.Floor(testPoint.X / 50.0);
+       int gridY = (int)Math.Floor(testPoint.Y / 50.0);
+       string cacheKey = $"L{currentLevel.Id.IntegerValue}_X{gridX}_Y{gridY}";
+       
+       if (_floorToFloorHeightCache.ContainsKey(cacheKey))
+       {
+           EndTiming("GetActualFloorToFloorHeight");
+           return _floorToFloorHeightCache[cacheKey];
+       }
+       
+       double floorToFloorHeight = 10.0; // Default value
+       
        if (currentLevel == null || testPoint == null) return 10.0; // Default
 
        // Find all floor elements in the document
@@ -553,9 +659,15 @@ if (roomData != null && IsRoomWithinBoundingBox(roomData, groupBB.Min, groupBB.M
                        diagnosticLog.AppendLine($"        Floor above room (ID: {floorAbove.id}): {floorAbove.elevation:F2}ft");
                        diagnosticLog.AppendLine($"        Actual F2F height: {floorToFloor:F2}ft");
                    }
-                   return floorToFloor;
+                   floorToFloorHeight = floorToFloor;
+                   _floorToFloorHeightCache[cacheKey] = floorToFloorHeight;
+                   EndTiming("GetActualFloorToFloorHeight");
+                   return floorToFloorHeight;
                }
-               return floorToFloor;
+               floorToFloorHeight = floorToFloor;
+               _floorToFloorHeightCache[cacheKey] = floorToFloorHeight;
+               EndTiming("GetActualFloorToFloorHeight");
+               return floorToFloorHeight;
            }
        }
        
@@ -590,7 +702,10 @@ if (roomData != null && IsRoomWithinBoundingBox(roomData, groupBB.Min, groupBB.M
                            diagnosticLog.AppendLine($"        Current floor at: {currentFloor.elevation:F2}ft");
                            diagnosticLog.AppendLine($"        Next floor at: {nextFloor.elevation:F2}ft");
                        }
-                       return floorToFloor;
+                       floorToFloorHeight = floorToFloor;
+                       _floorToFloorHeightCache[cacheKey] = floorToFloorHeight;
+                       EndTiming("GetActualFloorToFloorHeight");
+                       return floorToFloorHeight;
                    }
                }
            }
@@ -628,24 +743,47 @@ if (roomData != null && IsRoomWithinBoundingBox(roomData, groupBB.Min, groupBB.M
        // If we found a next level, return the difference
        if (nextLevel != null)
        {
-           return nextLevel.Elevation - currentElevation;
+           floorToFloorHeight = nextLevel.Elevation - currentElevation;
+           _floorToFloorHeightCache[cacheKey] = floorToFloorHeight;
+           EndTiming("GetActualFloorToFloorHeight");
+           return floorToFloorHeight;
        }
 
-       // Default to 10 feet if no next level found
-       return 10.0;
+       EndTiming("GetActualFloorToFloorHeight");
+       _floorToFloorHeightCache[cacheKey] = floorToFloorHeight;  // Cache the default
+       return floorToFloorHeight;
    }
 
 
    // Optimized element-in-room check
    private bool IsElementInRoomOptimized(Element element, Room room, List<XYZ> testPoints, double groupMinZ, double groupMaxZ)
    {
+       StartTiming("IsElementInRoomOptimized");
+       
        // Skip unplaced or unenclosed rooms
        if (room.Area <= 0)
+       {
+           EndTiming("IsElementInRoomOptimized");
            return false;
+       }
 
        // Get cached room data
        RoomData roomData = _roomDataCache[room.Id];
 
+       // OPTIMIZATION: Quick rejection based on Z bounds
+       double elementZ = testPoints[0].Z;
+       double maxPossibleHeight = roomData.LevelZ + 20.0; // Max reasonable floor height
+       
+       if (elementZ < roomData.LevelZ - 2.0 || elementZ > maxPossibleHeight)
+       {
+           // Element is clearly outside room's possible Z range
+           EndTiming("IsElementInRoomOptimized");
+           return false;
+       }
+       
+       // OPTIMIZATION: Check if we've already calculated F2F for this room's level
+       bool needsF2FCheck = Math.Abs(roomData.Height - 10.0) < 2.0; // Room height seems wrong
+       
        foreach (XYZ point in testPoints)
        {
            // Check XY containment - try multiple Z heights to ensure we catch the room
@@ -664,7 +802,23 @@ if (roomData != null && IsRoomWithinBoundingBox(roomData, groupBB.Min, groupBB.M
            foreach (double testZ in testZHeights)
            {
                XYZ testPointForXY = new XYZ(point.X, point.Y, testZ);
-               if (room.IsPointInRoom(testPointForXY))
+               
+               // OPTIMIZATION: Cache room containment checks
+               string containmentKey = $"R{room.Id.IntegerValue}_X{(int)(point.X*10)}_Y{(int)(point.Y*10)}_Z{(int)(testZ*10)}";
+               bool isInRoom;
+               if (!_roomPointContainmentCache.ContainsKey(containmentKey))
+               {
+                   StartTiming("Room.IsPointInRoom");
+                   isInRoom = room.IsPointInRoom(testPointForXY);
+                   EndTiming("Room.IsPointInRoom");
+                   _roomPointContainmentCache[containmentKey] = isInRoom;
+               }
+               else
+               {
+                   isInRoom = _roomPointContainmentCache[containmentKey];
+               }
+               
+               if (isInRoom)
                {
                    inRoomXY = true;
                    break;
@@ -682,6 +836,7 @@ if (roomData != null && IsRoomWithinBoundingBox(roomData, groupBB.Min, groupBB.M
                    {
                        diagnosticLog.AppendLine($"  Element in room {room.Number} using room height bounds");
                    }
+                   EndTiming("IsElementInRoomOptimized");
                    return true;
                }
                
@@ -707,12 +862,14 @@ if (roomData != null && IsRoomWithinBoundingBox(roomData, groupBB.Min, groupBB.M
                            diagnosticLog.AppendLine($"      Room Z range with F2F: {roomData.LevelZ:F2}ft to {actualMaxZ:F2}ft");
                            diagnosticLog.AppendLine($"      Element Z: {point.Z:F2}ft");
                        }
+                       EndTiming("IsElementInRoomOptimized");
                        return true;
                    }
                }
            }
        }
 
+       EndTiming("IsElementInRoomOptimized");
        return false;
    }
 }

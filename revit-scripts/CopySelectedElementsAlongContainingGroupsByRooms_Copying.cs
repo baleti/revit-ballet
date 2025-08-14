@@ -174,6 +174,16 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
             // Skip the source group itself
             if (otherGroup.Id == referenceGroup.Id) continue;
 
+            // OPTIMIZATION: Skip if groups are at different elevations
+            LocationPoint sourceLoc = referenceGroup.Location as LocationPoint;
+            LocationPoint otherLoc = otherGroup.Location as LocationPoint;
+            if (sourceLoc != null && otherLoc != null)
+            {
+                double zDiff = Math.Abs(sourceLoc.Point.Z - otherLoc.Point.Z);
+                if (zDiff > 50.0) // Groups on very different floors
+                    continue;
+            }
+
             // Track this as a possible target
             allPossibleTargetGroups.Add(otherGroup.Id);
 

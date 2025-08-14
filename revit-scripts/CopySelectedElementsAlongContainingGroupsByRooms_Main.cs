@@ -58,6 +58,11 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms : IExterna
             // Build room cache for ALL rooms in the document
             BuildRoomCache(doc);
 
+            // OPTIMIZATION: Clear caches from previous runs
+            _floorToFloorHeightCache.Clear();
+            _roomPointContainmentCache.Clear();
+            _roomBoundaryCache.Clear();
+
             // PRE-CALCULATE ALL GROUP BOUNDING BOXES AND BUILD SPATIAL INDEX
             PreCalculateGroupDataAndSpatialIndex(allGroups, doc);
 
@@ -65,11 +70,40 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms : IExterna
             List<Group> spatiallyRelevantGroups = GetSpatiallyRelevantGroups(overallBB);
 
             // Build comprehensive room-to-group mapping with priority handling and validation
-            Dictionary<ElementId, Group> roomToSingleGroupMap = BuildRoomToGroupMapping(spatiallyRelevantGroups, doc);
+            Dictionary<ElementId, Group> roomToSingleGroupMap = BuildRoomToGroupMapping(spatiallyRelevantGroups, doc, overallBB);
 
             // Map elements to their containing groups
+            // OPTIMIZATION: Pre-filter groups by element elevation ranges
+            double minElementZ = double.MaxValue;
+            double maxElementZ = double.MinValue;
+            
+            foreach (Element elem in selectedElements)
+            {
+                List<XYZ> points = _elementTestPointsCache[elem.Id];
+                foreach (XYZ pt in points)
+                {
+                    minElementZ = Math.Min(minElementZ, pt.Z);
+                    maxElementZ = Math.Max(maxElementZ, pt.Z);
+                }
+            }
+            
+            // Filter groups by elevation
+            List<Group> elevationFilteredGroups = new List<Group>();
+            foreach (Group group in spatiallyRelevantGroups)
+            {
+                if (_groupBoundingBoxCache.ContainsKey(group.Id))
+                {
+                    BoundingBoxXYZ bb = _groupBoundingBoxCache[group.Id];
+                    // Check if group's Z range overlaps with elements' Z range
+                    if (!(bb.Max.Z + 2.0 < minElementZ || bb.Min.Z - 2.0 > maxElementZ))
+                    {
+                        elevationFilteredGroups.Add(group);
+                    }
+                }
+            }
+            
             Dictionary<ElementId, List<Group>> elementsInGroups = MapElementsToGroups(
-                selectedElements, spatiallyRelevantGroups, overallBB, doc, roomToSingleGroupMap);
+                selectedElements, elevationFilteredGroups, overallBB, doc, roomToSingleGroupMap);
 
             if (elementsInGroups.Count == 0)
             {
