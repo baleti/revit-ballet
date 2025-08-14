@@ -7,201 +7,273 @@ using Autodesk.Revit.DB.Architecture;
 
 public partial class CopySelectedElementsAlongContainingGroupsByRooms
 {
-    // Simplified diagnostic configuration
-    private bool enableDiagnostics = true; // Set to false to disable all diagnostics
-    private bool saveDiagnosticsToFile = true; // Save to desktop
-
-    // Focused diagnostic tracking
+    private bool enableDiagnostics = true;
+    private bool saveDiagnosticsToFile = true;
     private StringBuilder diagnosticLog = new StringBuilder();
-    private Dictionary<string, int> summaryStats = new Dictionary<string, int>();
 
-    // Initialize diagnostics
     private void InitializeDiagnostics()
     {
         if (!enableDiagnostics) return;
-
         diagnosticLog.Clear();
-        summaryStats.Clear();
-
-        diagnosticLog.AppendLine($"=== ROOM SIMILARITY DIAGNOSTICS - {DateTime.Now:yyyy-MM-dd HH:mm:ss} ===");
-        diagnosticLog.AppendLine($"Thresholds: Position={ROOM_POSITION_TOLERANCE}ft, Area={ROOM_AREA_TOLERANCE:P0}, MinRatio={ROOM_VALIDATION_THRESHOLD:P0}");
+        diagnosticLog.AppendLine($"=== ELEMENT-TO-GROUP MAPPING TEST - {DateTime.Now:yyyy-MM-dd HH:mm:ss} ===");
         diagnosticLog.AppendLine();
     }
 
-    // Log selected elements summary
     private void LogSelectedElements(List<Element> selectedElements)
     {
         if (!enableDiagnostics) return;
 
-        diagnosticLog.AppendLine($"SELECTED ELEMENTS: {selectedElements.Count}");
         foreach (Element elem in selectedElements)
         {
             string elemDesc = elem.Name ?? $"{elem.Category?.Name}";
-            diagnosticLog.AppendLine($"  - {elemDesc} (ID: {elem.Id})");
-        }
-        diagnosticLog.AppendLine();
-    }
-
-    // Log room validation failure - this is the key diagnostic
-    private void LogRoomValidationFailure(Room room, Group candidateGroup,
-        List<Group> sameTypeGroups, DetailedValidationResult validationResult, Document doc)
-    {
-        if (!enableDiagnostics) return;
-
-        GroupType gt = doc.GetElement(candidateGroup.GetTypeId()) as GroupType;
-        string groupTypeName = gt?.Name ?? "Unknown";
-
-        diagnosticLog.AppendLine($"ROOM VALIDATION FAILED:");
-        diagnosticLog.AppendLine($"  Room: {room.Name ?? "Unnamed"} #{room.Number} (Area: {room.Area:F0} sqft)");
-        diagnosticLog.AppendLine($"  Group Type: {groupTypeName} (Instance ID: {candidateGroup.Id})");
-        diagnosticLog.AppendLine($"  Result: {validationResult.InstancesWithRoom}/{validationResult.InstancesChecked} instances have similar room");
-        diagnosticLog.AppendLine($"  Reason: {validationResult.PrimaryFailureReason}");
-
-        // Show first few mismatches for debugging
-        if (validationResult.MismatchDetails.Count > 0)
-        {
-            diagnosticLog.AppendLine("  Details:");
-            foreach (var detail in validationResult.MismatchDetails.Take(3))
+            List<XYZ> testPoints = GetElementTestPoints(elem);
+            if (testPoints.Count > 0)
             {
-                diagnosticLog.AppendLine($"    - {detail}");
+                XYZ point = testPoints[0];
+                diagnosticLog.AppendLine($"TESTING ELEMENT: {elemDesc} (ID: {elem.Id})");
+                diagnosticLog.AppendLine($"Position: ({point.X:F2}, {point.Y:F2}, {point.Z:F2})");
+                diagnosticLog.AppendLine();
+                
+                TestRoomContainmentMapping(elem, point);
             }
         }
-        diagnosticLog.AppendLine();
     }
 
-    // Log room validation success
-    private void LogRoomValidationSuccess(Room room, Group candidateGroup,
-        DetailedValidationResult validationResult, Document doc)
+    private void TestRoomContainmentMapping(Element element, XYZ point)
     {
-        if (!enableDiagnostics) return;
-
-        GroupType gt = doc.GetElement(candidateGroup.GetTypeId()) as GroupType;
-        string groupTypeName = gt?.Name ?? "Unknown";
-
-        // Only log brief success info
-        diagnosticLog.AppendLine($"ROOM VALIDATED: {room.Name ?? "Unnamed"} #{room.Number} for {groupTypeName} ({validationResult.InstancesWithRoom}/{validationResult.InstancesChecked} matches)");
+    Document doc = element.Document;
+    
+    // ENSURE CACHE IS BUILT
+    if (_roomDataCache == null || _roomDataCache.Count == 0)
+    {
+        diagnosticLog.AppendLine(">>> Building room cache...");
+        BuildRoomCache(doc);
+        diagnosticLog.AppendLine($">>> Cache built with {_roomDataCache.Count} rooms");
     }
-
-    // Log element containment check
-    private void LogElementContainmentCheck(Element element, Group group, bool isContained, string roomName, Document doc)
-    {
-        if (!enableDiagnostics) return;
-
-        // Only log failures for element containment
-        if (!isContained)
+        
+        // Step 1: Find which rooms contain this element with F2F logic
+        diagnosticLog.AppendLine("STEP 1: ROOMS CONTAINING ELEMENT (with F2F height):");
+        List<Room> containingRooms = new List<Room>();
+        
+        foreach (var kvp in _roomDataCache)
         {
+            Room room = doc.GetElement(kvp.Key) as Room;
+            if (room == null || room.Area <= 0) continue;
+            
+            RoomData roomData = kvp.Value;
+            
+            // Check XY containment
+            bool inRoomXY = false;
+            double testZ = roomData.LevelZ + 1.0;
+            XYZ testPointXY = new XYZ(point.X, point.Y, testZ);
+            if (room.IsPointInRoom(testPointXY))
+            {
+                inRoomXY = true;
+            }
+            
+            if (inRoomXY)
+            {
+                // Check with actual F2F height
+                double actualF2F = GetActualFloorToFloorHeightAtLocation(roomData.Level, doc, point);
+                double actualMaxZ = roomData.LevelZ + actualF2F;
+                
+                if (point.Z >= roomData.LevelZ - 1.0 && point.Z <= actualMaxZ + 1.0)
+                {
+                    containingRooms.Add(room);
+                    diagnosticLog.AppendLine($"  ✓ Room {room.Number} - {room.Name} (ID: {room.Id})");
+                    diagnosticLog.AppendLine($"    Level: {roomData.Level?.Name}, F2F: {actualF2F:F2}ft");
+                }
+            }
+        }
+        
+        if (containingRooms.Count == 0)
+        {
+            diagnosticLog.AppendLine("  ✗ NO ROOMS FOUND");
+            return;
+        }
+        
+        // Step 2: Check room-to-group mapping
+        diagnosticLog.AppendLine("\nSTEP 2: ROOM-TO-GROUP MAPPING:");
+        
+        // Build room-to-group map (simplified version)
+        Dictionary<ElementId, Group> roomToGroupMap = BuildRoomToGroupMapping(
+            GetSpatiallyRelevantGroups(GetOverallBoundingBox(new List<Element> { element })), 
+            doc);
+        
+        foreach (Room room in containingRooms)
+        {
+            if (roomToGroupMap.ContainsKey(room.Id))
+            {
+                Group mappedGroup = roomToGroupMap[room.Id];
+                GroupType gt = doc.GetElement(mappedGroup.GetTypeId()) as GroupType;
+                diagnosticLog.AppendLine($"  ✓ Room {room.Number} → Group {gt?.Name} (ID: {mappedGroup.Id})");
+                
+                // Check if this is direct membership or spatial containment
+                bool isDirectMember = mappedGroup.GetMemberIds().Contains(room.Id);
+                diagnosticLog.AppendLine($"    Membership type: {(isDirectMember ? "DIRECT" : "SPATIAL")}");
+                
+                // Count instances of this group type
+                FilteredElementCollector groupCollector = new FilteredElementCollector(doc);
+                int instanceCount = groupCollector
+                    .OfClass(typeof(Group))
+                    .WhereElementIsNotElementType()
+                    .Where(g => g.GetTypeId() == mappedGroup.GetTypeId())
+                    .Count();
+                diagnosticLog.AppendLine($"    Group type instances: {instanceCount}");
+            }
+            else
+            {
+                diagnosticLog.AppendLine($"  ✗ Room {room.Number} NOT MAPPED TO ANY GROUP!");
+                
+                // Investigate why
+                diagnosticLog.AppendLine($"    Checking groups containing this room...");
+                bool foundInAnyGroup = false;
+                
+                FilteredElementCollector groupCollector = new FilteredElementCollector(doc);
+                foreach (Group group in groupCollector.OfClass(typeof(Group)).Cast<Group>())
+                {
+                    if (group.GetMemberIds().Contains(room.Id))
+                    {
+                        GroupType gt = doc.GetElement(group.GetTypeId()) as GroupType;
+                        diagnosticLog.AppendLine($"    Found as direct member in: {gt?.Name} (ID: {group.Id})");
+                        foundInAnyGroup = true;
+                    }
+                }
+                
+                if (!foundInAnyGroup)
+                {
+                    diagnosticLog.AppendLine($"    Room is NOT a direct member of any group");
+                    diagnosticLog.AppendLine($"    Spatial containment validation may have failed");
+                }
+            }
+        }
+        
+        // Step 3: Test the actual element containment check
+        diagnosticLog.AppendLine("\nSTEP 3: ELEMENT CONTAINMENT CHECK:");
+        
+        foreach (var kvp in roomToGroupMap)
+        {
+            Room room = doc.GetElement(kvp.Key) as Room;
+            if (!containingRooms.Contains(room)) continue;
+            
+            Group group = kvp.Value;
+            
+            // Test with the actual IsElementInRoomOptimized method
+            List<XYZ> testPoints = new List<XYZ> { point };
+            bool isContained = IsElementInRoomOptimized(element, room, testPoints, point.Z - 5, point.Z + 5);
+            
             GroupType gt = doc.GetElement(group.GetTypeId()) as GroupType;
-            string groupTypeName = gt?.Name ?? "Unknown";
-            string elemDesc = element.Name ?? $"{element.Category?.Name}";
-
-            diagnosticLog.AppendLine($"ELEMENT NOT IN ROOM: {elemDesc} not found in any room of {groupTypeName} (Group ID: {group.Id})");
+            diagnosticLog.AppendLine($"  Room {room.Number} in Group {gt?.Name}:");
+            diagnosticLog.AppendLine($"    IsElementInRoomOptimized result: {(isContained ? "✓ YES" : "✗ NO")}");
+            
+            if (!isContained)
+            {
+                diagnosticLog.AppendLine($"    >>> MISMATCH: Element should be in room but check failed!");
+            }
         }
     }
 
-    // Log final summary
+    // Simplified version that matches diagnostic logic exactly
+    private double GetActualFloorToFloorHeightAtLocation(Level currentLevel, Document doc, XYZ testPoint)
+    {
+        if (currentLevel == null || testPoint == null) return 10.0;
+
+        FilteredElementCollector floorCollector = new FilteredElementCollector(doc);
+        List<Floor> allFloors = floorCollector
+            .OfClass(typeof(Floor))
+            .WhereElementIsNotElementType()
+            .Cast<Floor>()
+            .Where(f => f != null)
+            .ToList();
+
+        List<(Floor floor, double elevation)> floorsAtLocation = new List<(Floor, double)>();
+        
+        foreach (Floor floor in allFloors)
+        {
+            BoundingBoxXYZ bb = floor.get_BoundingBox(null);
+            if (bb == null) continue;
+            
+            if (testPoint.X >= bb.Min.X - 1.0 && testPoint.X <= bb.Max.X + 1.0 &&
+                testPoint.Y >= bb.Min.Y - 1.0 && testPoint.Y <= bb.Max.Y + 1.0)
+            {
+                floorsAtLocation.Add((floor, bb.Max.Z));
+            }
+        }
+        
+        floorsAtLocation = floorsAtLocation.OrderBy(f => f.elevation).ToList();
+        double roomLevelElevation = currentLevel.Elevation;
+        
+        var floorBelow = floorsAtLocation
+            .Where(f => Math.Abs(f.elevation - roomLevelElevation) < 2.0)
+            .OrderBy(f => Math.Abs(f.elevation - roomLevelElevation))
+            .FirstOrDefault();
+            
+        if (floorBelow.floor != null)
+        {
+            var floorAbove = floorsAtLocation
+                .Where(f => f.elevation > floorBelow.elevation + 1.0)
+                .OrderBy(f => f.elevation)
+                .FirstOrDefault();
+                
+            if (floorAbove.floor != null)
+            {
+                return floorAbove.elevation - floorBelow.elevation;
+            }
+        }
+        
+        return 10.0; // Default
+    }
+
+    // Minimal stub implementations
+    private void LogElementRoomCheck(Element element, Room room, bool isContained,
+        List<XYZ> testPoints, double groupMinZ, double groupMaxZ, Document doc) { }
+
+    private void LogFloorToFloorCheck(XYZ point, RoomData roomData, Document doc) { }
+
+    private void LogRoomValidationFailure(Room room, Group candidateGroup,
+        List<Group> sameTypeGroups, DetailedValidationResult validationResult, Document doc) { }
+
+    private void LogRoomValidationSuccess(Room room, Group candidateGroup,
+        DetailedValidationResult validationResult, Document doc) { }
+
+    private void LogElementContainmentCheck(Element element, Group group, bool isContained, string roomName, Document doc) { }
+
+    private void LogNearbyRoomsForElement(Element element, Document doc) { }
+
+    private void DiagnoseElementsNotInGroups(List<Element> selectedElements,
+        Dictionary<ElementId, List<Group>> elementsInGroups, Document doc) { }
+
+    private void TrackStat(string statName) { }
+
+    private void TestFloorDetection(Document doc, XYZ testPoint) { }
+
+    private void TestRoomContainmentWithF2F(Element element, XYZ point) { }
+
     private void LogFinalSummary(int selectedCount, int foundInGroups, int totalCopied)
     {
         if (!enableDiagnostics) return;
-
-        diagnosticLog.AppendLine();
-        diagnosticLog.AppendLine("=== SUMMARY ===");
-        diagnosticLog.AppendLine($"Selected elements: {selectedCount}");
-        diagnosticLog.AppendLine($"Elements found in groups: {foundInGroups}");
+        diagnosticLog.AppendLine($"\n=== SUMMARY ===");
+        diagnosticLog.AppendLine($"Elements selected: {selectedCount}");
+        diagnosticLog.AppendLine($"Elements in groups: {foundInGroups}");
         diagnosticLog.AppendLine($"Elements copied: {totalCopied}");
-
-        if (summaryStats.Count > 0)
-        {
-            diagnosticLog.AppendLine();
-            diagnosticLog.AppendLine("Key Issues:");
-            foreach (var stat in summaryStats.OrderByDescending(x => x.Value))
-            {
-                diagnosticLog.AppendLine($"  - {stat.Key}: {stat.Value}");
-            }
-        }
     }
 
-    // Track summary statistic
-    private void TrackStat(string statName)
-    {
-        if (!enableDiagnostics) return;
-
-        if (!summaryStats.ContainsKey(statName))
-            summaryStats[statName] = 0;
-        summaryStats[statName]++;
-    }
-
-    // Save diagnostics to file (only if there are issues)
     private void SaveDiagnostics(bool forceWrite = false)
     {
         if (!enableDiagnostics || !saveDiagnosticsToFile) return;
 
-        // Only save if there are actual issues or forced
-        if (!forceWrite && summaryStats.Count == 0 && diagnosticLog.Length < 500)
-            return;
-
         string desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
-        string fileName = $"RevitRoomDiagnostics_{DateTime.Now:yyyyMMdd_HHmmss}.txt";
+        string fileName = $"RevitMappingTest_{DateTime.Now:yyyyMMdd_HHmmss}.txt";
         string filePath = System.IO.Path.Combine(desktopPath, fileName);
 
         try
         {
             System.IO.File.WriteAllText(filePath, diagnosticLog.ToString());
-
-            if (forceWrite || summaryStats.Count > 0)
+            if (forceWrite)
             {
-                Autodesk.Revit.UI.TaskDialog.Show("Diagnostics Saved",
-                    $"Room validation diagnostics saved to:\n{filePath}");
+                Autodesk.Revit.UI.TaskDialog.Show("Diagnostics Saved", $"Saved to:\n{filePath}");
             }
         }
-        catch (Exception ex)
-        {
-            Autodesk.Revit.UI.TaskDialog.Show("Diagnostic Error",
-                $"Could not save diagnostics: {ex.Message}");
-        }
-    }
-
-    // Quick diagnostic for why elements weren't found in groups
-    private void DiagnoseElementsNotInGroups(List<Element> selectedElements,
-        Dictionary<ElementId, List<Group>> elementsInGroups, Document doc)
-    {
-        if (!enableDiagnostics) return;
-
-        foreach (Element elem in selectedElements)
-        {
-            if (!elementsInGroups.ContainsKey(elem.Id) || elementsInGroups[elem.Id].Count == 0)
-            {
-                string elemDesc = elem.Name ?? $"{elem.Category?.Name}";
-                diagnosticLog.AppendLine($"ELEMENT NOT IN ANY GROUP: {elemDesc} (ID: {elem.Id})");
-
-                // Check if element is in any room at all
-                LocationPoint locPoint = elem.Location as LocationPoint;
-                if (locPoint != null)
-                {
-                    XYZ point = locPoint.Point;
-
-                    // Quick check: is this element in ANY room?
-                    bool foundInAnyRoom = false;
-                    foreach (var kvp in _roomDataCache)
-                    {
-                        Room room = doc.GetElement(kvp.Key) as Room;
-                        if (room != null && room.IsPointInRoom(point))
-                        {
-                            foundInAnyRoom = true;
-                            diagnosticLog.AppendLine($"  Element IS in room: {room.Name ?? room.Number}");
-                            diagnosticLog.AppendLine($"  But room not associated with any group");
-                            TrackStat("Elements in rooms not associated with groups");
-                            break;
-                        }
-                    }
-
-                    if (!foundInAnyRoom)
-                    {
-                        diagnosticLog.AppendLine($"  Element NOT in any room");
-                        TrackStat("Elements not in any room");
-                    }
-                }
-                diagnosticLog.AppendLine();
-            }
-        }
+        catch { }
     }
 }

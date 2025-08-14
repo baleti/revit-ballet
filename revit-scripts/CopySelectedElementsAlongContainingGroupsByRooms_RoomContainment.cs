@@ -147,8 +147,14 @@ if (roomData != null && IsRoomWithinBoundingBox(roomData, groupBB.Min, groupBB.M
                }
            }
        }
+       
+       // THIRD PASS: Map rooms based on boundary walls
+       Dictionary<ElementId, Group> finalMapping = MapRoomsByBoundaryWalls(
+           roomToGroupMap, 
+           relevantGroups, 
+           doc);
 
-       return roomToGroupMap;
+       return finalMapping;
    }
 
    // Build spatial index for all rooms
@@ -247,6 +253,114 @@ if (roomData != null && IsRoomWithinBoundingBox(roomData, groupBB.Min, groupBB.M
        // If more than 50% of room boundaries are from group members, include it
        double ratio = totalSegments > 0 ? (double)groupSegments / totalSegments : 0;
        return ratio > 0.5;
+   }
+
+   // Map rooms to groups based on boundary walls
+   private Dictionary<ElementId, Group> MapRoomsByBoundaryWalls(
+       Dictionary<ElementId, Group> existingMapping,
+       IList<Group> allGroups,
+       Document doc)
+   {
+       // Start with existing mappings
+       Dictionary<ElementId, Group> enhancedMapping = new Dictionary<ElementId, Group>(existingMapping);
+       
+       // Build a map of wall IDs to their containing groups
+       Dictionary<ElementId, List<Group>> wallToGroups = new Dictionary<ElementId, List<Group>>();
+       foreach (Group group in allGroups)
+       {
+           foreach (ElementId memberId in group.GetMemberIds())
+           {
+               Element member = doc.GetElement(memberId);
+               if (member is Wall)
+               {
+                   if (!wallToGroups.ContainsKey(memberId))
+                   {
+                       wallToGroups[memberId] = new List<Group>();
+                   }
+                   wallToGroups[memberId].Add(group);
+               }
+           }
+       }
+       
+       // Check unmapped rooms
+       foreach (var kvp in _roomDataCache)
+       {
+           ElementId roomId = kvp.Key;
+           
+           // Skip if already mapped
+           if (enhancedMapping.ContainsKey(roomId))
+               continue;
+               
+           Room room = doc.GetElement(roomId) as Room;
+           if (room == null || room.Area <= 0)
+               continue;
+           
+           // Get room boundaries
+           SpatialElementBoundaryOptions options = new SpatialElementBoundaryOptions();
+           options.SpatialElementBoundaryLocation = SpatialElementBoundaryLocation.Finish;
+           
+           IList<IList<BoundarySegment>> boundaries = room.GetBoundarySegments(options);
+           if (boundaries == null || boundaries.Count == 0)
+               continue;
+           
+           // Track which groups contain boundary walls
+           Dictionary<Group, int> groupBoundaryCount = new Dictionary<Group, int>();
+           int totalWallSegments = 0;
+           
+           foreach (IList<BoundarySegment> loop in boundaries)
+           {
+               foreach (BoundarySegment segment in loop)
+               {
+                   ElementId boundaryId = segment.ElementId;
+                   Element boundaryElem = doc.GetElement(boundaryId);
+                   
+                   // Only count walls (not room separation lines)
+                   if (boundaryElem is Wall)
+                   {
+                       totalWallSegments++;
+                       
+                       // Check which groups contain this wall
+                       if (wallToGroups.ContainsKey(boundaryId))
+                       {
+                           foreach (Group group in wallToGroups[boundaryId])
+                           {
+                               if (!groupBoundaryCount.ContainsKey(group))
+                               {
+                                   groupBoundaryCount[group] = 0;
+                               }
+                               groupBoundaryCount[group]++;
+                           }
+                       }
+                   }
+               }
+           }
+           
+           // If a significant portion of walls belong to one group, map the room to it
+           if (totalWallSegments > 0)
+           {
+               foreach (var groupKvp in groupBoundaryCount)
+               {
+                   Group group = groupKvp.Key;
+                   int wallCount = groupKvp.Value;
+                   double ratio = (double)wallCount / totalWallSegments;
+                   
+                   // If at least 75% of wall segments belong to this group
+                   if (ratio >= 0.75)
+                   {
+                       enhancedMapping[roomId] = group;
+                       
+                       if (enableDiagnostics)
+                       {
+                           GroupType gt = doc.GetElement(group.GetTypeId()) as GroupType;
+                           diagnosticLog.AppendLine($"  Room {room.Number} mapped to group {gt?.Name} via boundary walls ({wallCount}/{totalWallSegments} = {ratio:P0})");
+                       }
+                       break; // Use first group that meets threshold
+                   }
+               }
+           }
+       }
+       
+       return enhancedMapping;
    }
 
    // Get room centroid
@@ -360,6 +474,168 @@ if (roomData != null && IsRoomWithinBoundingBox(roomData, groupBB.Min, groupBB.M
        return containedElements;
    }
 
+   // Get actual floor-to-floor height based on floor slabs above and below the element
+   private double GetActualFloorToFloorHeight(Level currentLevel, Document doc, XYZ testPoint)
+   {
+       if (currentLevel == null || testPoint == null) return 10.0; // Default
+
+       // Find all floor elements in the document
+       FilteredElementCollector floorCollector = new FilteredElementCollector(doc);
+       List<Floor> allFloors = floorCollector
+           .OfClass(typeof(Floor))
+           .WhereElementIsNotElementType()
+           .Cast<Floor>()
+           .Where(f => f != null)
+           .ToList();
+
+
+       // Find floors at this XY location with their elevations
+       List<(Floor floor, double elevation, ElementId id)> floorsAtLocation = new List<(Floor, double, ElementId)>();
+       
+       foreach (Floor floor in allFloors)
+       {
+           try
+           {
+               // Get floor bounding box for quick check
+               BoundingBoxXYZ bb = floor.get_BoundingBox(null);
+               if (bb == null) continue;
+               
+               // Check if test point is within floor's XY bounds (with some tolerance)
+               double tolerance = 1.0; // 1 foot tolerance
+               if (testPoint.X >= bb.Min.X - tolerance && testPoint.X <= bb.Max.X + tolerance &&
+                   testPoint.Y >= bb.Min.Y - tolerance && testPoint.Y <= bb.Max.Y + tolerance)
+               {
+                   // This floor is at our XY location
+                   // Use the top of the bounding box as the floor elevation
+                   double floorTopZ = bb.Max.Z;
+                   floorsAtLocation.Add((floor, floorTopZ, floor.Id));
+               }
+           }
+           catch
+           {
+               // Skip floors that cause issues
+               continue;
+           }
+       }
+
+       // Sort floors by elevation
+       floorsAtLocation = floorsAtLocation.OrderBy(f => f.elevation).ToList();
+       
+       // Find the floor at the room's level and the one above it
+       // We want the floor-to-floor height for the ROOM, not for where the element is
+       double roomLevelElevation = currentLevel.Elevation;
+       
+       var floorBelow = floorsAtLocation
+           .Where(f => Math.Abs(f.elevation - roomLevelElevation) < 2.0) // Floor at room's level
+           .OrderBy(f => Math.Abs(f.elevation - roomLevelElevation))
+           .FirstOrDefault();
+           
+       if (floorBelow.floor != null)
+       {
+           // Find the next floor above the room's floor
+           var floorAbove = floorsAtLocation
+               .Where(f => f.elevation > floorBelow.elevation + 1.0) // At least 1 foot above
+               .OrderBy(f => f.elevation)
+               .FirstOrDefault();
+       
+           if (floorAbove.floor != null)
+           {
+               double floorToFloor = floorAbove.elevation - floorBelow.elevation;
+               
+               // Sanity check - floor-to-floor should be reasonable
+               if (floorToFloor > 5.0 && floorToFloor < 20.0)
+               {
+                   if (enableDiagnostics)
+                   {
+                       diagnosticLog.AppendLine($"        Floor-to-floor from actual slabs at ROOM level:");
+                       diagnosticLog.AppendLine($"        Room level: {currentLevel.Name} at {roomLevelElevation:F2}ft");
+                       diagnosticLog.AppendLine($"        Floor at room level (ID: {floorBelow.id}): {floorBelow.elevation:F2}ft");
+                       diagnosticLog.AppendLine($"        Floor above room (ID: {floorAbove.id}): {floorAbove.elevation:F2}ft");
+                       diagnosticLog.AppendLine($"        Actual F2F height: {floorToFloor:F2}ft");
+                   }
+                   return floorToFloor;
+               }
+               return floorToFloor;
+           }
+       }
+       
+       // If we only found floors but not bracketing the element, still try to find a reasonable F2F
+       if (floorsAtLocation.Count >= 2)
+       {
+           // Find the floor closest to the current level
+           double levelElevation = currentLevel.Elevation;
+           var currentFloor = floorsAtLocation
+               .Where(f => Math.Abs(f.elevation - levelElevation) < 2.0) // Within 2 feet
+               .OrderBy(f => Math.Abs(f.elevation - levelElevation))
+               .FirstOrDefault();
+           
+           if (currentFloor.floor != null)
+           {
+               // Find the next floor above
+               var nextFloor = floorsAtLocation
+                   .Where(f => f.elevation > currentFloor.elevation + 1.0) // At least 1 foot above
+                   .OrderBy(f => f.elevation)
+                   .FirstOrDefault();
+               
+               if (nextFloor.floor != null)
+               {
+                   double floorToFloor = nextFloor.elevation - currentFloor.elevation;
+                   
+                   // Sanity check - floor-to-floor should be reasonable
+                   if (floorToFloor > 5.0 && floorToFloor < 20.0)
+                   {
+                       if (enableDiagnostics)
+                       {
+                           diagnosticLog.AppendLine($"        Found floor-to-floor from actual floors: {floorToFloor:F2}ft");
+                           diagnosticLog.AppendLine($"        Current floor at: {currentFloor.elevation:F2}ft");
+                           diagnosticLog.AppendLine($"        Next floor at: {nextFloor.elevation:F2}ft");
+                       }
+                       return floorToFloor;
+                   }
+               }
+           }
+       }
+
+       // Fallback to level-based calculation if no floors found
+       if (enableDiagnostics)
+       {
+           diagnosticLog.AppendLine($"        No floors found at location, using level-based calculation");
+       }
+
+       // Get all levels in the document
+       FilteredElementCollector levelCollector = new FilteredElementCollector(doc);
+       List<Level> allLevels = levelCollector
+           .OfClass(typeof(Level))
+           .Cast<Level>()
+           .OrderBy(l => l.Elevation)
+           .ToList();
+
+       // Find the next level above current level
+       Level nextLevel = null;
+       double currentElevation = currentLevel.Elevation;
+       
+       foreach (Level level in allLevels)
+       {
+           if (level.Elevation > currentElevation)
+           {
+               if (nextLevel == null || level.Elevation < nextLevel.Elevation)
+               {
+                   nextLevel = level;
+               }
+           }
+       }
+
+       // If we found a next level, return the difference
+       if (nextLevel != null)
+       {
+           return nextLevel.Elevation - currentElevation;
+       }
+
+       // Default to 10 feet if no next level found
+       return 10.0;
+   }
+
+
    // Optimized element-in-room check
    private bool IsElementInRoomOptimized(Element element, Room room, List<XYZ> testPoints, double groupMinZ, double groupMaxZ)
    {
@@ -370,28 +646,70 @@ if (roomData != null && IsRoomWithinBoundingBox(roomData, groupBB.Min, groupBB.M
        // Get cached room data
        RoomData roomData = _roomDataCache[room.Id];
 
-       // Check if any test point is within the room
        foreach (XYZ point in testPoints)
        {
-           // First check Z coordinate against group bounds
-           if (point.Z < groupMinZ || point.Z > groupMaxZ)
-               continue;
-
-           // For ALL rooms, check XY containment at room level
-           double testZ = roomData.LevelZ + 1.0; // 1 foot above room level
-           if (!roomData.IsUnbound && roomData.BoundingBox != null)
+           // Check XY containment - try multiple Z heights to ensure we catch the room
+           List<double> testZHeights = new List<double>();
+           
+           // Add various test heights
+           testZHeights.Add(roomData.LevelZ + 1.0); // 1 foot above room level
+           testZHeights.Add(roomData.LevelZ + roomData.Height * 0.5); // Middle of room height
+           if (roomData.BoundingBox != null)
            {
-               // For bounded rooms, use a point within the room's height range
-               testZ = (roomData.BoundingBox.Min.Z + roomData.BoundingBox.Max.Z) * 0.5;
+               testZHeights.Add((roomData.BoundingBox.Min.Z + roomData.BoundingBox.Max.Z) * 0.5);
+               testZHeights.Add(roomData.BoundingBox.Min.Z + 1.0);
            }
 
-           // Create test point at appropriate Z for XY containment check
-           XYZ testPointForXY = new XYZ(point.X, point.Y, testZ);
-           bool inRoomXY = room.IsPointInRoom(testPointForXY);
+           bool inRoomXY = false;
+           foreach (double testZ in testZHeights)
+           {
+               XYZ testPointForXY = new XYZ(point.X, point.Y, testZ);
+               if (room.IsPointInRoom(testPointForXY))
+               {
+                   inRoomXY = true;
+                   break;
+               }
+           }
 
            if (inRoomXY)
            {
-               return true;
+               // Element is within room's XY boundaries
+               
+               // First check if it's within the room's defined height
+               if (point.Z >= roomData.MinZ && point.Z <= roomData.MaxZ)
+               {
+                   if (enableDiagnostics)
+                   {
+                       diagnosticLog.AppendLine($"  Element in room {room.Number} using room height bounds");
+                   }
+                   return true;
+               }
+               
+               // If not within room's stated height, use actual floor-to-floor height
+               // Get actual floor-to-floor height at this specific location
+               double actualFloorHeight = GetActualFloorToFloorHeight(roomData.Level, element.Document, point);
+               
+               // Always prefer actual floor-to-floor height if it's different from room height
+               if (Math.Abs(actualFloorHeight - roomData.Height) > 0.5) // More than 6 inches difference
+               {
+                   double actualMaxZ = roomData.LevelZ + actualFloorHeight;
+                   
+                   // Add tolerance for elements near boundaries
+                   double tolerance = 1.0; // 1 foot tolerance
+                   
+                   if (point.Z >= roomData.LevelZ - tolerance && point.Z <= actualMaxZ + tolerance)
+                   {
+                       // Element is within actual floor-to-floor height
+                       if (enableDiagnostics)
+                       {
+                           diagnosticLog.AppendLine($"  >>> Element INCLUDED in room {room.Number} using F2F height <<<");
+                           diagnosticLog.AppendLine($"      Room height: {roomData.Height:F2}ft, Actual F2F: {actualFloorHeight:F2}ft");
+                           diagnosticLog.AppendLine($"      Room Z range with F2F: {roomData.LevelZ:F2}ft to {actualMaxZ:F2}ft");
+                           diagnosticLog.AppendLine($"      Element Z: {point.Z:F2}ft");
+                       }
+                       return true;
+                   }
+               }
            }
        }
 
