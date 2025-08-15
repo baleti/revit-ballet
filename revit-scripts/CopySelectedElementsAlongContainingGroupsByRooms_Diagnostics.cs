@@ -17,6 +17,11 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
     private Dictionary<string, TimeSpan> timingResults = new Dictionary<string, TimeSpan>();
     private Dictionary<string, int> callCounts = new Dictionary<string, int>();
     private Stack<(string name, Stopwatch sw)> timingStack = new Stack<(string, Stopwatch)>();
+    
+    // Tracking why groups are skipped
+    private Dictionary<string, int> skipReasons = new Dictionary<string, int>();
+    private List<string> skippedGroupDetails = new List<string>();
+    private int totalGroupsEvaluated = 0;
 
     private void InitializeDiagnostics()
     {
@@ -24,6 +29,9 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
         diagnosticLog.Clear();
         timingResults.Clear();
         callCounts.Clear();
+        skipReasons.Clear();
+        skippedGroupDetails.Clear();
+        totalGroupsEvaluated = 0;
         globalStopwatch.Restart();
         
         diagnosticLog.AppendLine($"=== PERFORMANCE TIMING ANALYSIS - {DateTime.Now:yyyy-MM-dd HH:mm:ss} ===");
@@ -111,6 +119,22 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
         EndTiming("ElementContainmentCheck");
     }
 
+    public void LogGroupSkipped(string reason, Group group = null, double zDiff = 0)
+    {
+        if (!enableDiagnostics) return;
+        
+        if (!skipReasons.ContainsKey(reason))
+            skipReasons[reason] = 0;
+        skipReasons[reason]++;
+        
+        if (group != null && skippedGroupDetails.Count < 100) // Limit details to first 100
+        {
+            string detail = $"Group {group.Id} skipped: {reason}";
+            if (zDiff > 0) detail += $" (Z diff: {zDiff:F2}ft)";
+            skippedGroupDetails.Add(detail);
+        }
+    }
+
     private void LogFinalSummary(int selectedCount, int foundInGroups, int totalCopied)
     {
         if (!enableDiagnostics) return;
@@ -142,6 +166,27 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
         diagnosticLog.AppendLine($"Elements selected: {selectedCount}");
         diagnosticLog.AppendLine($"Elements in groups: {foundInGroups}");
         diagnosticLog.AppendLine($"Elements copied: {totalCopied}");
+        
+        // Add skip reason analysis
+        if (skipReasons.Count > 0)
+        {
+            diagnosticLog.AppendLine();
+            diagnosticLog.AppendLine("=== GROUP SKIP REASONS ===");
+            foreach (var kvp in skipReasons.OrderByDescending(x => x.Value))
+            {
+                diagnosticLog.AppendLine($"ΓÇó {kvp.Key}: {kvp.Value} groups");
+            }
+            
+            if (skippedGroupDetails.Count > 0)
+            {
+                diagnosticLog.AppendLine();
+                diagnosticLog.AppendLine("=== SAMPLE SKIPPED GROUPS (first 10) ===");
+                foreach (var detail in skippedGroupDetails.Take(10))
+                {
+                    diagnosticLog.AppendLine($"  {detail}");
+                }
+            }
+        }
         
         // Identify bottlenecks
         diagnosticLog.AppendLine();

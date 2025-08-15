@@ -279,9 +279,10 @@ if (roomData != null && IsRoomWithinBoundingBox(roomData, groupBB.Min, groupBB.M
        
        // OPTIMIZATION: Pre-filter rooms to only those near selected elements
        List<ElementId> roomsToCheck = new List<ElementId>();
+       // Increased buffer from 20 to 50 feet to ensure we don't miss rooms
+       double buffer = 50.0; // Increased from 20 feet
        if (selectedElementsBounds != null)
        {
-           double buffer = 20.0; // 20 feet buffer
            foreach (var kvp in _roomDataCache)
            {
                RoomData roomData = kvp.Value;
@@ -396,8 +397,9 @@ if (roomData != null && IsRoomWithinBoundingBox(roomData, groupBB.Min, groupBB.M
                    int wallCount = groupKvp.Value;
                    double ratio = (double)wallCount / totalWallSegments;
                    
-                   // If at least 75% of wall segments belong to this group
-                   if (ratio >= 0.75)
+                   // Reduced threshold from 0.75 to 0.50 to capture more room-group relationships
+                   // This was causing rooms to not be mapped to their groups
+                   if (ratio >= 0.50)
                    {
                        enhancedMapping[roomId] = group;
                        

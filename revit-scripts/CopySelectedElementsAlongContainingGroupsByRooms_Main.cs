@@ -94,8 +94,10 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms : IExterna
                 if (_groupBoundingBoxCache.ContainsKey(group.Id))
                 {
                     BoundingBoxXYZ bb = _groupBoundingBoxCache[group.Id];
-                    // Check if group's Z range overlaps with elements' Z range
-                    if (!(bb.Max.Z + 2.0 < minElementZ || bb.Min.Z - 2.0 > maxElementZ))
+                    // Increased tolerance from 2.0 to 10.0 feet to ensure we don't miss groups
+                    // This was causing groups on different floors to be filtered out incorrectly
+                    double tolerance = 10.0;
+                    if (!(bb.Max.Z + tolerance < minElementZ || bb.Min.Z - tolerance > maxElementZ))
                     {
                         elevationFilteredGroups.Add(group);
                     }
@@ -104,6 +106,16 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms : IExterna
             
             Dictionary<ElementId, List<Group>> elementsInGroups = MapElementsToGroups(
                 selectedElements, elevationFilteredGroups, overallBB, doc, roomToSingleGroupMap);
+
+            // Log mapping statistics
+            if (enableDiagnostics)
+            {
+                diagnosticLog.AppendLine($"\n=== ELEMENT TO GROUP MAPPING ===");
+                diagnosticLog.AppendLine($"Total groups in document: {allGroups.Count}");
+                diagnosticLog.AppendLine($"Spatially relevant groups: {spatiallyRelevantGroups.Count}");
+                diagnosticLog.AppendLine($"Elevation filtered groups: {elevationFilteredGroups.Count}");
+                diagnosticLog.AppendLine($"Elements mapped to groups: {elementsInGroups.Count} of {selectedElements.Count}");
+            }
 
             if (elementsInGroups.Count == 0)
             {

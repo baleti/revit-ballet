@@ -174,14 +174,19 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
             // Skip the source group itself
             if (otherGroup.Id == referenceGroup.Id) continue;
 
-            // OPTIMIZATION: Skip if groups are at different elevations
+            // OPTIMIZATION: Skip only if groups are at VERY different elevations
+            // Changed from 50.0 to 200.0 to allow copying between more floors
+            // This was causing groups on different floors to be skipped
             LocationPoint sourceLoc = referenceGroup.Location as LocationPoint;
             LocationPoint otherLoc = otherGroup.Location as LocationPoint;
             if (sourceLoc != null && otherLoc != null)
             {
                 double zDiff = Math.Abs(sourceLoc.Point.Z - otherLoc.Point.Z);
-                if (zDiff > 50.0) // Groups on very different floors
+                if (zDiff > 200.0) // Only skip if groups are on VERY different floors
+                {
+                    LogGroupSkipped("Elevation difference > 200ft", otherGroup, zDiff);
                     continue;
+                }
             }
 
             // Track this as a possible target
@@ -216,6 +221,10 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
                         SourceScopeBox = sourceScopeBox
                     });
                 }
+            }
+            else
+            {
+                LogGroupSkipped("No valid transformation found", otherGroup);
             }
         }
     }
