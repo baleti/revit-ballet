@@ -182,6 +182,7 @@
     <Compile Include="revit-scripts\SectionBox3DFromViewsInLinkedModels.cs" />
     <Compile Include="revit-scripts\SectionBox3DFromViewsInSelectedLinkedModels.cs" />
     <Compile Include="revit-scripts\SelectByViewFilterInView.cs" />
+    <Compile Include="revit-scripts\SelectDuplicatesFromSelectedElements.cs" />
     <Compile Include="revit-scripts\SelectElementsOfSameTypeInLinkedModelsInProject.cs" />
     <Compile Include="revit-scripts\SelectAllRevisionCloudsInProject.cs" />
     <Compile Include="revit-scripts\SelectAllVisibleRevisionCloudsInProject.cs" />
