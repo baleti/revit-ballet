@@ -138,9 +138,11 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms : IExterna
             LogFinalSummary(selectedElements.Count, elementsInGroups.Count, copyResult.TotalCopied);
 
             // Build and show result message
+            /*
             ShowResults(doc, selectedElements, elementsInGroups, groupsByType,
                         elementToGroupTypeNames, spatiallyRelevantGroups, allGroups,
                         copyResult);
+            */
 
             SaveDiagnostics();
 
@@ -156,23 +158,116 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms : IExterna
 
     private List<Element> GetAndValidateSelection(UIDocument uidoc, Document doc, ref string message)
     {
-        ICollection<ElementId> selectedIds = uidoc.GetSelectionIds();
+        // Use GetReferences to support linked elements
+        IList<Reference> selectedRefs = null;
+        try
+        {
+            selectedRefs = uidoc.GetReferences();
+        }
+        catch
+        {
+            // Fallback to GetSelectionIds if GetReferences fails
+            ICollection<ElementId> selectedIds = uidoc.GetSelectionIds();
+            if (selectedIds.Count == 0)
+            {
+                message = "Please select elements first";
+                return null;
+            }
+            
+            // Convert to references
+            selectedRefs = new List<Reference>();
+            foreach (ElementId id in selectedIds)
+            {
+                Element elem = doc.GetElement(id);
+                if (elem != null)
+                {
+                    selectedRefs.Add(new Reference(elem));
+                }
+            }
+        }
 
-        if (selectedIds.Count == 0)
+        if (selectedRefs == null || selectedRefs.Count == 0)
         {
             message = "Please select elements first";
             return null;
         }
 
-        // Get selected elements (exclude groups and element types)
+        // Separate regular and linked references
         List<Element> selectedElements = new List<Element>();
+        List<Element> linkedElementsToCopy = new List<Element>();
+        Dictionary<Element, Transform> linkedElementTransforms = new Dictionary<Element, Transform>();
 
-        foreach (ElementId id in selectedIds)
+        foreach (Reference reference in selectedRefs)
         {
-            Element elem = doc.GetElement(id);
-            if (elem != null && !(elem is Group) && !(elem is ElementType))
+            if (reference.LinkedElementId != ElementId.InvalidElementId)
             {
-                selectedElements.Add(elem);
+                // This is a linked element reference
+                RevitLinkInstance linkInstance = doc.GetElement(reference.ElementId) as RevitLinkInstance;
+                if (linkInstance != null)
+                {
+                    Document linkedDoc = linkInstance.GetLinkDocument();
+                    if (linkedDoc != null)
+                    {
+                        Element linkedElement = linkedDoc.GetElement(reference.LinkedElementId);
+                        if (linkedElement != null && !(linkedElement is Group) && !(linkedElement is ElementType))
+                        {
+                            linkedElementsToCopy.Add(linkedElement);
+                            linkedElementTransforms[linkedElement] = linkInstance.GetTotalTransform();
+                        }
+                    }
+                }
+            }
+            else
+            {
+                // Regular element reference
+                Element elem = doc.GetElement(reference.ElementId);
+                if (elem != null && !(elem is Group) && !(elem is ElementType))
+                {
+                    selectedElements.Add(elem);
+                }
+            }
+        }
+
+        // Copy linked elements to current document if any
+        if (linkedElementsToCopy.Count > 0)
+        {
+            using (Transaction tx = new Transaction(doc, "Copy Linked Elements"))
+            {
+                tx.Start();
+                
+                foreach (Element linkedElem in linkedElementsToCopy)
+                {
+                    Transform transform = linkedElementTransforms[linkedElem];
+                    ICollection<ElementId> copiedIds = ElementTransformUtils.CopyElements(
+                        linkedElem.Document,
+                        new List<ElementId> { linkedElem.Id },
+                        doc,
+                        transform,
+                        new CopyPasteOptions());
+                    
+                    // Add copied elements to selected elements list
+                    foreach (ElementId copiedId in copiedIds)
+                    {
+                        Element copiedElem = doc.GetElement(copiedId);
+                        if (copiedElem != null)
+                        {
+                            selectedElements.Add(copiedElem);
+
+                            // Mark as copied from linked model in Comments
+                            Parameter commentsParam = copiedElem.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS);
+                            if (commentsParam != null && !commentsParam.IsReadOnly)
+                            {
+                                string existingComment = commentsParam.AsString() ?? "";
+                                string newComment = string.IsNullOrEmpty(existingComment) 
+                                    ? "Copied from linked model" 
+                                    : existingComment + ", Copied from linked model";
+                                commentsParam.Set(newComment);
+                            }
+                        }
+                    }
+                }
+                
+                tx.Commit();
             }
         }
 

@@ -8,7 +8,7 @@ using Autodesk.Revit.DB.Architecture;
 
 public partial class CopySelectedElementsAlongContainingGroupsByRooms
 {
-    private bool enableDiagnostics = true;
+    private bool enableDiagnostics = false;
     private bool saveDiagnosticsToFile = true;
     private StringBuilder diagnosticLog = new StringBuilder();
     
