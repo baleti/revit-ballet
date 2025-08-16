@@ -18,13 +18,14 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
         public Level TargetLevel { get; set; }
         public List<string> GroupTypeNames { get; set; }
         public Group SourceGroup { get; set; } // Track which group instance this element came from
-        public string SourceScopeBox { get; set; } // Track source group's scope box
     }
 
     private CopyResult ProcessCopying(Document doc,
                                       Dictionary<ElementId, List<Group>> groupsByType,
                                       Dictionary<ElementId, List<Group>> elementsInGroups,
-                                      Dictionary<ElementId, List<string>> elementToGroupTypeNames)
+                                      Dictionary<ElementId, List<string>> elementToGroupTypeNames,
+                                      int totalSelectedElements = 0,
+                                      int totalElementsInGroups = 0)
     {
         CopyResult result = new CopyResult();
         List<BatchCopyData> allBatchCopyData = new List<BatchCopyData>();
@@ -131,7 +132,7 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
                 progressForm.UpdateProgress(0, allBatchCopyData.Count, "Copying elements...");
             }
             
-            ExecuteBatchCopy(doc, allBatchCopyData, result);
+            ExecuteBatchCopy(doc, allBatchCopyData, result, totalSelectedElements, totalElementsInGroups);
 
             // Calculate final statistics from tracked groups
             result.TotalGroupInstancesProcessed = successfulTargetGroups.Count;
@@ -161,7 +162,7 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
                     // Add group type names
                     commentParts.Add(string.Join(", ", elemKvp.Value));
 
-                    // Add source group IDs and scope boxes for this element
+                    // Add source group IDs for this element
                     if (elementsInGroups.ContainsKey(elemKvp.Key))
                     {
                         List<Group> containingGroups = elementsInGroups[elemKvp.Key];
@@ -171,11 +172,6 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
                             Group sourceGroup = containingGroups.First();
                             commentParts.Add($"source id: {sourceGroup.Id}");
 
-                            string scopeBox = GetGroupScopeBox(sourceGroup, doc);
-                            if (!string.IsNullOrEmpty(scopeBox) && scopeBox != "None")
-                            {
-                                commentParts.Add($"source scope box: {scopeBox}");
-                            }
                         }
                     }
 
@@ -204,9 +200,6 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
             result.GroupTypesSkippedNoRefElements++;
             return;
         }
-
-        // Get scope box for the reference group
-        string sourceScopeBox = GetGroupScopeBox(referenceGroup, doc);
 
         // Collect batch copy data for all target instances
         foreach (Group otherGroup in allGroupInstances)
@@ -261,7 +254,6 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
                             ? elementToGroupTypeNames[elem.Id]
                             : new List<string>(),
                         SourceGroup = referenceGroup,
-                        SourceScopeBox = sourceScopeBox
                     });
                 }
             }
@@ -272,36 +264,10 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
         }
     }
     
-    // Get scope box name for a group
-    private string GetGroupScopeBox(Group group, Document doc)
-    {
-        // Try to get scope box from group members
-        ICollection<ElementId> memberIds = group.GetMemberIds();
-        foreach (ElementId id in memberIds)
-        {
-            Element member = doc.GetElement(id);
-            if (member != null)
-            {
-                Parameter scopeBoxParam = member.get_Parameter(BuiltInParameter.ELEM_PARTITION_PARAM);
-                if (scopeBoxParam != null && scopeBoxParam.HasValue)
-                {
-                    ElementId scopeBoxId = scopeBoxParam.AsElementId();
-                    if (scopeBoxId != null && scopeBoxId != ElementId.InvalidElementId)
-                    {
-                        Element scopeBox = doc.GetElement(scopeBoxId);
-                        if (scopeBox != null)
-                        {
-                            return scopeBox.Name;
-                        }
-                    }
-                }
-            }
-        }
-        return "None";
-    }
 
-
-    private void ExecuteBatchCopy(Document doc, List<BatchCopyData> allBatchCopyData, CopyResult result)
+    private void ExecuteBatchCopy(Document doc, List<BatchCopyData> allBatchCopyData, CopyResult result,
+                                  int totalSelectedElements = 0,
+                                  int totalElementsInGroups = 0)
     {
         if (allBatchCopyData.Count > 0)
         {
@@ -320,6 +286,12 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
                 Transform sharedTransform = batchItems.First().Transform;
 
                 currentOperation++;
+                // Stop the timer before the last copy operation
+                if (currentOperation == transformGroups.Count && progressForm != null)
+                {
+                    progressForm.StopTimer();
+                }
+
                 
                 if (progressForm != null)
                 {
@@ -327,13 +299,11 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
                     string targetGroupName = gt?.Name ?? "Unknown";
                     
                     
-                    // Get level and scope box for target group
+                    // Get level for target group
                     Level targetLevel = GetGroupLevel(targetGroup, doc);
                     string levelName = targetLevel?.Name ?? "Unknown Level";
-                    string scopeBox = GetGroupScopeBox(targetGroup, doc);
-                    string scopeBoxInfo = string.IsNullOrEmpty(scopeBox) || scopeBox == "None" ? "" : $", {scopeBox}";
                     
-                    string targetInfo = $"{targetGroupName} ({levelName}{scopeBoxInfo})";
+                    string targetInfo = $"{targetGroupName} ({levelName})";
                     progressForm.UpdateProgress(currentOperation, transformGroups.Count,
                         $"Copying to group {currentOperation} of {transformGroups.Count}",
                         $"Target: {targetInfo}");
@@ -366,14 +336,13 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
                         
                         if (progressForm != null)
                         {
-                            progressForm.UpdateElementCounts(0, 0, result.TotalCopied);
+                            // Don't reset the selected/in groups counts, just update copied count
+                            // The form will preserve the original values
+                            progressForm.UpdateElementCounts(totalSelectedElements, totalElementsInGroups, result.TotalCopied);
                             GroupType targetGt = doc.GetElement(targetGroup.GetTypeId()) as GroupType;
                             Level targetLevel = GetGroupLevel(targetGroup, doc);
                             string levelName = targetLevel?.Name ?? "Unknown Level";
-                            string scopeBox = GetGroupScopeBox(targetGroup, doc);
-                            string scopeBoxInfo = string.IsNullOrEmpty(scopeBox) || scopeBox == "None" ? "" : $", {scopeBox}";
-                            
-                            string targetInfo = $"{targetGt?.Name ?? "Unknown"} ({levelName}{scopeBoxInfo})";
+                            string targetInfo = $"{targetGt?.Name ?? "Unknown"} ({levelName})";
                             
                             progressForm.AddCopyOperation(targetGt?.Name ?? "Unknown", targetInfo);
                         }
@@ -430,12 +399,6 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
                         if (batchItem.SourceGroup != null)
                         {
                             commentParts.Add($"source id: {batchItem.SourceGroup.Id}");
-                        }
-
-                        // Add source scope box
-                        if (!string.IsNullOrEmpty(batchItem.SourceScopeBox) && batchItem.SourceScopeBox != "None")
-                        {
-                            commentParts.Add($"source scope box: {batchItem.SourceScopeBox}");
                         }
 
                         string fullComment = string.Join(", ", commentParts);

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Architecture;
+using System.Windows.Forms;
 
 public partial class CopySelectedElementsAlongContainingGroupsByRooms
 {
@@ -43,10 +44,29 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
         // Build spatial index for all rooms first
         BuildRoomSpatialIndex(doc);
 
+        if (progressForm != null)
+        {
+            progressForm.AddIntermediateProgress($"Analyzing {relevantGroups.Count} groups for room relationships...");
+            progressForm.AddIntermediateProgress($"Found {_roomDataCache.Count} rooms in document");
+            Application.DoEvents();
+        }
+
         // First pass: identify direct memberships
         StartTiming("DirectMembershipPass");
+        int groupsProcessed = 0;
+        if (progressForm != null)
+        {
+            progressForm.AddIntermediateProgress($"Checking direct room membership: {relevantGroups.Count} groups");
+            Application.DoEvents();
+        }
         foreach (Group group in relevantGroups)
         {
+            groupsProcessed++;
+            if (progressForm != null && groupsProcessed % 10 == 0)
+            {
+                progressForm.AddIntermediateProgress($"Checking direct room membership: {groupsProcessed}/{relevantGroups.Count} groups");
+                Application.DoEvents();
+            }
             foreach (ElementId memberId in group.GetMemberIds())
             {
                 Element member = doc.GetElement(memberId);
@@ -65,8 +85,14 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
 
         // Second pass: identify spatial containments
         StartTiming("SpatialContainmentPass");
+        if (progressForm != null)
+        {
+            progressForm.AddIntermediateProgress($"Checking spatial containment: {relevantGroups.Count} groups");
+            Application.DoEvents();
+        }
         foreach (Group group in relevantGroups)
         {
+
             if (!_groupBoundingBoxCache.ContainsKey(group.Id)) continue;
 
             BoundingBoxXYZ groupBB = _groupBoundingBoxCache[group.Id];
@@ -124,6 +150,12 @@ if (roomData != null && IsRoomWithinBoundingBox(roomData, groupBB.Min, groupBB.M
 
        // Validate spatially contained rooms
        StartTiming("ValidateSpatialContainments");
+        if (progressForm != null && roomSpatialContainment.Count > 0)
+        {
+            progressForm.AddIntermediateProgress($"Validating {roomSpatialContainment.Count} spatial room-group relationships...");
+            Application.DoEvents();
+        }
+
        FilteredElementCollector allGroupsCollector = new FilteredElementCollector(doc);
        IList<Group> allGroups = allGroupsCollector
            .OfClass(typeof(Group))
@@ -156,7 +188,7 @@ if (roomData != null && IsRoomWithinBoundingBox(roomData, groupBB.Min, groupBB.M
            }
        }
        
-       // THIRD PASS: Map rooms based on boundary walls
+
        Dictionary<ElementId, Group> finalMapping = MapRoomsByBoundaryWalls(
            roomToGroupMap, 
            relevantGroups, 
@@ -304,6 +336,15 @@ if (roomData != null && IsRoomWithinBoundingBox(roomData, groupBB.Min, groupBB.M
            roomsToCheck = _roomDataCache.Keys.ToList();
        }
        
+       
+       // Add progress message here where roomsToCheck is defined
+       if (progressForm != null)
+       {
+           progressForm.AddIntermediateProgress("Analyzing room boundary walls for group associations...");
+           progressForm.AddIntermediateProgress($"Checking {roomsToCheck.Count} rooms for wall boundaries");
+           Application.DoEvents();
+       }
+ 
        // Build a map of wall IDs to their containing groups
        Dictionary<ElementId, List<Group>> wallToGroups = new Dictionary<ElementId, List<Group>>();
        foreach (Group group in allGroups)

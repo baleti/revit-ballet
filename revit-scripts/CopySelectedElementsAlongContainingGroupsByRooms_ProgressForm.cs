@@ -37,6 +37,7 @@ public class CopyElementsProgressForm : WinForm
     private int _totalElements = 0;
     private int _elementsInGroups = 0;
     private int _elementsCopied = 0;
+    private bool _preserveElementCounts = false;
 
     public CopyElementsProgressForm()
     {
@@ -48,7 +49,7 @@ public class CopyElementsProgressForm : WinForm
         updateTimer.Interval = 100;
         updateTimer.Tick += (s, e) => UpdateElapsedTime();
         updateTimer.Start();
-        
+
         scrollCheckTimer = new System.Windows.Forms.Timer();
         scrollCheckTimer.Interval = 200;
         scrollCheckTimer.Tick += (s, e) => CheckAutoScroll();
@@ -126,32 +127,42 @@ public class CopyElementsProgressForm : WinForm
             Font = new WinFont("Consolas", 9),
             SelectionMode = SelectionMode.MultiExtended
         };
-        
+
         // Track all forms of user scrolling
-        detailsListBox.MouseWheel += (s, e) => 
+        bool isDraggingScrollbar = false;
+        detailsListBox.MouseWheel += (s, e) =>
         {
             userScrolling = true;
             userHasScrolledUp = true;
         };
-        
+
         // Track scrollbar dragging
-        bool isDragging = false;
-        detailsListBox.MouseDown += (s, e) => 
+        detailsListBox.MouseDown += (s, e) =>
         {
+            // Check if click is on the scrollbar area
             if (e.X >= detailsListBox.ClientSize.Width - SystemInformation.VerticalScrollBarWidth)
             {
-                isDragging = true;
+                isDraggingScrollbar = true;
                 userScrolling = true;
                 userHasScrolledUp = true;
             }
         };
-        
-        detailsListBox.MouseUp += (s, e) => { isDragging = false; };
-        detailsListBox.MouseMove += (s, e) => 
+
+        detailsListBox.MouseUp += (s, e) =>
         {
-            if (isDragging)
-                userScrolling = true;
+            isDraggingScrollbar = false;
         };
+        detailsListBox.MouseMove += (s, e) =>
+        {
+            if (isDraggingScrollbar)
+            {
+                 userScrolling = true;
+                userHasScrolledUp = true;
+            }
+        };
+        
+        // Add KeyDown event handler directly to ListBox for better key capture
+        detailsListBox.KeyDown += DetailsListBox_KeyDown;
 
         cancelButton = new Button
         {
@@ -203,9 +214,17 @@ public class CopyElementsProgressForm : WinForm
 
     private void Form_KeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Control && e.KeyCode == Keys.C)
+        // Handle Ctrl+A for Select All
+        if (e.Control && e.KeyCode == Keys.A)
+        {
+            SelectAllItems();
+            e.Handled = true;
+        }
+        // Handle Ctrl+C for Copy
+        else if (e.Control && e.KeyCode == Keys.C)
         {
             CopySelectedItemsToClipboard();
+            e.Handled = true;
         }
         else if (e.KeyCode == Keys.Escape)
         {
@@ -217,6 +236,35 @@ public class CopyElementsProgressForm : WinForm
             {
                 cancelButton.PerformClick();
             }
+        }
+    }
+
+    private void DetailsListBox_KeyDown(object sender, KeyEventArgs e)
+    {
+        // Also handle keyboard shortcuts when ListBox has focus
+        // This ensures shortcuts work even when the ListBox is focused
+        if (e.Control && e.KeyCode == Keys.A)
+        {
+            SelectAllItems();
+            e.Handled = true;
+        }
+        else if (e.Control && e.KeyCode == Keys.C)
+        {
+            CopySelectedItemsToClipboard();
+            e.Handled = true;
+        }
+    }
+
+    private void SelectAllItems()
+    {
+        if (detailsListBox.Items.Count > 0)
+        {
+            detailsListBox.BeginUpdate();
+            for (int i = 0; i < detailsListBox.Items.Count; i++)
+            {
+                detailsListBox.SetSelected(i, true);
+            }
+            detailsListBox.EndUpdate();
         }
     }
 
@@ -232,10 +280,30 @@ public class CopyElementsProgressForm : WinForm
             try
             {
                 Clipboard.SetText(sb.ToString());
+                
+                // Optional: Show brief confirmation in status if complete
+                if (isComplete)
+                {
+                    string originalStatus = statusLabel.Text;
+                    statusLabel.Text = $"{originalStatus} (Copied {detailsListBox.SelectedItems.Count} items to clipboard)";
+                    
+                    // Reset status after 2 seconds
+                    System.Windows.Forms.Timer resetTimer = new System.Windows.Forms.Timer();
+                    resetTimer.Interval = 2000;
+                    resetTimer.Tick += (s, e) =>
+                    {
+                        statusLabel.Text = originalStatus;
+                        resetTimer.Stop();
+                        resetTimer.Dispose();
+                    };
+                    resetTimer.Start();
+                }
             }
-            catch
+            catch (Exception ex)
             {
-                // Clipboard operation might fail, ignore
+                // Clipboard operation might fail, show message
+                MessageBox.Show($"Failed to copy to clipboard: {ex.Message}", "Copy Error", 
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         }
     }
@@ -308,14 +376,32 @@ public class CopyElementsProgressForm : WinForm
             return;
         }
 
-        _totalElements = totalSelected;
-        _elementsInGroups = inGroups;
+        // The preserve flag is meant to prevent the counts from being reset to 0 during copying
+        // But we should still update them if we receive actual non-zero values
+
+        if (!_preserveElementCounts)
+        {
+            // Normal mode: always update
+            _totalElements = totalSelected;
+            _elementsInGroups = inGroups;
+        }
+        else
+        {
+            // Preserve mode: only update if we're getting real values (not zeros)
+            // This prevents the counts from being reset during the copy phase
+            if (totalSelected > 0)
+                _totalElements = totalSelected;
+            if (inGroups > 0)
+                _elementsInGroups = inGroups;
+        }
+
         _elementsCopied = copied;
 
-        elementCountLabel.Text = $"Elements: {totalSelected} selected | {inGroups} in groups | {copied} copied";
+        // Use the stored values for display
+        elementCountLabel.Text = $"Elements: {_totalElements} selected | {_elementsInGroups} in groups | {copied} copied";
 
-        // Don't change color to green
-        if (copied > 0 && totalSelected > 0)
+        // Color indication
+        if (copied > 0 && _totalElements > 0)
         {
             elementCountLabel.ForeColor = System.Drawing.Color.DarkGreen;
         }
@@ -371,7 +457,7 @@ public class CopyElementsProgressForm : WinForm
         // Check if we should auto-scroll
         CheckForAutoScroll();
     }
-    
+
     private void CheckAutoScroll()
     {
         if (detailsListBox.Items.Count != lastItemCount)
@@ -380,20 +466,20 @@ public class CopyElementsProgressForm : WinForm
             CheckForAutoScroll();
         }
     }
-    
+
     private void CheckForAutoScroll()
     {
         if (isComplete || detailsListBox.Items.Count == 0) return;
-        
+
         bool atBottom = IsAtBottom();
-        
+
         // If user scrolled up but is now at bottom again, resume auto-scrolling
         if (userHasScrolledUp && atBottom)
         {
             userScrolling = false;
             userHasScrolledUp = false;
         }
-        
+
         // Auto-scroll if we haven't manually scrolled or if we're back at bottom
         if (!userScrolling || (!userHasScrolledUp && atBottom))
         {
@@ -404,7 +490,7 @@ public class CopyElementsProgressForm : WinForm
     private bool IsAtBottom()
     {
         if (detailsListBox.Items.Count == 0) return true;
-        
+
         // Check if the last item is visible
         int visibleItemCount = detailsListBox.ClientSize.Height / detailsListBox.ItemHeight;
         int lastVisibleIndex = detailsListBox.TopIndex + visibleItemCount - 1;
@@ -425,10 +511,24 @@ public class CopyElementsProgressForm : WinForm
     {
         AddDetail(message, DetailType.Info);
     }
-    
+
     public void AddIntermediateProgress(string message)
     {
         AddDetail(message, DetailType.Progress);
+    }
+
+    public void PreserveElementCounts()
+    {
+        _preserveElementCounts = true;
+    }
+
+    public void StopTimer()
+    {
+        if (!isComplete)
+        {
+            stopwatch.Stop();
+            updateTimer.Stop();
+        }
     }
 
     public void SetComplete(int totalCopied, long elapsedMs, bool isCancelled = false)
@@ -460,15 +560,16 @@ public class CopyElementsProgressForm : WinForm
         {
             this.Text = "Copy Elements - Complete";
             phaseLabel.Text = "Phase: Complete";
-            statusLabel.Text = $"Successfully copied {totalCopied} elements in {elapsedMs}ms";
-            AddDetail($"Operation completed successfully. Total time: {elapsedMs}ms", DetailType.Success);
+            statusLabel.Text = $"Successfully copied {totalCopied} elements";
+            AddDetail($"Operation completed successfully", DetailType.Success);
         }
 
         // Change button to Close
         cancelButton.Text = "Close";
         IsCancelled = false;
-        
+
         // Ensure we can still copy to clipboard after completion
+        // Give focus to the ListBox to ensure keyboard shortcuts work
         detailsListBox.Focus();
     }
 

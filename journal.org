@@ -1252,3 +1252,6 @@ CopySelectedElementsAlongContainingGroupsByRooms
 **** =00:29= little progress in getting CopySelectedElementsAlongContainingGroupsByRooms command to work
 it became long and complex and tests are slow
 determined to get it to work, although investment isn't likely to be returned at this point
+*** 16
+**** =22:09= CopySelectedElementsAlongContainingGroupsByRooms approaches completion
+subject to tests

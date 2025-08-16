@@ -164,6 +164,13 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms : IExterna
                 Application.DoEvents();
             }
 
+            // Add progress messages for the long-running mapping operation
+            if (progressForm != null)
+            {
+                progressForm.AddIntermediateProgress($"Checking element containment in {elevationFilteredGroups.Count} groups");
+                progressForm.AddIntermediateProgress("Processing group rooms and validating element positions...");
+                Application.DoEvents();
+            }
             Dictionary<ElementId, List<Group>> elementsInGroups = MapElementsToGroups(
                 selectedElements, elevationFilteredGroups, overallBB, doc, roomToSingleGroupMap);
 
@@ -203,17 +210,36 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms : IExterna
 
             progressForm.AddDetail($"Processing {groupsByType.Count} group types", CopyElementsProgressForm.DetailType.Info);
             progressForm.UpdateProgress(60, 100, "Starting copy operations...");
+            // Preserve the element counts before starting copy operations
+            progressForm.PreserveElementCounts();
+            progressForm.UpdateElementCounts(selectedElements.Count, elementsInGroups.Count, 0);
             Application.DoEvents();
 
             // Process copying
-            var copyResult = ProcessCopying(doc, groupsByType, elementsInGroups, elementToGroupTypeNames);
+            var copyResult = ProcessCopying(doc, groupsByType, elementsInGroups, elementToGroupTypeNames,
+                                           selectedElements.Count, elementsInGroups.Count);
             
+            // Stop timing immediately after copying completes  
+            if (globalStopwatch.IsRunning)
+            {
+                globalStopwatch.Stop();
+            }
+            if (progressForm != null)
+            {
+                progressForm.StopTimer();
+            }
             if (progressForm.IsCancelled)
             {
                 operationCancelled = true;
             }
 
             LogFinalSummary(selectedElements.Count, elementsInGroups.Count, copyResult.TotalCopied);
+            // Save diagnostics before showing any dialogs
+            SaveDiagnostics();
+
+            // Complete the progress form with actual elapsed time
+            progressForm.UpdateElementCounts(selectedElements.Count, elementsInGroups.Count, copyResult.TotalCopied);
+            progressForm.SetComplete(copyResult.TotalCopied, globalStopwatch.ElapsedMilliseconds, operationCancelled);
 
             // Build and show result message
             /*
@@ -221,12 +247,6 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms : IExterna
                         elementToGroupTypeNames, spatiallyRelevantGroups, allGroups,
                         copyResult);
             */
-
-            SaveDiagnostics();
-            
-            // Complete the progress form
-            progressForm.UpdateElementCounts(selectedElements.Count, elementsInGroups.Count, copyResult.TotalCopied);
-            progressForm.SetComplete(copyResult.TotalCopied, globalStopwatch.ElapsedMilliseconds, operationCancelled);
 
             return operationCancelled ? Result.Cancelled : Result.Succeeded;
         }
@@ -401,7 +421,7 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms : IExterna
         return selectedElements;
     }
 
-    private Dictionary<ElementId, List<Group>> MapElementsToGroups(
+private Dictionary<ElementId, List<Group>> MapElementsToGroups(
         List<Element> selectedElements,
         List<Group> spatiallyRelevantGroups,
         BoundingBoxXYZ overallBB,
@@ -418,8 +438,33 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms : IExterna
         }
 
         // Process only spatially relevant groups
+        int groupsProcessed = 0;
+        int totalGroups = spatiallyRelevantGroups.Count;
+        int lastProgressUpdate = 0;
+        System.Diagnostics.Stopwatch progressTimer = new System.Diagnostics.Stopwatch();
+        progressTimer.Start();
+        
         foreach (Group group in spatiallyRelevantGroups)
         {
+            groupsProcessed++;
+            
+            // Update progress every 5-10 seconds or every 10 groups, whichever comes first
+            if (progressTimer.ElapsedMilliseconds > 5000 || (groupsProcessed - lastProgressUpdate) >= 10)
+            {
+                if (progressForm != null)
+                {
+                    GroupType gt = doc.GetElement(group.GetTypeId()) as GroupType;
+                    string groupName = gt?.Name ?? "Unknown";
+                    progressForm.UpdateProgress(groupsProcessed, totalGroups, 
+                        $"Checking group {groupsProcessed} of {totalGroups}",
+                        $"Analyzing: {groupName}");
+                    progressForm.AddIntermediateProgress($"Checking elements in group: {groupName} ({groupsProcessed}/{totalGroups})");
+                    Application.DoEvents();
+                }
+                lastProgressUpdate = groupsProcessed;
+                progressTimer.Restart();
+            }
+            
             // Get cached bounding box
             BoundingBoxXYZ groupBB = _groupBoundingBoxCache[group.Id];
 
