@@ -45,6 +45,7 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms : IExterna
             progressForm.UpdateElementCounts(selectedElements.Count, 0, 0);
             progressForm.SetPhase("Initialization");
             progressForm.UpdateProgress(0, 100, "Preparing elements...");
+            progressForm.UpdateElementCounts(selectedElements.Count, 0, 0);
             Application.DoEvents();
 
             // Pre-calculate test points for all selected elements
@@ -155,6 +156,14 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms : IExterna
             progressForm.UpdateProgress(50, 100, $"Checking {elevationFilteredGroups.Count} groups...");
             Application.DoEvents();
             
+            // Add more detailed progress during mapping
+            if (elevationFilteredGroups.Count > 10)
+            {
+                progressForm.AddMappingProgress($"Building room-to-group mapping for {elevationFilteredGroups.Count} groups");
+                progressForm.AddMappingProgress("Analyzing room boundaries and spatial containment...");
+                Application.DoEvents();
+            }
+
             Dictionary<ElementId, List<Group>> elementsInGroups = MapElementsToGroups(
                 selectedElements, elevationFilteredGroups, overallBB, doc, roomToSingleGroupMap);
 
@@ -258,47 +267,59 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms : IExterna
 
     private List<Element> GetAndValidateSelection(UIDocument uidoc, Document doc, ref string message)
     {
-        // Use GetReferences to support linked elements
-        IList<Reference> selectedRefs = null;
+        List<Element> selectedElements = new List<Element>();
+        List<Element> linkedElementsToCopy = new List<Element>();
+        Dictionary<Element, Transform> linkedElementTransforms = new Dictionary<Element, Transform>();
+        
+        // Try GetReferences first for linked elements support
+        IList<Reference> selectedRefs = new List<Reference>();
+        bool hasReferences = false;
+        
         try
         {
             selectedRefs = uidoc.GetReferences();
+            hasReferences = selectedRefs != null && selectedRefs.Count > 0;
         }
-        catch
+        catch { }
+        
+        // If no references from GetReferences, try GetSelectionIds
+        if (!hasReferences)
         {
-            // Fallback to GetSelectionIds if GetReferences fails
             ICollection<ElementId> selectedIds = uidoc.GetSelectionIds();
-            if (selectedIds.Count == 0)
+            if (selectedIds != null && selectedIds.Count > 0)
             {
-                message = "Please select elements first";
-                return null;
-            }
-            
-            // Convert to references
-            selectedRefs = new List<Reference>();
-            foreach (ElementId id in selectedIds)
-            {
-                Element elem = doc.GetElement(id);
-                if (elem != null)
+                selectedRefs = new List<Reference>();
+                foreach (ElementId id in selectedIds)
                 {
-                    selectedRefs.Add(new Reference(elem));
+                    Element elem = doc.GetElement(id);
+                    if (elem != null)
+                    {
+                        selectedRefs.Add(new Reference(elem));
+                    }
                 }
             }
         }
 
-        if (selectedRefs == null || selectedRefs.Count == 0)
+        
+        // If still no selection, return error
+        if (selectedRefs.Count == 0)
         {
             message = "Please select elements first";
             return null;
         }
 
-        // Separate regular and linked references
-        List<Element> selectedElements = new List<Element>();
-        List<Element> linkedElementsToCopy = new List<Element>();
-        Dictionary<Element, Transform> linkedElementTransforms = new Dictionary<Element, Transform>();
+        // Process references
 
         foreach (Reference reference in selectedRefs)
         {
+            if (reference == null) continue;
+            
+            // Check if it's a linked element reference
+            bool isLinkedElement = false;
+            try {
+                isLinkedElement = reference.LinkedElementId != ElementId.InvalidElementId;
+            } catch { }
+            
             if (reference.LinkedElementId != ElementId.InvalidElementId)
             {
                 // This is a linked element reference

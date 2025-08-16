@@ -6,6 +6,9 @@ using Autodesk.Revit.DB.Architecture;
 
 public partial class CopySelectedElementsAlongContainingGroupsByRooms
 {
+    // Progress form reference (shared across partial classes)
+    // (Already defined in Main.cs, no change needed)
+    
     // Cache for element test points to avoid recalculation
     private Dictionary<ElementId, List<XYZ>> _elementTestPointsCache = new Dictionary<ElementId, List<XYZ>>();
 

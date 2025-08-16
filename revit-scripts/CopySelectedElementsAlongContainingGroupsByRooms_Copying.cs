@@ -271,6 +271,35 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
             }
         }
     }
+    
+    // Get scope box name for a group
+    private string GetGroupScopeBox(Group group, Document doc)
+    {
+        // Try to get scope box from group members
+        ICollection<ElementId> memberIds = group.GetMemberIds();
+        foreach (ElementId id in memberIds)
+        {
+            Element member = doc.GetElement(id);
+            if (member != null)
+            {
+                Parameter scopeBoxParam = member.get_Parameter(BuiltInParameter.ELEM_PARTITION_PARAM);
+                if (scopeBoxParam != null && scopeBoxParam.HasValue)
+                {
+                    ElementId scopeBoxId = scopeBoxParam.AsElementId();
+                    if (scopeBoxId != null && scopeBoxId != ElementId.InvalidElementId)
+                    {
+                        Element scopeBox = doc.GetElement(scopeBoxId);
+                        if (scopeBox != null)
+                        {
+                            return scopeBox.Name;
+                        }
+                    }
+                }
+            }
+        }
+        return "None";
+    }
+
 
     private void ExecuteBatchCopy(Document doc, List<BatchCopyData> allBatchCopyData, CopyResult result)
     {
@@ -297,9 +326,17 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
                     GroupType gt = doc.GetElement(targetGroup.GetTypeId()) as GroupType;
                     string targetGroupName = gt?.Name ?? "Unknown";
                     
+                    
+                    // Get level and scope box for target group
+                    Level targetLevel = GetGroupLevel(targetGroup, doc);
+                    string levelName = targetLevel?.Name ?? "Unknown Level";
+                    string scopeBox = GetGroupScopeBox(targetGroup, doc);
+                    string scopeBoxInfo = string.IsNullOrEmpty(scopeBox) || scopeBox == "None" ? "" : $", {scopeBox}";
+                    
+                    string targetInfo = $"{targetGroupName} ({levelName}{scopeBoxInfo})";
                     progressForm.UpdateProgress(currentOperation, transformGroups.Count,
                         $"Copying to group {currentOperation} of {transformGroups.Count}",
-                        $"Target: {targetGroupName} (ID: {targetGroup.Id})");
+                        $"Target: {targetInfo}");
                     Application.DoEvents();
                 }
                 
@@ -330,10 +367,15 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
                         if (progressForm != null)
                         {
                             progressForm.UpdateElementCounts(0, 0, result.TotalCopied);
-                            GroupType sourceGt = doc.GetElement(batchItems.First().SourceGroup.GetTypeId()) as GroupType;
                             GroupType targetGt = doc.GetElement(targetGroup.GetTypeId()) as GroupType;
-                            progressForm.AddCopyOperation(sourceGt?.Name ?? "Unknown", 
-                                targetGt?.Name ?? "Unknown", copiedIds.Count);
+                            Level targetLevel = GetGroupLevel(targetGroup, doc);
+                            string levelName = targetLevel?.Name ?? "Unknown Level";
+                            string scopeBox = GetGroupScopeBox(targetGroup, doc);
+                            string scopeBoxInfo = string.IsNullOrEmpty(scopeBox) || scopeBox == "None" ? "" : $", {scopeBox}";
+                            
+                            string targetInfo = $"{targetGt?.Name ?? "Unknown"} ({levelName}{scopeBoxInfo})";
+                            
+                            progressForm.AddCopyOperation(targetGt?.Name ?? "Unknown", targetInfo);
                         }
                     }
                 }
@@ -408,34 +450,6 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
                 }
             }
         }
-    }
-
-    // Get scope box name for a group
-    private string GetGroupScopeBox(Group group, Document doc)
-    {
-        // Try to get scope box from group members
-        ICollection<ElementId> memberIds = group.GetMemberIds();
-        foreach (ElementId id in memberIds)
-        {
-            Element member = doc.GetElement(id);
-            if (member != null)
-            {
-                Parameter scopeBoxParam = member.get_Parameter(BuiltInParameter.ELEM_PARTITION_PARAM);
-                if (scopeBoxParam != null && scopeBoxParam.HasValue)
-                {
-                    ElementId scopeBoxId = scopeBoxParam.AsElementId();
-                    if (scopeBoxId != null && scopeBoxId != ElementId.InvalidElementId)
-                    {
-                        Element scopeBox = doc.GetElement(scopeBoxId);
-                        if (scopeBox != null)
-                        {
-                            return scopeBox.Name;
-                        }
-                    }
-                }
-            }
-        }
-        return "None";
     }
 
     // Update element level with all possible parameters

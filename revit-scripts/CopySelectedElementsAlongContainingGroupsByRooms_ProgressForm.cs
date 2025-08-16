@@ -27,6 +27,11 @@ public class CopyElementsProgressForm : WinForm
     private Label phaseLabel;
     private Stopwatch stopwatch;
     private System.Windows.Forms.Timer updateTimer;
+    private bool isComplete = false;
+    private bool userScrolling = false;
+    private bool userHasScrolledUp = false;
+    private Timer scrollCheckTimer;
+    private int lastItemCount = 0;
 
     public bool IsCancelled { get; private set; }
     private int _totalElements = 0;
@@ -43,6 +48,11 @@ public class CopyElementsProgressForm : WinForm
         updateTimer.Interval = 100;
         updateTimer.Tick += (s, e) => UpdateElapsedTime();
         updateTimer.Start();
+        
+        scrollCheckTimer = new System.Windows.Forms.Timer();
+        scrollCheckTimer.Interval = 200;
+        scrollCheckTimer.Tick += (s, e) => CheckAutoScroll();
+        scrollCheckTimer.Start();
     }
 
     private void InitializeComponent()
@@ -52,7 +62,7 @@ public class CopyElementsProgressForm : WinForm
         this.MinimumSize = new WinSize(500, 400);
         this.StartPosition = FormStartPosition.CenterScreen;
         this.FormBorderStyle = FormBorderStyle.Sizable;
-        this.MaximizeBox = false;
+        this.MaximizeBox = true; // Enable maximize button
         this.MinimizeBox = false;
 
         progressBar = new ProgressBar
@@ -116,6 +126,32 @@ public class CopyElementsProgressForm : WinForm
             Font = new WinFont("Consolas", 9),
             SelectionMode = SelectionMode.MultiExtended
         };
+        
+        // Track all forms of user scrolling
+        detailsListBox.MouseWheel += (s, e) => 
+        {
+            userScrolling = true;
+            userHasScrolledUp = true;
+        };
+        
+        // Track scrollbar dragging
+        bool isDragging = false;
+        detailsListBox.MouseDown += (s, e) => 
+        {
+            if (e.X >= detailsListBox.ClientSize.Width - SystemInformation.VerticalScrollBarWidth)
+            {
+                isDragging = true;
+                userScrolling = true;
+                userHasScrolledUp = true;
+            }
+        };
+        
+        detailsListBox.MouseUp += (s, e) => { isDragging = false; };
+        detailsListBox.MouseMove += (s, e) => 
+        {
+            if (isDragging)
+                userScrolling = true;
+        };
 
         cancelButton = new Button
         {
@@ -125,18 +161,7 @@ public class CopyElementsProgressForm : WinForm
             Text = "Cancel",
             DialogResult = DialogResult.Cancel
         };
-        cancelButton.Click += (sender, e) =>
-        {
-            if (MessageBox.Show("Are you sure you want to cancel the operation?", 
-                "Cancel Operation", 
-                MessageBoxButtons.YesNo, 
-                MessageBoxIcon.Question) == DialogResult.Yes)
-            {
-                IsCancelled = true;
-                this.DialogResult = DialogResult.Cancel;
-                AddDetail("Operation cancelled by user", DetailType.Warning);
-            }
-        };
+        cancelButton.Click += CancelButton_Click;
 
         this.Controls.AddRange(new WinControl[]
         {
@@ -154,29 +179,70 @@ public class CopyElementsProgressForm : WinForm
         this.KeyDown += new KeyEventHandler(Form_KeyDown);
     }
 
+    private void CancelButton_Click(object sender, EventArgs e)
+    {
+        if (isComplete)
+        {
+            // Just close if operation is complete
+            this.Close();
+        }
+        else
+        {
+            // Show confirmation only if operation is still running
+            if (MessageBox.Show("Are you sure you want to cancel the operation?",
+                "Cancel Operation",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question) == DialogResult.Yes)
+            {
+                IsCancelled = true;
+                this.DialogResult = DialogResult.Cancel;
+                AddDetail("Operation cancelled by user", DetailType.Warning);
+            }
+        }
+    }
+
     private void Form_KeyDown(object sender, KeyEventArgs e)
     {
         if (e.Control && e.KeyCode == Keys.C)
         {
-            if (detailsListBox.SelectedItems.Count > 0)
-            {
-                StringBuilder sb = new StringBuilder();
-                foreach (var item in detailsListBox.SelectedItems)
-                {
-                    sb.AppendLine(item.ToString());
-                }
-                Clipboard.SetText(sb.ToString());
-            }
+            CopySelectedItemsToClipboard();
         }
         else if (e.KeyCode == Keys.Escape)
         {
-            cancelButton.PerformClick();
+            if (isComplete)
+            {
+                this.Close();
+            }
+            else
+            {
+                cancelButton.PerformClick();
+            }
+        }
+    }
+
+    private void CopySelectedItemsToClipboard()
+    {
+        if (detailsListBox.SelectedItems.Count > 0)
+        {
+            StringBuilder sb = new StringBuilder();
+            foreach (var item in detailsListBox.SelectedItems)
+            {
+                sb.AppendLine(item.ToString());
+            }
+            try
+            {
+                Clipboard.SetText(sb.ToString());
+            }
+            catch
+            {
+                // Clipboard operation might fail, ignore
+            }
         }
     }
 
     private void UpdateElapsedTime()
     {
-        if (!this.IsDisposed)
+        if (!this.IsDisposed && !isComplete)
         {
             var elapsed = stopwatch.Elapsed;
             timeLabel.Text = $"Elapsed: {elapsed:mm\\:ss\\.ff}";
@@ -207,13 +273,13 @@ public class CopyElementsProgressForm : WinForm
         {
             progressBar.Maximum = total;
             progressBar.Value = Math.Min(current, total);
-            
+
             int percentage = (current * 100 / total);
             this.Text = $"Copy Elements Along Groups - {percentage}%";
         }
 
         statusLabel.Text = $"Status: {status}";
-        
+
         if (!string.IsNullOrEmpty(currentOperation))
         {
             currentOperationLabel.Text = $"Current: {currentOperation}";
@@ -248,9 +314,10 @@ public class CopyElementsProgressForm : WinForm
 
         elementCountLabel.Text = $"Elements: {totalSelected} selected | {inGroups} in groups | {copied} copied";
 
-        if (copied > 0)
+        // Don't change color to green
+        if (copied > 0 && totalSelected > 0)
         {
-            elementCountLabel.ForeColor = System.Drawing.Color.Green;
+            elementCountLabel.ForeColor = System.Drawing.Color.DarkGreen;
         }
     }
 
@@ -260,75 +327,108 @@ public class CopyElementsProgressForm : WinForm
         Success,
         Warning,
         Error,
-        Phase
+        Phase,
+        Progress
     }
 
-public void AddDetail(string detail, DetailType type = DetailType.Info)
-{
-    if (this.InvokeRequired)
+    public void AddDetail(string detail, DetailType type = DetailType.Info)
     {
-        this.Invoke(new Action(() => AddDetail(detail, type)));
-        return;
-    }
-
-    string timestamp = DateTime.Now.ToString("HH:mm:ss.ff");
-    
-    // Use traditional switch statement instead of switch expression
-    string prefix;
-    switch (type)
-    {
-        case DetailType.Success:
-            prefix = "[✓]";
-            break;
-        case DetailType.Warning:
-            prefix = "[!]";
-            break;
-        case DetailType.Error:
-            prefix = "[✗]";
-            break;
-        case DetailType.Phase:
-            prefix = "[►]";
-            break;
-        default:
-            prefix = "[·]";
-            break;
-    }
-
-    string entry = $"[{timestamp}] {prefix} {detail}";
-    detailsListBox.Items.Add(entry);
-    
-    // Auto-scroll to bottom
-    detailsListBox.TopIndex = Math.Max(0, detailsListBox.Items.Count - 1);
-
-    // Flash color for important events
-    if (type == DetailType.Success || type == DetailType.Error)
-    {
-        var originalColor = detailsListBox.BackColor;
-        var flashColor = type == DetailType.Success ? 
-            System.Drawing.Color.FromArgb(230, 255, 230) : 
-            System.Drawing.Color.FromArgb(255, 230, 230);
-        
-        detailsListBox.BackColor = flashColor;
-        Application.DoEvents();
-        
-        System.Threading.Tasks.Task.Delay(200).ContinueWith(t =>
+        if (this.InvokeRequired)
         {
-            if (!this.IsDisposed)
-            {
-                this.Invoke(new Action(() => detailsListBox.BackColor = originalColor));
-            }
-        });
+            this.Invoke(new Action(() => AddDetail(detail, type)));
+            return;
+        }
+
+        string timestamp = DateTime.Now.ToString("HH:mm:ss.ff");
+
+        // Use traditional switch statement instead of switch expression
+        string prefix;
+        switch (type)
+        {
+            case DetailType.Success:
+                prefix = "[✓]";
+                break;
+            case DetailType.Warning:
+                prefix = "[!]";
+                break;
+            case DetailType.Error:
+                prefix = "[✗]";
+                break;
+            case DetailType.Phase:
+                prefix = "[►]";
+                break;
+            case DetailType.Progress:
+                prefix = "[...]";
+                break;
+            default:
+                prefix = "[·]";
+                break;
+        }
+
+        string entry = $"[{timestamp}] {prefix} {detail}";
+        detailsListBox.Items.Add(entry);
+
+        // Check if we should auto-scroll
+        CheckForAutoScroll();
     }
-}
+    
+    private void CheckAutoScroll()
+    {
+        if (detailsListBox.Items.Count != lastItemCount)
+        {
+            lastItemCount = detailsListBox.Items.Count;
+            CheckForAutoScroll();
+        }
+    }
+    
+    private void CheckForAutoScroll()
+    {
+        if (isComplete || detailsListBox.Items.Count == 0) return;
+        
+        bool atBottom = IsAtBottom();
+        
+        // If user scrolled up but is now at bottom again, resume auto-scrolling
+        if (userHasScrolledUp && atBottom)
+        {
+            userScrolling = false;
+            userHasScrolledUp = false;
+        }
+        
+        // Auto-scroll if we haven't manually scrolled or if we're back at bottom
+        if (!userScrolling || (!userHasScrolledUp && atBottom))
+        {
+            detailsListBox.TopIndex = Math.Max(0, detailsListBox.Items.Count - 1);
+        }
+    }
+
+    private bool IsAtBottom()
+    {
+        if (detailsListBox.Items.Count == 0) return true;
+        
+        // Check if the last item is visible
+        int visibleItemCount = detailsListBox.ClientSize.Height / detailsListBox.ItemHeight;
+        int lastVisibleIndex = detailsListBox.TopIndex + visibleItemCount - 1;
+        return lastVisibleIndex >= detailsListBox.Items.Count - 1;
+    }
 
     public void AddGroupTypeProcessed(string groupTypeName, int instanceCount)
     {
-        AddDetail($"Processing group type: {groupTypeName} ({instanceCount} instances)", DetailType.Info);
+        AddDetail($"Counting Group instances: {groupTypeName} ({instanceCount} instances)", DetailType.Info);
     }
 
-    public void AddCopyOperation(string sourceGroup, string targetGroup, int elementCount)
+    public void AddCopyOperation(string sourceGroup, string targetGroupInfo)
     {
-        AddDetail($"Copying {elementCount} elements: {sourceGroup} → {targetGroup}", DetailType.Success);
+        AddDetail($"Copying to: {targetGroupInfo}", DetailType.Success);
+    }
+
+    public void AddMappingProgress(string message)
+    {
+        AddDetail(message, DetailType.Info);
+    }
+    
+    public void AddIntermediateProgress(string message)
+    {
+        AddDetail(message, DetailType.Progress);
     }
 
     public void SetComplete(int totalCopied, long elapsedMs, bool isCancelled = false)
@@ -339,11 +439,16 @@ public void AddDetail(string detail, DetailType type = DetailType.Info)
             return;
         }
 
+        isComplete = true;
         stopwatch.Stop();
         updateTimer.Stop();
 
+        // Update elapsed time one final time
+        var elapsed = stopwatch.Elapsed;
+        timeLabel.Text = $"Elapsed: {elapsed:mm\\:ss\\.ff}";
+
         progressBar.Value = progressBar.Maximum;
-        
+
         if (isCancelled)
         {
             this.Text = "Copy Elements - Cancelled";
@@ -361,10 +466,10 @@ public void AddDetail(string detail, DetailType type = DetailType.Info)
 
         // Change button to Close
         cancelButton.Text = "Close";
-        cancelButton.Click -= null; // Remove all event handlers
-        cancelButton.Click += (sender, e) => { this.Close(); };
-        
         IsCancelled = false;
+        
+        // Ensure we can still copy to clipboard after completion
+        detailsListBox.Focus();
     }
 
     protected override void Dispose(bool disposing)
@@ -373,6 +478,8 @@ public void AddDetail(string detail, DetailType type = DetailType.Info)
         {
             updateTimer?.Stop();
             updateTimer?.Dispose();
+            scrollCheckTimer?.Stop();
+            scrollCheckTimer?.Dispose();
             stopwatch?.Stop();
         }
         base.Dispose(disposing);
