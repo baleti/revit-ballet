@@ -128,6 +128,9 @@
     <Compile Include="revit-scripts\CopySelectedElementsAlongContainingGroupsByRooms_Copying.cs" />
     <Compile Include="revit-scripts\CopySelectedElementsAlongContainingGroupsByRooms_Diagnostics.cs" />
     <Compile Include="revit-scripts\CopySelectedElementsAlongContainingGroupsByRooms_Main.cs" />
+    <Compile Include="revit-scripts\CopySelectedElementsAlongContainingGroupsByRooms_ProgressForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
     <Compile Include="revit-scripts\CopySelectedElementsAlongContainingGroupsByRooms_RoomContainment.cs" />
     <Compile Include="revit-scripts\CopySelectedElementsAlongContainingGroupsByRooms_RoomValidation.cs" />
     <Compile Include="revit-scripts\CopySelectedElementsAlongContainingGroupsByRooms_Transform.cs" />

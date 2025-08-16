@@ -7,6 +7,8 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using Autodesk.Revit.UI.Selection;
 using Autodesk.Revit.DB.Architecture;
+using System.Windows.Forms;
+using System.Threading;
 
 [Transaction(TransactionMode.Manual)]
 public partial class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
@@ -16,12 +18,15 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms : IExterna
     private int roomsValidatedBySimilarity = 0;
     private int roomsInvalidatedByDissimilarity = 0;
     private int roomsAsDirectMembers = 0;
+    
+    // Progress tracking
+    private CopyElementsProgressForm progressForm = null;
 
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
     {
         UIDocument uidoc = commandData.Application.ActiveUIDocument;
         Document doc = uidoc.Document;
-
+        bool operationCancelled = false;
         try
         {
             InitializeDiagnostics();
@@ -32,11 +37,26 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms : IExterna
                 return Result.Failed;
 
             LogSelectedElements(selectedElements);
+            
+            // Initialize progress form
+            progressForm = new CopyElementsProgressForm();
+            progressForm.Show();
+            Application.DoEvents();
+            progressForm.UpdateElementCounts(selectedElements.Count, 0, 0);
+            progressForm.SetPhase("Initialization");
+            progressForm.UpdateProgress(0, 100, "Preparing elements...");
+            Application.DoEvents();
 
             // Pre-calculate test points for all selected elements
             foreach (Element elem in selectedElements)
             {
                 _elementTestPointsCache[elem.Id] = GetElementTestPoints(elem);
+            }
+
+            if (CheckCancellation())
+            {
+                operationCancelled = true;
+                return Result.Cancelled;
             }
 
             // Create bounding box for all selected elements for quick filtering
@@ -47,6 +67,9 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms : IExterna
                 return Result.Failed;
             }
 
+            progressForm.SetPhase("Finding Groups");
+            progressForm.UpdateProgress(10, 100, "Collecting all groups in document...");
+
             // Find all groups in the document
             FilteredElementCollector groupCollector = new FilteredElementCollector(doc);
             IList<Group> allGroups = groupCollector
@@ -55,7 +78,13 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms : IExterna
                 .Cast<Group>()
                 .ToList();
 
+            progressForm.AddDetail($"Found {allGroups.Count} groups in document", CopyElementsProgressForm.DetailType.Info);
+
             // Build room cache for ALL rooms in the document
+            progressForm.SetPhase("Building Room Cache");
+            progressForm.UpdateProgress(20, 100, "Caching room data...");
+            Application.DoEvents();
+            
             BuildRoomCache(doc);
 
             // OPTIMIZATION: Clear caches from previous runs
@@ -63,11 +92,24 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms : IExterna
             _roomPointContainmentCache.Clear();
             _roomBoundaryCache.Clear();
 
+            if (CheckCancellation())
+            {
+                operationCancelled = true;
+                return Result.Cancelled;
+            }
+
             // PRE-CALCULATE ALL GROUP BOUNDING BOXES AND BUILD SPATIAL INDEX
+            progressForm.SetPhase("Building Spatial Index");
+            progressForm.UpdateProgress(30, 100, "Pre-calculating group bounding boxes...");
+            Application.DoEvents();
+            
             PreCalculateGroupDataAndSpatialIndex(allGroups, doc);
 
             // Get potentially relevant groups using spatial index
+            progressForm.UpdateProgress(40, 100, "Filtering spatially relevant groups...");
             List<Group> spatiallyRelevantGroups = GetSpatiallyRelevantGroups(overallBB);
+            progressForm.AddDetail($"Filtered to {spatiallyRelevantGroups.Count} spatially relevant groups", 
+                CopyElementsProgressForm.DetailType.Info);
 
             // Build comprehensive room-to-group mapping with priority handling and validation
             Dictionary<ElementId, Group> roomToSingleGroupMap = BuildRoomToGroupMapping(spatiallyRelevantGroups, doc, overallBB);
@@ -103,6 +145,15 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms : IExterna
                     }
                 }
             }
+            if (CheckCancellation())
+            {
+                operationCancelled = true;
+                return Result.Cancelled;
+            }
+
+            progressForm.SetPhase("Mapping Elements to Groups");
+            progressForm.UpdateProgress(50, 100, $"Checking {elevationFilteredGroups.Count} groups...");
+            Application.DoEvents();
             
             Dictionary<ElementId, List<Group>> elementsInGroups = MapElementsToGroups(
                 selectedElements, elevationFilteredGroups, overallBB, doc, roomToSingleGroupMap);
@@ -120,11 +171,20 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms : IExterna
             if (elementsInGroups.Count == 0)
             {
                 message = "No selected elements are contained within rooms of any groups. Check the diagnostic log for details.";
+                progressForm.AddDetail("No elements found in group rooms", CopyElementsProgressForm.DetailType.Error);
                 DiagnoseElementsNotInGroups(selectedElements, elementsInGroups, doc);
                 SaveDiagnostics(true);
+                progressForm.SetComplete(0, globalStopwatch.ElapsedMilliseconds, false);
                 return Result.Failed;
             }
 
+            if (CheckCancellation())
+            {
+                operationCancelled = true;
+                return Result.Cancelled;
+            }
+
+            progressForm.SetPhase("Processing Copy Operations");
             // Build element to group types mapping for Comments parameter
             Dictionary<ElementId, List<string>> elementToGroupTypeNames = BuildElementToGroupTypeMapping(
                 elementsInGroups, doc);
@@ -132,8 +192,17 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms : IExterna
             // Group the containing groups by their group type
             Dictionary<ElementId, List<Group>> groupsByType = GroupContainingGroupsByType(elementsInGroups);
 
+            progressForm.AddDetail($"Processing {groupsByType.Count} group types", CopyElementsProgressForm.DetailType.Info);
+            progressForm.UpdateProgress(60, 100, "Starting copy operations...");
+            Application.DoEvents();
+
             // Process copying
             var copyResult = ProcessCopying(doc, groupsByType, elementsInGroups, elementToGroupTypeNames);
+            
+            if (progressForm.IsCancelled)
+            {
+                operationCancelled = true;
+            }
 
             LogFinalSummary(selectedElements.Count, elementsInGroups.Count, copyResult.TotalCopied);
 
@@ -145,15 +214,46 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms : IExterna
             */
 
             SaveDiagnostics();
+            
+            // Complete the progress form
+            progressForm.UpdateElementCounts(selectedElements.Count, elementsInGroups.Count, copyResult.TotalCopied);
+            progressForm.SetComplete(copyResult.TotalCopied, globalStopwatch.ElapsedMilliseconds, operationCancelled);
 
-            return Result.Succeeded;
+            return operationCancelled ? Result.Cancelled : Result.Succeeded;
         }
         catch (Exception ex)
         {
             message = $"Error: {ex.Message}";
+            if (progressForm != null && !progressForm.IsDisposed)
+            {
+                progressForm.AddDetail($"Error: {ex.Message}", CopyElementsProgressForm.DetailType.Error);
+                progressForm.SetComplete(0, globalStopwatch?.ElapsedMilliseconds ?? 0, true);
+            }
             SaveDiagnostics(true);
             return Result.Failed;
         }
+        finally
+        {
+            // Don't dispose the form immediately if not cancelled - let user review results
+            if (operationCancelled && progressForm != null && !progressForm.IsDisposed)
+            {
+                progressForm.Dispose();
+            }
+        }
+    }
+    
+    private bool CheckCancellation()
+    {
+        if (progressForm != null && progressForm.IsCancelled)
+        {
+            return true;
+        }
+        
+        // Allow UI to update
+        Application.DoEvents();
+        Thread.Yield();
+        
+        return false;
     }
 
     private List<Element> GetAndValidateSelection(UIDocument uidoc, Document doc, ref string message)

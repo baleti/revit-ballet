@@ -4,6 +4,8 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Architecture;
 using Autodesk.Revit.UI;
+using System.Windows.Forms;
+using System.Threading;
 
 public partial class CopySelectedElementsAlongContainingGroupsByRooms
 {
@@ -30,6 +32,9 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
         // Track all unique target groups across all group types
         HashSet<ElementId> allPossibleTargetGroups = new HashSet<ElementId>();
         HashSet<ElementId> successfulTargetGroups = new HashSet<ElementId>();
+        
+        int totalGroupTypes = groupsByType.Count;
+        int currentGroupType = 0;
 
         using (Transaction trans = new Transaction(doc, "Copy Elements Following Containing Groups By Rooms"))
         {
@@ -38,13 +43,24 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
             // First, update Comments parameter for all selected elements that are in groups
             UpdateSourceElementComments(doc, elementToGroupTypeNames, elementsInGroups);
 
+            if (progressForm != null)
+            {
+                progressForm.SetPhase("Collecting Copy Operations");
+                progressForm.UpdateProgress(0, totalGroupTypes, "Analyzing group types...");
+            }
+
             // PHASE 1: Collect all copy operations across all group types
             foreach (var kvp in groupsByType)
             {
+                currentGroupType++;
                 ElementId groupTypeId = kvp.Key;
                 List<Group> containingGroupsOfThisType = kvp.Value;
 
                 GroupType groupType = doc.GetElement(groupTypeId) as GroupType;
+                
+                if (CheckCancellation())
+                    break;
+                
                 if (groupType == null) continue;
 
                 // Get all instances of this group type
@@ -60,10 +76,22 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
                 {
                     continue;
                 }
+                
+                if (progressForm != null)
+                {
+                    progressForm.UpdateProgress(currentGroupType, totalGroupTypes, 
+                        $"Processing group type {currentGroupType} of {totalGroupTypes}",
+                        $"{groupType.Name} ({allGroupInstances.Count} instances)");
+                    progressForm.AddGroupTypeProcessed(groupType.Name, allGroupInstances.Count);
+                    Application.DoEvents();
+                }
 
                 // Process EACH containing group as a potential source
                 foreach (Group sourceGroup in containingGroupsOfThisType)
                 {
+                    if (CheckCancellation())
+                        break;
+                        
                     // Determine which elements to copy from THIS specific source group
                     List<Element> elementsToCopyFromThisGroup = new List<Element>();
                     foreach (var elemKvp in elementsInGroups)
@@ -90,7 +118,19 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
                 result.GroupTypesProcessed++;
             }
 
+            if (CheckCancellation())
+            {
+                trans.RollBack();
+                return result;
+            }
+
             // PHASE 2: Execute batch copy
+            if (progressForm != null)
+            {
+                progressForm.SetPhase("Executing Copy Operations");
+                progressForm.UpdateProgress(0, allBatchCopyData.Count, "Copying elements...");
+            }
+            
             ExecuteBatchCopy(doc, allBatchCopyData, result);
 
             // Calculate final statistics from tracked groups
@@ -174,6 +214,9 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
             // Skip the source group itself
             if (otherGroup.Id == referenceGroup.Id) continue;
 
+            if (CheckCancellation())
+                break;
+
             // OPTIMIZATION: Skip only if groups are at VERY different elevations
             // Changed from 50.0 to 200.0 to allow copying between more floors
             // This was causing groups on different floors to be skipped
@@ -239,12 +282,29 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
                 .ToList();
 
             result.TotalCopyOperations = transformGroups.Count;
+            int currentOperation = 0;
 
             foreach (var transformGroup in transformGroups)
             {
                 List<BatchCopyData> batchItems = transformGroup.ToList();
                 Group targetGroup = batchItems.First().TargetGroup;
                 Transform sharedTransform = batchItems.First().Transform;
+
+                currentOperation++;
+                
+                if (progressForm != null)
+                {
+                    GroupType gt = doc.GetElement(targetGroup.GetTypeId()) as GroupType;
+                    string targetGroupName = gt?.Name ?? "Unknown";
+                    
+                    progressForm.UpdateProgress(currentOperation, transformGroups.Count,
+                        $"Copying to group {currentOperation} of {transformGroups.Count}",
+                        $"Target: {targetGroupName} (ID: {targetGroup.Id})");
+                    Application.DoEvents();
+                }
+                
+                if (CheckCancellation())
+                    break;
 
                 // Get unique element IDs for this group
                 List<ElementId> elementIdsToCopy = batchItems
@@ -266,6 +326,15 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
                     {
                         UpdateCopiedElements(doc, copiedIds, elementIdsToCopy, batchItems, targetGroup);
                         result.TotalCopied += copiedIds.Count;
+                        
+                        if (progressForm != null)
+                        {
+                            progressForm.UpdateElementCounts(0, 0, result.TotalCopied);
+                            GroupType sourceGt = doc.GetElement(batchItems.First().SourceGroup.GetTypeId()) as GroupType;
+                            GroupType targetGt = doc.GetElement(targetGroup.GetTypeId()) as GroupType;
+                            progressForm.AddCopyOperation(sourceGt?.Name ?? "Unknown", 
+                                targetGt?.Name ?? "Unknown", copiedIds.Count);
+                        }
                     }
                 }
                 catch (Exception ex)
