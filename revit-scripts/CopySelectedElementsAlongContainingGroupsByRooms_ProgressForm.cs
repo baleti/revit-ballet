@@ -163,14 +163,22 @@ public class CopyElementsProgressForm : WinForm
         
         // Add KeyDown event handler directly to ListBox for better key capture
         detailsListBox.KeyDown += DetailsListBox_KeyDown;
+        
+        // Also handle PreviewKeyDown to catch keys before they're processed
+        detailsListBox.PreviewKeyDown += (s, e) =>
+        {
+            if (e.Control && (e.KeyCode == Keys.C || e.KeyCode == Keys.A))
+            {
+                e.IsInputKey = true;
+            }
+        };
 
         cancelButton = new Button
         {
             Location = new WinPoint(this.ClientSize.Width - 75 - 12, this.ClientSize.Height - 23 - 12),
             Size = new WinSize(75, 23),
             Anchor = AnchorStyles.Bottom | AnchorStyles.Right,
-            Text = "Cancel",
-            DialogResult = DialogResult.Cancel
+            Text = "Cancel"
         };
         cancelButton.Click += CancelButton_Click;
 
@@ -194,8 +202,9 @@ public class CopyElementsProgressForm : WinForm
     {
         if (isComplete)
         {
-            // Just close if operation is complete
-            this.Close();
+            // Properly dispose and close the form when complete
+            this.Hide();
+            this.Dispose();
         }
         else
         {
@@ -219,23 +228,29 @@ public class CopyElementsProgressForm : WinForm
         {
             SelectAllItems();
             e.Handled = true;
+            e.SuppressKeyPress = true;
+            return;
         }
         // Handle Ctrl+C for Copy
         else if (e.Control && e.KeyCode == Keys.C)
         {
             CopySelectedItemsToClipboard();
             e.Handled = true;
+            e.SuppressKeyPress = true;
+            return;
         }
         else if (e.KeyCode == Keys.Escape)
         {
             if (isComplete)
             {
-                this.Close();
+                // Perform the same action as clicking the Close button
+                cancelButton.PerformClick();
             }
             else
             {
                 cancelButton.PerformClick();
             }
+            e.Handled = true;
         }
     }
 
@@ -247,10 +262,17 @@ public class CopyElementsProgressForm : WinForm
         {
             SelectAllItems();
             e.Handled = true;
+            e.SuppressKeyPress = true;
         }
         else if (e.Control && e.KeyCode == Keys.C)
         {
             CopySelectedItemsToClipboard();
+            e.Handled = true;
+            e.SuppressKeyPress = true;
+        }
+        else if (e.KeyCode == Keys.Escape)
+        {
+            cancelButton.PerformClick();
             e.Handled = true;
         }
     }
@@ -277,22 +299,39 @@ public class CopyElementsProgressForm : WinForm
             {
                 sb.AppendLine(item.ToString());
             }
+            
+            string textToCopy = sb.ToString();
+            
             try
             {
-                Clipboard.SetText(sb.ToString());
+                // Try multiple methods to ensure clipboard operation works
+                if (this.InvokeRequired)
+                {
+                    this.Invoke(new Action(() => 
+                    {
+                        System.Windows.Forms.Clipboard.SetText(textToCopy);
+                    }));
+                }
+                else
+                {
+                    System.Windows.Forms.Clipboard.SetText(textToCopy);
+                }
                 
                 // Optional: Show brief confirmation in status if complete
                 if (isComplete)
                 {
                     string originalStatus = statusLabel.Text;
-                    statusLabel.Text = $"{originalStatus} (Copied {detailsListBox.SelectedItems.Count} items to clipboard)";
+                    statusLabel.Text = $"{originalStatus} (Copied {detailsListBox.SelectedItems.Count} items)";
                     
                     // Reset status after 2 seconds
                     System.Windows.Forms.Timer resetTimer = new System.Windows.Forms.Timer();
                     resetTimer.Interval = 2000;
                     resetTimer.Tick += (s, e) =>
                     {
-                        statusLabel.Text = originalStatus;
+                        if (!this.IsDisposed)
+                        {
+                            statusLabel.Text = originalStatus;
+                        }
                         resetTimer.Stop();
                         resetTimer.Dispose();
                     };
@@ -301,9 +340,23 @@ public class CopyElementsProgressForm : WinForm
             }
             catch (Exception ex)
             {
-                // Clipboard operation might fail, show message
-                MessageBox.Show($"Failed to copy to clipboard: {ex.Message}", "Copy Error", 
-                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                // Try alternative clipboard method
+                try
+                {
+                    System.Threading.Thread clipboardThread = new System.Threading.Thread(() =>
+                    {
+                        System.Windows.Forms.Clipboard.SetText(textToCopy);
+                    });
+                    clipboardThread.SetApartmentState(System.Threading.ApartmentState.STA);
+                    clipboardThread.Start();
+                    clipboardThread.Join();
+                }
+                catch
+                {
+                    // If still fails, show error
+                    MessageBox.Show($"Failed to copy to clipboard: {ex.Message}", "Copy Error", 
+                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
             }
         }
     }
