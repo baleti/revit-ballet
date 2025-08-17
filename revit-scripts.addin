@@ -58,15 +58,22 @@
     <AddIn Type="Command">
         <Name>scripts</Name>
         <Assembly>revit-scripts.dll</Assembly>
-        <FullClassName>SelectCategoriesInProject</FullClassName>
+        <FullClassName>SelectElementsInProjectByCategorie </FullClassName>
         <AddInId>E39B499B-4A63-45AF-B876-EA508752535E</AddInId>
         <VendorId>scripts</VendorId>
     </AddIn>
     <AddIn Type="Command">
         <Name>scripts</Name>
         <Assembly>revit-scripts.dll</Assembly>
-        <FullClassName>SelectCategoriesInView</FullClassName>
+        <FullClassName>SelectElementsInViewByCategories</FullClassName>
         <AddInId>E39B494B-4A63-45AF-B876-EA508752535E</AddInId>
+        <VendorId>scripts</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>scripts</Name>
+        <Assembly>revit-scripts.dll</Assembly>
+        <FullClassName>SelectElementsByCategories</FullClassName>
+        <AddInId>E39B494B-4A63-45AF-B876-EA708752535E</AddInId>
         <VendorId>scripts</VendorId>
     </AddIn>
     <AddIn Type="Command">
