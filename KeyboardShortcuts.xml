@@ -159,8 +159,9 @@
   <ShortcutItem CommandName="External Tools:CloseCurrentView" CommandId="e19b494b-4a63-44af-a876-ec308252335e" Shortcuts="WQ" Paths="Add-Ins&gt;External" />
   <ShortcutItem CommandName="External Tools:CloseViews" CommandId="e19b494b-4a63-47af-a876-ec308252335e" Shortcuts="WC" Paths="Add-Ins&gt;External" />
   <ShortcutItem CommandName="External Tools:SelectAllElementsInViewAndInGroups" CommandId="e39b494b-4a63-45af-b876-ec50875257be" Shortcuts="Ctrl+Alt+A" Paths="Add-Ins&gt;External" />
-  <ShortcutItem CommandName="External Tools:SelectCategoriesInProject" CommandId="e39b499b-4a63-45af-b876-ea508752535e" Shortcuts="SCA" Paths="Add-Ins&gt;External" />
-  <ShortcutItem CommandName="External Tools:SelectCategoriesInView" CommandId="e39b494b-4a63-45af-b876-ea508752535e" Shortcuts="SCV" Paths="Add-Ins&gt;External" />
+  <ShortcutItem CommandName="External Tools:SelectElementsInProjectByCategorie" CommandId="e39b499b-4a63-45af-b876-ea508752535e" Shortcuts="SCA" Paths="Add-Ins&gt;External" />
+  <ShortcutItem CommandName="External Tools:SelectElementsInViewByCategories" CommandId="e39b494b-4a63-45af-b876-ea508752535e" Shortcuts="SCV" Paths="Add-Ins&gt;External" />
+  <ShortcutItem CommandName="External Tools:SelectElementsByCategories" CommandId="e39b494b-4a63-45af-b876-ea708752535e" Shortcuts="SCC" Paths="Add-Ins&gt;External" />
   <ShortcutItem CommandName="External Tools:OpenViews" CommandId="e39b494b-4a63-45af-b876-ec508752575e" Shortcuts="WO" Paths="Add-Ins&gt;External" />
   <ShortcutItem CommandName="External Tools:FilterSelectedElements" CommandId="e39b494b-4a63-451f-b876-ec508752578f" Shortcuts="EP" Paths="Add-Ins&gt;External" />
   <ShortcutItem CommandName="External Tools:FilterSelectedElementsSpanAllScreens" CommandId="e39b494b-4a63-45af-b871-ec508752578e" Shortcuts="EA" Paths="Add-Ins&gt;External" />
@@ -170,7 +171,13 @@
   <ShortcutItem CommandName="External Tools:InvokeLastAddinCommand" CommandId="e39b4b4b-4a67-48af-b879-ec5a9752578e" Shortcuts="QQ`" Paths="Add-Ins&gt;External" />
   <ShortcutItem CommandName="External Tools:OpenSheet" CommandId="e39b4b4b-4a68-48af-b879-ec5a9752578e" Paths="Add-Ins&gt;External" />
   <ShortcutItem CommandName="External Tools:SelectViews" CommandId="e38b4b7b-4a67-49af-ba19-ecaa9752578e" Shortcuts="VS" Paths="Add-Ins&gt;External" />
-  <ShortcutItem CommandName="External Tools:SelectViewTemplatesOfSelectedViews" CommandId="f38b4b7b-4a67-49af-ba19-ecaa9752578e" Shortcuts="VT" Paths="Add-Ins&gt;External" />
+  <ShortcutItem CommandName="External Tools:SelectViewTemplatesOfSelectedViews" CommandId="b58b4b7b-4a67-49af-ba19-ecaa9752578e" Shortcuts="VT" Paths="Add-Ins&gt;External" />
+  <ShortcutItem CommandName="External Tools:EditSelectionSets" CommandId="f38b8b7b-4a67-49af-ba19-ecaa9752578e" Shortcuts="ES" Paths="Add-Ins&gt;External" />
+  <ShortcutItem CommandName="External Tools:FilterDoors" CommandId="f38b8b7b-4a97-49af-ba19-ecaa9752578e" Paths="Add-Ins&gt;External" />
+  <ShortcutItem CommandName="External Tools:ToggleSelectionMode" CommandId="f38b8b7b-4aa7-49af-ba19-ecaa9752578e" Paths="Add-Ins&gt;External" />
+  <ShortcutItem CommandName="External Tools:SwitchSelectionMode" CommandId="f38b8b7b-4ab7-49af-ba19-ecaa9752578e" Shortcuts="TS" Paths="Add-Ins&gt;External" />
+  <ShortcutItem CommandName="External Tools:SelectFamilyTypeInstancesInProject" CommandId="f38b8b7b-4ac7-49af-ba19-ecaa9752578e" Paths="Add-Ins&gt;External" />
+  <ShortcutItem CommandName="External Tools:SelectFamilyTypeInstancesInCurrentView" CommandId="f38b8b7b-4ad7-49af-ba19-ecaa9752578e" Shortcuts="IU" Paths="Add-Ins&gt;External" />
   <ShortcutItem CommandName="Align Left" CommandId="CustomCtrl_%CustomCtrl_%Add-Ins%Align%alignLeftButton" Shortcuts="AAL" Paths="Add-Ins&gt;Align" />
   <ShortcutItem CommandName="Align Center" CommandId="CustomCtrl_%CustomCtrl_%Add-Ins%Align%alignCenterButton" Shortcuts="AAC" Paths="Add-Ins&gt;Align" />
   <ShortcutItem CommandName="Align Right" CommandId="CustomCtrl_%CustomCtrl_%Add-Ins%Align%alignRightButton" Shortcuts="AAR" Paths="Add-Ins&gt;Align" />
@@ -185,15 +192,6 @@
   <ShortcutItem CommandName="Transmit model(s)" CommandId="CustomCtrl_%CustomCtrl_%Add-Ins%eTransmit%eTransmit" Paths="Add-Ins&gt;eTransmit" />
   <ShortcutItem CommandName="Help" CommandId="CustomCtrl_%CustomCtrl_%Add-Ins%eTransmit%eTransmitHelp" Paths="Add-Ins&gt;eTransmit" />
   <ShortcutItem CommandName="About" CommandId="CustomCtrl_%CustomCtrl_%Add-Ins%eTransmit%eTransmitAbout" Paths="Add-Ins&gt;eTransmit" />
-  <ShortcutItem CommandName="Create PDF" CommandId="CustomCtrl_%CustomCtrl_%Add-Ins%Bluebeam%CreatePDF" Paths="Add-Ins&gt;Bluebeam" />
-  <ShortcutItem CommandName="Change Settings" CommandId="CustomCtrl_%CustomCtrl_%Add-Ins%Bluebeam%ChangeSettings" Paths="Add-Ins&gt;Bluebeam" />
-  <ShortcutItem CommandName="Split3D:Create 3D PDF" CommandId="CustomCtrl_%CustomCtrl_%CustomCtrl_%Add-Ins%Bluebeam%splitButton3D%Create 3D PDF" Paths="Add-Ins&gt;Bluebeam" />
-  <ShortcutItem CommandName="Split3D:Create U3D" CommandId="CustomCtrl_%CustomCtrl_%CustomCtrl_%Add-Ins%Bluebeam%splitButton3D%Create U3D" Paths="Add-Ins&gt;Bluebeam" />
-  <ShortcutItem CommandName="Split3D:Copy 3D to Clipboard" CommandId="CustomCtrl_%CustomCtrl_%CustomCtrl_%Add-Ins%Bluebeam%splitButton3D%Copy 3D to Clipboard" Paths="Add-Ins&gt;Bluebeam" />
-  <ShortcutItem CommandName="Split3D:3D PDF Settings" CommandId="CustomCtrl_%CustomCtrl_%CustomCtrl_%Add-Ins%Bluebeam%splitButton3D%3D PDF Settings" Paths="Add-Ins&gt;Bluebeam" />
-  <ShortcutItem CommandName="Show Log" CommandId="CustomCtrl_%CustomCtrl_%Add-Ins%Bluebeam%showLog" Paths="Add-Ins&gt;Bluebeam" />
-  <ShortcutItem CommandName="How Do I" CommandId="CustomCtrl_%CustomCtrl_%Add-Ins%Bluebeam%help" Paths="Add-Ins&gt;Bluebeam" />
-  <ShortcutItem CommandName="About" CommandId="CustomCtrl_%CustomCtrl_%Add-Ins%Bluebeam%about" Paths="Add-Ins&gt;Bluebeam" />
   <ShortcutItem CommandName="Convert RFAto FormIt" CommandId="CustomCtrl_%CustomCtrl_%Add-Ins%FormIt Converter%Convert RFA to FormIt" Paths="Add-Ins&gt;FormIt Converter" />
   <ShortcutItem CommandName="RevitLookup:Dashboard" CommandId="CustomCtrl_%CustomCtrl_%CustomCtrl_%Add-Ins%Revit Lookup%RevitLookupButton%RevitLookup.Commands.DashboardCommand" Paths="Add-Ins&gt;Revit Lookup" />
   <ShortcutItem CommandName="RevitLookup:Snoop Selection" CommandId="CustomCtrl_%CustomCtrl_%CustomCtrl_%Add-Ins%Revit Lookup%RevitLookupButton%RevitLookup.Commands.SnoopSelectionCommand" Shortcuts="LS" Paths="Add-Ins&gt;Revit Lookup" />
@@ -471,6 +469,8 @@
   <ShortcutItem CommandName="Insights:Generate Analysis" CommandId="ID_SYSTEMS_ANALYSIS_INSIGHT" Paths="Analyze&gt;Energy Optimization" />
   <ShortcutItem CommandName="Insights:View Analysis" CommandId="ID_SYSTEMS_ANALYSIS_RESULTS_INSIGHT" Paths="Analyze&gt;Energy Optimization" />
   <ShortcutItem CommandName="Energy Settings" CommandId="ID_CEA_VIEW_ENERGY_DATA" Paths="Analyze&gt;Energy Optimization" />
+  <ShortcutItem CommandName="Analyze" CommandId="CustomCtrl_%idCarbonAnalysis%idRunCarbonAnalysis" Paths="Analyze&gt;Carbon Insights" />
+  <ShortcutItem CommandName="View" CommandId="CustomCtrl_%idCarbonAnalysis%idShowCarbonAnalysis" Paths="Analyze&gt;Carbon Insights" />
   <ShortcutItem CommandName="Area Based Load Boundary" CommandId="ID_RBS_ANALYTICAL_AREA_BASED_LOAD_BOUNDARY" Paths="Analyze&gt;Electrical Analysis" />
   <ShortcutItem CommandName="Area Based Load Boundary:Show Boundary Open-Ends" CommandId="ID_RBS_SHOW_ABL_SEPARATION_LINE_OPEN_END" Paths="Analyze&gt;Electrical Analysis" />
   <ShortcutItem CommandName="Area Based Load Boundary:Hide Boundary Open-Ends" CommandId="ID_RBS_HIDE_ABL_SEPARATION_LINE_OPEN_END" Paths="Analyze&gt;Electrical Analysis" />
@@ -1525,7 +1525,7 @@
   <ShortcutItem CommandName="Autodesk.com/revit" CommandId="ID_HELP_PRODUCTURL" Paths="Help" />
   <ShortcutItem CommandName="Autodesk Building Solutions" CommandId="ID_HELP_AUTODESK_BUILDING_SOLUTIONS" Paths="Help" />
   <ShortcutItem CommandName="Privacy Settings..." CommandId="ID_HELP_DESKTOP_ANALYTICS" Paths="Help" />
-  <ShortcutItem CommandName="About Autodesk Revit 2024.2" CommandId="ID_APP_ABOUT" Paths="Help" />
+  <ShortcutItem CommandName="About Autodesk Revit 2024.3" CommandId="ID_APP_ABOUT" Paths="Help" />
   <ShortcutItem CommandName="Bolt" CommandId="ID_EXT_ENTITY_BOLT" />
   <ShortcutItem CommandName="Architectural Wall:Partial Ellipse" CommandId="ID_WALL_PARTIAL_ELLIPSE" Paths="Contextual Tabs&gt;Draw" />
   <ShortcutItem CommandName="Orient to Back Right" CommandId="ID_ORIENT_TO_BACK_RIGHT" Paths="View Cube" />
@@ -1661,7 +1661,7 @@
   <ShortcutItem CommandName="Hole" CommandId="ID_EXT_ENTITY_HOLE" />
   <ShortcutItem CommandName="Help" CommandId="ID_NAVWHEEL_HELP" Paths="Steering Wheel" />
   <ShortcutItem CommandName="Toggle Rebar Cover Constraint" CommandId="ID_TOGGLE_REBAR_COVER_CHECK_UNCHECK_KEYSHORTCUT" Shortcuts="CF" Paths="Drawing Area Controls" />
-  <ShortcutItem CommandName="Full Navigation Wheel" CommandId="ID_NAVWHEEL_FULL_WHEEL" Paths="Steering Wheel" />
+  <ShortcutItem CommandName="Full Navigation Wheel" CommandId="ID_NAVWHEEL_FULL_WHEEL" Shortcuts="NW" Paths="Steering Wheel" />
   <ShortcutItem CommandName="Find in Project Browser" CommandId="ID_FIND_IN_PROJECT_BROWSER" Shortcuts="FF" Paths="Context Menu" />
   <ShortcutItem CommandName="Create Rectangular Anchor Pattern" CommandId="ID_EXT_ENTITY_ANCHOR_RECT" />
   <ShortcutItem CommandName="Default:Pick Lines" CommandId="IDC_RADIO_COPY_CURVE" Shortcuts="PL" Paths="Contextual Tabs&gt;Draw" />

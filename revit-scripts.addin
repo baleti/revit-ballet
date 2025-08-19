@@ -58,7 +58,7 @@
     <AddIn Type="Command">
         <Name>scripts</Name>
         <Assembly>revit-scripts.dll</Assembly>
-        <FullClassName>SelectElementsInProjectByCategorie </FullClassName>
+        <FullClassName>SelectElementsInProjectByCategories</FullClassName>
         <AddInId>E39B499B-4A63-45AF-B876-EA508752535E</AddInId>
         <VendorId>scripts</VendorId>
     </AddIn>

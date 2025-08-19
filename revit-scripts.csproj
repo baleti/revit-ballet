@@ -170,6 +170,7 @@
     <Compile Include="revit-scripts\FilterPositionOnRooms.cs" />
     <Compile Include="revit-scripts\FilterRevisionClouds.cs" />
     <Compile Include="revit-scripts\FilterSelectedElementsByContainingGroupsWithRooms_RoomAnalysis.cs" />
+    <Compile Include="revit-scripts\FilterSelectedElementsByScopeBoxes.cs" />
     <Compile Include="revit-scripts\FilterSheets.cs" />
     <Compile Include="revit-scripts\HandFlipSelectedDoors.cs" />
     <Compile Include="revit-scripts\ImportElementsFromFile.cs" />
