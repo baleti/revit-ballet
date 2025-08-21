@@ -274,13 +274,12 @@ public class DirectShapeBoundingBoxFromSelected3DElements : IExternalCommand
         string elementName = GetElementName(sourceElement);
         ds.Name = $"BBox3D_{elementName}";
 
-        // Set Comments with Type and Id information as key-value pairs
+        // Get rotation angle of the source element
+        double rotationAngleDegrees = GetElementRotationAngle(sourceElement);
+
+        // Set Comments with Type, Id, and Rotation information as key-value pairs
         string elementTypeName = GetElementTypeName(doc, sourceElement);
-        string comments = $"Type: {elementTypeName}, Id: {sourceElement.Id.IntegerValue}";
-        
-        // Add bounding box dimensions to comments
-        string dimensions = $", Dims: {width:F3} x {depth:F3} x {height:F3}";
-        comments += dimensions;
+        string comments = $"Type: {elementTypeName}, Id: {sourceElement.Id.IntegerValue}, Rotation: {rotationAngleDegrees:F2}°";
         
         Parameter commentsParam = ds.LookupParameter("Comments") ??
                                  ds.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS);
@@ -290,6 +289,94 @@ public class DirectShapeBoundingBoxFromSelected3DElements : IExternalCommand
         }
 
         return ds.Id;
+    }
+
+    // --------------------------------------------------------------------------
+    double GetElementRotationAngle(Element elem)
+    {
+        double rotationAngleDegrees = 0.0;
+
+        // For FamilyInstance elements, we can get the rotation directly
+        if (elem is FamilyInstance fi)
+        {
+            // Get the transform of the family instance
+            Transform transform = fi.GetTransform();
+            
+            // Extract rotation angle from the transform
+            // The BasisX vector tells us the rotation around Z axis
+            XYZ basisX = transform.BasisX;
+            
+            // Calculate angle from X-axis (1,0,0) to the element's X-axis
+            // atan2 gives us the angle in radians
+            double angleRadians = Math.Atan2(basisX.Y, basisX.X);
+            rotationAngleDegrees = angleRadians * 180.0 / Math.PI;
+            
+            // Normalize to 0-360 range
+            if (rotationAngleDegrees < 0)
+                rotationAngleDegrees += 360.0;
+        }
+        else
+        {
+            // For non-FamilyInstance elements, try to get rotation from Location
+            Location loc = elem.Location;
+            if (loc is LocationPoint locPoint)
+            {
+                // Some elements store rotation in LocationPoint
+                double angleRadians = locPoint.Rotation;
+                rotationAngleDegrees = angleRadians * 180.0 / Math.PI;
+                
+                // Normalize to 0-360 range
+                if (rotationAngleDegrees < 0)
+                    rotationAngleDegrees += 360.0;
+            }
+            else if (loc is LocationCurve locCurve)
+            {
+                // For linear elements like beams, columns, we can get the angle from the curve direction
+                Curve curve = locCurve.Curve;
+                if (curve is Line line)
+                {
+                    XYZ direction = line.Direction;
+                    // Project to XY plane and calculate angle
+                    XYZ xyDirection = new XYZ(direction.X, direction.Y, 0).Normalize();
+                    double angleRadians = Math.Atan2(xyDirection.Y, xyDirection.X);
+                    rotationAngleDegrees = angleRadians * 180.0 / Math.PI;
+                    
+                    // Normalize to 0-360 range
+                    if (rotationAngleDegrees < 0)
+                        rotationAngleDegrees += 360.0;
+                }
+            }
+            else
+            {
+                // Try to get rotation from geometry transform if available
+                Options geomOptions = new Options();
+                geomOptions.ComputeReferences = false;
+                geomOptions.DetailLevel = ViewDetailLevel.Coarse;
+                
+                GeometryElement geomElem = elem.get_Geometry(geomOptions);
+                if (geomElem != null)
+                {
+                    foreach (GeometryObject geomObj in geomElem)
+                    {
+                        if (geomObj is GeometryInstance instance)
+                        {
+                            Transform transform = instance.Transform;
+                            XYZ basisX = transform.BasisX;
+                            double angleRadians = Math.Atan2(basisX.Y, basisX.X);
+                            rotationAngleDegrees = angleRadians * 180.0 / Math.PI;
+                            
+                            // Normalize to 0-360 range
+                            if (rotationAngleDegrees < 0)
+                                rotationAngleDegrees += 360.0;
+                            
+                            break; // Use first instance transform found
+                        }
+                    }
+                }
+            }
+        }
+
+        return rotationAngleDegrees;
     }
 
     // --------------------------------------------------------------------------

@@ -232,7 +232,6 @@
     <Compile Include="revit-scripts\test44.cs" />
     <Compile Include="revit-scripts\test45.cs" />
     <Compile Include="revit-scripts\test50.cs" />
-    <Compile Include="revit-scripts\test55.cs" />
     <Compile Include="revit-scripts\UnhideSelectedElementsToTemporaryHideIsolate.cs" />
     <Compile Include="revit-scripts\StretchLevelsToCropRegion.cs" />
     <Compile Include="revit-scripts\test33.cs" />
