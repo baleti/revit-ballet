@@ -45,7 +45,8 @@ public class SelectElementsByCategories : IExternalCommand
                             var entry = new Dictionary<string, object>
                             {
                                 { "Name", cat.Name },
-                                { "CategoryId", cat.Id }
+                                { "CategoryId", cat.Id },
+                                { "IsDirectShape", false }
                             };
                             uniqueCategories[categoryId] = entry;
                         }
@@ -79,15 +80,28 @@ public class SelectElementsByCategories : IExternalCommand
                 var entry = new Dictionary<string, object>
                 {
                     { "Name", cat.Name },
-                    { "CategoryId", cat.Id }
+                    { "CategoryId", cat.Id },
+                    { "IsDirectShape", false }
                 };
                 uniqueCategories[categoryId] = entry;
             }
         }
         
-        // Convert dictionary to list and sort alphabetically
-        List<Dictionary<string, object>> categoryList = uniqueCategories.Values
-            .OrderBy(c => (string)c["Name"])
+        // Convert dictionary to list
+        List<Dictionary<string, object>> categoryList = uniqueCategories.Values.ToList();
+        
+        // Add a special entry for "All Direct Shapes" at the beginning
+        var directShapeEntry = new Dictionary<string, object>
+        {
+            { "Name", "Direct Shapes (All Categories)" },
+            { "CategoryId", null }, // null indicates all Direct Shapes
+            { "IsDirectShape", true }
+        };
+        categoryList.Insert(0, directShapeEntry);
+        
+        // Sort the rest alphabetically (excluding the first Direct Shapes entry)
+        categoryList = new List<Dictionary<string, object>> { categoryList[0] }
+            .Concat(categoryList.Skip(1).OrderBy(c => (string)c["Name"]))
             .ToList();
         
         // Define properties to display (only "Name" in this case).
@@ -102,52 +116,76 @@ public class SelectElementsByCategories : IExternalCommand
         List<ElementId> elementIds = new List<ElementId>();
         foreach (var selectedCategory in selectedCategories)
         {
-            ElementId catId = (ElementId)selectedCategory["CategoryId"];
+            bool isDirectShape = (bool)selectedCategory["IsDirectShape"];
             
-            try
+            if (isDirectShape)
             {
-                // Collect elements of this category from the entire document
-                FilteredElementCollector categoryCollector = new FilteredElementCollector(doc);
-                categoryCollector.WhereElementIsNotElementType();
+                // Collect all Direct Shapes from the document
+                FilteredElementCollector directShapeCollector = new FilteredElementCollector(doc);
+                directShapeCollector.WhereElementIsNotElementType();
+                directShapeCollector.OfClass(typeof(DirectShape));
                 
-                // Try using OfCategory with BuiltInCategory if it's a built-in category
-                if (catId.IntegerValue < 0) // Built-in categories have negative IDs
-                {
-                    try
-                    {
-                        var builtInCat = (BuiltInCategory)catId.IntegerValue;
-                        var elementIdsOfCategory = categoryCollector
-                            .OfCategory(builtInCat)
-                            .Select(e => e.Id)
-                            .ToList();
-                        elementIds.AddRange(elementIdsOfCategory);
-                    }
-                    catch
-                    {
-                        // If OfCategory fails, try OfCategoryId
-                        categoryCollector = new FilteredElementCollector(doc);
-                        var elementIdsOfCategory = categoryCollector
-                            .WhereElementIsNotElementType()
-                            .OfCategoryId(catId)
-                            .Select(e => e.Id)
-                            .ToList();
-                        elementIds.AddRange(elementIdsOfCategory);
-                    }
-                }
-                else
-                {
-                    // For custom categories, use OfCategoryId
-                    var elementIdsOfCategory = categoryCollector
-                        .OfCategoryId(catId)
-                        .Select(e => e.Id)
-                        .ToList();
-                    elementIds.AddRange(elementIdsOfCategory);
-                }
+                var directShapeIds = directShapeCollector.Select(e => e.Id).ToList();
+                elementIds.AddRange(directShapeIds);
             }
-            catch
+            else
             {
-                // If we can't collect elements for this category, skip it
-                continue;
+                // Regular category selection
+                ElementId catId = (ElementId)selectedCategory["CategoryId"];
+                
+                try
+                {
+                    // Collect elements of this category from the entire document
+                    FilteredElementCollector categoryCollector = new FilteredElementCollector(doc);
+                    categoryCollector.WhereElementIsNotElementType();
+                    
+                    // Create a list to store elements of this category (excluding DirectShapes)
+                    List<ElementId> categoryElementIds = new List<ElementId>();
+                    
+                    // Try using OfCategory with BuiltInCategory if it's a built-in category
+                    if (catId.IntegerValue < 0) // Built-in categories have negative IDs
+                    {
+                        try
+                        {
+                            var builtInCat = (BuiltInCategory)catId.IntegerValue;
+                            var elementsOfCategory = categoryCollector
+                                .OfCategory(builtInCat)
+                                .Where(e => !(e is DirectShape)) // Exclude DirectShapes
+                                .Select(e => e.Id)
+                                .ToList();
+                            categoryElementIds.AddRange(elementsOfCategory);
+                        }
+                        catch
+                        {
+                            // If OfCategory fails, try OfCategoryId
+                            categoryCollector = new FilteredElementCollector(doc);
+                            var elementsOfCategory = categoryCollector
+                                .WhereElementIsNotElementType()
+                                .OfCategoryId(catId)
+                                .Where(e => !(e is DirectShape)) // Exclude DirectShapes
+                                .Select(e => e.Id)
+                                .ToList();
+                            categoryElementIds.AddRange(elementsOfCategory);
+                        }
+                    }
+                    else
+                    {
+                        // For custom categories, use OfCategoryId
+                        var elementsOfCategory = categoryCollector
+                            .OfCategoryId(catId)
+                            .Where(e => !(e is DirectShape)) // Exclude DirectShapes
+                            .Select(e => e.Id)
+                            .ToList();
+                        categoryElementIds.AddRange(elementsOfCategory);
+                    }
+                    
+                    elementIds.AddRange(categoryElementIds);
+                }
+                catch
+                {
+                    // If we can't collect elements for this category, skip it
+                    continue;
+                }
             }
         }
         
