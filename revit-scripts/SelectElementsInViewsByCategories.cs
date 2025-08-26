@@ -6,59 +6,124 @@ using System.Linq;
 
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
-public class SelectElementsInViewByCategories : IExternalCommand
+public class SelectElementsInViewsByCategories : IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
     {
         UIApplication uiapp = commandData.Application;
         Document doc = uiapp.ActiveUIDocument.Document;
-        View activeView = uiapp.ActiveUIDocument.ActiveView;
         UIDocument uiDoc = uiapp.ActiveUIDocument;
         
-        // Collect elements visible in the current view.
-        FilteredElementCollector collector = new FilteredElementCollector(doc, activeView.Id);
+        // Get current selection using SelectionModeManager
+        ICollection<ElementId> currentSelection = uiDoc.GetSelectionIds();
+        
+        // Determine which views to collect elements from
+        List<View> viewsToProcess = new List<View>();
+        
+        if (currentSelection != null && currentSelection.Count > 0)
+        {
+            // Check if any selected elements are views or viewports
+            foreach (ElementId id in currentSelection)
+            {
+                Element elem = doc.GetElement(id);
+                
+                // Check if it's a View
+                if (elem is View view && !(view is ViewSheet))
+                {
+                    // Add the view directly
+                    viewsToProcess.Add(view);
+                }
+                // Check if it's a Viewport
+                else if (elem is Viewport viewport)
+                {
+                    // Get the view from the viewport
+                    ElementId viewId = viewport.ViewId;
+                    View viewFromViewport = doc.GetElement(viewId) as View;
+                    if (viewFromViewport != null && !(viewFromViewport is ViewSheet))
+                    {
+                        viewsToProcess.Add(viewFromViewport);
+                    }
+                }
+            }
+        }
+        
+        // If no views or viewports were selected, use the active view
+        if (viewsToProcess.Count == 0)
+        {
+            View activeView = uiapp.ActiveUIDocument.ActiveView;
+            viewsToProcess.Add(activeView);
+        }
         
         // Build a unique set of category IDs and track Direct Shapes and regular elements separately.
         HashSet<ElementId> categoryIds = new HashSet<ElementId>();
         Dictionary<ElementId, List<DirectShape>> directShapesByCategory = new Dictionary<ElementId, List<DirectShape>>();
         Dictionary<ElementId, List<ElementId>> regularElementsByCategory = new Dictionary<ElementId, List<ElementId>>();
+        List<ElementId> elementsNotInGroups = new List<ElementId>();
         
-        foreach (Element elem in collector)
+        // Collect elements from all views to process
+        foreach (View view in viewsToProcess)
         {
-            Category category = elem.Category;
-            if (category != null)
+            // Skip invalid views
+            if (view == null || view is ViewSheet)
+                continue;
+            
+            // Collect elements visible in this view
+            FilteredElementCollector collector = new FilteredElementCollector(doc, view.Id);
+            
+            foreach (Element elem in collector)
             {
-                categoryIds.Add(category.Id);
-                
-                // Check if this is a DirectShape
-                if (elem is DirectShape directShape)
+                Category category = elem.Category;
+                if (category != null)
                 {
-                    if (!directShapesByCategory.ContainsKey(category.Id))
+                    categoryIds.Add(category.Id);
+                    
+                    // Check if this is a DirectShape
+                    if (elem is DirectShape directShape)
                     {
-                        directShapesByCategory[category.Id] = new List<DirectShape>();
+                        if (!directShapesByCategory.ContainsKey(category.Id))
+                        {
+                            directShapesByCategory[category.Id] = new List<DirectShape>();
+                        }
+                        // Avoid duplicates when processing multiple views
+                        if (!directShapesByCategory[category.Id].Any(ds => ds.Id == directShape.Id))
+                        {
+                            directShapesByCategory[category.Id].Add(directShape);
+                        }
                     }
-                    directShapesByCategory[category.Id].Add(directShape);
+                    else
+                    {
+                        // Store regular (non-DirectShape) element IDs
+                        if (!regularElementsByCategory.ContainsKey(category.Id))
+                        {
+                            regularElementsByCategory[category.Id] = new List<ElementId>();
+                        }
+                        // Avoid duplicates when processing multiple views
+                        if (!regularElementsByCategory[category.Id].Contains(elem.Id))
+                        {
+                            regularElementsByCategory[category.Id].Add(elem.Id);
+                        }
+                    }
                 }
-                else
+            }
+            
+            // Additional logic for In-View mode to ensure Views (OST_Viewers) is included
+            var viewElementsNotInGroups = new FilteredElementCollector(doc, view.Id)
+                .WhereElementIsNotElementType()
+                .Where(e => e.GroupId == ElementId.InvalidElementId)
+                .Where(e => e.Category != null)
+                .Where(e => e.Category.Id.IntegerValue != (int)BuiltInCategory.OST_Cameras)
+                .Select(e => e.Id)
+                .ToList();
+            
+            // Add to overall list, avoiding duplicates
+            foreach (var elemId in viewElementsNotInGroups)
+            {
+                if (!elementsNotInGroups.Contains(elemId))
                 {
-                    // Store regular (non-DirectShape) element IDs
-                    if (!regularElementsByCategory.ContainsKey(category.Id))
-                    {
-                        regularElementsByCategory[category.Id] = new List<ElementId>();
-                    }
-                    regularElementsByCategory[category.Id].Add(elem.Id);
+                    elementsNotInGroups.Add(elemId);
                 }
             }
         }
-        
-        // Additional logic for In-View mode to ensure Views (OST_Viewers) is included
-        List<ElementId> elementsNotInGroups = new FilteredElementCollector(doc, activeView.Id)
-            .WhereElementIsNotElementType()
-            .Where(e => e.GroupId == ElementId.InvalidElementId)
-            .Where(e => e.Category != null)
-            .Where(e => e.Category.Id.IntegerValue != (int)BuiltInCategory.OST_Cameras)
-            .Select(e => e.Id)
-            .ToList();
         
         // Check if any element belongs to the OST_Viewers category.
         var viewerElements = elementsNotInGroups
@@ -80,7 +145,10 @@ public class SelectElementsInViewByCategories : IExternalCommand
                     {
                         directShapesByCategory[viewersCatId] = new List<DirectShape>();
                     }
-                    directShapesByCategory[viewersCatId].Add(ds);
+                    if (!directShapesByCategory[viewersCatId].Any(d => d.Id == ds.Id))
+                    {
+                        directShapesByCategory[viewersCatId].Add(ds);
+                    }
                 }
                 else
                 {
@@ -88,7 +156,10 @@ public class SelectElementsInViewByCategories : IExternalCommand
                     {
                         regularElementsByCategory[viewersCatId] = new List<ElementId>();
                     }
-                    regularElementsByCategory[viewersCatId].Add(viewer.Id);
+                    if (!regularElementsByCategory[viewersCatId].Contains(viewer.Id))
+                    {
+                        regularElementsByCategory[viewersCatId].Add(viewer.Id);
+                    }
                 }
             }
         }
@@ -122,7 +193,10 @@ public class SelectElementsInViewByCategories : IExternalCommand
                     {
                         viewersByFamily[familyName] = new List<ElementId>();
                     }
-                    viewersByFamily[familyName].Add(viewer.Id);
+                    if (!viewersByFamily[familyName].Contains(viewer.Id))
+                    {
+                        viewersByFamily[familyName].Add(viewer.Id);
+                    }
                 }
                 
                 // Handle Direct Shapes separately for OST_Viewers
@@ -201,10 +275,27 @@ public class SelectElementsInViewByCategories : IExternalCommand
         // Sort the list to keep Direct Shapes grouped with their parent categories
         categoryList = categoryList.OrderBy(c => ((string)c["Name"]).Replace("Direct Shapes: ", "")).ToList();
         
+        // Create a title that indicates which views are being processed
+        string dialogTitle = null;
+        if (viewsToProcess.Count == 1 && viewsToProcess[0] == uiapp.ActiveUIDocument.ActiveView)
+        {
+            dialogTitle = $"Select Categories from Active View: {viewsToProcess[0].Name}";
+        }
+        else if (viewsToProcess.Count == 1)
+        {
+            dialogTitle = $"Select Categories from View: {viewsToProcess[0].Name}";
+        }
+        else
+        {
+            dialogTitle = $"Select Categories from {viewsToProcess.Count} Selected Views";
+        }
+        
         // Define properties to display.
         var propertyNames = new List<string> { "Name", "Count" };
         
         // Show the DataGrid to let the user select one or more categories.
+        // Note: CustomGUIs.DataGrid would need an overload that accepts a title parameter
+        // If not available, use the standard version
         List<Dictionary<string, object>> selectedCategories = CustomGUIs.DataGrid(categoryList, propertyNames, false);
         if (selectedCategories.Count == 0)
             return Result.Cancelled;
@@ -229,11 +320,9 @@ public class SelectElementsInViewByCategories : IExternalCommand
             }
         }
         
-        // Merge with any currently selected elements.
-        ICollection<ElementId> currentSelection = uiDoc.GetSelectionIds();
-        elementIds.AddRange(currentSelection);
-        
-        // Update the selection (using Distinct() to remove duplicates).
+        // Clear the current selection before adding the new elements
+        // (since we're now selecting from potentially different views)
+        // Use Distinct() to remove any duplicates
         uiDoc.SetSelectionIds(elementIds.Distinct().ToList());
         
         return Result.Succeeded;

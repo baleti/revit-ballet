@@ -109,6 +109,7 @@
     <Reference Include="WindowsFormsIntegration" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="revit-scripts\ChangeLengthOfSelectedGridsInCurrentView.cs" />
     <Compile Include="revit-scripts\ChangeWorksetOfSelectedElements.cs" />
     <Compile Include="revit-scripts\CombineSelectedElementsWithSelectedModelGroups.cs" />
     <Compile Include="revit-scripts\AddTextNoteToSelectedDoors.cs" />
@@ -192,7 +193,7 @@
     <Compile Include="revit-scripts\SelectDuplicatesFromSelectedElements.cs" />
     <Compile Include="revit-scripts\SelectElementsByCategories.cs" />
     <Compile Include="revit-scripts\SelectElementsInProjectByCategories.cs" />
-    <Compile Include="revit-scripts\SelectElementsInViewByCategories.cs" />
+    <Compile Include="revit-scripts\SelectElementsInViewsByCategories.cs" />
     <Compile Include="revit-scripts\SelectElementsOfSameTypeInLinkedModelsInProject.cs" />
     <Compile Include="revit-scripts\SelectAllRevisionCloudsInProject.cs" />
     <Compile Include="revit-scripts\SelectAllVisibleRevisionCloudsInProject.cs" />
