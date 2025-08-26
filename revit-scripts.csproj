@@ -110,6 +110,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="revit-scripts\ChangeLengthsOfSelectedGrids.cs" />
+    <Compile Include="revit-scripts\ChangeLengthsOfSelectedLevels.cs" />
     <Compile Include="revit-scripts\ChangeWorksetOfSelectedElements.cs" />
     <Compile Include="revit-scripts\CombineSelectedElementsWithSelectedModelGroups.cs" />
     <Compile Include="revit-scripts\AddTextNoteToSelectedDoors.cs" />
