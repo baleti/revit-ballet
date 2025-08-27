@@ -563,8 +563,12 @@ namespace MyRevitAddin
             };
             grid.ColumnStyles.Add(new WinForms.ColumnStyle(WinForms.SizeType.Absolute, 90));
             grid.ColumnStyles.Add(new WinForms.ColumnStyle(WinForms.SizeType.Percent, 100));
-            for (int r = 0; r < 6; ++r)
-                grid.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Absolute, r % 2 == 0 ? 28 : 20));
+            grid.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Absolute, 32)); // Row 0: Find
+            grid.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Absolute, 36)); // Row 1: Replace (increased for spacing)
+            grid.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Absolute, 32)); // Row 2: Pattern
+            grid.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Absolute, 22)); // Row 3: Pattern hint
+            grid.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Absolute, 32)); // Row 4: Math
+            grid.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Absolute, 22)); // Row 5: Math hint
             grid.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Percent, 45));
             grid.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Percent, 45));
 
@@ -582,7 +586,7 @@ namespace MyRevitAddin
             _txtPattern = MakeTextBox("{}");   // default
             grid.Controls.Add(_txtPattern, 1, 2);
 
-            grid.Controls.Add(MakeHint("Use {} for current value. Use $\"Parameter Name\" or $ParameterName to reference other parameters. Supports $\"Type Name\" and $\"Family Name\" on types."), 1, 3);
+            grid.Controls.Add(MakeHint("Use {} for current value. Use $\"Parameter Name\" or $ParameterName to reference other parameters."), 1, 3);
 
             // Math
             grid.Controls.Add(MakeLabel("Math:"), 0, 4);
@@ -704,8 +708,7 @@ namespace MyRevitAddin
             UIDocument uiDoc = cData.Application.ActiveUIDocument;
             Document   doc   = uiDoc.Document;
 
-            // Use the standard Revit API selection; replace with your helper if preferred
-            IList<ElementId> selIds = uiDoc.Selection.GetElementIds().ToList();
+            IList<ElementId> selIds = uiDoc.GetSelectionIds().ToList();
             if (selIds.Count == 0)
             {
                 WinForms.MessageBox.Show("Please select elements first.");
