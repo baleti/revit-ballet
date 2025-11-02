@@ -1,0 +1,77 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- Default to Revit 2024 if no year specified -->
+    <RevitYear Condition="'$(RevitYear)' == ''">2024</RevitYear>
+
+    <!-- Map Revit versions to .NET Framework targets -->
+    <TargetFramework Condition="'$(RevitYear)' == '2019'">net47</TargetFramework>
+    <TargetFramework Condition="'$(RevitYear)' == '2020'">net47</TargetFramework>
+    <TargetFramework Condition="'$(RevitYear)' == '2021'">net48</TargetFramework>
+    <TargetFramework Condition="'$(RevitYear)' == '2022'">net48</TargetFramework>
+    <TargetFramework Condition="'$(RevitYear)' == '2023'">net48</TargetFramework>
+    <TargetFramework Condition="'$(RevitYear)' == '2024'">net48</TargetFramework>
+    <TargetFramework Condition="'$(RevitYear)' == '2025'">net8.0-windows</TargetFramework>
+
+    <!-- Revit API NuGet package version (matches Revit year) -->
+    <RevitAPIVersion Condition="'$(RevitYear)' == '2019'">2019.0.0</RevitAPIVersion>
+    <RevitAPIVersion Condition="'$(RevitYear)' == '2020'">2020.0.0</RevitAPIVersion>
+    <RevitAPIVersion Condition="'$(RevitYear)' == '2021'">2021.0.0</RevitAPIVersion>
+    <RevitAPIVersion Condition="'$(RevitYear)' == '2022'">2022.0.0</RevitAPIVersion>
+    <RevitAPIVersion Condition="'$(RevitYear)' == '2023'">2023.0.0</RevitAPIVersion>
+    <RevitAPIVersion Condition="'$(RevitYear)' == '2024'">2024.0.0</RevitAPIVersion>
+    <RevitAPIVersion Condition="'$(RevitYear)' == '2025'">2025.0.0</RevitAPIVersion>
+
+    <!-- Define version constant for conditional compilation -->
+    <DefineConstants>REVIT$(RevitYear)</DefineConstants>
+
+    <!-- Output to version-specific directory -->
+    <OutputPath>bin\$(RevitYear)\</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+
+    <!-- Assembly properties -->
+    <RootNamespace>scripts</RootNamespace>
+    <AssemblyName>revit-ballet</AssemblyName>
+
+    <!-- .NET SDK options -->
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <Nullable>disable</Nullable>
+    <GenerateDependencyFile>false</GenerateDependencyFile>
+    <GenerateRuntimeConfigurationFiles>false</GenerateRuntimeConfigurationFiles>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <PlatformTarget>x64</PlatformTarget>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <!-- Revit API from NuGet (all versions in one package) -->
+  <ItemGroup>
+    <PackageReference Include="Revit_All_Main_Versions_API_x64" Version="$(RevitAPIVersion)" ExcludeAssets="runtime" />
+  </ItemGroup>
+
+  <!-- NuGet Package References (only packages actually used by the code) -->
+  <ItemGroup>
+    <!-- Used by BooleanDifferenceFilledRegionsWithSelectedElements.cs -->
+    <PackageReference Include="Clipper" Version="6.4.0" />
+
+    <!-- Used by ExportSelectedViewsToPDF.cs -->
+    <PackageReference Include="Microsoft-WindowsAPICodePack-Core" Version="1.1.5" />
+    <PackageReference Include="Microsoft-WindowsAPICodePack-Shell" Version="1.1.5" />
+
+    <!-- Used by CopyCrossSession.cs and ClashDetectionSelectedElements.cs -->
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+
+    <!-- Required for dynamic keyword support in ExportSelectedViewsToPDF.cs -->
+    <PackageReference Include="Microsoft.CSharp" Version="4.7.0" />
+  </ItemGroup>
+
+  <!-- Standard System references needed by Revit plugins -->
+  <ItemGroup>
+    <Reference Include="PresentationCore" />
+    <Reference Include="PresentationFramework" />
+    <Reference Include="System.Xaml" />
+    <Reference Include="WindowsBase" />
+    <Reference Include="WindowsFormsIntegration" />
+    <Reference Include="UIAutomationClient" />
+    <Reference Include="UIAutomationTypes" />
+  </ItemGroup>
+</Project>

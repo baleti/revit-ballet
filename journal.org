@@ -396,13 +396,13 @@ it still doesn't seem to make a difference in terms of speed
 - added InvokeLastAddinCommand as a separate IExternalCommand
  - this way it can be assigned a hotkey (qq`), which may be useful if a new command needs to be invoked frequently
 - renamed filenames both commands use to save their data
- - InvokeAddinCommand - %appdata%/revit-scripts/InvokeAddinCommand-last-dll-path
- - InvokeLastAddinCommand - %appdata%/revit-scripts/InvokeAddinCommand-last-command
+ - InvokeAddinCommand - %appdata%/revit-ballet/runtime/InvokeAddinCommand-last-dll-path
+ - InvokeLastAddinCommand - %appdata%/revit-ballet/runtime/InvokeAddinCommand-last-command
 **** =17:44= SwitchToLastView bug fix
 - changed SwitchToLastView behaviour so that when the last view to which you are switching is placed on a sheet AND that sheet is opened only then it opens the sheet instead of the view directly
 **** =18:06= InvokeLastAddinCommand bug fix
 InvokeLastAddinCommand was adding itself as the last invoked command, which led to an infinite loop
-added check to InvokeAddinCommand to prevent this command from ever being saved to %appdata%/revit-scripts 
+added check to InvokeAddinCommand to prevent this command from ever being saved to %appdata%/revit-ballet/runtime 
 **** =18:51= refactoring
 removed "scripts" namespace from all files
 it seemed unnecessary for a loosely coupled collection of revit commands
@@ -453,10 +453,10 @@ it seemed that this work went in vain, but using ViewActivated event instead of 
 **** =17:30= LogViewChanges SwitchViewByTitle
 finally I decided to mandate usage of custom functions to close views
  CloseCurrentView and CloseViews
- LogViewChanges was modified to remove all entries from %appdata%/revit-scripts/LogViewChanges OnStartup
+ LogViewChanges was modified to remove all entries from %appdata%/revit-ballet/runtime/LogViewChanges OnStartup
  LogViewChanges was modified to remove duplicate entries after inserting a new entry at the end
  if this fails the only repercussion really is that sheet will be opened instead of a view
-if accidentally a view gets removed in another way, they can be manually removed in %appdata%/revit-scripts/LogViewChanges
+if accidentally a view gets removed in another way, they can be manually removed in %appdata%/revit-ballet/runtime/LogViewChanges
  if you don't know what views changed you can make a diff by exporting all current views with SaveOpenedViews command
   this may miss some sheets, but may be good enough
 **** =18:30= OpenViews SwitchViewByTitle
