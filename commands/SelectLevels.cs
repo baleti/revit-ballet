@@ -92,7 +92,7 @@ namespace MyRevitAddin
                 {
                     if (int.TryParse(entry["Id"].ToString(), out int idInt))
                     {
-                        selectedIds.Add(new ElementId(idInt));
+                        selectedIds.Add(new ElementId((long)idInt));
                     }
                 }
             }

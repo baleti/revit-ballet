@@ -574,7 +574,7 @@ public partial class FilterSelectedElementsByContainingGroupsWithRooms
             if (result[elem.Id].Count > 1)
             {
                 string elemLevelName = elemData.Level?.Name ?? "No Level";
-                _diagnostics.AppendLine($"\nElement {elem.Id.IntegerValue} (Level: {elemLevelName}) is in {result[elem.Id].Count} rooms:");
+                _diagnostics.AppendLine($"\nElement {elem.Id.Value} (Level: {elemLevelName}) is in {result[elem.Id].Count} rooms:");
                 foreach (Room room in result[elem.Id])
                 {
                     RoomData roomData = _roomDataCache[room.Id];

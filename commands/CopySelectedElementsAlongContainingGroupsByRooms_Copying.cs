@@ -348,7 +348,7 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
                         }
                     }
                 }
-                catch (Exception ex)
+                catch (Exception)
                 {
                     // Silent fail - log if needed
                 }

@@ -259,8 +259,8 @@ public class ClashDetectionSelectedElements : IExternalCommand
                         var elem2 = cell[j];
                         
                         // Create unique key for this pair
-                        var key1 = $"{elem1.ElementId.IntegerValue}_{elem2.ElementId.IntegerValue}";
-                        var key2 = $"{elem2.ElementId.IntegerValue}_{elem1.ElementId.IntegerValue}";
+                        var key1 = $"{elem1.ElementId.Value}_{elem2.ElementId.Value}";
+                        var key2 = $"{elem2.ElementId.Value}_{elem1.ElementId.Value}";
                         
                         if (!processed.Contains(key1) && !processed.Contains(key2))
                         {
@@ -419,7 +419,7 @@ public class ClashDetectionSelectedElements : IExternalCommand
             {
                 Elements = geometryData.Select(g => new ExternalGeometryData
                 {
-                    ElementId = g.ElementId.IntegerValue,
+                    ElementId = (int)g.ElementId.Value,
                     BoundingBox = new[] 
                     { 
                         g.BoundingBox.Min.X, g.BoundingBox.Min.Y, g.BoundingBox.Min.Z,
@@ -461,8 +461,8 @@ public class ClashDetectionSelectedElements : IExternalCommand
             {
                 foreach (var result in task.Result)
                 {
-                    var elem1 = allElements.First(e => e.Element.Id.IntegerValue == result.ElementId1);
-                    var elem2 = allElements.First(e => e.Element.Id.IntegerValue == result.ElementId2);
+                    var elem1 = allElements.First(e => e.Element.Id.Value == result.ElementId1);
+                    var elem2 = allElements.First(e => e.Element.Id.Value == result.ElementId2);
                     
                     clashes.Add(new ClashInfo
                     {
@@ -794,7 +794,7 @@ public class ClashDetectionSelectedElements : IExternalCommand
         if (!string.IsNullOrEmpty(type))
             desc += $" - {type}";
         
-        desc += $" [Id: {elem.Id.IntegerValue}]";
+        desc += $" [Id: {elem.Id.Value}]";
         
         return desc;
     }

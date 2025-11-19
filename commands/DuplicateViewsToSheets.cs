@@ -72,7 +72,7 @@ namespace MyRevitCommands
                     { "Sheet", combinedSheet },
                     { "View Title", v.Name },
                     { "Sheet Folder", sheetFolder },
-                    { "Id", v.Id.IntegerValue }
+                    { "Id", v.Id.Value }
                 });
             }
 
@@ -91,7 +91,7 @@ namespace MyRevitCommands
                 if (entry.ContainsKey("Id"))
                 {
                     int idValue = Convert.ToInt32(entry["Id"]);
-                    selectedViewIds.Add(new ElementId(idValue));
+                    selectedViewIds.Add(new ElementId((long)idValue));
                 }
             }
             List<View> selectedViews = placedViews.Where(v => selectedViewIds.Contains(v.Id)).ToList();
@@ -120,7 +120,7 @@ namespace MyRevitCommands
                     { "Sheet Number", sheet.SheetNumber },
                     { "Title", sheet.Name },
                     { "Sheet Folder", sheetFolder },
-                    { "Id", sheet.Id.IntegerValue }
+                    { "Id", sheet.Id.Value }
                 });
             }
             List<string> sheetPropertyNames = new List<string> { "Sheet Number", "Title", "Sheet Folder", "Id" };
@@ -137,7 +137,7 @@ namespace MyRevitCommands
                 if (entry.ContainsKey("Id"))
                 {
                     int idValue = Convert.ToInt32(entry["Id"]);
-                    selectedSheetIds.Add(new ElementId(idValue));
+                    selectedSheetIds.Add(new ElementId((long)idValue));
                 }
             }
             List<ViewSheet> targetSheets = allSheets.Where(s => selectedSheetIds.Contains(s.Id)).ToList();

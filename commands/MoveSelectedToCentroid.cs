@@ -6,6 +6,7 @@ using System.Linq;
 using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
+using RevitBallet.Commands;
 using WF = System.Windows.Forms;
 
 namespace MoveSelectedToCentroid
@@ -14,9 +15,7 @@ namespace MoveSelectedToCentroid
     [Regeneration(RegenerationOption.Manual)]
     public class MoveSelectedToCentroid : IExternalCommand
     {
-        private static readonly string StoreDir =
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "revit-ballet", "runtime");
-        private static readonly string StoreFile = Path.Combine(StoreDir, "MoveSelectedToCentroid");
+        private static readonly string StoreFile = PathHelper.GetRuntimeFilePath("MoveSelectedToCentroid");
 
         public Result Execute(
             ExternalCommandData commandData,
@@ -83,7 +82,6 @@ namespace MoveSelectedToCentroid
                 // Persist current (raw) values for next time
                 try
                 {
-                    if (!Directory.Exists(StoreDir)) Directory.CreateDirectory(StoreDir);
                     File.WriteAllText(StoreFile, $"{frm.X};{frm.Y};{frm.Z}");
                 }
                 catch { /* silent — any IO problem is non-fatal */ }

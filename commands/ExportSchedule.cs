@@ -24,7 +24,7 @@ public class ExportSchedule : IExternalCommand
             .Select(vs => new Dictionary<string, object>
             {
                 { "Name", vs.Name },
-                { "Id", vs.Id.IntegerValue }
+                { "Id", vs.Id.Value }
             })
             .ToList();
 
@@ -37,7 +37,7 @@ public class ExportSchedule : IExternalCommand
             return Result.Cancelled;
         }
 
-        var selectedScheduleId = new ElementId(Convert.ToInt32(selectedSchedules[0]["Id"]));
+        var selectedScheduleId = new ElementId((long)Convert.ToInt32(selectedSchedules[0]["Id"]));
         ViewSchedule selectedSchedule = doc.GetElement(selectedScheduleId) as ViewSchedule;
 
         if (selectedSchedule != null)

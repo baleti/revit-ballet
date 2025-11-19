@@ -36,7 +36,7 @@ namespace RevitAddin
       // Prepare entries for the DataGrid.
       List<Dictionary<string, object>> familyTypeEntries = familySymbols.Select(fs => new Dictionary<string, object>
       {
-        { "Id", fs.Id.IntegerValue }, // include the Id so we can look it up later.
+        { "Id", fs.Id.Value }, // include the Id so we can look it up later.
         { "Family", fs.Family.Name },
         { "Type", fs.Name }
       }).ToList();
@@ -53,7 +53,7 @@ namespace RevitAddin
 
       // Retrieve the selected FamilySymbol using the "Id" key.
       int selectedIdValue = Convert.ToInt32(selFamilyEntry[0]["Id"]);
-      ElementId selectedFamilySymbolId = new ElementId(selectedIdValue);
+      ElementId selectedFamilySymbolId = new ElementId((long)selectedIdValue);
       FamilySymbol newFamilySymbol = doc.GetElement(selectedFamilySymbolId) as FamilySymbol;
       if (newFamilySymbol == null)
       {
@@ -90,7 +90,7 @@ namespace RevitAddin
               continue;
 
             // Verify that the selected family type belongs to the same category.
-            if (fi.Symbol.Family.FamilyCategory.Id.IntegerValue != newFamilySymbol.Family.FamilyCategory.Id.IntegerValue)
+            if (fi.Symbol.Family.FamilyCategory.Id.Value != newFamilySymbol.Family.FamilyCategory.Id.Value)
             {
               // Skip elements whose category doesn't match the selected family type.
               continue;

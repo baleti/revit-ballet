@@ -183,7 +183,7 @@ public class FilterText : IExternalCommand
             dict["SheetName"] = cached.sheetName;
 
             // ElementId
-            dict["ElementId"] = text.Id.IntegerValue;
+            dict["ElementId"] = text.Id.Value;
 
             entries.Add(dict);
         }
@@ -209,7 +209,7 @@ public class FilterText : IExternalCommand
             if (row.ContainsKey("ElementId")
                 && int.TryParse(row["ElementId"].ToString(), out int intId))
             {
-                chosenIds.Add(new ElementId(intId));
+                chosenIds.Add(new ElementId((long)intId));
             }
         }
 

@@ -1,0 +1,149 @@
+<RevitAddIns>
+    <AddIn Type="Command">
+        <Name>revit-ballet</Name>
+        <Assembly>revit-ballet.dll</Assembly>
+        <FullClassName>InvokeAddinCommand</FullClassName>
+        <AddInId>1D9F3A6E-7C4B-4E2A-9F8E-4C1D2A7B3E8F</AddInId>
+        <VendorId>revit-ballet</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>revit-ballet</Name>
+        <Assembly>revit-ballet.dll</Assembly>
+        <FullClassName>InvokeRevitCommand</FullClassName>
+        <AddInId>6A3E9F7B-2D4C-4A8E-7E9F-1C3D4A2B8E7F</AddInId>
+        <VendorId>revit-ballet</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>revit-ballet</Name>
+        <Assembly>revit-ballet.dll</Assembly>
+        <FullClassName>InvokeLastAddinCommand</FullClassName>
+        <AddInId>3F7A2E9D-6C4B-4E1A-8F7E-2D9C1A4B6E3F</AddInId>
+        <VendorId>revit-ballet</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>revit-ballet</Name>
+        <Assembly>revit-ballet.dll</Assembly>
+        <FullClassName>SwitchView</FullClassName>
+        <AddInId>5E8B2F7A-3C9D-4A1E-8B7F-2D9A1C6E4B3F</AddInId>
+        <VendorId>revit-ballet</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>revit-ballet</Name>
+        <Assembly>revit-ballet.dll</Assembly>
+        <FullClassName>SwitchToLastView</FullClassName>
+        <AddInId>8B3F7E2A-9C4D-4F1B-8A6E-3D7F2B9A1C4E</AddInId>
+        <VendorId>revit-ballet</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>revit-ballet</Name>
+        <Assembly>revit-ballet.dll</Assembly>
+        <FullClassName>SwitchViewByHistory</FullClassName>
+        <AddInId>2F6A9D3E-4B7C-4E2A-9D6F-1C8E4A7B2D9F</AddInId>
+        <VendorId>revit-ballet</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>revit-ballet</Name>
+        <Assembly>revit-ballet.dll</Assembly>
+        <FullClassName>CloseCurrentView</FullClassName>
+        <AddInId>9A4F7C2E-6B3D-4E9A-7C2F-1D8B4E9A6C3F</AddInId>
+        <VendorId>revit-ballet</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>revit-ballet</Name>
+        <Assembly>revit-ballet.dll</Assembly>
+        <FullClassName>CloseViews</FullClassName>
+        <AddInId>3C7E9A2D-4F6B-4A8E-9C7F-2D1B4A8E9C6F</AddInId>
+        <VendorId>revit-ballet</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>revit-ballet</Name>
+        <Assembly>revit-ballet.dll</Assembly>
+        <FullClassName>ZoomSelected</FullClassName>
+        <AddInId>5C8E2A7F-9B3D-4E6A-7C8F-2D9A1B4E6C9F</AddInId>
+        <VendorId>revit-ballet</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>revit-ballet</Name>
+        <Assembly>revit-ballet.dll</Assembly>
+        <FullClassName>SelectViews</FullClassName>
+        <AddInId>9A6F3E7B-2D4C-4A1E-8F9E-3C7D1A2B4E8F</AddInId>
+        <VendorId>revit-ballet</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>revit-ballet</Name>
+        <Assembly>revit-ballet.dll</Assembly>
+        <FullClassName>SelectAllElementsInViewAndInGroups</FullClassName>
+        <AddInId>6D9F2A3E-7C4B-4E1A-8D9F-3C2E4B7A9D1F</AddInId>
+        <VendorId>revit-ballet</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>revit-ballet</Name>
+        <Assembly>revit-ballet.dll</Assembly>
+        <FullClassName>SelectElementsInProjectByCategories</FullClassName>
+        <AddInId>1E8A3F7B-9D4C-4A2E-7E9F-4C1D3A8B2E7F</AddInId>
+        <VendorId>revit-ballet</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>revit-ballet</Name>
+        <Assembly>revit-ballet.dll</Assembly>
+        <FullClassName>SelectElementsInViewByCategories</FullClassName>
+        <AddInId>7F3A9D2C-6E4B-4F8A-9D3E-2C7F1B4A8E9F</AddInId>
+        <VendorId>revit-ballet</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>revit-ballet</Name>
+        <Assembly>revit-ballet.dll</Assembly>
+        <FullClassName>SelectElementsByCategories</FullClassName>
+        <AddInId>4B9E7A3F-2D6C-4E1A-8B9E-3F7D2A4C1E8F</AddInId>
+        <VendorId>revit-ballet</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>revit-ballet</Name>
+        <Assembly>revit-ballet.dll</Assembly>
+        <FullClassName>OpenViews</FullClassName>
+        <AddInId>8E2F9A4B-7C3D-4A6E-9F8E-1D2C4B7A9E3F</AddInId>
+        <VendorId>revit-ballet</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>revit-ballet</Name>
+        <Assembly>revit-ballet.dll</Assembly>
+        <FullClassName>FilterSelectedElements</FullClassName>
+        <AddInId>2A7E4F9B-3D6C-4E8A-7F2E-9C4D1A8B3E6F</AddInId>
+        <VendorId>revit-ballet</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>revit-ballet</Name>
+        <Assembly>revit-ballet.dll</Assembly>
+        <FullClassName>SelectFamilyTypeInstancesInCurrentView</FullClassName>
+        <AddInId>6F3E9A2B-7D4C-4A8E-9F6E-1C3D4A2B8E9F</AddInId>
+        <VendorId>revit-ballet</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>revit-ballet</Name>
+        <Assembly>revit-ballet.dll</Assembly>
+        <FullClassName>EditSelectionSets</FullClassName>
+        <AddInId>7C2E4A9F-3D6B-4E1A-8C7F-2D9A1E4B7C3F</AddInId>
+        <VendorId>revit-ballet</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>revit-ballet</Name>
+        <Assembly>revit-ballet.dll</Assembly>
+        <FullClassName>SwitchSelectionMode</FullClassName>
+        <AddInId>8A9F2E3B-6D4C-4A7E-9A8F-3C1D2E7B4A9F</AddInId>
+        <VendorId>revit-ballet</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>revit-ballet</Name>
+        <Assembly>revit-ballet.dll</Assembly>
+        <FullClassName>SwitchPhase</FullClassName>
+        <AddInId>7C2E91A4-8F3D-4B2E-9A7C-1D8F4E6B3A2F</AddInId>
+        <VendorId>revit-ballet</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>revit-ballet</Name>
+        <Assembly>revit-ballet.dll</Assembly>
+        <FullClassName>SwitchToLastPhase</FullClassName>
+        <AddInId>4A9E6F2B-7D3C-4E8A-9B6F-2C7D4A9E1B3F</AddInId>
+        <VendorId>revit-ballet</VendorId>
+    </AddIn>
+</RevitAddIns>

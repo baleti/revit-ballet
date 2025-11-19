@@ -162,7 +162,7 @@ namespace MyCompany.RevitCommands
                 }
 
                 // Create a unique key for this cloud using its ElementId
-                string elementIdStr = cloud.Id.IntegerValue.ToString();
+                string elementIdStr = cloud.Id.Value.ToString();
 
                 gridData.Add(new Dictionary<string, object>
                 {

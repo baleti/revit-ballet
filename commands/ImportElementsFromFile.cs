@@ -184,7 +184,7 @@ namespace RevitCommands
                 return false;
 
             // Get category id
-            int catId = elem.Category.Id.IntegerValue;
+            int catId = (int)elem.Category.Id.Value;
 
             // Exclude non-model categories
             HashSet<int> excludedCategories = new HashSet<int>

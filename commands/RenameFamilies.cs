@@ -41,7 +41,7 @@ namespace MyRevitAddin
             {
                 var row = new Dictionary<string, object>
                 {
-                    { "Id", fam.Id.IntegerValue },
+                    { "Id", fam.Id.Value },
                     { "Name", fam.Name }
                 };
                 gridEntries.Add(row);
@@ -58,7 +58,7 @@ namespace MyRevitAddin
             foreach (var row in selectedRows)
             {
                 int idVal = Convert.ToInt32(row["Id"]);
-                ElementId id = new ElementId(idVal);
+                ElementId id = new ElementId((long)idVal);
                 Family fam = doc.GetElement(id) as Family;
                 if (fam != null)
                 {

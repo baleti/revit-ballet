@@ -64,7 +64,7 @@ namespace RevitCustomCommands
                 List<GraphicsStyle> lineStyles = lineStyleCollector
                     .Cast<GraphicsStyle>()
                     .Where(gs => gs.GraphicsStyleCategory.Parent != null &&
-                                gs.GraphicsStyleCategory.Parent.Id.IntegerValue == (int)BuiltInCategory.OST_Lines)
+                                gs.GraphicsStyleCategory.Parent.Id.Value == (int)BuiltInCategory.OST_Lines)
                     .ToList();
 
                 if (lineStyles.Count == 0)
@@ -82,7 +82,7 @@ namespace RevitCustomCommands
                     {
                         { "Title", lineStyle.Name },
                         { "SheetFolder", lineStyle.GraphicsStyleCategory.Name },
-                        { "Id", lineStyle.Id.IntegerValue.ToString() }
+                        { "Id", lineStyle.Id.Value.ToString() }
                     };
                     entries.Add(entry);
                 }
@@ -99,7 +99,7 @@ namespace RevitCustomCommands
 
                 // Get selected line style
                 int selectedLineStyleId = Convert.ToInt32(selectedEntries[0]["Id"]);
-                GraphicsStyle selectedLineStyle = lineStyles.FirstOrDefault(ls => ls.Id.IntegerValue == selectedLineStyleId);
+                GraphicsStyle selectedLineStyle = lineStyles.FirstOrDefault(ls => ls.Id.Value == selectedLineStyleId);
                 
                 if (selectedLineStyle == null)
                 {

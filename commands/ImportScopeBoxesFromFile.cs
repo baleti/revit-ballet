@@ -107,7 +107,7 @@ namespace RevitCommands
                         {
                             Element elem = currentDoc.GetElement(id);
                             if (elem != null && elem.Category != null && 
-                                elem.Category.Id.IntegerValue == (int)BuiltInCategory.OST_VolumeOfInterest)
+                                elem.Category.Id.Value == (int)BuiltInCategory.OST_VolumeOfInterest)
                             {
                                 validScopeBoxIds.Add(id);
                             }

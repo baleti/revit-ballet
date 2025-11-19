@@ -53,15 +53,14 @@
     <!-- Used by BooleanDifferenceFilledRegionsWithSelectedElements.cs -->
     <PackageReference Include="Clipper" Version="6.4.0" />
 
-    <!-- Used by ExportSelectedViewsToPDF.cs -->
-    <PackageReference Include="Microsoft-WindowsAPICodePack-Core" Version="1.1.5" />
-    <PackageReference Include="Microsoft-WindowsAPICodePack-Shell" Version="1.1.5" />
-
     <!-- Used by CopyCrossSession.cs and ClashDetectionSelectedElements.cs -->
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
 
     <!-- Required for dynamic keyword support in ExportSelectedViewsToPDF.cs -->
     <PackageReference Include="Microsoft.CSharp" Version="4.7.0" />
+
+    <!-- Used for modern folder picker dialog in export commands -->
+    <PackageReference Include="Microsoft.WindowsAPICodePack-Shell" Version="1.1.0" />
   </ItemGroup>
 
   <!-- Standard System references needed by Revit plugins -->

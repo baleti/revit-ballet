@@ -516,7 +516,7 @@ public class SelectElementsOfSameTypeInLinkedModelsInView : IExternalCommand
                 string additionalInfo = "";
                 
                 // For text elements, include text style
-                if (element.Category.Id.IntegerValue == (int)BuiltInCategory.OST_TextNotes)
+                if (element.Category.Id.Value == (int)BuiltInCategory.OST_TextNotes)
                 {
                     var styleParam = element.get_Parameter(BuiltInParameter.ELEM_TYPE_PARAM);
                     if (styleParam != null)
@@ -526,7 +526,7 @@ public class SelectElementsOfSameTypeInLinkedModelsInView : IExternalCommand
                     }
                 }
                 // For dimensions, include dimension style
-                else if (element.Category.Id.IntegerValue == (int)BuiltInCategory.OST_Dimensions)
+                else if (element.Category.Id.Value == (int)BuiltInCategory.OST_Dimensions)
                 {
                     var styleParam = element.get_Parameter(BuiltInParameter.ELEM_TYPE_PARAM);
                     if (styleParam != null)

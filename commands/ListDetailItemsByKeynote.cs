@@ -70,7 +70,7 @@ public class ListDetailItemsByKeynote : IExternalCommand
             return Result.Cancelled;
         }
 
-        ElementId selectedDetailItemId = new ElementId(int.Parse(selectedDetailItemEntry["Id"].ToString()));
+        ElementId selectedDetailItemId = new ElementId((long)int.Parse(selectedDetailItemEntry["Id"].ToString()));
         Element selectedDetailItem = doc.GetElement(selectedDetailItemId);
 
         // Step 3: List all sheets on which the selected detail item is placed

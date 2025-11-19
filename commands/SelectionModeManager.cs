@@ -7,18 +7,13 @@ using System.IO;
 using System.Linq;
 using System.Diagnostics;
 using System.Reflection;
+using RevitBallet.Commands;
 
 // Static class to manage selection mode using SelectionSets
 public static class SelectionModeManager
 {
-    private static readonly string AppDataPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "revit-ballet",
-        "runtime"
-    );
-    
-    private static readonly string ModeFilePath = Path.Combine(AppDataPath, "SelectionMode");
-    private static readonly string LinkedReferencesFilePath = Path.Combine(AppDataPath, "SelectionSet-LinkedModelReferences");
+    private static readonly string ModeFilePath = PathHelper.GetRuntimeFilePath("SelectionMode");
+    private static readonly string LinkedReferencesFilePath = PathHelper.GetRuntimeFilePath("SelectionSet-LinkedModelReferences");
     private const string TempSelectionSetName = "temp";
     
     public enum SelectionMode
@@ -137,13 +132,7 @@ public static class SelectionModeManager
         
         return ""; // Return empty string if no command found
     }
-    
-    static SelectionModeManager()
-    {
-        // Ensure directory exists
-        Directory.CreateDirectory(AppDataPath);
-    }
-    
+
     public static SelectionMode CurrentMode
     {
         get
@@ -309,13 +298,13 @@ public static class SelectionModeManager
             {
                 try
                 {
-                    var linkInstance = doc.GetElement(new ElementId(linkedRef.LinkInstanceId)) as RevitLinkInstance;
+                    var linkInstance = doc.GetElement(new ElementId((long)linkedRef.LinkInstanceId)) as RevitLinkInstance;
                     if (linkInstance != null)
                     {
                         var linkedDoc = linkInstance.GetLinkDocument();
                         if (linkedDoc != null)
                         {
-                            var linkedElement = linkedDoc.GetElement(new ElementId(linkedRef.LinkedElementId));
+                            var linkedElement = linkedDoc.GetElement(new ElementId((long)linkedRef.LinkedElementId));
                             if (linkedElement != null)
                             {
                                 var elemRef = new Reference(linkedElement);
@@ -361,8 +350,8 @@ public static class SelectionModeManager
                     // This is a linked element reference
                     linkedRefs.Add(new LinkedReferenceInfo
                     {
-                        LinkInstanceId = reference.ElementId.IntegerValue,
-                        LinkedElementId = reference.LinkedElementId.IntegerValue
+                        LinkInstanceId = (int)reference.ElementId.Value,
+                        LinkedElementId = (int)reference.LinkedElementId.Value
                     });
                 }
                 else

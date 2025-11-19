@@ -43,7 +43,7 @@ namespace RevitCommands
                     {
                         // Check if it's a door by category
                         if (familyInstance.Category != null && 
-                            familyInstance.Category.Id.IntegerValue == (int)BuiltInCategory.OST_Doors)
+                            familyInstance.Category.Id.Value == (int)BuiltInCategory.OST_Doors)
                         {
                             doors.Add(familyInstance);
                         }

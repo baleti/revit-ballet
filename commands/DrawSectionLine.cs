@@ -30,7 +30,7 @@ public class DrawSectionLine : IExternalCommand
             .Cast<ViewSection>()
             .Select(v => new Dictionary<string, object>
             {
-                { "Id", v.Id.IntegerValue },
+                { "Id", v.Id.Value },
                 { "Name", v.Name },
                 { "Type", v.ViewType.ToString() }
             })
@@ -61,7 +61,7 @@ public class DrawSectionLine : IExternalCommand
             foreach (var entry in selectedEntries)
             {
                 int selectedViewId = (int)entry["Id"];
-                ElementId viewElementId = new ElementId(selectedViewId);
+                ElementId viewElementId = new ElementId((long)selectedViewId);
                 ViewSection selectedView = doc.GetElement(viewElementId) as ViewSection;
 
                 if (selectedView == null)

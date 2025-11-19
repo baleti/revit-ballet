@@ -11,13 +11,12 @@ using System.Reflection;
 public class InvokeLastAddinCommand : IExternalCommand
 {
     private const string FolderName = "revit-ballet/runtime";
-    private const string ConfigFileName = "InvokeAddinCommand-last-dll-path";
     private const string LastCommandFileName = "InvokeAddinCommand-history";
     private static readonly string ConfigFolderPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), FolderName);
-    private static readonly string ConfigFilePath = Path.Combine(ConfigFolderPath, ConfigFileName);
     private static readonly string LastCommandFilePath = Path.Combine(ConfigFolderPath, LastCommandFileName);
 
     private Dictionary<string, Assembly> loadedAssemblies = new Dictionary<string, Assembly>();
+    private string currentDllPath;
 
     public Result Execute(
         ExternalCommandData commandData,
@@ -26,32 +25,43 @@ public class InvokeLastAddinCommand : IExternalCommand
     {
         try
         {
-            if (!File.Exists(ConfigFilePath) || !File.Exists(LastCommandFilePath))
+            // Detect Revit version
+            string revitVersion = commandData.Application.Application.VersionNumber;
+
+            // Build path to revit-ballet.dll in the standard installation location
+            currentDllPath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "revit-ballet",
+                "commands",
+                "bin",
+                revitVersion,
+                "revit-ballet.dll"
+            );
+
+            if (!File.Exists(currentDllPath))
+            {
+                message = $"Could not find revit-ballet.dll at expected location:\n{currentDllPath}";
+                return Result.Failed;
+            }
+
+            if (!File.Exists(LastCommandFilePath))
             {
                 message = "No previous command found. Run a command using InvokeAddinCommand first.";
                 return Result.Failed;
             }
 
-            string dllPath = File.ReadAllText(ConfigFilePath);
-            
             // Read the last command from the history file
             string commandClassName = GetLastCommand();
-            
+
             if (string.IsNullOrEmpty(commandClassName))
             {
                 message = "No command history found.";
                 return Result.Failed;
             }
 
-            if (string.IsNullOrEmpty(dllPath) || !File.Exists(dllPath))
-            {
-                message = "Invalid DLL path.";
-                return Result.Failed;
-            }
-
             AppDomain.CurrentDomain.AssemblyResolve += CurrentDomain_AssemblyResolve;
 
-            Assembly assembly = LoadAssembly(dllPath);
+            Assembly assembly = LoadAssembly(currentDllPath);
             Type commandType = assembly.GetType(commandClassName);
 
             if (commandType == null)
@@ -162,13 +172,12 @@ public class InvokeLastAddinCommand : IExternalCommand
             return loadedAssemblies[shortName];
         }
 
-        if (!File.Exists(ConfigFilePath))
+        if (string.IsNullOrEmpty(currentDllPath) || !File.Exists(currentDllPath))
         {
             return null;
         }
 
-        string dllPath = File.ReadAllText(ConfigFilePath);
-        string directory = Path.GetDirectoryName(dllPath);
+        string directory = Path.GetDirectoryName(currentDllPath);
         string assemblyPath = Path.Combine(directory, shortName + ".dll");
 
         if (File.Exists(assemblyPath))

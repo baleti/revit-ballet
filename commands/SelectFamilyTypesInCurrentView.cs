@@ -129,12 +129,12 @@ public class SelectFamilyTypesInCurrentView : IExternalCommand
     {
         public bool Equals(FamilySymbol x, FamilySymbol y)
         {
-            return x.Id.IntegerValue == y.Id.IntegerValue;
+            return x.Id.Value == y.Id.Value;
         }
 
         public int GetHashCode(FamilySymbol obj)
         {
-            return obj.Id.IntegerValue.GetHashCode();
+            return obj.Id.Value.GetHashCode();
         }
     }
 

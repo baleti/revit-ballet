@@ -62,7 +62,7 @@ public class ListSheetsWithSelectedLegend : IExternalCommand
             {
                 { "Sheet Name", sheet.Name },
                 { "Sheet Number", sheet.SheetNumber },
-                { "Id", sheet.Id.IntegerValue }
+                { "Id", sheet.Id.Value }
             };
             sheetEntries.Add(entry);
         }
@@ -79,7 +79,7 @@ public class ListSheetsWithSelectedLegend : IExternalCommand
 
         // Get the selected sheet's ID
         int selectedSheetId = (int)selectedSheetEntries.First()["Id"];
-        ElementId selectedSheetElementId = new ElementId(selectedSheetId);
+        ElementId selectedSheetElementId = new ElementId((long)selectedSheetId);
 
         // Open the selected sheet
         ViewSheet selectedSheet = doc.GetElement(selectedSheetElementId) as ViewSheet;

@@ -7,53 +7,82 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Windows.Forms;
+using RevitBallet.Commands;
 
 [Transaction(TransactionMode.Manual)]
 public class InvokeAddinCommand : IExternalCommand
 {
-    private const string FolderName = "revit-ballet/runtime";
-    private const string ConfigFileName = "InvokeAddinCommand-last-dll-path";
     private const string LastCommandFileName = "InvokeAddinCommand-history";
-    private static readonly string ConfigFolderPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), FolderName);
-    private static readonly string ConfigFilePath = Path.Combine(ConfigFolderPath, ConfigFileName);
-    private static readonly string LastCommandFilePath = Path.Combine(ConfigFolderPath, LastCommandFileName);
+    private static readonly string LastCommandFilePath = PathHelper.GetRuntimeFilePath(LastCommandFileName);
 
     // Dictionary to store loaded assemblies
     private Dictionary<string, Assembly> loadedAssemblies = new Dictionary<string, Assembly>();
+    private string currentDllPath;
 
     public Result Execute(
         ExternalCommandData commandData,
         ref string message,
         ElementSet elements)
     {
-        string dllPath = null;
+        // Detect Revit version
+        string revitVersion = commandData.Application.Application.VersionNumber;
 
-        if (File.Exists(ConfigFilePath))
-        {
-            dllPath = File.ReadAllText(ConfigFilePath);
-        }
+        // Build path to revit-ballet.dll in the standard installation location
+        currentDllPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "revit-ballet",
+            "commands",
+            "bin",
+            revitVersion,
+            "revit-ballet.dll"
+        );
 
-        if (string.IsNullOrEmpty(dllPath) || !File.Exists(dllPath))
+        if (!File.Exists(currentDllPath))
         {
-            using (OpenFileDialog openFileDialog = new OpenFileDialog())
+            // Try to copy from Addins location if runtime location is missing
+            string addinsPath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "Autodesk",
+                "Revit",
+                "Addins",
+                revitVersion,
+                "revit-ballet",
+                "revit-ballet.dll"
+            );
+
+            if (File.Exists(addinsPath))
             {
-                openFileDialog.Filter = "DLL files (*.dll)|*.dll";
-                openFileDialog.Title = "Open C# DLL with Revit Commands";
-
-                if (openFileDialog.ShowDialog() == DialogResult.OK)
+                try
                 {
-                    dllPath = openFileDialog.FileName;
+                    // Create runtime directory
+                    string runtimeDir = Path.GetDirectoryName(currentDllPath);
+                    Directory.CreateDirectory(runtimeDir);
 
-                    if (!Directory.Exists(ConfigFolderPath))
+                    // Copy DLL and dependencies from Addins location
+                    string addinsDir = Path.GetDirectoryName(addinsPath);
+                    foreach (string sourceFile in Directory.GetFiles(addinsDir, "*.dll"))
                     {
-                        Directory.CreateDirectory(ConfigFolderPath);
+                        string fileName = Path.GetFileName(sourceFile);
+                        string destFile = Path.Combine(runtimeDir, fileName);
+                        File.Copy(sourceFile, destFile, overwrite: true);
                     }
-                    File.WriteAllText(ConfigFilePath, dllPath);
+
+                    TaskDialog.Show("Info", $"Runtime DLLs were missing and have been copied from Addins folder.\n\nLocation: {runtimeDir}");
                 }
+                catch (Exception ex)
+                {
+                    TaskDialog.Show("Error", $"Failed to copy DLLs to runtime location:\n{ex.Message}");
+                    return Result.Failed;
+                }
+            }
+            else
+            {
+                TaskDialog.Show("Error", $"Could not find revit-ballet.dll at expected locations:\n\nRuntime: {currentDllPath}\nAddins: {addinsPath}");
+                return Result.Failed;
             }
         }
 
-        if (!string.IsNullOrEmpty(dllPath) && File.Exists(dllPath))
+        if (!string.IsNullOrEmpty(currentDllPath) && File.Exists(currentDllPath))
         {
             try
             {
@@ -61,7 +90,7 @@ public class InvokeAddinCommand : IExternalCommand
                 AppDomain.CurrentDomain.AssemblyResolve += CurrentDomain_AssemblyResolve;
 
                 // Load the main assembly
-                Assembly assembly = LoadAssembly(dllPath);
+                Assembly assembly = LoadAssembly(currentDllPath);
 
                 var commandEntries = new List<Dictionary<string, object>>();
                 var commandTypes = new Dictionary<string, string>();
@@ -122,15 +151,9 @@ public class InvokeAddinCommand : IExternalCommand
     {
         try
         {
-            // Ensure directory exists
-            if (!Directory.Exists(ConfigFolderPath))
-            {
-                Directory.CreateDirectory(ConfigFolderPath);
-            }
-
             // Append command with timestamp for better tracking
             string historyEntry = $"{commandClassName}";
-            
+
             // Append to file (creates file if it doesn't exist)
             using (StreamWriter sw = File.AppendText(LastCommandFilePath))
             {
@@ -196,9 +219,13 @@ public class InvokeAddinCommand : IExternalCommand
             return loadedAssemblies[shortName];
         }
 
+        if (string.IsNullOrEmpty(currentDllPath) || !File.Exists(currentDllPath))
+        {
+            return null;
+        }
+
         // Look for the assembly in the same directory as the main DLL
-        string dllPath = File.ReadAllText(ConfigFilePath);
-        string directory = Path.GetDirectoryName(dllPath);
+        string directory = Path.GetDirectoryName(currentDllPath);
         string assemblyPath = Path.Combine(directory, shortName + ".dll");
 
         if (File.Exists(assemblyPath))

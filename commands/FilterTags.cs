@@ -243,7 +243,7 @@ public class FilterTags : IExternalCommand
             dict["TaggedFamilyAndType"] = taggedFamilyAndType;
 
             // Save the tag's own ElementId (for later updating the selection).
-            dict["ElementId"] = tag.Id.IntegerValue;
+            dict["ElementId"] = tag.Id.Value;
             entries.Add(dict);
         }
 
@@ -266,7 +266,7 @@ public class FilterTags : IExternalCommand
             if (row.ContainsKey("ElementId") &&
                 int.TryParse(row["ElementId"].ToString(), out int intId))
             {
-                chosenIds.Add(new ElementId(intId));
+                chosenIds.Add(new ElementId((long)intId));
             }
         }
         using (var tx = new Transaction(doc, "Filter Tags Selection"))

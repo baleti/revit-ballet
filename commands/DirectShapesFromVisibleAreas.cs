@@ -25,7 +25,7 @@ public class DirectShapesFromVisibleAreas : IExternalCommand
         // -------------------------------------------------- 2. DataGrid picker
         var table = areas.Select(a => new Dictionary<string, object>
         {
-            ["Id"]     = a.Id.IntegerValue,
+            ["Id"]     = a.Id.Value,
             ["Number"] = a.Number,
             ["Name"]   = StripNumber(a.Name, a.Number),                // display name without number
             ["Level"]  = (doc.GetElement(a.LevelId) as Level)?.Name ?? "",
@@ -37,7 +37,7 @@ public class DirectShapesFromVisibleAreas : IExternalCommand
         if (pick == null || pick.Count == 0) return Result.Cancelled;
 
         var pickedIds = pick.Select(d => (int)d["Id"]).ToHashSet();
-        var chosen    = areas.Where(a => pickedIds.Contains(a.Id.IntegerValue)).ToList();
+        var chosen    = areas.Where(a => pickedIds.Contains((int)a.Id.Value)).ToList();
         if (chosen.Count == 0)
         {
             message = "Selected area not found.";

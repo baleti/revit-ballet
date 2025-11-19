@@ -1255,3 +1255,38 @@ determined to get it to work, although investment isn't likely to be returned at
 *** 16
 **** =22:09= CopySelectedElementsAlongContainingGroupsByRooms approaches completion
 subject to tests
+** November
+*** 10
+**** =11:00= welcome back
+"completed" work on autocad-ballet and returning to revit-ballet development
+  on occasion of switching employment
+***** applied lessons learned from autocad-ballet
+dotnet sdk 8 workflow
+claude code (ai agent) workflow
+documentation... is coming
+**** =12:00= programatic control over shortcuts
+suspecting that shortcuts can be adjusted without user intervention
+changing KeyboardShortcuts.xml file appears to be loaded by revit
+  %appdata%\Autodesk\Revit\Autodesk Revit <YYYY>
+need to be complete set of shortcuts, revit by default won't merge only new ones, it will delete any missing ones in that file
+that file only appears when user makes changes to shortcuts, many users may not have that file
+***** sadly couldn't find a KeyboardShortcuts.xml prototype installed with revit
+will have to resort to shipping a complete KeyboardShortcuts from 
+** November
+*** 17
+**** =23:50= discovered that default keyboard shortcuts in revit 2024 are hard coded in to utility.dll that lives in program files/autodesk/revit 2024
+if I manage to understand how these string literals correspond to commands I may have a more reliable way to avoid clashes with default shortcuts in case user haven't ever customized them and doesn't have a KeyboardShortcuts.xml file in %appdata% revit directory
+however it may be easier to somehow just collect default keyboardshortcuts from various revit installations, this reading of dll is likely brittle and changes across revit versions
+shame revit doesn't have a simpler mechanism just to "add" new shortcuts (although this may simply stem from mistrust to addin vendors)
+***** UIFramework.dll appears to have code assembling shortcuts
+[2025-11-18 Tue 14:35]
+fortunately it's a .net binary, so will be much easier to analyze that native Utility.dll
+***** =14:59= may have just hit gold in "/UIFramework;component/KeyboardShortcut/PredefinedShortcuts/ShortcutsOneBox.xaml"
+***** =21:30= this turned out to only show about a half of shortcuts exported by revit
+this likely marks the end of this idea
+relying on user having modified shortcuts is too brittle
+so is trying to maintain your own copies of complete keyboardshortcuts.xml
+*** 20
+**** =00:25= while working on the installer accidentally have deleted entire codebase and runtime folder
+uninstaller.exe correctly deleted revit-ballet folder, which double up as my codebase (similarly to autocad-ballet)
+thanks to recent push to git remote not much was lost, runtime folder is completely gone, but it likely contained only transient information
