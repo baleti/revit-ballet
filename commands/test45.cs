@@ -80,7 +80,7 @@ namespace RevitCommands
                         dataList.Add(new ElementData
                         {
                             GroupName = group.Name,
-                            ElementId = member.Id.IntegerValue,
+                            ElementId = (int)member.Id.Value,
                             ElementName = member.Name,
                             Category = member.Category?.Name ?? "N/A",
                             LocationType = locationType,

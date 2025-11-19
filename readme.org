@@ -1,4 +1,4 @@
-#+html:<div align="center"><img src="https://raw.githubusercontent.com/baleti/revit-scripts-docs/refs/heads/main/logo%20revit%20ballet%201.png" width="200"/></div>
+#+html:<div align="center"><img src="https://raw.githubusercontent.com/baleti/revit-scripts-docs/refs/heads/main/logo.png" width="200"/></div>
 
 #+html:<p align="center"><i>Dance around Revit 🩰</i></p>
 

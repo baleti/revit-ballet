@@ -38,7 +38,7 @@ namespace YourCompany.YourAddIn
                 Category cat = et.Category;
                 if (cat == null) continue;
 
-                if (seenIds.Add(cat.Id.IntegerValue))          // only once per category
+                if (seenIds.Add((int)cat.Id.Value))          // only once per category
                 {
                     categoryRows.Add(new Dictionary<string, object>
                     {

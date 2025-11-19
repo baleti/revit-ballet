@@ -109,7 +109,7 @@ public class SelectSheetsOrCloudsByRevisions : IExternalCommand
                 { "All Rev Descriptions", allRevDescriptions },
                 { "All Issued To", allIssuedTo },
                 { "All Issued By", allIssuedBy },
-                { "Element ID", sheet.Id.IntegerValue }
+                { "Element ID", sheet.Id.Value }
             });
         }
 
@@ -174,7 +174,7 @@ public class SelectSheetsOrCloudsByRevisions : IExternalCommand
                 { "All Rev Descriptions", revDescription },
                 { "All Issued To", issuedTo },
                 { "All Issued By", issuedBy },
-                { "Element ID", cloud.Id.IntegerValue }
+                { "Element ID", cloud.Id.Value }
             });
         }
 
@@ -203,7 +203,7 @@ public class SelectSheetsOrCloudsByRevisions : IExternalCommand
 
             string elementType = selectedElementEntry["Element Type"].ToString();
             int elementId = Convert.ToInt32(selectedElementEntry["Element ID"]);
-            ElementId revitElementId = new ElementId(elementId);
+            ElementId revitElementId = new ElementId((long)elementId);
 
             if (elementType == "Sheet")
             {

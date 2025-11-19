@@ -6,22 +6,17 @@ using System.IO;
 using System;
 using System.Linq;
 using System.Collections.Generic;
+using RevitBallet.Commands;
 
 public class LogViewChanges : IExternalApplication
 {
     private string logFilePath;
 
-    public LogViewChanges()
-    {
-        string appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        string directoryPath = Path.Combine(appDataPath, "revit-ballet", "runtime", "LogViewChanges");
-
-        // Create the directory if it doesn't exist
-        Directory.CreateDirectory(directoryPath);
-    }
-
     public Result OnStartup(UIControlledApplication application)
     {
+        // Run all startup tasks (directory initialization and update migration)
+        Startup.RunStartupTasks(application);
+
         application.ViewActivated += OnViewActivated;
         application.ControlledApplication.DocumentOpened += OnDocumentOpened;
         return Result.Succeeded;
@@ -46,14 +41,8 @@ public class LogViewChanges : IExternalApplication
 
         string projectName = doc != null ? doc.Title : "UnknownProject";
 
-        // Construct the log file path in the LogViewChanges directory
-        logFilePath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "revit-ballet",
-            "runtime",
-            "LogViewChanges",
-            $"{projectName}"
-        );
+        // Get the log file path using PathHelper (ensures directory exists)
+        logFilePath = PathHelper.GetLogViewChangesPath(projectName);
 
         List<string> logEntries = File.Exists(logFilePath) ? File.ReadAllLines(logFilePath).ToList() : new List<string>();
 
@@ -86,14 +75,8 @@ public class LogViewChanges : IExternalApplication
             return; // Exit if it's a family document
         }
 
-        // Construct the log file path in the LogViewChanges directory
-        logFilePath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "revit-ballet",
-            "runtime",
-            "LogViewChanges",
-            $"{projectName}"
-        );
+        // Get the log file path using PathHelper (ensures directory exists)
+        logFilePath = PathHelper.GetLogViewChangesPath(projectName);
 
         // Clear the contents of the log file
         if (File.Exists(logFilePath))

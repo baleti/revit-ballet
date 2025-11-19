@@ -114,8 +114,8 @@ public class SectionBox3DFromViewsInSelectedLinkedModels : IExternalCommand
                     { "Sheet Number", sheetNumbers },
                     { "Sheet Name", sheetNames },
                     { "Sheet Folder", sheetFolders },
-                    { "View Id", view.Id.IntegerValue.ToString() },
-                    { "Link Instance Id", linkInstance.Id.IntegerValue.ToString() },
+                    { "View Id", view.Id.Value.ToString() },
+                    { "Link Instance Id", linkInstance.Id.Value.ToString() },
                     { "Link Name", linkInstance.Name }
                 });
             }
@@ -149,8 +149,8 @@ public class SectionBox3DFromViewsInSelectedLinkedModels : IExternalCommand
 
         // Get the selected view and link instance
         Dictionary<string, object> selectedEntry = selectedViewEntries.First();
-        ElementId selectedViewId = new ElementId(int.Parse(selectedEntry["View Id"].ToString()));
-        ElementId linkInstanceId = new ElementId(int.Parse(selectedEntry["Link Instance Id"].ToString()));
+        ElementId selectedViewId = new ElementId((long)int.Parse(selectedEntry["View Id"].ToString()));
+        ElementId linkInstanceId = new ElementId((long)int.Parse(selectedEntry["Link Instance Id"].ToString()));
         
         RevitLinkInstance selectedLinkInstance = doc.GetElement(linkInstanceId) as RevitLinkInstance;
         Document selectedLinkDoc = selectedLinkInstance.GetLinkDocument();

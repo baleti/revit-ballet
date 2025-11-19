@@ -98,7 +98,7 @@ namespace MyRevitCommands
                     var dict = new Dictionary<string, object>
                     {
                         // Using the integer value of the ElementId.
-                        ["Id"] = vt.Id.IntegerValue,
+                        ["Id"] = vt.Id.Value,
                         ["Name"] = vt.Name,
                         ["Count (Views)"] = count,
                         ["Sheet Numbers"] = sheetsList
@@ -123,7 +123,7 @@ namespace MyRevitCommands
                 foreach (var entry in selectedEntries)
                 {
                     int idInt = Convert.ToInt32(entry["Id"]);
-                    selectedTemplateIds.Add(new ElementId(idInt));
+                    selectedTemplateIds.Add(new ElementId((long)idInt));
                 }
 
                 // 8. Find all non-template views whose ViewTemplateId matches any of the selected templates.

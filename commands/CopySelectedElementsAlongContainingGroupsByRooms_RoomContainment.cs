@@ -616,7 +616,7 @@ if (roomData != null && IsRoomWithinBoundingBox(roomData, groupBB.Min, groupBB.M
        // Use coarser grid (50ft instead of 10ft) for better cache hits
        int gridX = (int)Math.Floor(testPoint.X / 50.0);
        int gridY = (int)Math.Floor(testPoint.Y / 50.0);
-       string cacheKey = $"L{currentLevel.Id.IntegerValue}_X{gridX}_Y{gridY}";
+       string cacheKey = $"L{currentLevel.Id.Value}_X{gridX}_Y{gridY}";
        
        if (_floorToFloorHeightCache.ContainsKey(cacheKey))
        {
@@ -847,7 +847,7 @@ if (roomData != null && IsRoomWithinBoundingBox(roomData, groupBB.Min, groupBB.M
                XYZ testPointForXY = new XYZ(point.X, point.Y, testZ);
                
                // OPTIMIZATION: Cache room containment checks
-               string containmentKey = $"R{room.Id.IntegerValue}_X{(int)(point.X*10)}_Y{(int)(point.Y*10)}_Z{(int)(testZ*10)}";
+               string containmentKey = $"R{room.Id.Value}_X{(int)(point.X*10)}_Y{(int)(point.Y*10)}_Z{(int)(testZ*10)}";
                bool isInRoom;
                if (!_roomPointContainmentCache.ContainsKey(containmentKey))
                {

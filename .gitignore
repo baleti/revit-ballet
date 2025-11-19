@@ -39,3 +39,6 @@ project.fragment.lock.json
 *.dbmdl
 Thumbs.db
 ehthumbs.db
+
+runtime/
+.claude/

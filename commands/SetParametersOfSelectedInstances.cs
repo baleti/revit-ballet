@@ -110,7 +110,7 @@ public class SetParametersOfSelectedInstances : IExternalCommand
             case StorageType.ElementId:
                 ElementId id = param.AsElementId();
                 if (id == ElementId.InvalidElementId) return "";
-                return id.IntegerValue.ToString();
+                return id.Value.ToString();
             default:
                 return "";
         }
@@ -142,7 +142,7 @@ public class SetParametersOfSelectedInstances : IExternalCommand
                 case StorageType.ElementId:
                     if (int.TryParse(value, out int elemIdVal))
                     {
-                        param.Set(new ElementId(elemIdVal));
+                        param.Set(new ElementId((long)elemIdVal));
                         return true;
                     }
                     return false;

@@ -186,7 +186,7 @@ public abstract class BaseFilterCommand : IExternalCommand
             ViewSheet sheet = doc.GetElement(vp.SheetId) as ViewSheet;
             if (sheet != null)
             {
-                int sheetIdInt = sheet.Id.IntegerValue;
+                int sheetIdInt = (int)sheet.Id.Value;
                 string sheetNum = sheet.SheetNumber;
                 string sheetNm  = sheet.Name;
 
@@ -251,7 +251,7 @@ public abstract class BaseFilterCommand : IExternalCommand
                         ViewType   = v.IsTemplate ? "Template" : v.ViewType.ToString(),
                         SheetNumber = "N/A",
                         SheetName   = "N/A",
-                        ViewId     = v.Id.IntegerValue,
+                        ViewId     = (int)v.Id.Value,
                         SheetId    = -1
                     };
 
@@ -328,7 +328,7 @@ public class OpenViewsByViewFilters : BaseFilterCommand
     {
         foreach (UsageGridRow row in selectedUsage)
         {
-            ElementId viewId = new ElementId(row.ViewId);
+            ElementId viewId = new ElementId((long)row.ViewId);
             View theView = doc.GetElement(viewId) as View;
             if (theView != null)
             {
@@ -355,7 +355,7 @@ public class OpenSheetsByViewFilters : BaseFilterCommand
             if (row.SheetId < 1)
                 continue;
 
-            ElementId sheetEid = new ElementId(row.SheetId);
+            ElementId sheetEid = new ElementId((long)row.SheetId);
             ViewSheet sheet = doc.GetElement(sheetEid) as ViewSheet;
             if (sheet != null)
             {

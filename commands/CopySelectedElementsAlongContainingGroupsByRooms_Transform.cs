@@ -150,12 +150,12 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
 
         // Add category
         if (elem.Category != null)
-            key += elem.Category.Id.IntegerValue + "|";
+            key += elem.Category.Id.Value + "|";
 
         // Add type id
         ElementId typeId = elem.GetTypeId();
         if (typeId != ElementId.InvalidElementId)
-            key += typeId.IntegerValue + "|";
+            key += typeId.Value + "|";
 
         // Add geometric properties for walls
         if (elem is Wall)
@@ -365,7 +365,7 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
 
             return result;
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             return null;
         }

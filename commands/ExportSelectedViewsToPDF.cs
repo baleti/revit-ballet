@@ -10,9 +10,9 @@ using System.Windows.Forms;
 using System.Text.RegularExpressions;
 using Application = System.Windows.Forms.Application;
 using System.Runtime.InteropServices;
-using Microsoft.WindowsAPICodePack.Dialogs;
 using System.Reflection;
 using System.Threading;
+using Microsoft.WindowsAPICodePack.Dialogs;
 
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
@@ -73,7 +73,7 @@ public class ExportSelectedViewsToPDF : IExternalCommand
             // Get folder location
             string exportFolder = null;
             var lastPath = dialog.GetLastExportPath();
-            
+
             var folderDialog = new CommonOpenFileDialog
             {
                 Title = "Select folder for PDF export",
@@ -82,12 +82,13 @@ public class ExportSelectedViewsToPDF : IExternalCommand
                 EnsurePathExists = true,
                 EnsureFileExists = false
             };
-            
+
             if (folderDialog.ShowDialog(commandData.Application.MainWindowHandle) == CommonFileDialogResult.Ok)
             {
                 exportFolder = folderDialog.FileName;
             }
-            else
+
+            if (string.IsNullOrEmpty(exportFolder))
             {
                 return Result.Cancelled;
             }
@@ -342,11 +343,11 @@ public class PDFNamingDialog : System.Windows.Forms.Form
             }
             
             // Convert BuiltInParameter enum values to ElementId for comparison
-            var sheetNumberId = new ElementId(BuiltInParameter.SHEET_NUMBER);
-            var sheetNameId = new ElementId(BuiltInParameter.SHEET_NAME);
-            var viewNameId = new ElementId(BuiltInParameter.VIEW_NAME);
-            var viewTypeId = new ElementId(BuiltInParameter.VIEW_TYPE);
-            var invalidId = new ElementId(BuiltInParameter.INVALID);
+            var sheetNumberId = new ElementId((long)BuiltInParameter.SHEET_NUMBER);
+            var sheetNameId = new ElementId((long)BuiltInParameter.SHEET_NAME);
+            var viewNameId = new ElementId((long)BuiltInParameter.VIEW_NAME);
+            var viewTypeId = new ElementId((long)BuiltInParameter.VIEW_TYPE);
+            var invalidId = new ElementId((long)BuiltInParameter.INVALID);
             
             ElementId paramId = rule.ParamId;
             
@@ -367,12 +368,12 @@ public class PDFNamingDialog : System.Windows.Forms.Form
             {
                 paramPart = "{View Type}";
             }
-            else if (!paramId.Equals(invalidId) && paramId.IntegerValue < 0)
+            else if (!paramId.Equals(invalidId) && paramId.Value < 0)
             {
                 // For built-in parameters (negative IDs), try to convert to BuiltInParameter
                 try
                 {
-                    var builtInParam = (BuiltInParameter)paramId.IntegerValue;
+                    var builtInParam = (BuiltInParameter)paramId.Value;
                     var paramName = LabelUtils.GetLabelFor(builtInParam);
                     if (!string.IsNullOrEmpty(paramName))
                     {
@@ -389,7 +390,7 @@ public class PDFNamingDialog : System.Windows.Forms.Form
                     }
                 }
             }
-            else if (paramId.IntegerValue > 0)
+            else if (paramId.Value > 0)
             {
                 // For custom parameters (positive IDs), get the parameter element
                 var param = doc.GetElement(paramId) as ParameterElement;

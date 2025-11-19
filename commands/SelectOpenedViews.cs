@@ -55,7 +55,7 @@ public class SelectOpenedViews : IExternalCommand
             if (parts.Length != 2) continue;
 
             if (int.TryParse(parts[0], out int idInt))
-                loggedIds.Add(new ElementId(idInt));
+                loggedIds.Add(new ElementId((long)idInt));
 
             loggedTitles.Add(parts[1]);
         }

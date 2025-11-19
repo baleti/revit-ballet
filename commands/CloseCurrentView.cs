@@ -5,6 +5,7 @@ using System.Linq;
 using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
+using RevitBallet.Commands;
 
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
@@ -17,7 +18,7 @@ public class CloseCurrentView : IExternalCommand
         string projectName = doc != null ? doc.Title : "UnknownProject";
 
         // Remove the closed view from the log file
-        string logFilePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "revit-ballet", "runtime", "LogViewChanges", $"{projectName}");
+        string logFilePath = PathHelper.GetLogViewChangesPath(projectName);
         if (File.Exists(logFilePath))
         {
             List<string> logEntries = File.ReadAllLines(logFilePath).ToList();

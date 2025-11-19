@@ -68,7 +68,7 @@ public class SelectAssociatedDimensions : IExternalCommand
 
                 // Get the owner view name
                 entry["OwnerView"] = doc.GetElement(dim.OwnerViewId)?.Name ?? "N/A";
-                entry["Id"] = dim.Id.IntegerValue;
+                entry["Id"] = dim.Id.Value;
 
                 // Retrieve Total Length
                 string totalLength = GetTotalLength(dim, doc);
@@ -95,7 +95,7 @@ public class SelectAssociatedDimensions : IExternalCommand
                 foreach (var entry in selectedEntries)
                 {
                     int idValue = Convert.ToInt32(entry["Id"]);
-                    selectedDimensionIds.Add(new ElementId(idValue));
+                    selectedDimensionIds.Add(new ElementId((long)idValue));
                 }
 
                 // Select the dimensions in Revit

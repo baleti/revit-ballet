@@ -41,8 +41,8 @@ public class RehostToJoinedWalls : IExternalCommand
             Element e = doc.GetElement(id);
             FamilyInstance fi = e as FamilyInstance;
             if (fi == null ||
-               !(fi.Category.Id.IntegerValue == (int)BuiltInCategory.OST_Windows ||
-                 fi.Category.Id.IntegerValue == (int)BuiltInCategory.OST_Doors))
+               !(fi.Category.Id.Value == (int)BuiltInCategory.OST_Windows ||
+                 fi.Category.Id.Value == (int)BuiltInCategory.OST_Doors))
             {
                 continue;
             }
@@ -51,7 +51,7 @@ public class RehostToJoinedWalls : IExternalCommand
             Wall currentHostWall = fi.Host as Wall;
             if (currentHostWall == null)
             {
-                TaskDialog.Show("Warning", $"Element id {fi.Id.IntegerValue} does not have a valid host wall. Skipping.");
+                TaskDialog.Show("Warning", $"Element id {fi.Id.Value} does not have a valid host wall. Skipping.");
                 continue;
             }
             
@@ -149,7 +149,7 @@ public class RehostToJoinedWalls : IExternalCommand
                 LocationPoint locPoint = fi.Location as LocationPoint;
                 if (locPoint == null)
                 {
-                    TaskDialog.Show("Warning", $"Element id {fi.Id.IntegerValue} does not have a point location. Skipping.");
+                    TaskDialog.Show("Warning", $"Element id {fi.Id.Value} does not have a point location. Skipping.");
                     skippedElements.Add(fi);
                     continue;
                 }
@@ -159,7 +159,7 @@ public class RehostToJoinedWalls : IExternalCommand
                 Level level = doc.GetElement(fi.LevelId) as Level;
                 if (level == null)
                 {
-                    TaskDialog.Show("Warning", $"Could not determine the level for element id {fi.Id.IntegerValue}. Skipping.");
+                    TaskDialog.Show("Warning", $"Could not determine the level for element id {fi.Id.Value}. Skipping.");
                     skippedElements.Add(fi);
                     continue;
                 }

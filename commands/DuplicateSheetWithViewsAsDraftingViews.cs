@@ -35,7 +35,7 @@ namespace YourNamespace
                 // We'll put "Title" and "SheetFolder" first and "Id" as the last column.
                 entries.Add(new Dictionary<string, object>
                 {
-                    { "Id", sheet.Id.IntegerValue },
+                    { "Id", sheet.Id.Value },
                     { "Title", title },
                     { "SheetFolder", sheetFolder }
                 });
@@ -79,7 +79,7 @@ namespace YourNamespace
                 {
                     if (entry.ContainsKey("Id") && int.TryParse(entry["Id"].ToString(), out int sheetIdValue))
                     {
-                        ElementId sheetId = new ElementId(sheetIdValue);
+                        ElementId sheetId = new ElementId((long)sheetIdValue);
                         ViewSheet originalSheet = doc.GetElement(sheetId) as ViewSheet;
                         if (originalSheet == null)
                             continue;
@@ -212,7 +212,7 @@ namespace YourNamespace
                             .WhereElementIsNotElementType()
                             .Where(e =>
                                 !(e is Viewport) &&
-                                !(e.Category != null && e.Category.Id.IntegerValue == (int)BuiltInCategory.OST_TitleBlocks))
+                                !(e.Category != null && e.Category.Id.Value == (int)BuiltInCategory.OST_TitleBlocks))
                             .Select(e => e.Id)
                             .ToList();
 

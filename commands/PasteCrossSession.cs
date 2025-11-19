@@ -6,6 +6,7 @@ using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using Newtonsoft.Json;
+using RevitBallet.Commands;
 
 [Transaction(TransactionMode.Manual)]
 public class PasteCrossSession : IExternalCommand
@@ -16,9 +17,8 @@ public class PasteCrossSession : IExternalCommand
         UIDocument uidoc = uiApp.ActiveUIDocument;
         Document doc = uidoc.Document;
 
-        string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        string folderPath = Path.Combine(appData, "revit-ballet", "runtime");
-        string filePath = Path.Combine(folderPath, "selectedElements.json");
+        string folderPath = PathHelper.RuntimeDirectory;
+        string filePath = PathHelper.GetRuntimeFilePath("selectedElements.json");
 
         if (!File.Exists(filePath))
         {

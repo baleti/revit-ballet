@@ -19,7 +19,7 @@ public class SelectAllElementsInView : IExternalCommand
             .Where(e => e.GroupId == ElementId.InvalidElementId)
             .Where(e => !(e is View)) // Exclude views
             .Where(x => x.Category != null) // Exclude ExtentElem
-            .Where(e => !(e.Category?.Id.IntegerValue == (int)BuiltInCategory.OST_Cameras)) // Exclude cameras
+            .Where(e => !(e.Category?.Id.Value == (int)BuiltInCategory.OST_Cameras)) // Exclude cameras
             .Select(e => e.Id)
             .ToList();
 

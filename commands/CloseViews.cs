@@ -5,6 +5,7 @@ using System.Linq;
 using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
+using RevitBallet.Commands;
 
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
@@ -45,7 +46,7 @@ public class CloseViews : IExternalCommand
     }
     private void RemoveViewFromLog(string viewTitle, string projectName)
     {
-        string logFilePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "revit-ballet", "runtime", "LogViewChanges", $"{projectName}");
+        string logFilePath = PathHelper.GetLogViewChangesPath(projectName);
         if (File.Exists(logFilePath))
         {
             List<string> logEntries = File.ReadAllLines(logFilePath).ToList();

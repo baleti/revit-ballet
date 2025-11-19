@@ -35,7 +35,7 @@ namespace FilterDoorsWithWallOffsets
             if (accepted.Any())
             {
                 sb.AppendLine("✓ ACCEPTED WALLS:");
-                foreach (var wall in accepted.OrderBy(w => w.WallId.IntegerValue))
+                foreach (var wall in accepted.OrderBy(w => w.WallId.Value))
                 {
                     sb.AppendLine($"  Wall {wall.WallId} - {wall.WallName}");
                     sb.AppendLine($"    Start: {FormatXYZ(wall.WallStartPoint)} End: {FormatXYZ(wall.WallEndPoint)}");
@@ -56,7 +56,7 @@ namespace FilterDoorsWithWallOffsets
                 {
                     sb.AppendLine($"  Reason: {GetRejectionReasonDescription(group.Key)}");
                     
-                    foreach (var wall in group.OrderBy(w => w.WallId.IntegerValue))
+                    foreach (var wall in group.OrderBy(w => w.WallId.Value))
                     {
                         sb.AppendLine($"    Wall {wall.WallId} - {wall.WallName}");
                         sb.AppendLine($"      Start: {FormatXYZ(wall.WallStartPoint)} End: {FormatXYZ(wall.WallEndPoint)}");

@@ -57,8 +57,7 @@ namespace RevitCommands
                     // Skip splitting if only one boundary
                     if (floorBoundaries.Count <= 1) continue;
 
-                    // Set default slope arrow and slope
-                    Line slopeArrow = null;
+                    // Set default slope
                     double slope = 0.0;
 
                     // Create new floor for each boundary

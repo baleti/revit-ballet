@@ -6,6 +6,7 @@ using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using Newtonsoft.Json;
+using RevitBallet.Commands;
 
 [Transaction(TransactionMode.ReadOnly)]
 public class CopyCrossSession : IExternalCommand
@@ -123,14 +124,8 @@ public class CopyCrossSession : IExternalCommand
             }
         }
 
-        string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        string folderPath = Path.Combine(appData, "revit-ballet", "runtime");
-        if (!Directory.Exists(folderPath))
-        {
-            Directory.CreateDirectory(folderPath);
-        }
-
-        string filePath = Path.Combine(folderPath, "selectedElements.json");
+        string folderPath = PathHelper.RuntimeDirectory;
+        string filePath = PathHelper.GetRuntimeFilePath("selectedElements.json");
         string json = JsonConvert.SerializeObject(elementDataList, Formatting.Indented);
         File.WriteAllText(filePath, json);
 

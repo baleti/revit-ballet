@@ -49,7 +49,7 @@ public class SelectElementsInSelectedGroups : IExternalCommand
     {
         if (element is FilledRegion) return "Filled Region";
         if (element is DetailLine) return "Detail Line";
-        if (element is FamilyInstance fi && fi.Category?.Id.IntegerValue == (int)BuiltInCategory.OST_DetailComponents)
+        if (element is FamilyInstance fi && fi.Category?.Id.Value == (int)BuiltInCategory.OST_DetailComponents)
             return "Detail Component";
         if (element is FamilyInstance fi2)
         {
@@ -120,7 +120,7 @@ public class SelectElementsInSelectedGroups : IExternalCommand
                             { "Family/Type", familyName != "N/A" ? familyName : typeName },
                             { "Group", group.Name },
                             { "Name", string.IsNullOrEmpty(member.Name) ? "(unnamed)" : member.Name },
-                            { "_elementId", member.Id.IntegerValue }  // Hidden field for selection
+                            { "_elementId", member.Id.Value }  // Hidden field for selection
                         });
                     }
                 }
@@ -149,7 +149,7 @@ public class SelectElementsInSelectedGroups : IExternalCommand
             {
                 // Create a list of ElementIds from selected entries
                 List<ElementId> selectedIds = selectedEntries
-                    .Select(entry => new ElementId((int)entry["_elementId"]))
+                    .Select(entry => new ElementId((long)entry["_elementId"]))
                     .ToList();
 
                 // Select the elements in Revit

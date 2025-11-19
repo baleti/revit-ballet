@@ -18,7 +18,7 @@ namespace RevitAPICommands
             var sections = new FilteredElementCollector(doc)
                 .OfClass(typeof(ViewSection))
                 .Cast<ViewSection>()
-                .OrderByDescending(vs => vs.Id.IntegerValue);
+                .OrderByDescending(vs => vs.Id.Value);
 
             // Get the section with the highest ElementId.
             ViewSection lastSection = sections.FirstOrDefault();

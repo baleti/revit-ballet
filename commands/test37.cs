@@ -558,8 +558,8 @@ namespace RoomGraphPlugin
 
         private string GetConnectionKey(ElementId id1, ElementId id2)
         {
-            int val1 = id1.IntegerValue;
-            int val2 = id2.IntegerValue;
+            int val1 = (int)id1.Value;
+            int val2 = (int)id2.Value;
             return val1 < val2 ? $"{val1}_{val2}" : $"{val2}_{val1}";
         }
     }

@@ -319,8 +319,8 @@ public class SaveSelection : IExternalCommand
                             // This is a linked element reference
                             linkedRefs.Add(new SelectionSetLinkedReferenceInfo
                             {
-                                LinkInstanceId = reference.ElementId.IntegerValue,
-                                LinkedElementId = reference.LinkedElementId.IntegerValue
+                                LinkInstanceId = (int)reference.ElementId.Value,
+                                LinkedElementId = (int)reference.LinkedElementId.Value
                             });
                         }
                         else
@@ -440,13 +440,13 @@ public class LoadSelection : IExternalCommand
             {
                 try
                 {
-                    var linkInstance = doc.GetElement(new ElementId(linkedRef.LinkInstanceId)) as RevitLinkInstance;
+                    var linkInstance = doc.GetElement(new ElementId((long)linkedRef.LinkInstanceId)) as RevitLinkInstance;
                     if (linkInstance != null)
                     {
                         var linkedDoc = linkInstance.GetLinkDocument();
                         if (linkedDoc != null)
                         {
-                            var linkedElement = linkedDoc.GetElement(new ElementId(linkedRef.LinkedElementId));
+                            var linkedElement = linkedDoc.GetElement(new ElementId((long)linkedRef.LinkedElementId));
                             if (linkedElement != null)
                             {
                                 var elemRef = new Reference(linkedElement);

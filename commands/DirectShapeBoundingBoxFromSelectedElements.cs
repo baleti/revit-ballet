@@ -140,7 +140,7 @@ public class DirectShapeBoundingBoxFromSelectedElements : IExternalCommand
 
         // Set Comments with Type and Id information as key-value pairs
         string elementTypeName = GetElementTypeName(doc, sourceElement);
-        string comments = $"Type: {elementTypeName}, Id: {sourceElement.Id.IntegerValue}";
+        string comments = $"Type: {elementTypeName}, Id: {sourceElement.Id.Value}";
         
         Parameter commentsParam = ds.LookupParameter("Comments") ??
                                  ds.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS);

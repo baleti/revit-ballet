@@ -78,7 +78,7 @@ namespace RevitDetailLines
                         { "Sheet Number", sheet?.SheetNumber ?? "" },
                         { "Sheet Name", sheet?.Name ?? "" },
                         { "Sheet Folder", sheet?.LookupParameter("Sheet Folder")?.AsString() ?? "" },
-                        { "View Id", v.Id.IntegerValue.ToString() }
+                        { "View Id", v.Id.Value.ToString() }
                     };
                 }).ToList();
 
@@ -103,7 +103,7 @@ namespace RevitDetailLines
 
                 // Get the selected view
                 int selectedViewId = int.Parse(selection.First()["View Id"].ToString());
-                View selectedView = doc.GetElement(new ElementId(selectedViewId)) as View;
+                View selectedView = doc.GetElement(new ElementId((long)selectedViewId)) as View;
 
                 if (selectedView == null)
                 {

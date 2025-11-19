@@ -82,7 +82,7 @@ public class FilterDimensions : IExternalCommand
             Dictionary<string, object> props = new Dictionary<string, object>();
 
             // Basic properties.
-            props["Element Id"] = dim.Id.IntegerValue;
+            props["Element Id"] = dim.Id.Value;
             props["Name"] = dim.Name;
 
             // Retrieve Owner View, Level, Sheet Number, and Sheet Name.
@@ -274,7 +274,7 @@ public class FilterDimensions : IExternalCommand
         if (selectedFromGrid?.Any() == true)
         {
             List<ElementId> selectedDimensionIds = selectedFromGrid
-                .Select(dict => new ElementId((int)dict["Element Id"]))
+                .Select(dict => new ElementId((long)dict["Element Id"]))
                 .ToList();
             uidoc.SetSelectionIds(selectedDimensionIds);
         }

@@ -45,7 +45,7 @@ public partial class FilterSelectedElementsByContainingGroupsWithRooms : IExtern
                 Element elem = doc.GetElement(id);
                 if (elem != null && !(elem is RevitLinkInstance))
                 {
-                    string elemInfo = $"ID {id.IntegerValue}: {elem.GetType().Name}";
+                    string elemInfo = $"ID {id.Value}: {elem.GetType().Name}";
                     
                     if (elem is Group)
                     {
@@ -68,11 +68,11 @@ public partial class FilterSelectedElementsByContainingGroupsWithRooms : IExtern
                 }
                 else if (elem is RevitLinkInstance)
                 {
-                    _diagnostics.AppendLine($"  ID {id.IntegerValue}: RevitLinkInstance - checking for linked elements");
+                    _diagnostics.AppendLine($"  ID {id.Value}: RevitLinkInstance - checking for linked elements");
                 }
                 else if (elem == null)
                 {
-                    _diagnostics.AppendLine($"  ID {id.IntegerValue}: NULL element - EXCLUDED");
+                    _diagnostics.AppendLine($"  ID {id.Value}: NULL element - EXCLUDED");
                 }
             }
             
@@ -95,7 +95,7 @@ public partial class FilterSelectedElementsByContainingGroupsWithRooms : IExtern
                                 Element linkedElem = linkedDoc.GetElement(reference.LinkedElementId);
                                 if (linkedElem != null)
                                 {
-                                    string elemInfo = $"Linked ID {reference.LinkedElementId.IntegerValue}: {linkedElem.GetType().Name}";
+                                    string elemInfo = $"Linked ID {reference.LinkedElementId.Value}: {linkedElem.GetType().Name}";
                                     
                                     if (linkedElem is Group)
                                     {
@@ -282,7 +282,7 @@ public partial class FilterSelectedElementsByContainingGroupsWithRooms : IExtern
                 foreach (var kvp in multiGroupElements)
                 {
                     Element elem = doc.GetElement(kvp.Key);
-                    _diagnostics.AppendLine($"Element {elem.Id.IntegerValue} is in {kvp.Value.Count} groups:");
+                    _diagnostics.AppendLine($"Element {elem.Id.Value} is in {kvp.Value.Count} groups:");
                     foreach (Group group in kvp.Value)
                     {
                         GroupType gt = doc.GetElement(group.GetTypeId()) as GroupType;
@@ -444,7 +444,7 @@ public partial class FilterSelectedElementsByContainingGroupsWithRooms : IExtern
             }
             
             // Id - include link info if from linked model
-            string idText = elem.Id.IntegerValue.ToString();
+            string idText = elem.Id.Value.ToString();
             if (elementToLinkMap.ContainsKey(elem))
             {
                 RevitLinkInstance link = elementToLinkMap[elem];
@@ -464,7 +464,7 @@ public partial class FilterSelectedElementsByContainingGroupsWithRooms : IExtern
             
             if (containingRooms.Count > 0)
             {
-                List<string> roomNames = containingRooms.Select(r => r.Name ?? $"Room {r.Id.IntegerValue}").ToList();
+                List<string> roomNames = containingRooms.Select(r => r.Name ?? $"Room {r.Id.Value}").ToList();
                 entry["Room(s)"] = string.Join(", ", roomNames);
             }
             else

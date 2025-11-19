@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using RevitBallet.Commands;
 
 [Transaction(TransactionMode.Manual)]
 public class SwitchToLastView : IExternalCommand
@@ -15,8 +16,7 @@ public class SwitchToLastView : IExternalCommand
         Document doc = uidoc.Document;
         string projectName = doc != null ? doc.Title : "UnknownProject";
 
-        string appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        string logFilePath = Path.Combine(appDataPath, "revit-ballet", "runtime", "LogViewChanges", $"{projectName}");
+        string logFilePath = PathHelper.GetLogViewChangesPath(projectName);
 
         if (!File.Exists(logFilePath))
         {
@@ -38,7 +38,7 @@ public class SwitchToLastView : IExternalCommand
 
             if (int.TryParse(lastViewIdStr, out int lastViewId))
             {
-                ElementId viewElementId = new ElementId(lastViewId);
+                ElementId viewElementId = new ElementId((long)lastViewId);
                 View lastView = doc.GetElement(viewElementId) as View;
 
                 if (lastView != null)

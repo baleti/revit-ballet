@@ -77,7 +77,7 @@ public class SetParametersOfFamilyTypes : IExternalCommand
 
                 var familySymbols = collector
                     .Cast<FamilySymbol>()
-                    .Where(fs => fs.Category != null && fs.Category.Id.IntegerValue == chosenCategory.Id.IntegerValue)
+                    .Where(fs => fs.Category != null && fs.Category.Id.Value == chosenCategory.Id.Value)
                     .ToList();
 
                 allChosenElements.AddRange(familySymbols);
@@ -195,7 +195,7 @@ public class SetParametersOfFamilyTypes : IExternalCommand
             case StorageType.ElementId:
                 ElementId id = param.AsElementId();
                 if (id == ElementId.InvalidElementId) return "";
-                return id.IntegerValue.ToString();
+                return id.Value.ToString();
             default:
                 return "";
         }
@@ -227,7 +227,7 @@ public class SetParametersOfFamilyTypes : IExternalCommand
                 case StorageType.ElementId:
                     if (int.TryParse(value, out int elemIdVal))
                     {
-                        param.Set(new ElementId(elemIdVal));
+                        param.Set(new ElementId((long)elemIdVal));
                         return true;
                     }
                     return false;

@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using RevitBallet.Commands;
 
 [Transaction(TransactionMode.Manual)]
 public class SwitchView : IExternalCommand
@@ -17,8 +18,7 @@ public class SwitchView : IExternalCommand
 
         string projectName = doc != null ? doc.Title : "UnknownProject";
 
-        string appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        string logFilePath = Path.Combine(appDataPath, "revit-ballet", "runtime", "LogViewChanges", projectName);
+        string logFilePath = PathHelper.GetLogViewChangesPath(projectName);
 
         /* ─────────────────────────────┐
            Validate log-file existence  │

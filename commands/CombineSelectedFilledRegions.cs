@@ -50,7 +50,7 @@ namespace RevitCommands
 
             // Verify all regions are in the same view
             ElementId viewId = selectedRegions[0].OwnerViewId;
-            if (!selectedRegions.All(r => r.OwnerViewId.IntegerValue == viewId.IntegerValue))
+            if (!selectedRegions.All(r => r.OwnerViewId.Value == viewId.Value))
             {
                 TaskDialog.Show("Error", "All selected filled regions must be in the same view.");
                 return Result.Failed;

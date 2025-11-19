@@ -150,7 +150,7 @@ public class DirectShapeBoundingBoxFromSelected3DElements : IExternalCommand
     bool IsNon3DCategory(Category cat)
     {
         // List of known non-3D categories to skip
-        BuiltInCategory bic = (BuiltInCategory)cat.Id.IntegerValue;
+        BuiltInCategory bic = (BuiltInCategory)cat.Id.Value;
         
         switch (bic)
         {
@@ -279,7 +279,7 @@ public class DirectShapeBoundingBoxFromSelected3DElements : IExternalCommand
 
         // Set Comments with Type, Id, and Rotation information as key-value pairs
         string elementTypeName = GetElementTypeName(doc, sourceElement);
-        string comments = $"Type: {elementTypeName}, Id: {sourceElement.Id.IntegerValue}, Rotation: {rotationAngleDegrees:F2}°";
+        string comments = $"Type: {elementTypeName}, Id: {sourceElement.Id.Value}, Rotation: {rotationAngleDegrees:F2}°";
         
         Parameter commentsParam = ds.LookupParameter("Comments") ??
                                  ds.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS);
@@ -477,8 +477,8 @@ public class DirectShapeBoundingBoxFromSelected3DElements : IExternalCommand
     {
         // Check if this is a door/window with geometry authored sideways
         bool isDoorOrWindow = elem.Category != null && 
-            (elem.Category.Id.IntegerValue == (int)BuiltInCategory.OST_Doors ||
-             elem.Category.Id.IntegerValue == (int)BuiltInCategory.OST_Windows);
+            (elem.Category.Id.Value == (int)BuiltInCategory.OST_Doors ||
+             elem.Category.Id.Value == (int)BuiltInCategory.OST_Windows);
         
         if (!isDoorOrWindow)
             return instBBox;

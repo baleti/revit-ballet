@@ -167,7 +167,7 @@ public class FilterPositionOnRooms : IExternalCommand
             Dictionary<string, object> properties = new Dictionary<string, object>();
 
             // Basic element properties.
-            properties["Element Id"] = elem.Id.IntegerValue;
+            properties["Element Id"] = elem.Id.Value;
             properties["Document"] = elemData.DocumentName + (elemData.IsLinked ? " (Linked)" : "");
             properties["Category"] = elem.Category != null ? elem.Category.Name : "";
             properties["Name"] = elem.Name;
@@ -446,7 +446,7 @@ public class FilterPositionOnRooms : IExternalCommand
                 return param.AsString() ?? "";
             case StorageType.ElementId:
                 ElementId id = param.AsElementId();
-                if (id.IntegerValue > 0)
+                if (id.Value > 0)
                 {
                     Element elem = param.Element.Document.GetElement(id);
                     return elem?.Name ?? id.ToString();

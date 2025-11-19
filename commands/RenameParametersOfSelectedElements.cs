@@ -327,7 +327,7 @@ namespace MyRevitAddin
                             list.Add(new ParameterInfo
                             {
                                 Name     = p.Definition.Name,
-                                Group    = p.Definition.ParameterGroup.ToString(),
+                                Group    = p.Definition.GetGroupTypeId().ToString(),
                                 IsShared = p.IsShared
                             });
                         }

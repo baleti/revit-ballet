@@ -123,14 +123,14 @@ namespace RevitCommands
             Category category = elem.Category;
             if (category != null)
             {
-                signature.Append($"CAT:{category.Id.IntegerValue}|");
+                signature.Append($"CAT:{category.Id.Value}|");
             }
 
             // Add element type
             ElementId typeId = elem.GetTypeId();
             if (typeId != ElementId.InvalidElementId)
             {
-                signature.Append($"TYPE:{typeId.IntegerValue}|");
+                signature.Append($"TYPE:{typeId.Value}|");
             }
 
             // Add class type
@@ -210,13 +210,13 @@ namespace RevitCommands
             
             if (levelParam != null && levelParam.HasValue)
             {
-                sig.Append($"LEVEL:{levelParam.AsElementId().IntegerValue}|");
+                sig.Append($"LEVEL:{levelParam.AsElementId().Value}|");
             }
             
             // Host
             if (fi.Host != null)
             {
-                sig.Append($"HOST:{fi.Host.Id.IntegerValue}|");
+                sig.Append($"HOST:{fi.Host.Id.Value}|");
             }
             
             // Facing and hand flipped for doors/windows
@@ -295,7 +295,7 @@ namespace RevitCommands
             Parameter levelParam = floor.get_Parameter(BuiltInParameter.LEVEL_PARAM);
             if (levelParam != null && levelParam.HasValue)
             {
-                sig.Append($"LEVEL:{levelParam.AsElementId().IntegerValue}|");
+                sig.Append($"LEVEL:{levelParam.AsElementId().Value}|");
             }
             
             // Get geometry to calculate area/perimeter
@@ -339,7 +339,7 @@ namespace RevitCommands
             sig.Append($"NUM:{room.Number}|");
             
             // Level
-            sig.Append($"LEVEL:{room.LevelId.IntegerValue}|");
+            sig.Append($"LEVEL:{room.LevelId.Value}|");
             
             // Area
             sig.Append($"AREA:{Math.Round(room.Area, 4)}|");
@@ -424,7 +424,7 @@ namespace RevitCommands
             }
             
             // Sketch plane
-            sig.Append($"SKETCH:{modelLine.SketchPlane.Id.IntegerValue}|");
+            sig.Append($"SKETCH:{modelLine.SketchPlane.Id.Value}|");
             
             // Geometry
             Curve curve = modelLine.GeometryCurve;
@@ -479,7 +479,7 @@ namespace RevitCommands
                         }
                         else if (param.StorageType == StorageType.ElementId)
                         {
-                            sig.Append($"{bip}:{param.AsElementId().IntegerValue}|");
+                            sig.Append($"{bip}:{param.AsElementId().Value}|");
                         }
                     }
                 }
@@ -540,7 +540,7 @@ namespace RevitCommands
                     ElementId id = param.AsElementId();
                     if (id != ElementId.InvalidElementId)
                     {
-                        sig.Append($"{param.Definition.Name}:{id.IntegerValue}|");
+                        sig.Append($"{param.Definition.Name}:{id.Value}|");
                     }
                 }
             }

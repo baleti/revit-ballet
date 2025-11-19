@@ -156,7 +156,7 @@ public class FilterPosition : IExternalCommand
             Dictionary<string, object> properties = new Dictionary<string, object>();
 
             // Basic element properties.
-            properties["Element Id"] = elem.Id.IntegerValue;
+            properties["Element Id"] = elem.Id.Value;
             properties["Document"] = elemData.DocumentName + (elemData.IsLinked ? " (Linked)" : "");
             properties["Category"] = elem.Category != null ? elem.Category.Name : "";
             properties["Name"] = elem.Name;

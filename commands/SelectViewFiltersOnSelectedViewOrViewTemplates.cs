@@ -58,7 +58,7 @@ namespace MyRevitCommands
          {
             var entry = new Dictionary<string, object>();
             entry["Name"] = filter.Name;
-            entry["Id"] = filter.Id.IntegerValue;
+            entry["Id"] = filter.Id.Value;
             
             // Get filter categories - show all of them
             ICollection<ElementId> categoryIds = filter.GetCategories();
@@ -231,7 +231,7 @@ namespace MyRevitCommands
             }
             catch { }
          }
-         catch (Exception ex)
+         catch (Exception)
          {
             // Log error but don't fail
          }
@@ -488,7 +488,7 @@ namespace MyRevitCommands
                else if (value == ElementId.InvalidElementId)
                   sb.Append("<none>");
                else
-                  sb.Append($"Id:{value.IntegerValue}");
+                  sb.Append($"Id:{value.Value}");
             }
             else
             {
@@ -513,16 +513,16 @@ namespace MyRevitCommands
             return "Unknown";
          
          // Check if it's a built-in parameter
-         if (paramId.IntegerValue < 0)
+         if (paramId.Value < 0)
          {
             try
             {
-               BuiltInParameter bip = (BuiltInParameter)paramId.IntegerValue;
+               BuiltInParameter bip = (BuiltInParameter)paramId.Value;
                return LabelUtils.GetLabelFor(bip);
             }
             catch
             {
-               return $"BuiltIn({paramId.IntegerValue})";
+               return $"BuiltIn({paramId.Value})";
             }
          }
          
@@ -531,7 +531,7 @@ namespace MyRevitCommands
          if (paramElem != null)
             return paramElem.Name;
          
-         return $"Param({paramId.IntegerValue})";
+         return $"Param({paramId.Value})";
       }
 
       /// <summary>
@@ -647,7 +647,7 @@ namespace MyRevitCommands
          {
             if (entry.TryGetValue("Id", out object idObj) && int.TryParse(idObj.ToString(), out int intId))
             {
-               selectedFilterIds.Add(new ElementId(intId));
+               selectedFilterIds.Add(new ElementId((long)intId));
             }
          }
          

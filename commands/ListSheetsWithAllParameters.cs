@@ -108,7 +108,7 @@ public class ListSheetsWithAllParameters : IExternalCommand
                 return param.AsString();
             case StorageType.ElementId:
                 ElementId id = param.AsElementId();
-                return id.IntegerValue != -1 ? id.IntegerValue.ToString() : "None";
+                return id.Value != -1 ? id.Value.ToString() : "None";
             default:
                 return "Unknown";
         }

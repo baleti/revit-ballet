@@ -26,7 +26,7 @@ public class DirectShapesFromVisibleRooms : IExternalCommand
         // -------------------------------------------------- 2. DataGrid picker
         var table = rooms.Select(r => new Dictionary<string, object>
         {
-            ["Id"]     = r.Id.IntegerValue,
+            ["Id"]     = r.Id.Value,
             ["Number"] = r.Number,
             ["Name"]   = StripNumber(r.Name, r.Number),                // display name without number
             ["Level"]  = (doc.GetElement(r.LevelId) as Level)?.Name ?? "",
@@ -38,7 +38,7 @@ public class DirectShapesFromVisibleRooms : IExternalCommand
         if (pick == null || pick.Count == 0) return Result.Cancelled;
 
         var pickedIds = pick.Select(d => (int)d["Id"]).ToHashSet();
-        var chosen    = rooms.Where(r => pickedIds.Contains(r.Id.IntegerValue)).ToList();
+        var chosen    = rooms.Where(r => pickedIds.Contains((int)r.Id.Value)).ToList();
         if (chosen.Count == 0)
         {
             message = "Selected room not found.";

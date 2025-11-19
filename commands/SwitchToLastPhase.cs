@@ -114,7 +114,7 @@ public class SwitchToLastPhase : IExternalCommand
             var lastEntry = matchingEntries[matchingEntries.Count - 1];
 
             // Use the older of the two (the second last) as the chosen phase.
-            chosenPhase = doc.GetElement(new ElementId(secondLastEntry.phaseId)) as Phase;
+            chosenPhase = doc.GetElement(new ElementId((long)secondLastEntry.phaseId)) as Phase;
             if (chosenPhase == null)
             {
                 message = "Invalid phase found in the log.";
@@ -136,9 +136,9 @@ public class SwitchToLastPhase : IExternalCommand
 
             // Append two new log entries for this view:
             // First, log the phase that was active before switching (currentPhase).
-            string currentLogLine = $"{currentPhase.Id.IntegerValue} {FormatString(currentPhase.Name)} {FormatString(activeView.Name)}";
+            string currentLogLine = $"{currentPhase.Id.Value} {FormatString(currentPhase.Name)} {FormatString(activeView.Name)}";
             // Second, log the chosen phase (the one we just switched to).
-            string chosenLogLine = $"{chosenPhase.Id.IntegerValue} {FormatString(chosenPhase.Name)} {FormatString(activeView.Name)}";
+            string chosenLogLine = $"{chosenPhase.Id.Value} {FormatString(chosenPhase.Name)} {FormatString(activeView.Name)}";
 
             logLines.Add(currentLogLine);
             logLines.Add(chosenLogLine);
@@ -147,7 +147,7 @@ public class SwitchToLastPhase : IExternalCommand
         {
             // Only one matching entry exists; use it as the chosen phase.
             var entry = matchingEntries[0];
-            chosenPhase = doc.GetElement(new ElementId(entry.phaseId)) as Phase;
+            chosenPhase = doc.GetElement(new ElementId((long)entry.phaseId)) as Phase;
             if (chosenPhase == null)
             {
                 message = "Invalid phase found in the log.";
@@ -161,7 +161,7 @@ public class SwitchToLastPhase : IExternalCommand
                 tx.Commit();
             }
             // Append a new log entry for the current phase.
-            string currentLogLine = $"{currentPhase.Id.IntegerValue} {FormatString(currentPhase.Name)} {FormatString(activeView.Name)}";
+            string currentLogLine = $"{currentPhase.Id.Value} {FormatString(currentPhase.Name)} {FormatString(activeView.Name)}";
             logLines.Add(currentLogLine);
         }
         else

@@ -87,11 +87,10 @@ namespace RevitAddin
                             // second param is the element that does the cutting (the selected element).
                             SolidSolidCutUtils.AddCutBetweenSolids(doc, wall, cutter);
                         }
-                        catch (Exception ex)
+                        catch (Exception)
                         {
                             // If the cut fails, handle/log or ignore
                             // e.g. "Selected element not a valid cutter" or geometry issues
-                            // TaskDialog.Show("Cut Error", ex.Message);
                         }
                     }
                 }

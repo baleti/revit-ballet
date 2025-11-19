@@ -67,12 +67,12 @@ public class SelectElementsByCategories : IExternalCommand
             // Skip subcategories (categories with parents)
             if (cat.Parent != null)
                 continue;
-            
+
             // Skip line styles and other non-element categories
             if (cat.CategoryType != CategoryType.Model && cat.CategoryType != CategoryType.Annotation)
                 continue;
-            
-            int categoryId = cat.Id.IntegerValue;
+
+            int categoryId = (int)cat.Id.Value;
             
             // Add only if not already in our dictionary
             if (!uniqueCategories.ContainsKey(categoryId))
@@ -143,11 +143,11 @@ public class SelectElementsByCategories : IExternalCommand
                     List<ElementId> categoryElementIds = new List<ElementId>();
                     
                     // Try using OfCategory with BuiltInCategory if it's a built-in category
-                    if (catId.IntegerValue < 0) // Built-in categories have negative IDs
+                    if (catId.Value < 0) // Built-in categories have negative IDs
                     {
                         try
                         {
-                            var builtInCat = (BuiltInCategory)catId.IntegerValue;
+                            var builtInCat = (BuiltInCategory)catId.Value;
                             var elementsOfCategory = categoryCollector
                                 .OfCategory(builtInCat)
                                 .Where(e => !(e is DirectShape)) // Exclude DirectShapes
