@@ -1,3 +1,4 @@
+#if REVIT2021 || REVIT2022 || REVIT2023 || REVIT2024 || REVIT2025 || REVIT2026
 // SelectFamilyTypesInProjectByCategory.cs
 // C# 7.3 – Revit API 2024
 
@@ -7,6 +8,7 @@ using Autodesk.Revit.UI;
 using System.Collections.Generic;
 using System.Linq;
 
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace YourCompany.YourAddIn
 {
     [Transaction(TransactionMode.Manual)]
@@ -38,7 +40,7 @@ namespace YourCompany.YourAddIn
                 Category cat = et.Category;
                 if (cat == null) continue;
 
-                if (seenIds.Add((int)cat.Id.Value))          // only once per category
+                if (seenIds.Add((int)cat.Id.AsLong()))          // only once per category
                 {
                     categoryRows.Add(new Dictionary<string, object>
                     {
@@ -161,3 +163,5 @@ namespace YourCompany.YourAddIn
         }
     }
 }
+
+#endif

@@ -5,6 +5,7 @@ using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace MyRevitCommands
 {
     [Transaction(TransactionMode.Manual)]
@@ -72,7 +73,7 @@ namespace MyRevitCommands
                     { "Sheet", combinedSheet },
                     { "View Title", v.Name },
                     { "Sheet Folder", sheetFolder },
-                    { "Id", v.Id.Value }
+                    { "Id", v.Id.AsLong() }
                 });
             }
 
@@ -91,7 +92,7 @@ namespace MyRevitCommands
                 if (entry.ContainsKey("Id"))
                 {
                     int idValue = Convert.ToInt32(entry["Id"]);
-                    selectedViewIds.Add(new ElementId((long)idValue));
+                    selectedViewIds.Add(idValue.ToElementId());
                 }
             }
             List<View> selectedViews = placedViews.Where(v => selectedViewIds.Contains(v.Id)).ToList();
@@ -120,7 +121,7 @@ namespace MyRevitCommands
                     { "Sheet Number", sheet.SheetNumber },
                     { "Title", sheet.Name },
                     { "Sheet Folder", sheetFolder },
-                    { "Id", sheet.Id.Value }
+                    { "Id", sheet.Id.AsLong() }
                 });
             }
             List<string> sheetPropertyNames = new List<string> { "Sheet Number", "Title", "Sheet Folder", "Id" };
@@ -137,7 +138,7 @@ namespace MyRevitCommands
                 if (entry.ContainsKey("Id"))
                 {
                     int idValue = Convert.ToInt32(entry["Id"]);
-                    selectedSheetIds.Add(new ElementId((long)idValue));
+                    selectedSheetIds.Add(idValue.ToElementId());
                 }
             }
             List<ViewSheet> targetSheets = allSheets.Where(s => selectedSheetIds.Contains(s.Id)).ToList();

@@ -38,7 +38,7 @@ public class SwitchToLastView : IExternalCommand
 
             if (int.TryParse(lastViewIdStr, out int lastViewId))
             {
-                ElementId viewElementId = new ElementId((long)lastViewId);
+                ElementId viewElementId = lastViewId.ToElementId();
                 View lastView = doc.GetElement(viewElementId) as View;
 
                 if (lastView != null)

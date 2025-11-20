@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace YourAddinNamespace
 {
     [Transaction(TransactionMode.Manual)]
@@ -105,14 +106,14 @@ namespace YourAddinNamespace
 
                         // Text to show: type name; if more than one selected of same type, append IDs
                         perElemStrings[i] = info.DuplicateTypeCount > 1
-                            ? $"{info.TypeName} ({info.Element.Id.Value})"
+                            ? $"{info.TypeName} ({info.Element.Id.AsLong()})"
                             : info.TypeName;
                     }
                 }
 
                 if (matchCount == 0) continue;                       // filter irrelevant
 
-                string key = $"{pf.Id.Value}_{keyIdx++}";
+                string key = $"{pf.Id.AsLong()}_{keyIdx++}";
                 key2PF[key] = pf;
 
                 var row = new Dictionary<string, object>

@@ -37,8 +37,8 @@ public class AddTextNoteToSelectedDoors : IExternalCommand
 
         List<Element> selectedOpenings = selectedIds
             .Select(id => doc.GetElement(id))
-            .Where(e => e?.Category?.Id.Value == (int)BuiltInCategory.OST_Doors ||
-                       e?.Category?.Id.Value == (int)BuiltInCategory.OST_Windows)
+            .Where(e => e?.Category?.Id.AsLong() == (int)BuiltInCategory.OST_Doors ||
+                       e?.Category?.Id.AsLong() == (int)BuiltInCategory.OST_Windows)
             .ToList();
 
         if (!selectedOpenings.Any())
@@ -418,7 +418,7 @@ public class AddTextNoteToSelectedDoors : IExternalCommand
                 switch (paramName)
                 {
                     case "Element Id":
-                        value = opening.Id.Value.ToString();
+                        value = opening.Id.AsLong().ToString();
                         break;
                     case "Category":
                         value = opening.Category.Name;
@@ -461,24 +461,24 @@ public class AddTextNoteToSelectedDoors : IExternalCommand
                         value = openingInst.ToRoom?.Name ?? "";
                         break;
                     case "Width":
-                        if (opening.Category.Id.Value == (int)BuiltInCategory.OST_Doors)
+                        if (opening.Category.Id.AsLong() == (int)BuiltInCategory.OST_Doors)
                         {
                             Parameter width = openingType?.get_Parameter(BuiltInParameter.DOOR_WIDTH);
                             value = width?.AsValueString() ?? "";
                         }
-                        else if (opening.Category.Id.Value == (int)BuiltInCategory.OST_Windows)
+                        else if (opening.Category.Id.AsLong() == (int)BuiltInCategory.OST_Windows)
                         {
                             Parameter width = openingType?.get_Parameter(BuiltInParameter.WINDOW_WIDTH);
                             value = width?.AsValueString() ?? "";
                         }
                         break;
                     case "Height":
-                        if (opening.Category.Id.Value == (int)BuiltInCategory.OST_Doors)
+                        if (opening.Category.Id.AsLong() == (int)BuiltInCategory.OST_Doors)
                         {
                             Parameter height = openingType?.get_Parameter(BuiltInParameter.DOOR_HEIGHT);
                             value = height?.AsValueString() ?? "";
                         }
-                        else if (opening.Category.Id.Value == (int)BuiltInCategory.OST_Windows)
+                        else if (opening.Category.Id.AsLong() == (int)BuiltInCategory.OST_Windows)
                         {
                             Parameter height = openingType?.get_Parameter(BuiltInParameter.WINDOW_HEIGHT);
                             value = height?.AsValueString() ?? "";

@@ -12,6 +12,7 @@ using Autodesk.Revit.UI;
 using RevitView = Autodesk.Revit.DB.View;
 using RevitViewport = Autodesk.Revit.DB.Viewport;
 
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace RevitAddin
 {
     /// <summary>

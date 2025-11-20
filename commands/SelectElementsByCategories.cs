@@ -72,7 +72,7 @@ public class SelectElementsByCategories : IExternalCommand
             if (cat.CategoryType != CategoryType.Model && cat.CategoryType != CategoryType.Annotation)
                 continue;
 
-            int categoryId = (int)cat.Id.Value;
+            int categoryId = (int)cat.Id.AsLong();
             
             // Add only if not already in our dictionary
             if (!uniqueCategories.ContainsKey(categoryId))
@@ -143,11 +143,11 @@ public class SelectElementsByCategories : IExternalCommand
                     List<ElementId> categoryElementIds = new List<ElementId>();
                     
                     // Try using OfCategory with BuiltInCategory if it's a built-in category
-                    if (catId.Value < 0) // Built-in categories have negative IDs
+                    if (catId.AsLong() < 0) // Built-in categories have negative IDs
                     {
                         try
                         {
-                            var builtInCat = (BuiltInCategory)catId.Value;
+                            var builtInCat = (BuiltInCategory)catId.AsLong();
                             var elementsOfCategory = categoryCollector
                                 .OfCategory(builtInCat)
                                 .Where(e => !(e is DirectShape)) // Exclude DirectShapes

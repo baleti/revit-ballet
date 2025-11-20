@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Windows.Forms;
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 
 [Transaction(TransactionMode.Manual)]
 public class ExportSchedule : IExternalCommand
@@ -24,7 +25,7 @@ public class ExportSchedule : IExternalCommand
             .Select(vs => new Dictionary<string, object>
             {
                 { "Name", vs.Name },
-                { "Id", vs.Id.Value }
+                { "Id", vs.Id.AsLong() }
             })
             .ToList();
 
@@ -37,7 +38,7 @@ public class ExportSchedule : IExternalCommand
             return Result.Cancelled;
         }
 
-        var selectedScheduleId = new ElementId((long)Convert.ToInt32(selectedSchedules[0]["Id"]));
+        var selectedScheduleId = Convert.ToInt32(selectedSchedules[0]["Id"]).ToElementId();
         ViewSchedule selectedSchedule = doc.GetElement(selectedScheduleId) as ViewSchedule;
 
         if (selectedSchedule != null)

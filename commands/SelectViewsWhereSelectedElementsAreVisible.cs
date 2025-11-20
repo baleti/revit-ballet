@@ -329,7 +329,7 @@ public class SelectViewsWhereSelectedElementsAreVisible : IExternalCommand
                                 Level = GetViewLevel(view),
                                 Scale = GetViewScale(view),
                                 ElementsFound = visibleElementIds.Count,
-                                ViewId = (int)view.Id.Value,
+                                ViewId = (int)view.Id.AsLong(),
                                 ViewObject = view
                             };
                             

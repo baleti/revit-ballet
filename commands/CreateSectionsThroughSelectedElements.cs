@@ -10,6 +10,7 @@ using Autodesk.Revit.UI;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.Attributes;
 
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace MyRevitCommands
 {
   // Holds settings plus project name.
@@ -193,7 +194,7 @@ namespace MyRevitCommands
           lstSectionTypes.Items.Clear();
           foreach (var st in filteredSectionTypes)
           {
-              lstSectionTypes.Items.Add($"{st.Id.Value} - {st.Name}");
+              lstSectionTypes.Items.Add($"{st.Id.AsLong()} - {st.Name}");
           }
           if (lstSectionTypes.Items.Count > 0)
               lstSectionTypes.SelectedIndex = 0;
@@ -220,7 +221,7 @@ namespace MyRevitCommands
                   if (settings.ContainsKey("SelectedSectionTypeId"))
                   {
                       int id = int.Parse(settings["SelectedSectionTypeId"]);
-                      int index = sectionTypes.FindIndex(x => x.Id.Value == id);
+                      int index = sectionTypes.FindIndex(x => x.Id.AsLong() == id);
                       if (index >= 0)
                       {
                           var st = sectionTypes[index];
@@ -258,7 +259,7 @@ namespace MyRevitCommands
               if (lstSectionTypes.SelectedIndex >= 0)
               {
                   var st = filteredSectionTypes[lstSectionTypes.SelectedIndex];
-                  lines.Add("SelectedSectionTypeId=" + st.Id.Value.ToString());
+                  lines.Add("SelectedSectionTypeId=" + st.Id.AsLong().ToString());
               }
               string mode = rbElements.Checked ? "Element" : rbHosts.Checked ? "Host" : "CurrentView";
               lines.Add("OrientationMode=" + mode);
@@ -421,7 +422,7 @@ namespace MyRevitCommands
                   }
                   else // "Element" mode.
                   {
-                      if (elem.Category != null && elem.Category.Id.Value == (int)BuiltInCategory.OST_Walls)
+                      if (elem.Category != null && elem.Category.Id.AsLong() == (int)BuiltInCategory.OST_Walls)
                       {
                           Wall wall = elem as Wall;
                           if (wall != null)
@@ -491,7 +492,7 @@ namespace MyRevitCommands
                   double height = maxY - minY;
                   double horizontalMargin = width * 0.03;
                   double verticalMargin = height * 0.03;
-                  if (elem.Category != null && elem.Category.Id.Value == (int)BuiltInCategory.OST_Walls)
+                  if (elem.Category != null && elem.Category.Id.AsLong() == (int)BuiltInCategory.OST_Walls)
                   {
                       Parameter wallWidthParam = elem.get_Parameter(BuiltInParameter.WALL_ATTR_WIDTH_PARAM);
                       double wallThickness = (wallWidthParam != null) ? wallWidthParam.AsDouble() : width;

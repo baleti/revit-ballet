@@ -162,7 +162,7 @@ public class FilterPositionOnAreas : IExternalCommand
             Dictionary<string, object> properties = new Dictionary<string, object>();
 
             // Basic element properties.
-            properties["Element Id"] = elem.Id.Value;
+            properties["Element Id"] = elem.Id.AsLong();
             properties["Document"] = elemData.DocumentName + (elemData.IsLinked ? " (Linked)" : "");
             properties["Category"] = elem.Category != null ? elem.Category.Name : "";
             properties["Name"] = elem.Name;
@@ -332,7 +332,7 @@ public class FilterPositionOnAreas : IExternalCommand
         {
             if (plan.AreaScheme != null && plan.GenLevel != null)
             {
-                string key = $"{plan.AreaScheme.Id.Value}_{plan.GenLevel.Id.Value}";
+                string key = $"{plan.AreaScheme.Id.AsLong()}_{plan.GenLevel.Id.AsLong()}";
                 areaPlanLookup[key] = plan;
             }
         }
@@ -354,7 +354,7 @@ public class FilterPositionOnAreas : IExternalCommand
             // Get the area plan view using lookup
             if (area.AreaScheme != null && area.Level != null)
             {
-                string key = $"{area.AreaScheme.Id.Value}_{area.Level.Id.Value}";
+                string key = $"{area.AreaScheme.Id.AsLong()}_{area.Level.Id.AsLong()}";
                 if (areaPlanLookup.TryGetValue(key, out ViewPlan areaPlan))
                 {
                     areaInfo.AreaPlan = areaPlan;
@@ -466,7 +466,7 @@ public class FilterPositionOnAreas : IExternalCommand
                 return param.AsString() ?? "";
             case StorageType.ElementId:
                 ElementId id = param.AsElementId();
-                if (id.Value > 0)
+                if (id.AsLong() > 0)
                 {
                     Element elem = param.Element.Document.GetElement(id);
                     return elem?.Name ?? id.ToString();

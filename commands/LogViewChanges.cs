@@ -1,3 +1,4 @@
+#if REVIT2017 || REVIT2018 || REVIT2019 || REVIT2020 || REVIT2021 || REVIT2022 || REVIT2023 || REVIT2024 || REVIT2025 || REVIT2026
 using Autodesk.Revit.UI;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Events;
@@ -11,6 +12,7 @@ using RevitBallet.Commands;
 public class LogViewChanges : IExternalApplication
 {
     private string logFilePath;
+    private static bool serverInitialized = false;
 
     public Result OnStartup(UIControlledApplication application)
     {
@@ -19,6 +21,17 @@ public class LogViewChanges : IExternalApplication
 
         application.ViewActivated += OnViewActivated;
         application.ControlledApplication.DocumentOpened += OnDocumentOpened;
+
+        // Initialize the server (it doesn't need UIApplication immediately)
+        try
+        {
+            RevitBalletServer.InitializeServer();
+        }
+        catch
+        {
+            // Silently fail - don't interrupt Revit startup
+        }
+
         return Result.Succeeded;
     }
 
@@ -26,11 +39,29 @@ public class LogViewChanges : IExternalApplication
     {
         application.ViewActivated -= OnViewActivated;
         application.ControlledApplication.DocumentOpened -= OnDocumentOpened;
+
+        // Terminate the server
+        try
+        {
+            RevitBalletServer.TerminateServer();
+        }
+        catch
+        {
+            // Silently fail
+        }
+
         return Result.Succeeded;
     }
 
     private void OnViewActivated(object sender, ViewActivatedEventArgs e)
     {
+        // Set UIApplication for the server on first view activation
+        if (!serverInitialized && sender is UIApplication uiApp)
+        {
+            RevitBalletServer.SetUIApplication(uiApp);
+            serverInitialized = true;
+        }
+
         Document doc = e.Document;
 
         // Check if the document is a family document
@@ -90,3 +121,5 @@ public class LogViewChanges : IExternalApplication
         }
     }
 }
+
+#endif

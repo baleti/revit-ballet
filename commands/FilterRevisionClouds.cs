@@ -6,6 +6,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 #endregion
 
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace MyCompany.RevitCommands
 {
     [Autodesk.Revit.Attributes.Transaction(Autodesk.Revit.Attributes.TransactionMode.Manual)]
@@ -162,7 +163,7 @@ namespace MyCompany.RevitCommands
                 }
 
                 // Create a unique key for this cloud using its ElementId
-                string elementIdStr = cloud.Id.Value.ToString();
+                string elementIdStr = cloud.Id.AsLong().ToString();
 
                 gridData.Add(new Dictionary<string, object>
                 {

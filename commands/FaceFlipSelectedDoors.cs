@@ -5,6 +5,7 @@ using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace RevitCommands
 {
     [Transaction(TransactionMode.Manual)]
@@ -43,7 +44,7 @@ namespace RevitCommands
                     {
                         // Check if it's a door by category
                         if (familyInstance.Category != null && 
-                            familyInstance.Category.Id.Value == (int)BuiltInCategory.OST_Doors)
+                            familyInstance.Category.Id.AsLong() == (int)BuiltInCategory.OST_Doors)
                         {
                             doors.Add(familyInstance);
                         }

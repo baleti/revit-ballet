@@ -3,6 +3,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using System;
 
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace RevitDetailLines
 {
     [Transaction(TransactionMode.Manual)]

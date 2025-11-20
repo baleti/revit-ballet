@@ -8,6 +8,7 @@ using System.Linq;
 using System.Text;
 #endregion
 
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace MyCompany.RevitCommands
 {
   [Transaction(TransactionMode.Manual)]
@@ -280,7 +281,7 @@ namespace MyCompany.RevitCommands
 
         try
         {
-          xf = vp.GetProjectionToSheetTransform()
+          xf = vp.GetProjectionToSheetTransformCompat()
                  .Multiply(v.GetModelToProjectionTransforms()[0]
                              .GetModelToProjectionTransform());
           xformCache[key] = xf;

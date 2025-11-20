@@ -7,6 +7,7 @@ using System.Linq;
 using WinForms = System.Windows.Forms;
 using Drawing = System.Drawing;
 
+#if REVIT2021 || REVIT2022 || REVIT2023 || REVIT2024 || REVIT2025 || REVIT2026
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
 public class ChangeLengthOfSelectedGrids : IExternalCommand
@@ -363,3 +364,5 @@ public class GridLengthInputForm : WinForms.Form
         EndEndValue = endValue;
     }
 }
+
+#endif

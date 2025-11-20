@@ -6,6 +6,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using Autodesk.Revit.UI.Selection;
 
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace RevitCommands
 {
     [Transaction(TransactionMode.Manual)]
@@ -80,7 +81,7 @@ namespace RevitCommands
                         dataList.Add(new ElementData
                         {
                             GroupName = group.Name,
-                            ElementId = (int)member.Id.Value,
+                            ElementId = (int)member.Id.AsLong(),
                             ElementName = member.Name,
                             Category = member.Category?.Name ?? "N/A",
                             LocationType = locationType,

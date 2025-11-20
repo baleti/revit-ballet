@@ -2,7 +2,26 @@
 
 #+html:<p align="center"><i>Dance around Revit 🩰</i></p>
 
-Collection of custom commands for revit 2024. Solves common challenges encountered at technical delivery of buildings.
+Collection of custom commands for Revit. Solves common challenges encountered at technical delivery of buildings.
+
+** supported versions
+
+| Revit Version | Status        | Notes                                   |
+|---------------+---------------+-----------------------------------------|
+| 2022-2026     | Full support  | All commands available                  |
+| 2021          | Full support  | All commands available*                 |
+| 2020          | Mostly works  | 29 commands excluded                    |
+| 2019          | Mostly works  | 29 commands excluded                    |
+| 2017-2018     | Mostly works  | 31 commands excluded                    |
+
+*Revit 2017-2020: Remote scripting server requires manual SSL certificate generation.
+Run in PowerShell: ~New-SelfSignedCertificate -DnsName 'localhost' -CertStoreLocation 'Cert:\CurrentUser\My'~
+
+Excluded commands in older versions primarily use newer APIs for:
+- PDF export (2022+)
+- Enhanced tag management (2022+)
+- Unit system APIs (2021+)
+
 ** sample commands
 *** switch/close/open views and sheets
 [[https://github.com/baleti/revit-scripts-docs/blob/8142cd312030378ed0b2543ad563b8514dbf9d5a/OpenViews.gif]]
@@ -11,5 +30,3 @@ both revit commands and any command included in this plugin
 [[https://github.com/baleti/revit-scripts-docs/blob/217abcd02343572d70a4de7ecaa0195892f94ee0/InvokeRevitCommand.gif]]
 *** select elements by parameters
 [[https://github.com/baleti/revit-scripts-docs/blob/217abcd02343572d70a4de7ecaa0195892f94ee0/SelectCategoriesInView-ListSelectedElementsWithParameters.gif]]
-** revit versions
-only revit 2024 has been tested so far - other versions may or may not work. i will try to increase compatibility soon.

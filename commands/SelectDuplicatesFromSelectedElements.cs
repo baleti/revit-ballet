@@ -7,6 +7,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Architecture;
 using Autodesk.Revit.UI;
 
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace RevitCommands
 {
     [Transaction(TransactionMode.Manual)]
@@ -123,14 +124,14 @@ namespace RevitCommands
             Category category = elem.Category;
             if (category != null)
             {
-                signature.Append($"CAT:{category.Id.Value}|");
+                signature.Append($"CAT:{category.Id.AsLong()}|");
             }
 
             // Add element type
             ElementId typeId = elem.GetTypeId();
             if (typeId != ElementId.InvalidElementId)
             {
-                signature.Append($"TYPE:{typeId.Value}|");
+                signature.Append($"TYPE:{typeId.AsLong()}|");
             }
 
             // Add class type
@@ -210,13 +211,13 @@ namespace RevitCommands
             
             if (levelParam != null && levelParam.HasValue)
             {
-                sig.Append($"LEVEL:{levelParam.AsElementId().Value}|");
+                sig.Append($"LEVEL:{levelParam.AsElementId().AsLong()}|");
             }
             
             // Host
             if (fi.Host != null)
             {
-                sig.Append($"HOST:{fi.Host.Id.Value}|");
+                sig.Append($"HOST:{fi.Host.Id.AsLong()}|");
             }
             
             // Facing and hand flipped for doors/windows
@@ -295,7 +296,7 @@ namespace RevitCommands
             Parameter levelParam = floor.get_Parameter(BuiltInParameter.LEVEL_PARAM);
             if (levelParam != null && levelParam.HasValue)
             {
-                sig.Append($"LEVEL:{levelParam.AsElementId().Value}|");
+                sig.Append($"LEVEL:{levelParam.AsElementId().AsLong()}|");
             }
             
             // Get geometry to calculate area/perimeter
@@ -339,7 +340,7 @@ namespace RevitCommands
             sig.Append($"NUM:{room.Number}|");
             
             // Level
-            sig.Append($"LEVEL:{room.LevelId.Value}|");
+            sig.Append($"LEVEL:{room.LevelId.AsLong()}|");
             
             // Area
             sig.Append($"AREA:{Math.Round(room.Area, 4)}|");
@@ -424,7 +425,7 @@ namespace RevitCommands
             }
             
             // Sketch plane
-            sig.Append($"SKETCH:{modelLine.SketchPlane.Id.Value}|");
+            sig.Append($"SKETCH:{modelLine.SketchPlane.Id.AsLong()}|");
             
             // Geometry
             Curve curve = modelLine.GeometryCurve;
@@ -479,7 +480,7 @@ namespace RevitCommands
                         }
                         else if (param.StorageType == StorageType.ElementId)
                         {
-                            sig.Append($"{bip}:{param.AsElementId().Value}|");
+                            sig.Append($"{bip}:{param.AsElementId().AsLong()}|");
                         }
                     }
                 }
@@ -540,7 +541,7 @@ namespace RevitCommands
                     ElementId id = param.AsElementId();
                     if (id != ElementId.InvalidElementId)
                     {
-                        sig.Append($"{param.Definition.Name}:{id.Value}|");
+                        sig.Append($"{param.Definition.Name}:{id.AsLong()}|");
                     }
                 }
             }

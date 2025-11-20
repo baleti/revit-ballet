@@ -1,3 +1,4 @@
+#if REVIT2021 || REVIT2022 || REVIT2023 || REVIT2024 || REVIT2025 || REVIT2026
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -6,6 +7,7 @@ using Autodesk.Revit.UI;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.Attributes;
 
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace MyRevitCommands
 {
    /// <summary>
@@ -58,7 +60,7 @@ namespace MyRevitCommands
          {
             var entry = new Dictionary<string, object>();
             entry["Name"] = filter.Name;
-            entry["Id"] = filter.Id.Value;
+            entry["Id"] = filter.Id.AsLong();
             
             // Get filter categories - show all of them
             ICollection<ElementId> categoryIds = filter.GetCategories();
@@ -488,7 +490,7 @@ namespace MyRevitCommands
                else if (value == ElementId.InvalidElementId)
                   sb.Append("<none>");
                else
-                  sb.Append($"Id:{value.Value}");
+                  sb.Append($"Id:{value.AsLong()}");
             }
             else
             {
@@ -513,16 +515,16 @@ namespace MyRevitCommands
             return "Unknown";
          
          // Check if it's a built-in parameter
-         if (paramId.Value < 0)
+         if (paramId.AsLong() < 0)
          {
             try
             {
-               BuiltInParameter bip = (BuiltInParameter)paramId.Value;
+               BuiltInParameter bip = (BuiltInParameter)paramId.AsLong();
                return LabelUtils.GetLabelFor(bip);
             }
             catch
             {
-               return $"BuiltIn({paramId.Value})";
+               return $"BuiltIn({paramId.AsLong()})";
             }
          }
          
@@ -531,7 +533,7 @@ namespace MyRevitCommands
          if (paramElem != null)
             return paramElem.Name;
          
-         return $"Param({paramId.Value})";
+         return $"Param({paramId.AsLong()})";
       }
 
       /// <summary>
@@ -647,7 +649,7 @@ namespace MyRevitCommands
          {
             if (entry.TryGetValue("Id", out object idObj) && int.TryParse(idObj.ToString(), out int intId))
             {
-               selectedFilterIds.Add(new ElementId((long)intId));
+               selectedFilterIds.Add(intId.ToElementId());
             }
          }
          
@@ -682,3 +684,5 @@ namespace MyRevitCommands
       }
    }
 }
+
+#endif

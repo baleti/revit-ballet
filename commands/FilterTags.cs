@@ -7,7 +7,9 @@ using Autodesk.Revit.DB.Architecture; // Required for RoomTag and Room
 using Autodesk.Revit.UI;
 using Autodesk.Revit.UI.Selection;
 using System.Windows.Forms;
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 
+#if REVIT2022 || REVIT2023 || REVIT2024 || REVIT2025 || REVIT2026
 [Transaction(TransactionMode.Manual)]
 public class FilterTags : IExternalCommand
 {
@@ -243,7 +245,7 @@ public class FilterTags : IExternalCommand
             dict["TaggedFamilyAndType"] = taggedFamilyAndType;
 
             // Save the tag's own ElementId (for later updating the selection).
-            dict["ElementId"] = tag.Id.Value;
+            dict["ElementId"] = tag.Id.AsLong();
             entries.Add(dict);
         }
 
@@ -266,7 +268,7 @@ public class FilterTags : IExternalCommand
             if (row.ContainsKey("ElementId") &&
                 int.TryParse(row["ElementId"].ToString(), out int intId))
             {
-                chosenIds.Add(new ElementId((long)intId));
+                chosenIds.Add(intId.ToElementId());
             }
         }
         using (var tx = new Transaction(doc, "Filter Tags Selection"))
@@ -279,3 +281,5 @@ public class FilterTags : IExternalCommand
         return Result.Succeeded;
     }
 }
+
+#endif

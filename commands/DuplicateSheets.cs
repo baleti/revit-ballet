@@ -9,6 +9,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using WinForms = System.Windows.Forms;
 
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace RevitAddin
 {
     // ─────────────────────────────────────────────────────────────
@@ -138,12 +139,12 @@ namespace RevitAddin
             CustomSheetDuplicateOption option,
             int copies)
         {
-            var usedNumbers =
+            var usedNumbers = new HashSet<string>(
                 new FilteredElementCollector(doc)
                     .OfClass(typeof(ViewSheet))
                     .Cast<ViewSheet>()
-                    .Select(s => s.SheetNumber)
-                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                    .Select(s => s.SheetNumber),
+                StringComparer.OrdinalIgnoreCase);
 
             var createdSheets = new List<ViewSheet>();
 
@@ -151,13 +152,23 @@ namespace RevitAddin
             {
                 for (int n = 0; n < copies; ++n)
                 {
-                    // Determine the Revit sheet duplication option
-                    SheetDuplicateOption sheetDupOption = 
-                        (option == CustomSheetDuplicateOption.EmptySheet) 
-                        ? SheetDuplicateOption.DuplicateEmptySheet 
+#if REVIT2023 || REVIT2024 || REVIT2025 || REVIT2026
+                    // Determine the Revit sheet duplication option (API added in Revit 2023)
+                    SheetDuplicateOption sheetDupOption =
+                        (option == CustomSheetDuplicateOption.EmptySheet)
+                        ? SheetDuplicateOption.DuplicateEmptySheet
                         : SheetDuplicateOption.DuplicateSheetWithDetailing;
 
                     ElementId newSheetId = sheet.Duplicate(sheetDupOption);
+#else
+                    // For pre-2023 versions, use ViewDuplicateOption
+                    ViewDuplicateOption viewDupOption =
+                        (option == CustomSheetDuplicateOption.EmptySheet)
+                        ? ViewDuplicateOption.Duplicate
+                        : ViewDuplicateOption.AsDependent;
+
+                    ElementId newSheetId = sheet.Duplicate(viewDupOption);
+#endif
                     if (newSheetId == ElementId.InvalidElementId) continue;
 
                     var dupSheet = doc.GetElement(newSheetId) as ViewSheet;

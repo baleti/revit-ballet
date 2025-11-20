@@ -1,3 +1,4 @@
+#if REVIT2021 || REVIT2022 || REVIT2023 || REVIT2024 || REVIT2025 || REVIT2026
 using Autodesk.Revit.UI;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI.Selection;
@@ -8,6 +9,7 @@ using System.Windows.Forms;
 using System;
 using System.Drawing;
 using System.ComponentModel;
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 
 [Transaction(TransactionMode.Manual)]
 public class SelectAssociatedDimensions : IExternalCommand
@@ -68,7 +70,7 @@ public class SelectAssociatedDimensions : IExternalCommand
 
                 // Get the owner view name
                 entry["OwnerView"] = doc.GetElement(dim.OwnerViewId)?.Name ?? "N/A";
-                entry["Id"] = dim.Id.Value;
+                entry["Id"] = dim.Id.AsLong();
 
                 // Retrieve Total Length
                 string totalLength = GetTotalLength(dim, doc);
@@ -95,7 +97,7 @@ public class SelectAssociatedDimensions : IExternalCommand
                 foreach (var entry in selectedEntries)
                 {
                     int idValue = Convert.ToInt32(entry["Id"]);
-                    selectedDimensionIds.Add(new ElementId((long)idValue));
+                    selectedDimensionIds.Add(idValue.ToElementId());
                 }
 
                 // Select the dimensions in Revit
@@ -194,3 +196,5 @@ public class SelectAssociatedDimensions : IExternalCommand
         return UnitFormatUtils.Format(doc.GetUnits(), SpecTypeId.Length, lengthInFeet, false);
     }
 }
+
+#endif

@@ -4,6 +4,14 @@
     <RevitYear Condition="'$(RevitYear)' == ''">2024</RevitYear>
 
     <!-- Map Revit versions to .NET Framework targets -->
+    <TargetFramework Condition="'$(RevitYear)' == '2011'">net35</TargetFramework>
+    <TargetFramework Condition="'$(RevitYear)' == '2012'">net35</TargetFramework>
+    <TargetFramework Condition="'$(RevitYear)' == '2013'">net40</TargetFramework>
+    <TargetFramework Condition="'$(RevitYear)' == '2014'">net40</TargetFramework>
+    <TargetFramework Condition="'$(RevitYear)' == '2015'">net45</TargetFramework>
+    <TargetFramework Condition="'$(RevitYear)' == '2016'">net45</TargetFramework>
+    <TargetFramework Condition="'$(RevitYear)' == '2017'">net46</TargetFramework>
+    <TargetFramework Condition="'$(RevitYear)' == '2018'">net46</TargetFramework>
     <TargetFramework Condition="'$(RevitYear)' == '2019'">net47</TargetFramework>
     <TargetFramework Condition="'$(RevitYear)' == '2020'">net47</TargetFramework>
     <TargetFramework Condition="'$(RevitYear)' == '2021'">net48</TargetFramework>
@@ -11,8 +19,17 @@
     <TargetFramework Condition="'$(RevitYear)' == '2023'">net48</TargetFramework>
     <TargetFramework Condition="'$(RevitYear)' == '2024'">net48</TargetFramework>
     <TargetFramework Condition="'$(RevitYear)' == '2025'">net8.0-windows</TargetFramework>
+    <TargetFramework Condition="'$(RevitYear)' == '2026'">net8.0-windows</TargetFramework>
 
     <!-- Revit API NuGet package version (matches Revit year) -->
+    <RevitAPIVersion Condition="'$(RevitYear)' == '2011'">2011.0.0</RevitAPIVersion>
+    <RevitAPIVersion Condition="'$(RevitYear)' == '2012'">2012.0.0</RevitAPIVersion>
+    <RevitAPIVersion Condition="'$(RevitYear)' == '2013'">2013.0.0</RevitAPIVersion>
+    <RevitAPIVersion Condition="'$(RevitYear)' == '2014'">2014.0.0</RevitAPIVersion>
+    <RevitAPIVersion Condition="'$(RevitYear)' == '2015'">2015.0.0</RevitAPIVersion>
+    <RevitAPIVersion Condition="'$(RevitYear)' == '2016'">2016.0.0</RevitAPIVersion>
+    <RevitAPIVersion Condition="'$(RevitYear)' == '2017'">2017.0.0</RevitAPIVersion>
+    <RevitAPIVersion Condition="'$(RevitYear)' == '2018'">2018.0.0</RevitAPIVersion>
     <RevitAPIVersion Condition="'$(RevitYear)' == '2019'">2019.0.0</RevitAPIVersion>
     <RevitAPIVersion Condition="'$(RevitYear)' == '2020'">2020.0.0</RevitAPIVersion>
     <RevitAPIVersion Condition="'$(RevitYear)' == '2021'">2021.0.0</RevitAPIVersion>
@@ -20,6 +37,7 @@
     <RevitAPIVersion Condition="'$(RevitYear)' == '2023'">2023.0.0</RevitAPIVersion>
     <RevitAPIVersion Condition="'$(RevitYear)' == '2024'">2024.0.0</RevitAPIVersion>
     <RevitAPIVersion Condition="'$(RevitYear)' == '2025'">2025.0.0</RevitAPIVersion>
+    <RevitAPIVersion Condition="'$(RevitYear)' == '2026'">2026.0.0</RevitAPIVersion>
 
     <!-- Define version constant for conditional compilation -->
     <DefineConstants>REVIT$(RevitYear)</DefineConstants>
@@ -27,6 +45,9 @@
     <!-- Output to version-specific directory -->
     <OutputPath>bin\$(RevitYear)\</OutputPath>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+
+    <!-- Don't copy NuGet dependencies - Revit provides these -->
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
 
     <!-- Assembly properties -->
     <RootNamespace>scripts</RootNamespace>
@@ -41,6 +62,12 @@
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <PlatformTarget>x64</PlatformTarget>
     <LangVersion>latest</LangVersion>
+    <!-- Only include English satellite resources (no other localizations) -->
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>none</DebugType>
   </PropertyGroup>
 
   <!-- Revit API from NuGet (all versions in one package) -->
@@ -53,24 +80,56 @@
     <!-- Used by BooleanDifferenceFilledRegionsWithSelectedElements.cs -->
     <PackageReference Include="Clipper" Version="6.4.0" />
 
-    <!-- Used by CopyCrossSession.cs and ClashDetectionSelectedElements.cs -->
+    <!-- Used by CopyCrossSession.cs, ClashDetectionSelectedElements.cs, and Server.cs -->
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
 
     <!-- Required for dynamic keyword support in ExportSelectedViewsToPDF.cs -->
-    <PackageReference Include="Microsoft.CSharp" Version="4.7.0" />
+    <PackageReference Include="Microsoft.CSharp" Version="4.7.0" ExcludeAssets="runtime" />
 
     <!-- Used for modern folder picker dialog in export commands -->
     <PackageReference Include="Microsoft.WindowsAPICodePack-Shell" Version="1.1.0" />
+
+    <!-- Used by Server.cs for Roslyn scripting (remote code execution) -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="4.8.0" />
   </ItemGroup>
+
+  <!-- Exclude unnecessary System.* assemblies brought in by Roslyn (already in GAC) -->
+  <Target Name="RemoveUnnecessaryRoslynDependencies" AfterTargets="ResolveAssemblyReferences">
+    <ItemGroup>
+      <!-- Remove System.* assemblies that are already in .NET Framework GAC -->
+      <ReferenceCopyLocalPaths Remove="@(ReferenceCopyLocalPaths)" Condition="'%(Filename)' == 'System.Collections.Immutable'" />
+      <ReferenceCopyLocalPaths Remove="@(ReferenceCopyLocalPaths)" Condition="'%(Filename)' == 'System.Reflection.Metadata'" />
+      <ReferenceCopyLocalPaths Remove="@(ReferenceCopyLocalPaths)" Condition="'%(Filename)' == 'System.Runtime.CompilerServices.Unsafe'" />
+      <ReferenceCopyLocalPaths Remove="@(ReferenceCopyLocalPaths)" Condition="'%(Filename)' == 'System.Memory'" />
+      <ReferenceCopyLocalPaths Remove="@(ReferenceCopyLocalPaths)" Condition="'%(Filename)' == 'System.Buffers'" />
+      <ReferenceCopyLocalPaths Remove="@(ReferenceCopyLocalPaths)" Condition="'%(Filename)' == 'System.Numerics.Vectors'" />
+      <ReferenceCopyLocalPaths Remove="@(ReferenceCopyLocalPaths)" Condition="'%(Filename)' == 'System.Text.Encoding.CodePages'" />
+      <ReferenceCopyLocalPaths Remove="@(ReferenceCopyLocalPaths)" Condition="'%(Filename)' == 'System.Threading.Tasks.Extensions'" />
+      <!-- Keep Microsoft.CodeAnalysis.* and Microsoft.Bcl.* assemblies - they're needed -->
+    </ItemGroup>
+  </Target>
 
   <!-- Standard System references needed by Revit plugins -->
   <ItemGroup>
     <Reference Include="PresentationCore" />
     <Reference Include="PresentationFramework" />
+    <Reference Include="System.Drawing" />
     <Reference Include="System.Xaml" />
     <Reference Include="WindowsBase" />
     <Reference Include="WindowsFormsIntegration" />
     <Reference Include="UIAutomationClient" />
     <Reference Include="UIAutomationTypes" />
   </ItemGroup>
+
+  <!-- Post-build: Remove unnecessary .NET Framework facade DLLs -->
+  <Target Name="CleanupUnnecessaryDlls" AfterTargets="Build">
+    <ItemGroup>
+      <!-- Keep only the essential DLLs for the Revit addin -->
+      <UnnecessaryDlls Include="$(OutputPath)System.*.dll" />
+      <UnnecessaryDlls Include="$(OutputPath)Microsoft.Win32.*.dll" />
+      <UnnecessaryDlls Include="$(OutputPath)netstandard.dll" />
+    </ItemGroup>
+    <Delete Files="@(UnnecessaryDlls)" />
+    <Message Text="Removed $(UnnecessaryDlls->Count()) unnecessary .NET facade DLLs from output" Importance="high" />
+  </Target>
 </Project>

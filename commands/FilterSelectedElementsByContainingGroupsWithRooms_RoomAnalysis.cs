@@ -1,3 +1,4 @@
+#if REVIT2021 || REVIT2022 || REVIT2023 || REVIT2024 || REVIT2025 || REVIT2026
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -574,7 +575,7 @@ public partial class FilterSelectedElementsByContainingGroupsWithRooms
             if (result[elem.Id].Count > 1)
             {
                 string elemLevelName = elemData.Level?.Name ?? "No Level";
-                _diagnostics.AppendLine($"\nElement {elem.Id.Value} (Level: {elemLevelName}) is in {result[elem.Id].Count} rooms:");
+                _diagnostics.AppendLine($"\nElement {elem.Id.AsLong()} (Level: {elemLevelName}) is in {result[elem.Id].Count} rooms:");
                 foreach (Room room in result[elem.Id])
                 {
                     RoomData roomData = _roomDataCache[room.Id];
@@ -735,3 +736,5 @@ public partial class FilterSelectedElementsByContainingGroupsWithRooms
         return testPoints;
     }
 }
+
+#endif

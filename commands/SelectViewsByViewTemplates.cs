@@ -10,6 +10,7 @@ using RevitView = Autodesk.Revit.DB.View;
 using RevitViewport = Autodesk.Revit.DB.Viewport;
 #endregion
 
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace MyRevitCommands
 {
     [Transaction(TransactionMode.Manual)]
@@ -98,7 +99,7 @@ namespace MyRevitCommands
                     var dict = new Dictionary<string, object>
                     {
                         // Using the integer value of the ElementId.
-                        ["Id"] = vt.Id.Value,
+                        ["Id"] = vt.Id.AsLong(),
                         ["Name"] = vt.Name,
                         ["Count (Views)"] = count,
                         ["Sheet Numbers"] = sheetsList
@@ -123,7 +124,7 @@ namespace MyRevitCommands
                 foreach (var entry in selectedEntries)
                 {
                     int idInt = Convert.ToInt32(entry["Id"]);
-                    selectedTemplateIds.Add(new ElementId((long)idInt));
+                    selectedTemplateIds.Add(idInt.ToElementId());
                 }
 
                 // 8. Find all non-template views whose ViewTemplateId matches any of the selected templates.

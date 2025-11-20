@@ -5,6 +5,7 @@ using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace YourNamespace
 {
     /// <summary>
@@ -70,11 +71,11 @@ namespace YourNamespace
                 }
                 // Check for specific built-in categories allowed in drafting views.
                 else if (e.Category != null && (
-                    e.Category.Id.Value == (int)BuiltInCategory.OST_DetailComponents ||
-                    e.Category.Id.Value == (int)BuiltInCategory.OST_IOSDetailGroups ||
-                    e.Category.Id.Value == (int)BuiltInCategory.OST_Lines ||
-                    e.Category.Id.Value == (int)BuiltInCategory.OST_RasterImages ||
-                    e.Category.Id.Value == (int)BuiltInCategory.OST_InsulationLines
+                    e.Category.Id.AsLong() == (int)BuiltInCategory.OST_DetailComponents ||
+                    e.Category.Id.AsLong() == (int)BuiltInCategory.OST_IOSDetailGroups ||
+                    e.Category.Id.AsLong() == (int)BuiltInCategory.OST_Lines ||
+                    e.Category.Id.AsLong() == (int)BuiltInCategory.OST_RasterImages ||
+                    e.Category.Id.AsLong() == (int)BuiltInCategory.OST_InsulationLines
                 ))
                 {
                     canCopy = true;
@@ -294,7 +295,7 @@ namespace YourNamespace
                 }
                 entries.Add(new Dictionary<string, object>
                 {
-                    { "Id", v.Id.Value },
+                    { "Id", v.Id.AsLong() },
                     { "Title", title },
                     { "Sheet", sheetName },
                     { "SheetFolder", sheetFolder }
@@ -332,7 +333,7 @@ namespace YourNamespace
                 {
                     if (entry.ContainsKey("Id") && int.TryParse(entry["Id"].ToString(), out int viewIdValue))
                     {
-                        ElementId viewId = new ElementId((long)viewIdValue);
+                        ElementId viewId = viewIdValue.ToElementId();
                         View originalView = doc.GetElement(viewId) as View;
                         if (originalView == null)
                             continue;

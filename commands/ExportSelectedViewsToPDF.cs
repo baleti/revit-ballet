@@ -14,6 +14,7 @@ using System.Reflection;
 using System.Threading;
 using Microsoft.WindowsAPICodePack.Dialogs;
 
+#if REVIT2022 || REVIT2023 || REVIT2024 || REVIT2025 || REVIT2026
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
 public class ExportSelectedViewsToPDF : IExternalCommand
@@ -83,7 +84,7 @@ public class ExportSelectedViewsToPDF : IExternalCommand
                 EnsureFileExists = false
             };
 
-            if (folderDialog.ShowDialog(commandData.Application.MainWindowHandle) == CommonFileDialogResult.Ok)
+            if (folderDialog.ShowDialog() == CommonFileDialogResult.Ok)
             {
                 exportFolder = folderDialog.FileName;
             }
@@ -343,11 +344,11 @@ public class PDFNamingDialog : System.Windows.Forms.Form
             }
             
             // Convert BuiltInParameter enum values to ElementId for comparison
-            var sheetNumberId = new ElementId((long)BuiltInParameter.SHEET_NUMBER);
-            var sheetNameId = new ElementId((long)BuiltInParameter.SHEET_NAME);
-            var viewNameId = new ElementId((long)BuiltInParameter.VIEW_NAME);
-            var viewTypeId = new ElementId((long)BuiltInParameter.VIEW_TYPE);
-            var invalidId = new ElementId((long)BuiltInParameter.INVALID);
+            var sheetNumberId = BuiltInParameter.SHEET_NUMBER.ToElementId();
+            var sheetNameId = BuiltInParameter.SHEET_NAME.ToElementId();
+            var viewNameId = BuiltInParameter.VIEW_NAME.ToElementId();
+            var viewTypeId = BuiltInParameter.VIEW_TYPE.ToElementId();
+            var invalidId = BuiltInParameter.INVALID.ToElementId();
             
             ElementId paramId = rule.ParamId;
             
@@ -368,12 +369,12 @@ public class PDFNamingDialog : System.Windows.Forms.Form
             {
                 paramPart = "{View Type}";
             }
-            else if (!paramId.Equals(invalidId) && paramId.Value < 0)
+            else if (!paramId.Equals(invalidId) && paramId.AsLong() < 0)
             {
                 // For built-in parameters (negative IDs), try to convert to BuiltInParameter
                 try
                 {
-                    var builtInParam = (BuiltInParameter)paramId.Value;
+                    var builtInParam = (BuiltInParameter)paramId.AsLong();
                     var paramName = LabelUtils.GetLabelFor(builtInParam);
                     if (!string.IsNullOrEmpty(paramName))
                     {
@@ -390,7 +391,7 @@ public class PDFNamingDialog : System.Windows.Forms.Form
                     }
                 }
             }
-            else if (paramId.Value > 0)
+            else if (paramId.AsLong() > 0)
             {
                 // For custom parameters (positive IDs), get the parameter element
                 var param = doc.GetElement(paramId) as ParameterElement;
@@ -1385,3 +1386,5 @@ public class PDFExportProgressDialog : System.Windows.Forms.Form
         this.Refresh();
     }
 }
+
+#endif

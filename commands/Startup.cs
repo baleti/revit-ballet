@@ -3,6 +3,7 @@ using System;
 using System.IO;
 using RevitBallet.Commands;
 
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace RevitBallet.Commands
 {
     /// <summary>

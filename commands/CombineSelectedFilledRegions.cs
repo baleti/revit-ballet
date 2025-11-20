@@ -6,6 +6,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Windows.Forms;
 
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
+#if REVIT2022 || REVIT2023 || REVIT2024 || REVIT2025 || REVIT2026
 namespace RevitCommands
 {
     [Transaction(TransactionMode.Manual)]
@@ -50,7 +52,7 @@ namespace RevitCommands
 
             // Verify all regions are in the same view
             ElementId viewId = selectedRegions[0].OwnerViewId;
-            if (!selectedRegions.All(r => r.OwnerViewId.Value == viewId.Value))
+            if (!selectedRegions.All(r => r.OwnerViewId.AsLong() == viewId.AsLong()))
             {
                 TaskDialog.Show("Error", "All selected filled regions must be in the same view.");
                 return Result.Failed;
@@ -267,3 +269,5 @@ namespace RevitCommands
         }
     }
 }
+
+#endif

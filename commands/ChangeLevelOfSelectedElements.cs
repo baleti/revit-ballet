@@ -7,6 +7,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.Attributes;
 #endregion
 
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace RevitAddin
 {
   [Transaction(TransactionMode.Manual)]

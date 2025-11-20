@@ -23,7 +23,7 @@ public class DrawCropRegion : IExternalCommand
             .Where(v => v.ViewType == ViewType.Detail || v.ViewType == ViewType.FloorPlan || v.ViewType == ViewType.Section || v.ViewType == ViewType.Elevation)
             .Select(v => new Dictionary<string, object>
             {
-                { "Id", v.Id.Value },
+                { "Id", v.Id.AsLong() },
                 { "Name", v.Name },
                 { "Type", v.ViewType.ToString() }
             })
@@ -53,7 +53,7 @@ public class DrawCropRegion : IExternalCommand
             foreach (var entry in selectedEntries)
             {
                 int selectedViewId = (int)entry["Id"];
-                ElementId viewElementId = new ElementId((long)selectedViewId);
+                ElementId viewElementId = selectedViewId.ToElementId();
                 View selectedView = doc.GetElement(viewElementId) as View;
 
                 if (selectedView == null)

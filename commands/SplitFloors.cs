@@ -5,6 +5,8 @@ using Autodesk.Revit.UI.Selection;
 using System.Collections.Generic;
 using System.Linq;
 
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
+#if REVIT2022 || REVIT2023 || REVIT2024 || REVIT2025 || REVIT2026
 namespace RevitCommands
 {
     [Transaction(TransactionMode.Manual)]
@@ -176,3 +178,5 @@ namespace RevitCommands
         }
     }
 }
+
+#endif

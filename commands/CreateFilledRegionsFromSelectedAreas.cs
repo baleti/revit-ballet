@@ -11,6 +11,7 @@ using Autodesk.Revit.DB.Architecture;
 // Alias Revit's View to avoid ambiguity with System.Windows.Forms.View.
 using RevitView = Autodesk.Revit.DB.View;
 
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace RevitAddin
 {
     [Autodesk.Revit.Attributes.Transaction(Autodesk.Revit.Attributes.TransactionMode.Manual)]

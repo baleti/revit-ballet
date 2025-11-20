@@ -241,7 +241,7 @@ public class FilterSelectedElementsByScopeBoxes : IExternalCommand
                 }
                 else if (fullData.TryGetValue("Id", out var intId) && intId is int id)
                 {
-                    regularIds.Add(new ElementId((long)id));
+                    regularIds.Add(id.ToElementId());
                 }
             }
             
@@ -339,7 +339,7 @@ public class FilterSelectedElementsByScopeBoxes : IExternalCommand
         var data = new Dictionary<string, object>
         {
             ["Type"] = element.Name ?? string.Empty,
-            ["Id"] = element.Id.Value,
+            ["Id"] = element.Id.AsLong(),
             ["LinkName"] = linkName ?? string.Empty,
             ["ElementIdObject"] = element.Id,
             ["LinkInstanceObject"] = linkInstance,

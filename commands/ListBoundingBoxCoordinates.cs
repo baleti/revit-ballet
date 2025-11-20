@@ -7,6 +7,7 @@ using System.Data;
 using System.Linq;
 using SWF = System.Windows.Forms;          // Windows-Forms alias
 
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace RevitCommands
 {
     [Transaction(TransactionMode.ReadOnly)]
@@ -52,7 +53,7 @@ namespace RevitCommands
                 // ─── 2) Title block (no view activation) ───────────────────
                 else if (elem is FamilyInstance fiTB &&
                          fiTB.Category != null &&
-                         fiTB.Category.Id.Value == (int)BuiltInCategory.OST_TitleBlocks)
+                         fiTB.Category.Id.AsLong() == (int)BuiltInCategory.OST_TitleBlocks)
                 {
                     BoundingBoxXYZ symBB = fiTB.Symbol.get_BoundingBox(null);
                     if (symBB == null) continue;
@@ -90,7 +91,7 @@ namespace RevitCommands
 
                 var data = new Dictionary<string, object>
                 {
-                    { "ElementId", elem.Id.Value },
+                    { "ElementId", elem.Id.AsLong() },
                     { "Name",      elem.Name },
                     { "Category",  elem.Category != null ? elem.Category.Name : "N/A" },
                     { "Family",    (elem as FamilyInstance) != null ?
@@ -180,7 +181,7 @@ namespace RevitCommands
                     case StorageType.String:
                         val = p.AsString(); break;
                     case StorageType.ElementId:
-                        val = p.AsElementId().Value; break;
+                        val = p.AsElementId().AsLong(); break;
                 }
                 if (val != null) data[name] = val;
             }

@@ -6,6 +6,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using Autodesk.Revit.ApplicationServices;
 
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace RevitCommands
 {
     [Transaction(TransactionMode.Manual)]
@@ -58,14 +59,14 @@ namespace RevitCommands
                 }
 
                 // Prompt user for save location
-                Microsoft.Win32.SaveFileDialog saveFileDialog = new Microsoft.Win32.SaveFileDialog
+                System.Windows.Forms.SaveFileDialog saveFileDialog = new System.Windows.Forms.SaveFileDialog
                 {
                     Filter = "Revit Files (*.rvt)|*.rvt",
                     Title = "Save Exported Elements As",
                     FileName = $"ExportedElements_{DateTime.Now:yyyyMMdd_HHmmss}.rvt"
                 };
 
-                if (saveFileDialog.ShowDialog() != true)
+                if (saveFileDialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
                 {
                     return Result.Cancelled;
                 }

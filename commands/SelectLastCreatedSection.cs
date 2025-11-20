@@ -4,6 +4,7 @@ using Autodesk.Revit.UI;
 using System.Linq;
 using System.Collections.Generic;
 
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace RevitAPICommands
 {
     [Transaction(TransactionMode.ReadOnly)]
@@ -18,7 +19,7 @@ namespace RevitAPICommands
             var sections = new FilteredElementCollector(doc)
                 .OfClass(typeof(ViewSection))
                 .Cast<ViewSection>()
-                .OrderByDescending(vs => vs.Id.Value);
+                .OrderByDescending(vs => vs.Id.AsLong());
 
             // Get the section with the highest ElementId.
             ViewSection lastSection = sections.FirstOrDefault();

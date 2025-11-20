@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using Autodesk.Revit.UI;
 using Autodesk.Revit.DB;
 
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace MyRevitCommands
 {
     public class UnpinSelectedElements : IExternalCommand

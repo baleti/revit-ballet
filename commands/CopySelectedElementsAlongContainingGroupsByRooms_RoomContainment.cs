@@ -1,3 +1,4 @@
+#if REVIT2021 || REVIT2022 || REVIT2023 || REVIT2024 || REVIT2025 || REVIT2026
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -616,7 +617,7 @@ if (roomData != null && IsRoomWithinBoundingBox(roomData, groupBB.Min, groupBB.M
        // Use coarser grid (50ft instead of 10ft) for better cache hits
        int gridX = (int)Math.Floor(testPoint.X / 50.0);
        int gridY = (int)Math.Floor(testPoint.Y / 50.0);
-       string cacheKey = $"L{currentLevel.Id.Value}_X{gridX}_Y{gridY}";
+       string cacheKey = $"L{currentLevel.Id.AsLong()}_X{gridX}_Y{gridY}";
        
        if (_floorToFloorHeightCache.ContainsKey(cacheKey))
        {
@@ -847,7 +848,7 @@ if (roomData != null && IsRoomWithinBoundingBox(roomData, groupBB.Min, groupBB.M
                XYZ testPointForXY = new XYZ(point.X, point.Y, testZ);
                
                // OPTIMIZATION: Cache room containment checks
-               string containmentKey = $"R{room.Id.Value}_X{(int)(point.X*10)}_Y{(int)(point.Y*10)}_Z{(int)(testZ*10)}";
+               string containmentKey = $"R{room.Id.AsLong()}_X{(int)(point.X*10)}_Y{(int)(point.Y*10)}_Z{(int)(testZ*10)}";
                bool isInRoom;
                if (!_roomPointContainmentCache.ContainsKey(containmentKey))
                {
@@ -916,3 +917,5 @@ if (roomData != null && IsRoomWithinBoundingBox(roomData, groupBB.Min, groupBB.M
        return false;
    }
 }
+
+#endif

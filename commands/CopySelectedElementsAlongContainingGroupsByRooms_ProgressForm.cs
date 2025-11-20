@@ -1,3 +1,4 @@
+#if REVIT2021 || REVIT2022 || REVIT2023 || REVIT2024 || REVIT2025 || REVIT2026
 // File: CopySelectedElementsAlongContainingGroupsByRooms_ProgressForm.cs
 
 using System;
@@ -639,3 +640,5 @@ public class CopyElementsProgressForm : WinForm
         base.Dispose(disposing);
     }
 }
+
+#endif

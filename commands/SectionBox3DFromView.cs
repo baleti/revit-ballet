@@ -143,7 +143,7 @@ public class SectionBox3DFromView : IExternalCommand
                 { "Sheet Name", sheetNames },
                 { "Sheet Folder", sheetFolders },
                 { "Section Box", sectionBoxStatus },
-                { "View Id", v.Id.Value.ToString() }
+                { "View Id", v.Id.AsLong().ToString() }
             };
         }).ToList();
 
@@ -169,7 +169,7 @@ public class SectionBox3DFromView : IExternalCommand
 
         // Retrieve the selected view.
         Dictionary<string, object> selectedEntry = selectedEntries.First();
-        ElementId selectedViewId = new ElementId((long)int.Parse(selectedEntry["View Id"].ToString()));
+        ElementId selectedViewId = int.Parse(selectedEntry["View Id"].ToString()).ToElementId();
         View selectedView = doc.GetElement(selectedViewId) as View;
 
         BoundingBoxXYZ sectionBox = null;

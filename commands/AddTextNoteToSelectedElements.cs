@@ -291,7 +291,7 @@ public class AddTextNoteToSelectedElements : IExternalCommand
                     if (idValue != null && idValue != ElementId.InvalidElementId)
                     {
                         Element elem = param.Element.Document.GetElement(idValue);
-                        return elem?.Name ?? idValue.Value.ToString();
+                        return elem?.Name ?? idValue.AsLong().ToString();
                     }
                     break;
             }

@@ -1,33 +1,24 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
+    <!-- Default to Revit 2024 if no year specified -->
+    <RevitYear Condition="'$(RevitYear)' == ''">2024</RevitYear>
+
     <OutputType>WinExe</OutputType>
     <TargetFramework>net48</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
-    <AssemblyName>installer</AssemblyName>
+    <AssemblyName>installer_$(RevitYear)</AssemblyName>
     <DebugType>none</DebugType>
     <ApplicationIcon>revit-ballet-logo.ico</ApplicationIcon>
     <GenerateSupportedRuntime>false</GenerateSupportedRuntime>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+
+    <!-- Output to version-specific directory -->
+    <OutputPath>bin\$(RevitYear)\</OutputPath>
   </PropertyGroup>
   <ItemGroup>
     <EmbeddedResource Include="revit-ballet-logo.png" Condition="Exists('revit-ballet-logo.png')"/>
     <EmbeddedResource Include="revit-ballet.addin"/>
-    <EmbeddedResource Include="../commands/bin/*/revit-ballet.dll"/>
-    <EmbeddedResource Include="../commands/bin/*/Newtonsoft.Json.dll"/>
-    <EmbeddedResource Include="../commands/bin/*/clipper_library.dll"/>
+    <EmbeddedResource Include="../commands/bin/$(RevitYear)/*"/>
     <EmbeddedResource Include="KeyboardShortcuts.xml"/>
   </ItemGroup>
-
-  <!-- Build all Revit versions before building installer -->
-  <Target Name="BuildAllRevitVersions" BeforeTargets="BeforeBuild">
-    <ItemGroup>
-      <RevitVersion Include="2025;2024;2023;2022;2021;2020;2019" />
-    </ItemGroup>
-
-    <Message Text="Building revit-ballet.dll for Revit %(RevitVersion.Identity)..." Importance="high" />
-
-    <MSBuild Projects="../commands/revit-ballet.csproj"
-             Properties="RevitYear=%(RevitVersion.Identity);Configuration=Release"
-             Targets="Build" />
-  </Target>
 </Project>

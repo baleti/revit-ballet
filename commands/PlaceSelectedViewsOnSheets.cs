@@ -11,6 +11,7 @@ using Autodesk.Revit.UI.Selection;
 using DB = Autodesk.Revit.DB;
 using WinForms = System.Windows.Forms;
 
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace RevitAddin.Commands
 {
     /// <summary>

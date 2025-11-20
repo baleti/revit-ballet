@@ -47,7 +47,7 @@ public class SwapSelectedModelGroups : IExternalCommand
             {
                 // Only add model groups (not detail groups)
                 if (group.Category != null && 
-                    group.Category.Id.Value == (int)BuiltInCategory.OST_IOSModelGroups)
+                    group.Category.Id.AsLong() == (int)BuiltInCategory.OST_IOSModelGroups)
                 {
                     selectedGroups.Add(group);
                 }

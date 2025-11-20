@@ -14,6 +14,7 @@ using RevitBallet.Commands;
 // Assuming CustomGUIs namespace is available
 // using YourNamespaceContainingCustomGUIs;
 
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace FilterDoorsWithWallOffsets
 {
     [Transaction(TransactionMode.Manual)]
@@ -111,7 +112,7 @@ namespace FilterDoorsWithWallOffsets
                 foreach (ElementId id in selectedIds)
                 {
                     Element elem = doc.GetElement(id);
-                    if (elem is FamilyInstance fi && fi.Category.Id.Value == (int)BuiltInCategory.OST_Doors)
+                    if (elem is FamilyInstance fi && fi.Category.Id.AsLong() == (int)BuiltInCategory.OST_Doors)
                     {
                         selectedDoors.Add(fi);
                     }
@@ -233,7 +234,7 @@ namespace FilterDoorsWithWallOffsets
                                 doc, uidoc, result.Door, result.AdjacentWalls);
                             if (calculatedDistances.Any())
                             {
-                                doorDistances[(int)result.Door.Id.Value] = calculatedDistances;
+                                doorDistances[(int)result.Door.Id.AsLong()] = calculatedDistances;
                             }
                         }
                         catch (Exception exCalc)
@@ -357,7 +358,7 @@ namespace FilterDoorsWithWallOffsets
 
             List<Dictionary<string, object>> doorData = new List<Dictionary<string, object>>();
 
-            foreach (var result in doorResults.OrderBy(r => r.Door.Id.Value))
+            foreach (var result in doorResults.OrderBy(r => r.Door.Id.AsLong()))
             {
                 if (result.NoHostWall || !string.IsNullOrEmpty(result.Error))
                     continue;
@@ -387,7 +388,7 @@ namespace FilterDoorsWithWallOffsets
 
                 // Adjacent walls count
                 int dimensionedAdjacentWallsCount = 0;
-                if (doorDistances.TryGetValue((int)result.Door.Id.Value, out List<DimensionInfo> dimsForThisDoorInGrid))
+                if (doorDistances.TryGetValue((int)result.Door.Id.AsLong(), out List<DimensionInfo> dimsForThisDoorInGrid))
                 {
                     dimensionedAdjacentWallsCount = dimsForThisDoorInGrid.Select(d => d.WallId).Distinct().Count();
                 }
@@ -400,7 +401,7 @@ namespace FilterDoorsWithWallOffsets
                 }
 
                 // Fill actual distances - FIXED: Keep only the closest dimension for each orientation label
-                if (doorDistances.TryGetValue((int)result.Door.Id.Value, out var distances))
+                if (doorDistances.TryGetValue((int)result.Door.Id.AsLong(), out var distances))
                 {
                     // Group dimensions by orientation label and keep only the closest one for each
                     var closestDimensionsByOrientation = distances
@@ -422,7 +423,7 @@ namespace FilterDoorsWithWallOffsets
                 // Mark
                 doorProperties["Mark"] = result.Door.get_Parameter(BuiltInParameter.ALL_MODEL_MARK)?.AsString() ?? "";
 
-                doorProperties["Door Element Id"] = result.Door.Id.Value;
+                doorProperties["Door Element Id"] = result.Door.Id.AsLong();
                 doorData.Add(doorProperties);
             }
 
@@ -434,7 +435,7 @@ namespace FilterDoorsWithWallOffsets
                     var finalSelection = selectedDoors
                         .Where(d => selectedFromGrid.Any(s =>
                             s.ContainsKey("Door Element Id") &&
-                            (int)s["Door Element Id"] == d.Id.Value))
+                            (int)s["Door Element Id"] == d.Id.AsLong()))
                         .Select(d => d.Id)
                         .ToList();
                     if (finalSelection.Any())

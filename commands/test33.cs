@@ -7,6 +7,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.Attributes;
 #endregion
 
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace RevitAddin
 {
   [Transaction(TransactionMode.Manual)]
@@ -36,7 +37,7 @@ namespace RevitAddin
       // Prepare entries for the DataGrid.
       List<Dictionary<string, object>> familyTypeEntries = familySymbols.Select(fs => new Dictionary<string, object>
       {
-        { "Id", fs.Id.Value }, // include the Id so we can look it up later.
+        { "Id", fs.Id.AsLong() }, // include the Id so we can look it up later.
         { "Family", fs.Family.Name },
         { "Type", fs.Name }
       }).ToList();
@@ -53,7 +54,7 @@ namespace RevitAddin
 
       // Retrieve the selected FamilySymbol using the "Id" key.
       int selectedIdValue = Convert.ToInt32(selFamilyEntry[0]["Id"]);
-      ElementId selectedFamilySymbolId = new ElementId((long)selectedIdValue);
+      ElementId selectedFamilySymbolId = selectedIdValue.ToElementId();
       FamilySymbol newFamilySymbol = doc.GetElement(selectedFamilySymbolId) as FamilySymbol;
       if (newFamilySymbol == null)
       {
@@ -90,7 +91,7 @@ namespace RevitAddin
               continue;
 
             // Verify that the selected family type belongs to the same category.
-            if (fi.Symbol.Family.FamilyCategory.Id.Value != newFamilySymbol.Family.FamilyCategory.Id.Value)
+            if (fi.Symbol.Family.FamilyCategory.Id.AsLong() != newFamilySymbol.Family.FamilyCategory.Id.AsLong())
             {
               // Skip elements whose category doesn't match the selected family type.
               continue;
