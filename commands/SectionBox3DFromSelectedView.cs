@@ -76,7 +76,7 @@ public class SectionBox3DFromSelectedView : IExternalCommand
             Element selElem = doc.GetElement(selectedIds.First());
             // If the element belongs to the OST_Viewers category, retrieve its corresponding view using the VIEW_NAME parameter.
             if (selElem.Category != null &&
-                selElem.Category.Id.Value == (int)BuiltInCategory.OST_Viewers)
+                selElem.Category.Id.AsLong() == (int)BuiltInCategory.OST_Viewers)
             {
                 Parameter nameParam = selElem.get_Parameter(BuiltInParameter.VIEW_NAME);
                 if (nameParam != null)

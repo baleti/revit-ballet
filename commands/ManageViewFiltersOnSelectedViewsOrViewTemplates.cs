@@ -11,6 +11,7 @@ using Autodesk.Revit.Attributes;
 using WinForms = System.Windows.Forms;
 using Drawing = System.Drawing;
 
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace MyRevitCommands
 {
    /// <summary>
@@ -68,7 +69,7 @@ namespace MyRevitCommands
          {
             var entry = new Dictionary<string, object>();
             entry["Name"] = filter.Name;
-            entry["Id"] = filter.Id.Value;
+            entry["Id"] = filter.Id.AsLong();
             
             // Use reflection to attempt to call the legacy GetRules() method.
             IList<FilterRule> rules = null;
@@ -363,7 +364,7 @@ namespace MyRevitCommands
          foreach (var entry in selectedEntries)
          {
             if (entry.TryGetValue("Id", out object idObj) && int.TryParse(idObj.ToString(), out int intId))
-               selectedFilterIds.Add(new ElementId((long)intId));
+               selectedFilterIds.Add(intId.ToElementId());
          }
 
          // Show the override options dialog.
@@ -463,7 +464,7 @@ namespace MyRevitCommands
          foreach (var entry in selectedEntries)
          {
             if (entry.TryGetValue("Id", out object idObj) && int.TryParse(idObj.ToString(), out int intId))
-               selectedFilterIds.Add(new ElementId((long)intId));
+               selectedFilterIds.Add(intId.ToElementId());
          }
 
          using (FilterOverrideDataGridForm overrideForm = new FilterOverrideDataGridForm())
@@ -560,7 +561,7 @@ namespace MyRevitCommands
          foreach (var entry in selectedEntries)
          {
             if (entry.TryGetValue("Id", out object idObj) && int.TryParse(idObj.ToString(), out int intId))
-               selectedFilterIds.Add(new ElementId((long)intId));
+               selectedFilterIds.Add(intId.ToElementId());
          }
 
          using (Transaction trans = new Transaction(doc, "Delete Filters"))

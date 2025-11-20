@@ -6,6 +6,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using Autodesk.Revit.ApplicationServices;
 
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace RevitCommands
 {
     [Transaction(TransactionMode.Manual)]
@@ -26,13 +27,13 @@ namespace RevitCommands
                 Document currentDoc = uiDoc.Document;
 
                 // Prompt user to select a Revit file
-                Microsoft.Win32.OpenFileDialog openFileDialog = new Microsoft.Win32.OpenFileDialog
+                System.Windows.Forms.OpenFileDialog openFileDialog = new System.Windows.Forms.OpenFileDialog
                 {
                     Filter = "Revit Files (*.rvt)|*.rvt",
                     Title = "Select a Revit File to Import Elements From"
                 };
 
-                if (openFileDialog.ShowDialog() != true)
+                if (openFileDialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
                 {
                     return Result.Cancelled;
                 }
@@ -184,7 +185,7 @@ namespace RevitCommands
                 return false;
 
             // Get category id
-            int catId = (int)elem.Category.Id.Value;
+            int catId = (int)elem.Category.Id.AsLong();
 
             // Exclude non-model categories
             HashSet<int> excludedCategories = new HashSet<int>

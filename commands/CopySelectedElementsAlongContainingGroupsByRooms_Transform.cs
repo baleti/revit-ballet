@@ -1,3 +1,4 @@
+#if REVIT2021 || REVIT2022 || REVIT2023 || REVIT2024 || REVIT2025 || REVIT2026
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -150,12 +151,12 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
 
         // Add category
         if (elem.Category != null)
-            key += elem.Category.Id.Value + "|";
+            key += elem.Category.Id.AsLong() + "|";
 
         // Add type id
         ElementId typeId = elem.GetTypeId();
         if (typeId != ElementId.InvalidElementId)
-            key += typeId.Value + "|";
+            key += typeId.AsLong() + "|";
 
         // Add geometric properties for walls
         if (elem is Wall)
@@ -518,3 +519,5 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
         }
     }
 }
+
+#endif

@@ -5,6 +5,7 @@ using System.Text;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace FilterDoorsWithWallOffsets
 {
     public static class Diagnostics
@@ -35,7 +36,7 @@ namespace FilterDoorsWithWallOffsets
             if (accepted.Any())
             {
                 sb.AppendLine("✓ ACCEPTED WALLS:");
-                foreach (var wall in accepted.OrderBy(w => w.WallId.Value))
+                foreach (var wall in accepted.OrderBy(w => w.WallId.AsLong()))
                 {
                     sb.AppendLine($"  Wall {wall.WallId} - {wall.WallName}");
                     sb.AppendLine($"    Start: {FormatXYZ(wall.WallStartPoint)} End: {FormatXYZ(wall.WallEndPoint)}");
@@ -56,7 +57,7 @@ namespace FilterDoorsWithWallOffsets
                 {
                     sb.AppendLine($"  Reason: {GetRejectionReasonDescription(group.Key)}");
                     
-                    foreach (var wall in group.OrderBy(w => w.WallId.Value))
+                    foreach (var wall in group.OrderBy(w => w.WallId.AsLong()))
                     {
                         sb.AppendLine($"    Wall {wall.WallId} - {wall.WallName}");
                         sb.AppendLine($"      Start: {FormatXYZ(wall.WallStartPoint)} End: {FormatXYZ(wall.WallEndPoint)}");

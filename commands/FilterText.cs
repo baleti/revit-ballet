@@ -6,6 +6,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using Autodesk.Revit.UI.Selection;
 using System.Windows.Forms;
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 
 [Transaction(TransactionMode.Manual)]
 public class FilterText : IExternalCommand
@@ -183,7 +184,7 @@ public class FilterText : IExternalCommand
             dict["SheetName"] = cached.sheetName;
 
             // ElementId
-            dict["ElementId"] = text.Id.Value;
+            dict["ElementId"] = text.Id.AsLong();
 
             entries.Add(dict);
         }
@@ -209,7 +210,7 @@ public class FilterText : IExternalCommand
             if (row.ContainsKey("ElementId")
                 && int.TryParse(row["ElementId"].ToString(), out int intId))
             {
-                chosenIds.Add(new ElementId((long)intId));
+                chosenIds.Add(intId.ToElementId());
             }
         }
 

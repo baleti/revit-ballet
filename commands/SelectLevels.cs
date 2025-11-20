@@ -5,6 +5,7 @@ using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace MyRevitAddin
 {
     [Transaction(TransactionMode.ReadOnly)]
@@ -92,7 +93,7 @@ namespace MyRevitAddin
                 {
                     if (int.TryParse(entry["Id"].ToString(), out int idInt))
                     {
-                        selectedIds.Add(new ElementId((long)idInt));
+                        selectedIds.Add(idInt.ToElementId());
                     }
                 }
             }

@@ -5,6 +5,7 @@ using System.Linq;
 using System.Collections.Generic;
 using System;
 
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace RevitDetailLines
 {
     [Transaction(TransactionMode.Manual)]
@@ -78,7 +79,7 @@ namespace RevitDetailLines
                         { "Sheet Number", sheet?.SheetNumber ?? "" },
                         { "Sheet Name", sheet?.Name ?? "" },
                         { "Sheet Folder", sheet?.LookupParameter("Sheet Folder")?.AsString() ?? "" },
-                        { "View Id", v.Id.Value.ToString() }
+                        { "View Id", v.Id.AsLong().ToString() }
                     };
                 }).ToList();
 
@@ -103,7 +104,7 @@ namespace RevitDetailLines
 
                 // Get the selected view
                 int selectedViewId = int.Parse(selection.First()["View Id"].ToString());
-                View selectedView = doc.GetElement(new ElementId((long)selectedViewId)) as View;
+                View selectedView = doc.GetElement(selectedViewId.ToElementId()) as View;
 
                 if (selectedView == null)
                 {

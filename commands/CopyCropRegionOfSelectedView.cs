@@ -131,7 +131,7 @@ public class CopyCropRegionOfSelectedView : IExternalCommand
                 view.ViewType == ViewType.Schedule ||
                 view.ViewType == ViewType.ProjectBrowser ||
                 view.ViewType == ViewType.SystemBrowser ||
-                view.Id.Value == sourceView.Id.Value) // Skip the source view
+                view.Id.AsLong() == sourceView.Id.AsLong()) // Skip the source view
                 continue;
 
             // Skip views that don't support crop box (additional check)

@@ -6,6 +6,7 @@ using System.Windows.Forms;
 using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 #endregion
 
 [Transaction(TransactionMode.Manual)]
@@ -77,7 +78,7 @@ public class SetParametersOfFamilyTypes : IExternalCommand
 
                 var familySymbols = collector
                     .Cast<FamilySymbol>()
-                    .Where(fs => fs.Category != null && fs.Category.Id.Value == chosenCategory.Id.Value)
+                    .Where(fs => fs.Category != null && fs.Category.Id.AsLong() == chosenCategory.Id.AsLong())
                     .ToList();
 
                 allChosenElements.AddRange(familySymbols);
@@ -195,7 +196,7 @@ public class SetParametersOfFamilyTypes : IExternalCommand
             case StorageType.ElementId:
                 ElementId id = param.AsElementId();
                 if (id == ElementId.InvalidElementId) return "";
-                return id.Value.ToString();
+                return id.AsLong().ToString();
             default:
                 return "";
         }
@@ -227,7 +228,7 @@ public class SetParametersOfFamilyTypes : IExternalCommand
                 case StorageType.ElementId:
                     if (int.TryParse(value, out int elemIdVal))
                     {
-                        param.Set(new ElementId((long)elemIdVal));
+                        param.Set(elemIdVal.ToElementId());
                         return true;
                     }
                     return false;

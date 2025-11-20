@@ -5,6 +5,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Architecture;
 using Autodesk.Revit.UI;
 
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace FilterDoorsWithWallOffsets
 {
     public static class Dimensioning

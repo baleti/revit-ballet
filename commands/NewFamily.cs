@@ -2,6 +2,7 @@ using Autodesk.Revit.UI;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.Attributes;
 
+#if REVIT2022 || REVIT2023 || REVIT2024 || REVIT2025 || REVIT2026
 [Transaction(TransactionMode.Manual)]
 public class NewFamily : IExternalCommand
 {
@@ -16,3 +17,5 @@ public class NewFamily : IExternalCommand
         return Result.Succeeded;
     }
 }
+
+#endif

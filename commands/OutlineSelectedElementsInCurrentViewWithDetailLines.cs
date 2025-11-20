@@ -8,6 +8,7 @@ using Autodesk.Revit.UI.Selection;
 using Forms = System.Windows.Forms;
 using System.Drawing;
 
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace RevitCustomCommands
 {
     [Transaction(TransactionMode.Manual)]
@@ -64,7 +65,7 @@ namespace RevitCustomCommands
                 List<GraphicsStyle> lineStyles = lineStyleCollector
                     .Cast<GraphicsStyle>()
                     .Where(gs => gs.GraphicsStyleCategory.Parent != null &&
-                                gs.GraphicsStyleCategory.Parent.Id.Value == (int)BuiltInCategory.OST_Lines)
+                                gs.GraphicsStyleCategory.Parent.Id.AsLong() == (int)BuiltInCategory.OST_Lines)
                     .ToList();
 
                 if (lineStyles.Count == 0)
@@ -82,7 +83,7 @@ namespace RevitCustomCommands
                     {
                         { "Title", lineStyle.Name },
                         { "SheetFolder", lineStyle.GraphicsStyleCategory.Name },
-                        { "Id", lineStyle.Id.Value.ToString() }
+                        { "Id", lineStyle.Id.AsLong().ToString() }
                     };
                     entries.Add(entry);
                 }
@@ -99,7 +100,7 @@ namespace RevitCustomCommands
 
                 // Get selected line style
                 int selectedLineStyleId = Convert.ToInt32(selectedEntries[0]["Id"]);
-                GraphicsStyle selectedLineStyle = lineStyles.FirstOrDefault(ls => ls.Id.Value == selectedLineStyleId);
+                GraphicsStyle selectedLineStyle = lineStyles.FirstOrDefault(ls => ls.Id.AsLong() == selectedLineStyleId);
                 
                 if (selectedLineStyle == null)
                 {

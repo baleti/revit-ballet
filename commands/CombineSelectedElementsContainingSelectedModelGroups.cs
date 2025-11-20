@@ -37,7 +37,7 @@ public class CombineSelectedElementsContainingSelectedModelGroups : IExternalCom
             {
                 // Only add model groups (not detail groups)
                 if (group.Category != null && 
-                    group.Category.Id.Value == (int)BuiltInCategory.OST_IOSModelGroups)
+                    group.Category.Id.AsLong() == (int)BuiltInCategory.OST_IOSModelGroups)
                 {
                     groups.Add(group);
                 }
@@ -462,7 +462,7 @@ public class CombineSelectedElementsContainingSelectedModelGroups : IExternalCom
         var category = element.Category;
         if (category != null)
         {
-            var builtInCat = (BuiltInCategory)category.Id.Value;
+            var builtInCat = (BuiltInCategory)category.Id.AsLong();
             
             // Add categories that should not be grouped
             var excludedCategories = new List<BuiltInCategory>

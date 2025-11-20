@@ -1,3 +1,4 @@
+#if REVIT2021 || REVIT2022 || REVIT2023 || REVIT2024 || REVIT2025 || REVIT2026
 ﻿using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
@@ -5,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace YourAddinNamespace
 {
     /// <summary>
@@ -36,7 +38,7 @@ namespace YourAddinNamespace
 
             // 2. Take the 50 highest Ids (or fewer, if <50 exist).
             List<ElementId> recentIds = allIds
-                                        .OrderByDescending(id => id.Value)
+                                        .OrderByDescending(id => id.AsLong())
                                         .Take(5000)
                                         .ToList();
 
@@ -50,7 +52,7 @@ namespace YourAddinNamespace
 
                 string groupName = string.Empty;
                 if (el.GroupId != ElementId.InvalidElementId &&
-                    el.GroupId.Value != -1 &&
+                    el.GroupId.AsLong() != -1 &&
                     doc.GetElement(el.GroupId) is Group g)
                 {
                     groupName = g.Name;
@@ -69,7 +71,7 @@ namespace YourAddinNamespace
                     ["Category"]  = el.Category?.Name ?? string.Empty,
                     ["Group"]     = groupName,
                     ["OwnerView"] = ownerViewName,
-                    ["Id"]        = el.Id.Value
+                    ["Id"]        = el.Id.AsLong()
                 });
             }
 
@@ -93,7 +95,7 @@ namespace YourAddinNamespace
             // 5. Convert rows back to ElementIds.
             HashSet<ElementId> chosenIds = chosenRows
                 .Where(r => r.TryGetValue("Id", out var v) && v is int)
-                .Select(r => new ElementId((long)r["Id"]))
+                .Select(r => ((long)r["Id"]).ToElementId())
                 .ToHashSet();
 
             // 6. Add to the user’s existing selection (don’t replace).
@@ -105,3 +107,5 @@ namespace YourAddinNamespace
         }
     }
 }
+
+#endif

@@ -13,6 +13,7 @@ using System.IO;
 using System.Runtime.Serialization.Formatters.Binary;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 
 // Aliases to resolve conflicts
 using WinForm = System.Windows.Forms.Form;
@@ -259,8 +260,8 @@ public class ClashDetectionSelectedElements : IExternalCommand
                         var elem2 = cell[j];
                         
                         // Create unique key for this pair
-                        var key1 = $"{elem1.ElementId.Value}_{elem2.ElementId.Value}";
-                        var key2 = $"{elem2.ElementId.Value}_{elem1.ElementId.Value}";
+                        var key1 = $"{elem1.ElementId.AsLong()}_{elem2.ElementId.AsLong()}";
+                        var key2 = $"{elem2.ElementId.AsLong()}_{elem1.ElementId.AsLong()}";
                         
                         if (!processed.Contains(key1) && !processed.Contains(key2))
                         {
@@ -419,7 +420,7 @@ public class ClashDetectionSelectedElements : IExternalCommand
             {
                 Elements = geometryData.Select(g => new ExternalGeometryData
                 {
-                    ElementId = (int)g.ElementId.Value,
+                    ElementId = (int)g.ElementId.AsLong(),
                     BoundingBox = new[] 
                     { 
                         g.BoundingBox.Min.X, g.BoundingBox.Min.Y, g.BoundingBox.Min.Z,
@@ -461,8 +462,8 @@ public class ClashDetectionSelectedElements : IExternalCommand
             {
                 foreach (var result in task.Result)
                 {
-                    var elem1 = allElements.First(e => e.Element.Id.Value == result.ElementId1);
-                    var elem2 = allElements.First(e => e.Element.Id.Value == result.ElementId2);
+                    var elem1 = allElements.First(e => e.Element.Id.AsLong() == result.ElementId1);
+                    var elem2 = allElements.First(e => e.Element.Id.AsLong() == result.ElementId2);
                     
                     clashes.Add(new ClashInfo
                     {
@@ -794,7 +795,7 @@ public class ClashDetectionSelectedElements : IExternalCommand
         if (!string.IsNullOrEmpty(type))
             desc += $" - {type}";
         
-        desc += $" [Id: {elem.Id.Value}]";
+        desc += $" [Id: {elem.Id.AsLong()}]";
         
         return desc;
     }

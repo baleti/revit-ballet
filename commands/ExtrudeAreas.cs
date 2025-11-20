@@ -1,3 +1,4 @@
+#if REVIT2021 || REVIT2022 || REVIT2023 || REVIT2024 || REVIT2025 || REVIT2026
 using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Architecture;
@@ -126,3 +127,5 @@ public class ExtrudeAreas : IExternalCommand
         return UnitUtils.ConvertToInternalUnits(3.0, UnitTypeId.Meters);
     }
 }
+
+#endif

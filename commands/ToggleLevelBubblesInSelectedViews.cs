@@ -5,6 +5,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using WinForms = System.Windows.Forms; // Alias for Windows Forms
 
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace HideLevelBubbles
 {
     // Enum to choose the operation.

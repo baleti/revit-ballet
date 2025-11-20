@@ -134,7 +134,7 @@ public class SwitchPhase : IExternalCommand
             }
 
             string activeViewName = activeView.Name;
-            int chosenPhaseIdInt = (int)chosenPhase.Id.Value;
+            int chosenPhaseIdInt = (int)chosenPhase.Id.AsLong();
             string formattedViewName = FormatString(activeViewName);
 
             // Remove any existing log entry for the chosen ("to") phase in the current view.
@@ -164,12 +164,12 @@ public class SwitchPhase : IExternalCommand
             });
 
             // Format the new ("to") phase log line.
-            string toPhaseLogLine = $"{chosenPhase.Id.Value} {FormatString(chosenPhase.Name)} {formattedViewName}";
+            string toPhaseLogLine = $"{chosenPhase.Id.AsLong()} {FormatString(chosenPhase.Name)} {formattedViewName}";
 
             // Prepare the "from" phase log line.
             Phase fromPhase = phases.FirstOrDefault(p => p.Id == currentPhaseId);
             string fromPhaseLogLine = fromPhase != null 
-                ? $"{fromPhase.Id.Value} {FormatString(fromPhase.Name)} {formattedViewName}" 
+                ? $"{fromPhase.Id.AsLong()} {FormatString(fromPhase.Name)} {formattedViewName}" 
                 : null;
 
             // Decide what new lines to add:

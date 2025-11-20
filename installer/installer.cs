@@ -245,13 +245,13 @@ namespace RevitBalletInstaller
                 if (!Directory.Exists(revitPath))
                     continue;
 
-                // Look for year folders (2017-2030)
+                // Look for year folders (2011-2030)
                 string[] yearDirs = Directory.GetDirectories(revitPath);
 
                 foreach (string yearDir in yearDirs)
                 {
                     string year = Path.GetFileName(yearDir);
-                    if (int.TryParse(year, out int yearNum) && yearNum >= 2017 && yearNum <= 2030)
+                    if (int.TryParse(year, out int yearNum) && yearNum >= 2011 && yearNum <= 2030)
                     {
                         detectedYears.Add(year);
                     }
@@ -1048,7 +1048,7 @@ namespace RevitBalletInstaller
             if (!Directory.Exists(revitPath))
                 return;
 
-            // Look for year folders (2017-2030)
+            // Look for year folders (2011-2030)
             string[] yearDirs = Directory.GetDirectories(revitPath);
 
             foreach (string yearDir in yearDirs)

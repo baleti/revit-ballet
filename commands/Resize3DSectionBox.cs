@@ -3,6 +3,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using System;
 using System.Windows.Forms; // For the input box
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 
 [Transaction(TransactionMode.Manual)]
 public class Resize3DSectionBox : IExternalCommand

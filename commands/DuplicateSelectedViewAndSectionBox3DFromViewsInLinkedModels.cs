@@ -75,7 +75,7 @@ public class DuplicateSelectedViewAndSectionBox3DFromViewsInLinkedModels : IExte
                 { "Type", typeName },
                 { "Document Title", linkedDocument.Title },
                 { "Path", linkPath },
-                { "Link Id", link.Id.Value.ToString() }
+                { "Link Id", link.Id.AsLong().ToString() }
             };
         }).ToList();
 
@@ -92,7 +92,7 @@ public class DuplicateSelectedViewAndSectionBox3DFromViewsInLinkedModels : IExte
 
         // Get selected RevitLinkInstances
         List<RevitLinkInstance> selectedLinks = selectedLinkEntries
-            .Select(entry => doc.GetElement(new ElementId((long)int.Parse(entry["Link Id"].ToString()))) as RevitLinkInstance)
+            .Select(entry => doc.GetElement(int.Parse(entry["Link Id"].ToString()).ToElementId()) as RevitLinkInstance)
             .Where(link => link != null)
             .ToList();
 
@@ -166,8 +166,8 @@ public class DuplicateSelectedViewAndSectionBox3DFromViewsInLinkedModels : IExte
                     { "Sheet Number", sheetNumbers },
                     { "Sheet Name", sheetNames },
                     { "Sheet Folder", sheetFolders },
-                    { "View Id", view.Id.Value.ToString() },
-                    { "Link Instance Id", linkInstance.Id.Value.ToString() },
+                    { "View Id", view.Id.AsLong().ToString() },
+                    { "Link Instance Id", linkInstance.Id.AsLong().ToString() },
                     { "Link Name", linkInstance.Name },
                     { "Link Type", (doc.GetElement(linkInstance.GetTypeId()) as RevitLinkType)?.Name ?? "Unknown Type" }
                 });
@@ -209,8 +209,8 @@ public class DuplicateSelectedViewAndSectionBox3DFromViewsInLinkedModels : IExte
                 foreach (var viewEntry in selectedViewEntries)
                 {
                     // Get the linked view information
-                    ElementId linkedViewId = new ElementId((long)int.Parse(viewEntry["View Id"].ToString()));
-                    ElementId linkInstanceId = new ElementId((long)int.Parse(viewEntry["Link Instance Id"].ToString()));
+                    ElementId linkedViewId = int.Parse(viewEntry["View Id"].ToString()).ToElementId();
+                    ElementId linkInstanceId = int.Parse(viewEntry["Link Instance Id"].ToString()).ToElementId();
                     
                     RevitLinkInstance linkInstance = doc.GetElement(linkInstanceId) as RevitLinkInstance;
                     Document linkedDoc = linkInstance.GetLinkDocument();

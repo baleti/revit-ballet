@@ -111,7 +111,7 @@ public class SelectElementsInViewsByCategories : IExternalCommand
                 .WhereElementIsNotElementType()
                 .Where(e => e.GroupId == ElementId.InvalidElementId)
                 .Where(e => e.Category != null)
-                .Where(e => e.Category.Id.Value != (int)BuiltInCategory.OST_Cameras)
+                .Where(e => e.Category.Id.AsLong() != (int)BuiltInCategory.OST_Cameras)
                 .Select(e => e.Id)
                 .ToList();
             
@@ -129,12 +129,12 @@ public class SelectElementsInViewsByCategories : IExternalCommand
         var viewerElements = elementsNotInGroups
             .Select(id => doc.GetElement(id))
             .Where(e => e != null && e.Category != null &&
-                      e.Category.Id.Value == (int)BuiltInCategory.OST_Viewers)
+                      e.Category.Id.AsLong() == (int)BuiltInCategory.OST_Viewers)
             .ToList();
         
         if (viewerElements.Count > 0)
         {
-            ElementId viewersCatId = new ElementId((long)BuiltInCategory.OST_Viewers);
+            ElementId viewersCatId = ((long)BuiltInCategory.OST_Viewers).ToElementId();
             categoryIds.Add(viewersCatId);
             
             foreach (var viewer in viewerElements)
@@ -173,14 +173,14 @@ public class SelectElementsInViewsByCategories : IExternalCommand
         foreach (ElementId id in categoryIds)
         {
             // Handle OST_Viewers specially for in-view mode
-            if (id.Value == (int)BuiltInCategory.OST_Viewers)
+            if (id.AsLong() == (int)BuiltInCategory.OST_Viewers)
             {
                 
                 // Group the viewer elements by their VIEW_FAMILY parameter
                 var viewers = elementsNotInGroups
                     .Select(eid => doc.GetElement(eid))
                     .Where(e => e != null && e.Category != null &&
-                                e.Category.Id.Value == (int)BuiltInCategory.OST_Viewers &&
+                                e.Category.Id.AsLong() == (int)BuiltInCategory.OST_Viewers &&
                                 !(e is DirectShape))
                     .ToList();
                 
@@ -261,7 +261,7 @@ public class SelectElementsInViewsByCategories : IExternalCommand
             {
                 { "Name", "Views: " + kvp.Key },
                 { "Count", kvp.Value.Count },
-                { "CategoryId", new ElementId((long)BuiltInCategory.OST_Viewers) },
+                { "CategoryId", ((long)BuiltInCategory.OST_Viewers).ToElementId() },
                 { "IsDirectShape", false },
                 { "IsViewerFamily", true },
                 { "ViewFamilyName", kvp.Key },

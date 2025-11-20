@@ -1,3 +1,4 @@
+#if REVIT2021 || REVIT2022 || REVIT2023 || REVIT2024 || REVIT2025 || REVIT2026
 using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
@@ -75,7 +76,7 @@ public static class ExtendedElementDataHelper
             }
             else if (data.ContainsKey("Id") && data["Id"] is int id)
             {
-                element = elementDoc.GetElement(new ElementId((long)id));
+                element = elementDoc.GetElement(id.ToElementId());
             }
             
             if (element != null)
@@ -361,7 +362,7 @@ public class FilterFilledRegions : IExternalCommand
                 }
                 else if (fullData.TryGetValue("Id", out var intId) && intId is int id)
                 {
-                    regularIds.Add(new ElementId((long)id));
+                    regularIds.Add(id.ToElementId());
                 }
             }
 
@@ -425,3 +426,5 @@ public class FilterFilledRegions : IExternalCommand
         }
     }
 }
+
+#endif

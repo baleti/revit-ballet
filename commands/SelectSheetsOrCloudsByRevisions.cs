@@ -1,3 +1,4 @@
+#if REVIT2021 || REVIT2022 || REVIT2023 || REVIT2024 || REVIT2025 || REVIT2026
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -109,7 +110,7 @@ public class SelectSheetsOrCloudsByRevisions : IExternalCommand
                 { "All Rev Descriptions", allRevDescriptions },
                 { "All Issued To", allIssuedTo },
                 { "All Issued By", allIssuedBy },
-                { "Element ID", sheet.Id.Value }
+                { "Element ID", sheet.Id.AsLong() }
             });
         }
 
@@ -174,7 +175,7 @@ public class SelectSheetsOrCloudsByRevisions : IExternalCommand
                 { "All Rev Descriptions", revDescription },
                 { "All Issued To", issuedTo },
                 { "All Issued By", issuedBy },
-                { "Element ID", cloud.Id.Value }
+                { "Element ID", cloud.Id.AsLong() }
             });
         }
 
@@ -203,7 +204,7 @@ public class SelectSheetsOrCloudsByRevisions : IExternalCommand
 
             string elementType = selectedElementEntry["Element Type"].ToString();
             int elementId = Convert.ToInt32(selectedElementEntry["Element ID"]);
-            ElementId revitElementId = new ElementId((long)elementId);
+            ElementId revitElementId = elementId.ToElementId();
 
             if (elementType == "Sheet")
             {
@@ -241,3 +242,5 @@ public class SelectSheetsOrCloudsByRevisions : IExternalCommand
         return Result.Succeeded;
     }
 }
+
+#endif

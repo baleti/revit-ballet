@@ -23,8 +23,8 @@ public class FilterDoors : IExternalCommand
 
         List<Element> selectedOpenings = selectedIds
             .Select(id => doc.GetElement(id))
-            .Where(e => e?.Category?.Id.Value == (int)BuiltInCategory.OST_Doors ||
-                       e?.Category?.Id.Value == (int)BuiltInCategory.OST_Windows)
+            .Where(e => e?.Category?.Id.AsLong() == (int)BuiltInCategory.OST_Doors ||
+                       e?.Category?.Id.AsLong() == (int)BuiltInCategory.OST_Windows)
             .ToList();
 
         if (!selectedOpenings.Any())
@@ -60,7 +60,7 @@ public class FilterDoors : IExternalCommand
             ElementType openingType = doc.GetElement(opening.GetTypeId()) as ElementType;
 
             // Built-in parameters
-            openingProperties["Element Id"] = opening.Id.Value;
+            openingProperties["Element Id"] = opening.Id.AsLong();
             openingProperties["Category"] = opening.Category.Name;
             openingProperties["Family Name"] = openingType?.FamilyName ?? "";
             openingProperties["Instance Name"] = opening.Name;
@@ -79,12 +79,12 @@ public class FilterDoors : IExternalCommand
             openingProperties["Room To"] = openingInst.ToRoom?.Name ?? "";
             
             // Width and Height parameters differ between doors and windows
-            if (opening.Category.Id.Value == (int)BuiltInCategory.OST_Doors)
+            if (opening.Category.Id.AsLong() == (int)BuiltInCategory.OST_Doors)
             {
                 openingProperties["Width"] = openingType?.get_Parameter(BuiltInParameter.DOOR_WIDTH)?.AsDouble() ?? 0.0;
                 openingProperties["Height"] = openingType?.get_Parameter(BuiltInParameter.DOOR_HEIGHT)?.AsDouble() ?? 0.0;
             }
-            else if (opening.Category.Id.Value == (int)BuiltInCategory.OST_Windows)
+            else if (opening.Category.Id.AsLong() == (int)BuiltInCategory.OST_Windows)
             {
                 openingProperties["Width"] = openingType?.get_Parameter(BuiltInParameter.WINDOW_WIDTH)?.AsDouble() ?? 0.0;
                 openingProperties["Height"] = openingType?.get_Parameter(BuiltInParameter.WINDOW_HEIGHT)?.AsDouble() ?? 0.0;
@@ -115,7 +115,7 @@ public class FilterDoors : IExternalCommand
         {
             var finalSelection = selectedOpenings
                 .Where(o => selectedFromGrid.Any(s => 
-                    (int)s["Element Id"] == o.Id.Value))
+                    (int)s["Element Id"] == o.Id.AsLong()))
                 .Select(o => o.Id)
                 .ToList();
             

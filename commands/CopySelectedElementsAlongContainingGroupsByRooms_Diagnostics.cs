@@ -1,3 +1,4 @@
+#if REVIT2021 || REVIT2022 || REVIT2023 || REVIT2024 || REVIT2025 || REVIT2026
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -231,3 +232,5 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
         catch { }
     }
 }
+
+#endif

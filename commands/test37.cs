@@ -9,6 +9,7 @@ using Autodesk.Revit.DB.Architecture;
 using Autodesk.Revit.UI;
 using Autodesk.Revit.ApplicationServices;
 
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace RoomGraphPlugin
 {
     [Transaction(TransactionMode.Manual)]
@@ -558,8 +559,8 @@ namespace RoomGraphPlugin
 
         private string GetConnectionKey(ElementId id1, ElementId id2)
         {
-            int val1 = (int)id1.Value;
-            int val2 = (int)id2.Value;
+            int val1 = (int)id1.AsLong();
+            int val2 = (int)id2.AsLong();
             return val1 < val2 ? $"{val1}_{val2}" : $"{val2}_{val1}";
         }
     }

@@ -97,7 +97,7 @@ public class ViewsContainingElement : IExternalCommand
                     { "View Type", view.ViewType.ToString() },
                     { "Sheet Number", sheetNumbers },
                     { "Sheet Name", sheetNames },
-                    { "View Id", view.Id.Value.ToString() }
+                    { "View Id", view.Id.AsLong().ToString() }
                 });
             }
         }

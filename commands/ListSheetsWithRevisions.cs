@@ -1,3 +1,4 @@
+#if REVIT2021 || REVIT2022 || REVIT2023 || REVIT2024 || REVIT2025 || REVIT2026
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using Autodesk.Revit.Attributes;
@@ -97,3 +98,5 @@ public class ListSheetsWithRevisions : IExternalCommand
         }
     }
 }
+
+#endif

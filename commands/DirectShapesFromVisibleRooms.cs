@@ -1,3 +1,4 @@
+#if REVIT2021 || REVIT2022 || REVIT2023 || REVIT2024 || REVIT2025 || REVIT2026
 using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Architecture;
@@ -26,7 +27,7 @@ public class DirectShapesFromVisibleRooms : IExternalCommand
         // -------------------------------------------------- 2. DataGrid picker
         var table = rooms.Select(r => new Dictionary<string, object>
         {
-            ["Id"]     = r.Id.Value,
+            ["Id"]     = r.Id.AsLong(),
             ["Number"] = r.Number,
             ["Name"]   = StripNumber(r.Name, r.Number),                // display name without number
             ["Level"]  = (doc.GetElement(r.LevelId) as Level)?.Name ?? "",
@@ -38,7 +39,7 @@ public class DirectShapesFromVisibleRooms : IExternalCommand
         if (pick == null || pick.Count == 0) return Result.Cancelled;
 
         var pickedIds = pick.Select(d => (int)d["Id"]).ToHashSet();
-        var chosen    = rooms.Where(r => pickedIds.Contains((int)r.Id.Value)).ToList();
+        var chosen    = rooms.Where(r => pickedIds.Contains((int)r.Id.AsLong())).ToList();
         if (chosen.Count == 0)
         {
             message = "Selected room not found.";
@@ -184,3 +185,5 @@ public class DirectShapesFromVisibleRooms : IExternalCommand
         return clean.Length > 250 ? clean.Substring(0, 250) : clean;
     }
 }
+
+#endif

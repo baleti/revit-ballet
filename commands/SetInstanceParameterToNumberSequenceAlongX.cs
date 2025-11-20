@@ -5,6 +5,7 @@ using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using System.Windows.Forms;
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 
 [Transaction(TransactionMode.Manual)]
 public class SetInstanceParameterToNumberSequenceAlongX : IExternalCommand

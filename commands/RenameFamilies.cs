@@ -7,6 +7,7 @@ using Autodesk.Revit.Attributes;
 using WinForms = System.Windows.Forms;
 using Drawing = System.Drawing;
 
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace MyRevitAddin
 {
     /// <summary>
@@ -41,7 +42,7 @@ namespace MyRevitAddin
             {
                 var row = new Dictionary<string, object>
                 {
-                    { "Id", fam.Id.Value },
+                    { "Id", fam.Id.AsLong() },
                     { "Name", fam.Name }
                 };
                 gridEntries.Add(row);
@@ -58,7 +59,7 @@ namespace MyRevitAddin
             foreach (var row in selectedRows)
             {
                 int idVal = Convert.ToInt32(row["Id"]);
-                ElementId id = new ElementId((long)idVal);
+                ElementId id = idVal.ToElementId();
                 Family fam = doc.GetElement(id) as Family;
                 if (fam != null)
                 {

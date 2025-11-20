@@ -1,4 +1,5 @@
 // MoveSelectedToCentroid.cs  – Revit 2024 / .NET 4.8 / C# 7.3
+#if REVIT2021 || REVIT2022 || REVIT2023 || REVIT2024 || REVIT2025 || REVIT2026
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -9,6 +10,7 @@ using Autodesk.Revit.UI;
 using RevitBallet.Commands;
 using WF = System.Windows.Forms;
 
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace MoveSelectedToCentroid
 {
     [Transaction(TransactionMode.Manual)]
@@ -268,3 +270,5 @@ namespace MoveSelectedToCentroid
         }
     }
 }
+
+#endif

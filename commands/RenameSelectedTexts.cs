@@ -9,6 +9,7 @@ using Autodesk.Revit.UI;
 using WinForms = System.Windows.Forms;
 using Drawing = System.Drawing;
 
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace MyRevitAddin
 {
     [Transaction(TransactionMode.Manual)]

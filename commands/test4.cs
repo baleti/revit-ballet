@@ -133,7 +133,7 @@ public class MapLinesToSheet : IExternalCommand
     private Transform GetViewToSheetTransform(Viewport viewport, View view)
     {
         // Get the projection transform from the viewport
-        Transform projectionTransform = viewport.GetProjectionToSheetTransform();
+        Transform projectionTransform = viewport.GetProjectionToSheetTransformCompat();
 
         // Get the rotation of the viewport (if any)
         double rotationAngle = -viewport.GetBoxCenter().AngleTo(XYZ.BasisX);

@@ -1,4 +1,5 @@
 ﻿// Revit 2024 API – external command to numerically change the camera focal length of a
+#if REVIT2021 || REVIT2022 || REVIT2023 || REVIT2024 || REVIT2025 || REVIT2026
 // *perspective* 3‑D view. Works whether the crop box is displayed or not: the
 // command temporarily enables it (if it was off), scales it, then restores the
 // original display state.
@@ -14,6 +15,7 @@ using Autodesk.Revit.UI;
 using WF = System.Windows.Forms; // alias WinForms to avoid API name clashes
 #endregion
 
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace SampleCommands
 {
     [Transaction(TransactionMode.Manual)]
@@ -205,3 +207,5 @@ namespace SampleCommands
         }
     }
 }
+
+#endif

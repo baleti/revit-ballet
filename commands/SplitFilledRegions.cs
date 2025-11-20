@@ -5,6 +5,7 @@ using Autodesk.Revit.UI.Selection;
 using System.Collections.Generic;
 using System.Linq;
 
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace RevitCommands
 {
     [Transaction(TransactionMode.Manual)]

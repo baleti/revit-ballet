@@ -110,7 +110,7 @@ public static class ElementDataHelper
     private static Dictionary<string, object> GetElementDataDictionary(Element element, Document elementDoc, string linkName, RevitLinkInstance linkInstance, ElementId linkedElementId, bool includeParameters, List<Element> scopeBoxes)
     {
         string groupName = string.Empty;
-        if (element.GroupId != null && element.GroupId != ElementId.InvalidElementId && element.GroupId.Value != -1)
+        if (element.GroupId != null && element.GroupId != ElementId.InvalidElementId && element.GroupId.AsLong() != -1)
         {
             if (elementDoc.GetElement(element.GroupId) is Group g)
                 groupName = g.Name;
@@ -129,7 +129,7 @@ public static class ElementDataHelper
             ["Category"] = element.Category?.Name ?? string.Empty,
             ["Group"] = groupName,
             ["OwnerView"] = ownerViewName,
-            ["Id"] = element.Id.Value,
+            ["Id"] = element.Id.AsLong(),
             ["IsLinked"] = !string.IsNullOrEmpty(linkName),
             ["LinkName"] = linkName ?? string.Empty,
             ["ElementIdObject"] = element.Id, // Store full ElementId for selection
@@ -367,7 +367,7 @@ public abstract class FilterElementsBase : IExternalCommand
                 // Handle backward compatibility - if someone stored just the integer ID
                 else if (fullData.TryGetValue("Id", out var intId) && intId is int id)
                 {
-                    regularIds.Add(new ElementId((long)id));
+                    regularIds.Add(id.ToElementId());
                 }
             }
 

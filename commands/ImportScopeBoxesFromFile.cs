@@ -6,6 +6,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using Autodesk.Revit.ApplicationServices;
 
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace RevitCommands
 {
     [Transaction(TransactionMode.Manual)]
@@ -26,13 +27,13 @@ namespace RevitCommands
                 Document currentDoc = uiDoc.Document;
 
                 // Prompt user to select a Revit file
-                Microsoft.Win32.OpenFileDialog openFileDialog = new Microsoft.Win32.OpenFileDialog
+                System.Windows.Forms.OpenFileDialog openFileDialog = new System.Windows.Forms.OpenFileDialog
                 {
                     Filter = "Revit Files (*.rvt)|*.rvt",
                     Title = "Select a Revit File to Import Scope Boxes From"
                 };
 
-                if (openFileDialog.ShowDialog() != true)
+                if (openFileDialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
                 {
                     return Result.Cancelled;
                 }
@@ -107,7 +108,7 @@ namespace RevitCommands
                         {
                             Element elem = currentDoc.GetElement(id);
                             if (elem != null && elem.Category != null && 
-                                elem.Category.Id.Value == (int)BuiltInCategory.OST_VolumeOfInterest)
+                                elem.Category.Id.AsLong() == (int)BuiltInCategory.OST_VolumeOfInterest)
                             {
                                 validScopeBoxIds.Add(id);
                             }

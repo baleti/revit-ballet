@@ -1,3 +1,4 @@
+#if REVIT2021 || REVIT2022 || REVIT2023 || REVIT2024 || REVIT2025 || REVIT2026
 using System;
 using System.Linq;
 using System.Collections.Generic;
@@ -5,6 +6,7 @@ using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace YourNamespace
 {
     [Transaction(TransactionMode.Manual)]
@@ -35,7 +37,7 @@ namespace YourNamespace
                 // We'll put "Title" and "SheetFolder" first and "Id" as the last column.
                 entries.Add(new Dictionary<string, object>
                 {
-                    { "Id", sheet.Id.Value },
+                    { "Id", sheet.Id.AsLong() },
                     { "Title", title },
                     { "SheetFolder", sheetFolder }
                 });
@@ -79,7 +81,7 @@ namespace YourNamespace
                 {
                     if (entry.ContainsKey("Id") && int.TryParse(entry["Id"].ToString(), out int sheetIdValue))
                     {
-                        ElementId sheetId = new ElementId((long)sheetIdValue);
+                        ElementId sheetId = sheetIdValue.ToElementId();
                         ViewSheet originalSheet = doc.GetElement(sheetId) as ViewSheet;
                         if (originalSheet == null)
                             continue;
@@ -212,7 +214,7 @@ namespace YourNamespace
                             .WhereElementIsNotElementType()
                             .Where(e =>
                                 !(e is Viewport) &&
-                                !(e.Category != null && e.Category.Id.Value == (int)BuiltInCategory.OST_TitleBlocks))
+                                !(e.Category != null && e.Category.Id.AsLong() == (int)BuiltInCategory.OST_TitleBlocks))
                             .Select(e => e.Id)
                             .ToList();
 
@@ -385,3 +387,5 @@ namespace YourNamespace
         }
     }
 }
+
+#endif

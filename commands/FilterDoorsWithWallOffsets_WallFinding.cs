@@ -4,6 +4,7 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Architecture;
 
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace FilterDoorsWithWallOffsets
 {
     public static class WallFinding

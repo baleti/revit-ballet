@@ -3,6 +3,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using Autodesk.Revit.UI.Selection;
 using System.Windows.Forms; // Needed for Clipboard.SetText
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 
 [Transaction(TransactionMode.Manual)]
 public class CopyToClipboardTypeNameOfElementInLinkedModel : IExternalCommand

@@ -388,7 +388,7 @@ public abstract class SelectCategoriesInSelectedLinkedModelsBase : IExternalComm
                 foreach (string familyName in viewFamilies)
                 {
                     allLinkedCategories.Add(new LinkedCategoryWrapper(
-                        new ElementId((long)BuiltInCategory.OST_Viewers), 
+                        ((long)BuiltInCategory.OST_Viewers).ToElementId(), 
                         "Views: " + familyName, 
                         linkName, 
                         linkInstance));
@@ -430,7 +430,7 @@ public abstract class SelectCategoriesInSelectedLinkedModelsBase : IExternalComm
             List<Element> elementsToCheck;
             
             // Handle split Views categories
-            if (selectedCategory.CategoryId.Value == (int)BuiltInCategory.OST_Viewers &&
+            if (selectedCategory.CategoryId.AsLong() == (int)BuiltInCategory.OST_Viewers &&
                 selectedCategory.CategoryName.StartsWith("Views: "))
             {
                 string familyName = selectedCategory.CategoryName.Substring("Views: ".Length);
@@ -442,7 +442,7 @@ public abstract class SelectCategoriesInSelectedLinkedModelsBase : IExternalComm
             else
             {
                 elementsToCheck = categoryCollector
-                    .OfCategory((BuiltInCategory)selectedCategory.CategoryId.Value)
+                    .OfCategory((BuiltInCategory)selectedCategory.CategoryId.AsLong())
                     .ToList();
             }
             

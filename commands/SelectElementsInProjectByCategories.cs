@@ -92,7 +92,7 @@ public class SelectElementsInProjectByCategories : IExternalCommand
                     categoryList.Add(entry);
                 }
             }
-            else if (id.Value == (int)BuiltInCategory.OST_Viewers)
+            else if (id.AsLong() == (int)BuiltInCategory.OST_Viewers)
             {
                 // Only add if it has regular elements (not just Direct Shapes)
                 bool hasRegularElements = regularElementsByCategory.ContainsKey(id) && 

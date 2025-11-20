@@ -37,7 +37,7 @@ public class SelectElementsWithGraphicOverridesInCurrentView : IExternalCommand
             foreach (Element elem in collector)
             {
                 // Skip view-specific/invalid categories or negative ids
-                if (elem.Category == null || elem.Id.Value < 0)
+                if (elem.Category == null || elem.Id.AsLong() < 0)
                     continue;
 
                 var ogs = activeView.GetElementOverrides(elem.Id);
@@ -69,17 +69,17 @@ public class SelectElementsWithGraphicOverridesInCurrentView : IExternalCommand
     {
         return settings.ProjectionLineColor.IsValid ||
                settings.ProjectionLineWeight != -1 ||
-               settings.ProjectionLinePatternId.Value != -1 ||
+               settings.ProjectionLinePatternId.AsLong() != -1 ||
                settings.CutLineColor.IsValid ||
                settings.CutLineWeight != -1 ||
-               settings.CutLinePatternId.Value != -1 ||
-               settings.SurfaceForegroundPatternId.Value != -1 ||
+               settings.CutLinePatternId.AsLong() != -1 ||
+               settings.SurfaceForegroundPatternId.AsLong() != -1 ||
                settings.SurfaceForegroundPatternColor.IsValid ||
-               settings.SurfaceBackgroundPatternId.Value != -1 ||
+               settings.SurfaceBackgroundPatternId.AsLong() != -1 ||
                settings.SurfaceBackgroundPatternColor.IsValid ||
-               settings.CutForegroundPatternId.Value != -1 ||
+               settings.CutForegroundPatternId.AsLong() != -1 ||
                settings.CutForegroundPatternColor.IsValid ||
-               settings.CutBackgroundPatternId.Value != -1 ||
+               settings.CutBackgroundPatternId.AsLong() != -1 ||
                settings.CutBackgroundPatternColor.IsValid ||
                settings.Transparency != 0 ||
                settings.Halftone ||

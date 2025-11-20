@@ -10,6 +10,7 @@ using Autodesk.Revit.UI;
 // Alias Windows Forms namespace to avoid conflicts with Revit types.
 using WinForms = System.Windows.Forms;
 
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace OffsetCropRegion
 {
     [Transaction(TransactionMode.Manual)]

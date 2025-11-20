@@ -3,6 +3,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using Autodesk.Revit.UI.Selection;
 
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace RevitCommands
 {
     [Transaction(TransactionMode.Manual)]
@@ -45,7 +46,7 @@ namespace RevitCommands
         {
             public bool AllowElement(Element elem)
             {
-                return elem is Group && elem.Category != null && elem.Category.Id.Value == (int)BuiltInCategory.OST_IOSModelGroups;
+                return elem is Group && elem.Category != null && elem.Category.Id.AsLong() == (int)BuiltInCategory.OST_IOSModelGroups;
             }
 
             public bool AllowReference(Reference reference, XYZ position)

@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows.Forms;
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 
 [Transaction(TransactionMode.Manual)]
 public class SelectElementsInSelectedGroups : IExternalCommand
@@ -49,7 +50,7 @@ public class SelectElementsInSelectedGroups : IExternalCommand
     {
         if (element is FilledRegion) return "Filled Region";
         if (element is DetailLine) return "Detail Line";
-        if (element is FamilyInstance fi && fi.Category?.Id.Value == (int)BuiltInCategory.OST_DetailComponents)
+        if (element is FamilyInstance fi && fi.Category?.Id.AsLong() == (int)BuiltInCategory.OST_DetailComponents)
             return "Detail Component";
         if (element is FamilyInstance fi2)
         {
@@ -120,7 +121,7 @@ public class SelectElementsInSelectedGroups : IExternalCommand
                             { "Family/Type", familyName != "N/A" ? familyName : typeName },
                             { "Group", group.Name },
                             { "Name", string.IsNullOrEmpty(member.Name) ? "(unnamed)" : member.Name },
-                            { "_elementId", member.Id.Value }  // Hidden field for selection
+                            { "_elementId", member.Id.AsLong() }  // Hidden field for selection
                         });
                     }
                 }
@@ -149,7 +150,7 @@ public class SelectElementsInSelectedGroups : IExternalCommand
             {
                 // Create a list of ElementIds from selected entries
                 List<ElementId> selectedIds = selectedEntries
-                    .Select(entry => new ElementId((long)entry["_elementId"]))
+                    .Select(entry => ((long)entry["_elementId"]).ToElementId())
                     .ToList();
 
                 // Select the elements in Revit

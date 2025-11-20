@@ -1,3 +1,4 @@
+#if REVIT2021 || REVIT2022 || REVIT2023 || REVIT2024 || REVIT2025 || REVIT2026
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -82,7 +83,7 @@ public class FilterDimensions : IExternalCommand
             Dictionary<string, object> props = new Dictionary<string, object>();
 
             // Basic properties.
-            props["Element Id"] = dim.Id.Value;
+            props["Element Id"] = dim.Id.AsLong();
             props["Name"] = dim.Name;
 
             // Retrieve Owner View, Level, Sheet Number, and Sheet Name.
@@ -274,7 +275,7 @@ public class FilterDimensions : IExternalCommand
         if (selectedFromGrid?.Any() == true)
         {
             List<ElementId> selectedDimensionIds = selectedFromGrid
-                .Select(dict => new ElementId((long)dict["Element Id"]))
+                .Select(dict => ((long)dict["Element Id"]).ToElementId())
                 .ToList();
             uidoc.SetSelectionIds(selectedDimensionIds);
         }
@@ -304,3 +305,5 @@ public class FilterDimensions : IExternalCommand
         return null;
     }
 }
+
+#endif
