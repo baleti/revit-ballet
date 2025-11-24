@@ -39,6 +39,7 @@ namespace RevitBalletInstaller
 
         private readonly List<RevitInstallation> installations = new List<RevitInstallation>();
         private readonly List<InstallationResult> installationResults = new List<InstallationResult>();
+        private Dictionary<string, FileMapping> fileMappings = null;
 
         private enum InstallState
         {
@@ -47,11 +48,21 @@ namespace RevitBalletInstaller
             UpdatedNeedsRestart
         }
 
+        private class FileMapping
+        {
+            public string ResourceName { get; set; }
+            public string TargetFileName { get; set; }
+            public List<string> Years { get; set; }
+        }
+
         public void Run()
         {
             try
             {
                 bool alreadyInstalled = IsInstalled();
+
+                // Load file mapping from embedded resources
+                LoadFileMapping();
 
                 DetectRevitInstallations();
 
@@ -441,23 +452,50 @@ namespace RevitBalletInstaller
             // This method throws IOException if any file is locked
             var assembly = Assembly.GetExecutingAssembly();
 
-            // Look for dependency DLLs for this year
-            string yearPattern = $"_{year}.";
-            var dependencyResources = assembly.GetManifestResourceNames()
-                .Where(r => r.Contains(yearPattern) && r.EndsWith(".dll") && !r.EndsWith("revit-ballet.dll"))
-                .ToList();
-
-            foreach (var depResource in dependencyResources)
+            if (fileMappings != null && fileMappings.Count > 0)
             {
-                // Extract filename (e.g., installer._2024.Newtonsoft.Json.dll -> Newtonsoft.Json.dll)
-                int yearDotIndex = depResource.IndexOf(yearPattern);
-                if (yearDotIndex < 0) continue;
+                // Use file mapping to extract deduplicated dependencies
+                foreach (var mapping in fileMappings.Values)
+                {
+                    // Skip if this file doesn't apply to this year
+                    if (!mapping.Years.Contains(year))
+                        continue;
 
-                string fileName = depResource.Substring(yearDotIndex + yearPattern.Length);
-                string targetPath = Path.Combine(targetFolder, fileName);
+                    // Skip the main DLL (handled separately)
+                    if (mapping.TargetFileName == "revit-ballet.dll")
+                        continue;
 
-                // This will throw if file is locked
-                ExtractResourceSafe(depResource, targetPath);
+                    // Find the resource with this name
+                    var resourceName = assembly.GetManifestResourceNames()
+                        .FirstOrDefault(r => r.EndsWith(mapping.ResourceName));
+
+                    if (resourceName == null)
+                        continue;
+
+                    string targetPath = Path.Combine(targetFolder, mapping.TargetFileName);
+
+                    // This will throw if file is locked
+                    ExtractResourceSafe(resourceName, targetPath);
+                }
+            }
+            else
+            {
+                // Fallback to old method if no mapping file
+                string yearPattern = $"_{year}.";
+                var dependencyResources = assembly.GetManifestResourceNames()
+                    .Where(r => r.Contains(yearPattern) && r.EndsWith(".dll") && !r.EndsWith("revit-ballet.dll"))
+                    .ToList();
+
+                foreach (var depResource in dependencyResources)
+                {
+                    int yearDotIndex = depResource.IndexOf(yearPattern);
+                    if (yearDotIndex < 0) continue;
+
+                    string fileName = depResource.Substring(yearDotIndex + yearPattern.Length);
+                    string targetPath = Path.Combine(targetFolder, fileName);
+
+                    ExtractResourceSafe(depResource, targetPath);
+                }
             }
         }
 
@@ -465,31 +503,65 @@ namespace RevitBalletInstaller
         {
             var assembly = Assembly.GetExecutingAssembly();
 
-            // Look for dependency DLLs for this year
-            string yearPattern = $"_{year}.";
-            var dependencyResources = assembly.GetManifestResourceNames()
-                .Where(r => r.Contains(yearPattern) && r.EndsWith(".dll") && !r.EndsWith("revit-ballet.dll"))
-                .ToList();
-
-            foreach (var depResource in dependencyResources)
+            if (fileMappings != null && fileMappings.Count > 0)
             {
-                // Extract filename (e.g., installer._2024.Newtonsoft.Json.dll -> Newtonsoft.Json.dll)
-                int lastDot = depResource.LastIndexOf('.');
-                if (lastDot <= 0) continue;
-
-                int yearDotIndex = depResource.IndexOf(yearPattern);
-                if (yearDotIndex < 0) continue;
-
-                string fileName = depResource.Substring(yearDotIndex + yearPattern.Length);
-                string targetPath = Path.Combine(targetFolder, fileName);
-
-                try
+                // Use file mapping to extract deduplicated dependencies
+                foreach (var mapping in fileMappings.Values)
                 {
-                    ExtractResource(depResource, targetPath);
+                    // Skip if this file doesn't apply to this year
+                    if (!mapping.Years.Contains(year))
+                        continue;
+
+                    // Skip the main DLL (handled separately)
+                    if (mapping.TargetFileName == "revit-ballet.dll")
+                        continue;
+
+                    // Find the resource with this name
+                    var resourceName = assembly.GetManifestResourceNames()
+                        .FirstOrDefault(r => r.EndsWith(mapping.ResourceName));
+
+                    if (resourceName == null)
+                        continue;
+
+                    string targetPath = Path.Combine(targetFolder, mapping.TargetFileName);
+
+                    try
+                    {
+                        ExtractResource(resourceName, targetPath);
+                    }
+                    catch
+                    {
+                        // Non-critical - continue
+                    }
                 }
-                catch
+            }
+            else
+            {
+                // Fallback to old method if no mapping file
+                string yearPattern = $"_{year}.";
+                var dependencyResources = assembly.GetManifestResourceNames()
+                    .Where(r => r.Contains(yearPattern) && r.EndsWith(".dll") && !r.EndsWith("revit-ballet.dll"))
+                    .ToList();
+
+                foreach (var depResource in dependencyResources)
                 {
-                    // Non-critical - continue
+                    int lastDot = depResource.LastIndexOf('.');
+                    if (lastDot <= 0) continue;
+
+                    int yearDotIndex = depResource.IndexOf(yearPattern);
+                    if (yearDotIndex < 0) continue;
+
+                    string fileName = depResource.Substring(yearDotIndex + yearPattern.Length);
+                    string targetPath = Path.Combine(targetFolder, fileName);
+
+                    try
+                    {
+                        ExtractResource(depResource, targetPath);
+                    }
+                    catch
+                    {
+                        // Non-critical - continue
+                    }
                 }
             }
         }
@@ -528,27 +600,62 @@ namespace RevitBalletInstaller
                 string runtimeDllPath = Path.Combine(runtimeBinDir, "revit-ballet.dll");
                 ExtractResource(dllResource, runtimeDllPath);
 
-                // Extract dependencies to runtime location
-                string yearPattern = $"_{installation.Year}.";
-                var dependencyResources = assembly.GetManifestResourceNames()
-                    .Where(r => r.Contains(yearPattern) && r.EndsWith(".dll") && !r.EndsWith("revit-ballet.dll"))
-                    .ToList();
-
-                foreach (var depResource in dependencyResources)
+                // Extract dependencies to runtime location using file mapping or fallback
+                if (fileMappings != null && fileMappings.Count > 0)
                 {
-                    int yearDotIndex = depResource.IndexOf(yearPattern);
-                    if (yearDotIndex < 0) continue;
-
-                    string fileName = depResource.Substring(yearDotIndex + yearPattern.Length);
-                    string targetPath = Path.Combine(runtimeBinDir, fileName);
-
-                    try
+                    foreach (var mapping in fileMappings.Values)
                     {
-                        ExtractResource(depResource, targetPath);
+                        // Skip if this file doesn't apply to this year
+                        if (!mapping.Years.Contains(installation.Year))
+                            continue;
+
+                        // Skip the main DLL (handled above)
+                        if (mapping.TargetFileName == "revit-ballet.dll")
+                            continue;
+
+                        // Find the resource with this name
+                        var resourceName = assembly.GetManifestResourceNames()
+                            .FirstOrDefault(r => r.EndsWith(mapping.ResourceName));
+
+                        if (resourceName == null)
+                            continue;
+
+                        string targetPath = Path.Combine(runtimeBinDir, mapping.TargetFileName);
+
+                        try
+                        {
+                            ExtractResource(resourceName, targetPath);
+                        }
+                        catch
+                        {
+                            // Non-critical - continue
+                        }
                     }
-                    catch
+                }
+                else
+                {
+                    // Fallback to old method
+                    string yearPattern = $"_{installation.Year}.";
+                    var dependencyResources = assembly.GetManifestResourceNames()
+                        .Where(r => r.Contains(yearPattern) && r.EndsWith(".dll") && !r.EndsWith("revit-ballet.dll"))
+                        .ToList();
+
+                    foreach (var depResource in dependencyResources)
                     {
-                        // Non-critical - continue
+                        int yearDotIndex = depResource.IndexOf(yearPattern);
+                        if (yearDotIndex < 0) continue;
+
+                        string fileName = depResource.Substring(yearDotIndex + yearPattern.Length);
+                        string targetPath = Path.Combine(runtimeBinDir, fileName);
+
+                        try
+                        {
+                            ExtractResource(depResource, targetPath);
+                        }
+                        catch
+                        {
+                            // Non-critical - continue
+                        }
                     }
                 }
             }
@@ -567,6 +674,54 @@ namespace RevitBalletInstaller
                 }
             }
             return null;
+        }
+
+        private void LoadFileMapping()
+        {
+            fileMappings = new Dictionary<string, FileMapping>();
+
+            var assembly = Assembly.GetExecutingAssembly();
+            var mappingResource = assembly.GetManifestResourceNames()
+                .FirstOrDefault(r => r.EndsWith("file-mapping.txt"));
+
+            if (mappingResource == null)
+            {
+                // No mapping file found - this is fine, might be an old-style installer
+                return;
+            }
+
+            string mappingContent = GetResourceText(mappingResource);
+            if (string.IsNullOrEmpty(mappingContent))
+                return;
+
+            // Parse the mapping file
+            var lines = mappingContent.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+
+            foreach (var line in lines)
+            {
+                // Skip comments and empty lines
+                if (line.Trim().StartsWith("#") || string.IsNullOrWhiteSpace(line))
+                    continue;
+
+                // Format: ResourceName|TargetFileName|Years (comma-separated)
+                var parts = line.Split('|');
+                if (parts.Length != 3)
+                    continue;
+
+                string resourceName = parts[0].Trim();
+                string targetFileName = parts[1].Trim();
+                string yearsStr = parts[2].Trim();
+
+                var years = yearsStr.Split(',').Select(y => y.Trim()).ToList();
+
+                // Index by resource name for easy lookup
+                fileMappings[resourceName] = new FileMapping
+                {
+                    ResourceName = resourceName,
+                    TargetFileName = targetFileName,
+                    Years = years
+                };
+            }
         }
 
         private bool ModifyKeyboardShortcuts(RevitInstallation installation)

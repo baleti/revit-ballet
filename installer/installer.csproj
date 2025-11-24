@@ -1,24 +1,29 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <!-- Default to Revit 2024 if no year specified -->
-    <RevitYear Condition="'$(RevitYear)' == ''">2024</RevitYear>
-
     <OutputType>WinExe</OutputType>
     <TargetFramework>net48</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
-    <AssemblyName>installer_$(RevitYear)</AssemblyName>
+    <AssemblyName>installer</AssemblyName>
     <DebugType>none</DebugType>
     <ApplicationIcon>revit-ballet-logo.ico</ApplicationIcon>
     <GenerateSupportedRuntime>false</GenerateSupportedRuntime>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
 
-    <!-- Output to version-specific directory -->
-    <OutputPath>bin\$(RevitYear)\</OutputPath>
+    <!-- Output to unified Release directory -->
+    <OutputPath>bin\Release\</OutputPath>
   </PropertyGroup>
   <ItemGroup>
     <EmbeddedResource Include="revit-ballet-logo.png" Condition="Exists('revit-ballet-logo.png')"/>
     <EmbeddedResource Include="revit-ballet.addin"/>
-    <EmbeddedResource Include="../commands/bin/$(RevitYear)/*"/>
     <EmbeddedResource Include="KeyboardShortcuts.xml"/>
+
+    <!-- Embed all deduplicated resources from resources directory -->
+    <EmbeddedResource Include="resources\*" Condition="Exists('resources')"/>
   </ItemGroup>
+
+  <!-- Run Python script to prepare resources before build -->
+  <Target Name="PrepareDeduplicatedResources" BeforeTargets="BeforeCompile;AssignTargetPaths">
+    <Message Text="Preparing deduplicated resources..." Importance="high" />
+    <Exec Command="python3 build.py" WorkingDirectory="$(MSBuildProjectDirectory)" />
+  </Target>
 </Project>
