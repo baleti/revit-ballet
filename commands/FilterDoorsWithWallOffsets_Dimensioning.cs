@@ -22,6 +22,11 @@ namespace FilterDoorsWithWallOffsets
         {
             List<DimensionInfo> calculatedDistances = new List<DimensionInfo>();
 
+#if REVIT2017
+            // FamilyInstanceReferenceType not available in Revit 2017
+            // This dimensioning feature is not supported in 2017
+            return calculatedDistances;
+#else
             Reference doorLeft = door.GetReferences(FamilyInstanceReferenceType.Left)?.FirstOrDefault();
             Reference doorRight = door.GetReferences(FamilyInstanceReferenceType.Right)?.FirstOrDefault();
 
@@ -192,6 +197,7 @@ namespace FilterDoorsWithWallOffsets
                     continue;
                 }
             }
+#endif
             return calculatedDistances;
         }
 

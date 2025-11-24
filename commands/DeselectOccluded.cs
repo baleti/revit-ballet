@@ -265,7 +265,12 @@ public class DeselectOccluded : IExternalCommand
                     try
                     {
                         // Check if element passes filter
+#if REVIT2017 || REVIT2018
+                        // GetElementFilter() not available in Revit 2017-2018
+                        ElementFilter elementFilter = null;
+#else
                         ElementFilter elementFilter = filter.GetElementFilter();
+#endif
                         if (elementFilter != null)
                         {
                             bool passes = elementFilter.PassesFilter(elem);

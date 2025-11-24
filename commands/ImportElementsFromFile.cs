@@ -193,7 +193,9 @@ namespace RevitCommands
                 (int)BuiltInCategory.OST_Views,
                 (int)BuiltInCategory.OST_Sheets,
                 (int)BuiltInCategory.OST_ProjectInformation,
+#if !REVIT2017
                 (int)BuiltInCategory.OST_Schedules,
+#endif
                 (int)BuiltInCategory.OST_RasterImages,
                 (int)BuiltInCategory.OST_Materials,
                 (int)BuiltInCategory.OST_Lines,

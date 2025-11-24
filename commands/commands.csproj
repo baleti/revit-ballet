@@ -4,12 +4,6 @@
     <RevitYear Condition="'$(RevitYear)' == ''">2024</RevitYear>
 
     <!-- Map Revit versions to .NET Framework targets -->
-    <TargetFramework Condition="'$(RevitYear)' == '2011'">net35</TargetFramework>
-    <TargetFramework Condition="'$(RevitYear)' == '2012'">net35</TargetFramework>
-    <TargetFramework Condition="'$(RevitYear)' == '2013'">net40</TargetFramework>
-    <TargetFramework Condition="'$(RevitYear)' == '2014'">net40</TargetFramework>
-    <TargetFramework Condition="'$(RevitYear)' == '2015'">net45</TargetFramework>
-    <TargetFramework Condition="'$(RevitYear)' == '2016'">net45</TargetFramework>
     <TargetFramework Condition="'$(RevitYear)' == '2017'">net46</TargetFramework>
     <TargetFramework Condition="'$(RevitYear)' == '2018'">net46</TargetFramework>
     <TargetFramework Condition="'$(RevitYear)' == '2019'">net47</TargetFramework>
@@ -22,12 +16,6 @@
     <TargetFramework Condition="'$(RevitYear)' == '2026'">net8.0-windows</TargetFramework>
 
     <!-- Revit API NuGet package version (matches Revit year) -->
-    <RevitAPIVersion Condition="'$(RevitYear)' == '2011'">2011.0.0</RevitAPIVersion>
-    <RevitAPIVersion Condition="'$(RevitYear)' == '2012'">2012.0.0</RevitAPIVersion>
-    <RevitAPIVersion Condition="'$(RevitYear)' == '2013'">2013.0.0</RevitAPIVersion>
-    <RevitAPIVersion Condition="'$(RevitYear)' == '2014'">2014.0.0</RevitAPIVersion>
-    <RevitAPIVersion Condition="'$(RevitYear)' == '2015'">2015.0.0</RevitAPIVersion>
-    <RevitAPIVersion Condition="'$(RevitYear)' == '2016'">2016.0.0</RevitAPIVersion>
     <RevitAPIVersion Condition="'$(RevitYear)' == '2017'">2017.0.0</RevitAPIVersion>
     <RevitAPIVersion Condition="'$(RevitYear)' == '2018'">2018.0.0</RevitAPIVersion>
     <RevitAPIVersion Condition="'$(RevitYear)' == '2019'">2019.0.0</RevitAPIVersion>
@@ -79,35 +67,23 @@
   <ItemGroup>
     <!-- Used by BooleanDifferenceFilledRegionsWithSelectedElements.cs -->
     <PackageReference Include="Clipper" Version="6.4.0" />
-
     <!-- Used by CopyCrossSession.cs, ClashDetectionSelectedElements.cs, and Server.cs -->
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
-
     <!-- Required for dynamic keyword support in ExportSelectedViewsToPDF.cs -->
-    <PackageReference Include="Microsoft.CSharp" Version="4.7.0" ExcludeAssets="runtime" />
-
+    <PackageReference Include="Microsoft.CSharp" Version="4.7.0" />
     <!-- Used for modern folder picker dialog in export commands -->
     <PackageReference Include="Microsoft.WindowsAPICodePack-Shell" Version="1.1.0" />
-
-    <!-- Used by Server.cs for Roslyn scripting (remote code execution) -->
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="4.8.0" />
   </ItemGroup>
 
-  <!-- Exclude unnecessary System.* assemblies brought in by Roslyn (already in GAC) -->
-  <Target Name="RemoveUnnecessaryRoslynDependencies" AfterTargets="ResolveAssemblyReferences">
-    <ItemGroup>
-      <!-- Remove System.* assemblies that are already in .NET Framework GAC -->
-      <ReferenceCopyLocalPaths Remove="@(ReferenceCopyLocalPaths)" Condition="'%(Filename)' == 'System.Collections.Immutable'" />
-      <ReferenceCopyLocalPaths Remove="@(ReferenceCopyLocalPaths)" Condition="'%(Filename)' == 'System.Reflection.Metadata'" />
-      <ReferenceCopyLocalPaths Remove="@(ReferenceCopyLocalPaths)" Condition="'%(Filename)' == 'System.Runtime.CompilerServices.Unsafe'" />
-      <ReferenceCopyLocalPaths Remove="@(ReferenceCopyLocalPaths)" Condition="'%(Filename)' == 'System.Memory'" />
-      <ReferenceCopyLocalPaths Remove="@(ReferenceCopyLocalPaths)" Condition="'%(Filename)' == 'System.Buffers'" />
-      <ReferenceCopyLocalPaths Remove="@(ReferenceCopyLocalPaths)" Condition="'%(Filename)' == 'System.Numerics.Vectors'" />
-      <ReferenceCopyLocalPaths Remove="@(ReferenceCopyLocalPaths)" Condition="'%(Filename)' == 'System.Text.Encoding.CodePages'" />
-      <ReferenceCopyLocalPaths Remove="@(ReferenceCopyLocalPaths)" Condition="'%(Filename)' == 'System.Threading.Tasks.Extensions'" />
-      <!-- Keep Microsoft.CodeAnalysis.* and Microsoft.Bcl.* assemblies - they're needed -->
-    </ItemGroup>
-  </Target>
+  <!-- Roslyn scripting for Server.cs - version depends on .NET Framework version -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net46'">
+    <!-- Revit 2017-2018: Use older version compatible with .NET 4.6 -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="2.10.0" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(TargetFramework)' != 'net46'">
+    <!-- Revit 2019+: Use latest version -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="4.8.0" />
+  </ItemGroup>
 
   <!-- Standard System references needed by Revit plugins -->
   <ItemGroup>

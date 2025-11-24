@@ -81,7 +81,12 @@ namespace MyRevitAddin
             {
                 // Get the project position at the origin (0,0,0) in the project coordinate system.
                 XYZ origin = new XYZ(0, 0, 0);
+#if REVIT2017
+                // Revit 2017 uses the older get_ProjectPosition method
+                ProjectPosition projPos = projectLocation.get_ProjectPosition(origin);
+#else
                 ProjectPosition projPos = projectLocation.GetProjectPosition(origin);
+#endif
                 if (projPos != null)
                 {
                     infoBuilder.AppendLine("\nProject Location (ProjectPosition at (0,0,0)):");
@@ -96,7 +101,12 @@ namespace MyRevitAddin
                 }
 
                 // Get the SiteLocation from the ProjectLocation using the API method.
+#if REVIT2017
+                // Revit 2017 uses SiteLocation as a property, not a method
+                SiteLocation projSiteLocation = projectLocation.SiteLocation;
+#else
                 SiteLocation projSiteLocation = projectLocation.GetSiteLocation();
+#endif
                 if (projSiteLocation != null)
                 {
                     // Convert latitude and longitude from radians to degrees for display.

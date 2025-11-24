@@ -63,9 +63,15 @@ namespace YourNamespace   // ← adjust
                 var pfe = doc.GetElement(w.Id) as ParameterFilterElement;
                 if (pfe == null) continue;
 
+#if REVIT2017 || REVIT2018
+                // GetElementFilter() not available in Revit 2017-2018
+                // Skip this filter (graceful degradation)
+                continue;
+#else
                 filter = (filter == null)
                        ? pfe.GetElementFilter()
                        : new LogicalOrFilter(filter, pfe.GetElementFilter());
+#endif
             }
             if (filter == null) return Result.Cancelled;
 

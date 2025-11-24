@@ -30,8 +30,20 @@ public class CutGeometryWithGroup : IExternalCommand
           return Result.Failed;
         }
         Group pickedGroup = doc.GetElement(pickedGroupRef.ElementId) as Group;
+#if REVIT2017
+        // In Revit 2017, GetDependentElements doesn't exist - use GetMemberIds and filter manually
+        IList<ElementId> allMemberIds = pickedGroup.GetMemberIds();
+        List<ElementId> dependentIds = new List<ElementId>();
+        foreach (ElementId id in allMemberIds)
+        {
+            Element elem = doc.GetElement(id);
+            if (elem is FamilyInstance)
+                dependentIds.Add(id);
+        }
+#else
         ElementClassFilter filter = new ElementClassFilter(typeof(FamilyInstance));
         IList<ElementId> dependentIds = pickedGroup.GetDependentElements(filter);
+#endif
 
         // Use a transaction to group cutting operations
         Transaction tx = new Transaction(doc);

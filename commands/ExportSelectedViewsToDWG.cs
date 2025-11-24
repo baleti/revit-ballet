@@ -94,7 +94,12 @@ public class ExportSelectedViewsToDWG : IExternalCommand
             // Option 1: Using custom progress dialog (comment out if using Option 2)
             using (var progressDialog = new ExportProgressDialog(viewsAndSheets.Count))
             {
+#if REVIT2017 || REVIT2018
+                // MainWindowHandle not available in Revit 2017-2018 - use Process instead
+                progressDialog.Show(new RevitWindow(System.Diagnostics.Process.GetCurrentProcess().MainWindowHandle));
+#else
                 progressDialog.Show(new RevitWindow(commandData.Application.MainWindowHandle));
+#endif
                 
                 using (var tx = new Transaction(doc, "Export Views to DWG"))
                 {
