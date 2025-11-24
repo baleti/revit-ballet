@@ -33,6 +33,7 @@ public class SwitchView : IExternalCommand
            Load & de-duplicate entries  │
            ─────────────────────────────┘ */
         var viewEntries = File.ReadAllLines(logFilePath)
+                              .AsEnumerable()
                               .Reverse()         // newest first
                               .Select(l => l.Trim())
                               .Where(l => l.Length > 0)

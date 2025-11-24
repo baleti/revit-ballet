@@ -442,7 +442,7 @@ namespace RevitAddin
                             }
                             
                             // Check if the loop is closed (min 3 curves for a valid region)
-                            int numCurves = curveLoop.NumberOfCurves();
+                            int numCurves = curveLoop.Count();
                             
                             if (numCurves >= 3)
                             {

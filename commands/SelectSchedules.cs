@@ -289,12 +289,14 @@ public class SelectSchedules : IExternalCommand
                         case ScheduleFilterType.NotEndsWith:
                             filterDesc += " !ends " + filterValue;
                             break;
+#if !REVIT2017 && !REVIT2018 && !REVIT2019
                         case ScheduleFilterType.HasValue:
                             filterDesc += " has value";
                             break;
                         case ScheduleFilterType.HasNoValue:
                             filterDesc += " no value";
                             break;
+#endif
                     }
                     
                     filtersList.Add(filterDesc);

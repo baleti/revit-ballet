@@ -46,7 +46,7 @@ public class SelectOpenedViews : IExternalCommand
         HashSet<ElementId> loggedIds   = new HashSet<ElementId>();
         HashSet<string>    loggedTitles = new HashSet<string>();
 
-        foreach (string raw in File.ReadAllLines(logFilePath).Reverse()) // newest first
+        foreach (string raw in File.ReadAllLines(logFilePath).AsEnumerable().Reverse()) // newest first
         {
             string line = raw.Trim();
             if (line.Length == 0) continue;

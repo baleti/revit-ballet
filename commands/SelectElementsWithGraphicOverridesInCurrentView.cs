@@ -73,6 +73,13 @@ public class SelectElementsWithGraphicOverridesInCurrentView : IExternalCommand
                settings.CutLineColor.IsValid ||
                settings.CutLineWeight != -1 ||
                settings.CutLinePatternId.AsLong() != -1 ||
+#if REVIT2017 || REVIT2018
+               // Revit 2017-2018 use different property names for fill patterns
+               settings.ProjectionFillPatternId.AsLong() != -1 ||
+               settings.ProjectionFillColor.IsValid ||
+               settings.CutFillPatternId.AsLong() != -1 ||
+               settings.CutFillColor.IsValid ||
+#else
                settings.SurfaceForegroundPatternId.AsLong() != -1 ||
                settings.SurfaceForegroundPatternColor.IsValid ||
                settings.SurfaceBackgroundPatternId.AsLong() != -1 ||
@@ -81,6 +88,7 @@ public class SelectElementsWithGraphicOverridesInCurrentView : IExternalCommand
                settings.CutForegroundPatternColor.IsValid ||
                settings.CutBackgroundPatternId.AsLong() != -1 ||
                settings.CutBackgroundPatternColor.IsValid ||
+#endif
                settings.Transparency != 0 ||
                settings.Halftone ||
                settings.DetailLevel != ViewDetailLevel.Undefined;

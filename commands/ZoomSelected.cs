@@ -181,8 +181,10 @@ public class ZoomSelected : IExternalCommand
             // Additional refresh for perspective views to ensure proper update
             if (view3D.IsPerspective)
             {
+#if !REVIT2017
                 // This helps reset the internal navigation speed
                 uiDoc.UpdateAllOpenViews();
+#endif
             }
         }
         else

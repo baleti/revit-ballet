@@ -25,6 +25,7 @@ public class SwitchViewByHistory : IExternalCommand
         }
 
         var viewEntries = File.ReadAllLines(logFilePath)
+            .AsEnumerable()
             .Reverse()
             .Distinct()
             .Skip(1)
