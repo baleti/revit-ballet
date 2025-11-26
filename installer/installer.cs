@@ -171,10 +171,13 @@ namespace RevitBalletInstaller
                 currentY += 60;
             }
 
-            // Group results by state
-            var freshInstalls = installationResults.Where(r => r.State == InstallState.FreshInstall).ToList();
-            var updatedSuccessfully = installationResults.Where(r => r.State == InstallState.UpdatedSuccessfully).ToList();
-            var needsRestart = installationResults.Where(r => r.State == InstallState.UpdatedNeedsRestart).ToList();
+            // Group results by state and sort by year (numerically)
+            var freshInstalls = installationResults.Where(r => r.State == InstallState.FreshInstall)
+                .OrderBy(r => int.Parse(r.Year)).ToList();
+            var updatedSuccessfully = installationResults.Where(r => r.State == InstallState.UpdatedSuccessfully)
+                .OrderBy(r => int.Parse(r.Year)).ToList();
+            var needsRestart = installationResults.Where(r => r.State == InstallState.UpdatedNeedsRestart)
+                .OrderBy(r => int.Parse(r.Year)).ToList();
 
             string messageText = "";
 
@@ -267,35 +270,110 @@ namespace RevitBalletInstaller
         private void DetectRevitInstallations()
         {
             // Detection strategy:
-            // - Check ProgramData to see which Revit versions are installed
-            // - But install addins to AppData (current user) to avoid requiring admin privileges
+            // - Check Windows Registry to find actually installed Revit versions
+            // - Install addins to AppData (current user) to avoid requiring admin privileges
             // - Revit loads addins from both ProgramData and AppData locations
-
-            var detectionPaths = new[]
-            {
-                Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), // C:\ProgramData
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)        // C:\Users\<user>\AppData\Roaming
-            };
 
             var detectedYears = new HashSet<string>();
 
-            // Scan both locations to detect which Revit versions are installed
-            foreach (string basePath in detectionPaths)
+            // Check registry for installed Revit versions
+            // Revit registers itself in HKEY_LOCAL_MACHINE under Autodesk\Revit
+            try
             {
-                string revitPath = Path.Combine(basePath, "Autodesk", "Revit", "Addins");
-
-                if (!Directory.Exists(revitPath))
-                    continue;
-
-                // Look for year folders (2011-2030)
-                string[] yearDirs = Directory.GetDirectories(revitPath);
-
-                foreach (string yearDir in yearDirs)
+                using (var baseKey = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Autodesk"))
                 {
-                    string year = Path.GetFileName(yearDir);
-                    if (int.TryParse(year, out int yearNum) && yearNum >= 2011 && yearNum <= 2030)
+                    if (baseKey != null)
                     {
-                        detectedYears.Add(year);
+                        foreach (string subKeyName in baseKey.GetSubKeyNames())
+                        {
+                            // Look for keys like "Revit", "Revit 2024", etc.
+                            if (subKeyName.StartsWith("Revit", StringComparison.OrdinalIgnoreCase))
+                            {
+                                using (var revitKey = baseKey.OpenSubKey(subKeyName))
+                                {
+                                    if (revitKey != null)
+                                    {
+                                        // Check for version-specific subkeys
+                                        foreach (string versionKey in revitKey.GetSubKeyNames())
+                                        {
+                                            // Extract year from version (e.g., "24.0" -> 2024, "19.0" -> 2019)
+                                            string year = ExtractYearFromVersion(versionKey);
+                                            if (year != null)
+                                            {
+                                                detectedYears.Add(year);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            // Also check HKEY_CURRENT_USER for per-user installations
+            try
+            {
+                using (var baseKey = Registry.CurrentUser.OpenSubKey(@"SOFTWARE\Autodesk"))
+                {
+                    if (baseKey != null)
+                    {
+                        foreach (string subKeyName in baseKey.GetSubKeyNames())
+                        {
+                            if (subKeyName.StartsWith("Revit", StringComparison.OrdinalIgnoreCase))
+                            {
+                                using (var revitKey = baseKey.OpenSubKey(subKeyName))
+                                {
+                                    if (revitKey != null)
+                                    {
+                                        foreach (string versionKey in revitKey.GetSubKeyNames())
+                                        {
+                                            string year = ExtractYearFromVersion(versionKey);
+                                            if (year != null)
+                                            {
+                                                detectedYears.Add(year);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            // Fallback: Check for Revit executable in common installation paths
+            if (detectedYears.Count == 0)
+            {
+                string[] programFilesPaths = new[]
+                {
+                    Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+                    Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86)
+                };
+
+                foreach (string programFiles in programFilesPaths)
+                {
+                    string autodeskPath = Path.Combine(programFiles, "Autodesk");
+                    if (Directory.Exists(autodeskPath))
+                    {
+                        string[] revitDirs = Directory.GetDirectories(autodeskPath, "Revit*", SearchOption.TopDirectoryOnly);
+                        foreach (string revitDir in revitDirs)
+                        {
+                            string dirName = Path.GetFileName(revitDir);
+                            // Extract year from directory name (e.g., "Revit 2024" -> "2024")
+                            string[] parts = dirName.Split(' ');
+                            if (parts.Length >= 2 && int.TryParse(parts[1], out int yearNum) && yearNum >= 2011 && yearNum <= 2030)
+                            {
+                                string year = parts[1];
+                                // Verify Revit.exe exists
+                                if (File.Exists(Path.Combine(revitDir, "Revit.exe")))
+                                {
+                                    detectedYears.Add(year);
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -317,6 +395,28 @@ namespace RevitBalletInstaller
 
                 installations.Add(installation);
             }
+        }
+
+        private string ExtractYearFromVersion(string versionString)
+        {
+            // Convert version strings like "24.0", "24.1", "19.0" to years like "2024", "2019"
+            // Revit versions typically use format: XX.Y where XX is year - 2000
+
+            if (string.IsNullOrEmpty(versionString))
+                return null;
+
+            string[] parts = versionString.Split('.');
+            if (parts.Length > 0 && int.TryParse(parts[0], out int versionNum))
+            {
+                // Revit versions are typically 17-30 (for 2017-2030)
+                if (versionNum >= 11 && versionNum <= 30)
+                {
+                    int year = 2000 + versionNum;
+                    return year.ToString();
+                }
+            }
+
+            return null;
         }
 
         private void InstallToRevitVersions(string sourceDir)
