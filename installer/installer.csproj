@@ -13,6 +13,7 @@
     <OutputPath>bin\Release\</OutputPath>
   </PropertyGroup>
   <ItemGroup>
+    <EmbeddedResource Include="revit-ballet-logo.ico"/>
     <EmbeddedResource Include="revit-ballet-logo.png" Condition="Exists('revit-ballet-logo.png')"/>
     <EmbeddedResource Include="revit-ballet.addin"/>
 

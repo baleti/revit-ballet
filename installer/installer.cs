@@ -118,19 +118,58 @@ namespace RevitBalletInstaller
                 BackColor = Color.White
             };
 
+            Image logo = null;
+
+            try
+            {
+                var assembly = Assembly.GetExecutingAssembly();
+                var logoResourceName = assembly.GetManifestResourceNames()
+                    .FirstOrDefault(n => n.EndsWith(".ico"));
+
+                if (logoResourceName != null)
+                {
+                    using (var stream = assembly.GetManifestResourceStream(logoResourceName))
+                    {
+                        if (stream != null)
+                        {
+                            using (var icon = new Icon(stream))
+                            {
+                                logo = icon.ToBitmap();
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
+
             int currentY = 30;
 
-            var titleLabel = new Label
+            if (logo != null)
             {
-                Text = "Revit Ballet",
-                Font = new Font("Segoe UI", 24, FontStyle.Bold),
-                ForeColor = Color.FromArgb(50, 50, 50),
-                Location = new Point(0, currentY),
-                Size = new Size(600, 40),
-                TextAlign = ContentAlignment.MiddleCenter
-            };
-            form.Controls.Add(titleLabel);
-            currentY += 60;
+                var pictureBox = new PictureBox
+                {
+                    Image = logo,
+                    SizeMode = PictureBoxSizeMode.Zoom,
+                    Location = new Point(175, currentY),
+                    Size = new Size(200, 150)
+                };
+                form.Controls.Add(pictureBox);
+                currentY += 160;
+            }
+            else
+            {
+                var titleLabel = new Label
+                {
+                    Text = "Revit Ballet",
+                    Font = new Font("Segoe UI", 24, FontStyle.Bold),
+                    ForeColor = Color.FromArgb(50, 50, 50),
+                    Location = new Point(0, currentY),
+                    Size = new Size(550, 40),
+                    TextAlign = ContentAlignment.MiddleCenter
+                };
+                form.Controls.Add(titleLabel);
+                currentY += 60;
+            }
 
             // Group results by state
             var freshInstalls = installationResults.Where(r => r.State == InstallState.FreshInstall).ToList();
@@ -178,7 +217,7 @@ namespace RevitBalletInstaller
 
             using (var g = form.CreateGraphics())
             {
-                var textSize = g.MeasureString(messageText, new Font("Segoe UI", 10), 520);
+                var textSize = g.MeasureString(messageText, new Font("Segoe UI", 10), 450);
                 var textHeight = (int)Math.Ceiling(textSize.Height);
 
                 var messageLabel = new Label
@@ -186,13 +225,13 @@ namespace RevitBalletInstaller
                     Text = messageText,
                     Font = new Font("Segoe UI", 10),
                     ForeColor = Color.FromArgb(60, 60, 60),
-                    Location = new Point(40, currentY),
-                    Size = new Size(520, textHeight + 20),
-                    TextAlign = ContentAlignment.TopLeft
+                    Location = new Point(50, currentY),
+                    Size = new Size(450, textHeight + 10),
+                    TextAlign = ContentAlignment.TopCenter
                 };
                 form.Controls.Add(messageLabel);
 
-                currentY += textHeight + 40;
+                currentY += textHeight + 30;
             }
 
             var btnOK = new Button
@@ -200,15 +239,15 @@ namespace RevitBalletInstaller
                 Text = "OK",
                 Font = new Font("Segoe UI", 10),
                 Size = new Size(100, 30),
-                Location = new Point(250, currentY),
+                Location = new Point(225, currentY),
                 FlatStyle = FlatStyle.System,
                 DialogResult = DialogResult.OK
             };
             form.Controls.Add(btnOK);
             form.AcceptButton = btnOK;
 
-            currentY += 60;
-            form.ClientSize = new Size(600, currentY);
+            currentY += 50;
+            form.ClientSize = new Size(550, currentY);
 
             form.ShowDialog();
         }
