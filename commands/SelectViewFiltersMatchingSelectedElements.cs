@@ -83,7 +83,6 @@ namespace YourAddinNamespace
              * ------------------------------------------------------------------ */
             var rows    = new List<Dictionary<string, object>>();
             var key2PF  = new Dictionary<string, ParameterFilterElement>();
-            int keyIdx  = 0;
 
             foreach (ParameterFilterElement pf in
                      new FilteredElementCollector(doc)
@@ -117,7 +116,7 @@ namespace YourAddinNamespace
 
                 if (matchCount == 0) continue;                       // filter irrelevant
 
-                string key = $"{pf.Id.AsLong()}_{keyIdx++}";
+                string key = $"{pf.Id.AsLong()}";
                 key2PF[key] = pf;
 
                 var row = new Dictionary<string, object>

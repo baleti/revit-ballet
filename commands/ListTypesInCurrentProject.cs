@@ -24,7 +24,6 @@ public class ListAllTypesInProject : IExternalCommand
             .OfClass(typeof(ElementType))
             .Cast<ElementType>()
             .Where(elementType => elementType.Category != null) // Exclude types with null categories
-            .Where(elementType => !(elementType is ImportInstance)) // Exclude imported DWG types
             .ToList();
 
         // Iterate through all ElementType elements

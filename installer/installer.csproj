@@ -15,15 +15,38 @@
   <ItemGroup>
     <EmbeddedResource Include="revit-ballet-logo.png" Condition="Exists('revit-ballet-logo.png')"/>
     <EmbeddedResource Include="revit-ballet.addin"/>
-    <EmbeddedResource Include="KeyboardShortcuts.xml"/>
 
-    <!-- Embed all deduplicated resources from resources directory -->
-    <EmbeddedResource Include="resources\*" Condition="Exists('resources')"/>
+    <!-- Embed merged keyboard shortcuts for each Revit version -->
+    <EmbeddedResource Include="bin\keyboard-shortcuts-merged\KeyboardShortcuts-2018.xml"/>
+    <EmbeddedResource Include="bin\keyboard-shortcuts-merged\KeyboardShortcuts-2019.xml"/>
+    <EmbeddedResource Include="bin\keyboard-shortcuts-merged\KeyboardShortcuts-2020.xml"/>
+    <EmbeddedResource Include="bin\keyboard-shortcuts-merged\KeyboardShortcuts-2021.xml"/>
+    <EmbeddedResource Include="bin\keyboard-shortcuts-merged\KeyboardShortcuts-2022.xml"/>
+    <EmbeddedResource Include="bin\keyboard-shortcuts-merged\KeyboardShortcuts-2023.xml"/>
+    <EmbeddedResource Include="bin\keyboard-shortcuts-merged\KeyboardShortcuts-2024.xml"/>
+    <EmbeddedResource Include="bin\keyboard-shortcuts-merged\KeyboardShortcuts-2025.xml"/>
+    <EmbeddedResource Include="bin\keyboard-shortcuts-merged\KeyboardShortcuts-2026.xml"/>
+
+    <!-- Embed all deduplicated resources from bin/resources directory -->
+    <EmbeddedResource Include="bin\resources\*" Condition="Exists('bin\resources')"/>
   </ItemGroup>
 
   <!-- Run Python script to prepare resources before build -->
-  <Target Name="PrepareDeduplicatedResources" BeforeTargets="BeforeCompile;AssignTargetPaths">
+  <Target Name="PrepareDeduplicatedResources" BeforeTargets="BeforeBuild;BeforeCompile">
+    <Message Text="Merging keyboard shortcuts..." Importance="high" />
+    <Exec Command="python3 _merge-shortcuts.py" WorkingDirectory="$(MSBuildProjectDirectory)" />
     <Message Text="Preparing deduplicated resources..." Importance="high" />
-    <Exec Command="python3 build.py" WorkingDirectory="$(MSBuildProjectDirectory)" />
+    <Exec Command="python3 _installer-deduplicate.py"
+          WorkingDirectory="$(MSBuildProjectDirectory)"
+          ConsoleToMSBuild="true"
+          IgnoreStandardErrorWarningFormat="true" />
+  </Target>
+
+  <!-- Ensure resources are re-evaluated after generation -->
+  <Target Name="IncludeGeneratedResources" BeforeTargets="AssignTargetPaths" DependsOnTargets="PrepareDeduplicatedResources">
+    <ItemGroup>
+      <EmbeddedResource Include="bin\keyboard-shortcuts-merged\*.xml" Exclude="@(EmbeddedResource)" />
+      <EmbeddedResource Include="bin\resources\*" Exclude="@(EmbeddedResource)" Condition="Exists('bin\resources')" />
+    </ItemGroup>
   </Target>
 </Project>

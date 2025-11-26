@@ -86,18 +86,10 @@ namespace RevitBalletInstaller
 
                 CopyInstallerForUninstall(targetDir);
 
-                // Check for missing KeyboardShortcuts.xml files and show warning
-                ShowMissingKeyboardShortcutsWarning();
-
-                // Modify keyboard shortcuts
-                var modifiedInstallations2 = new List<RevitInstallation>();
+                // Deploy keyboard shortcuts (creates file if missing, or adds shortcuts if exists)
                 foreach (var installation in installations)
                 {
-                    bool modified = ModifyKeyboardShortcuts(installation);
-                    if (modified)
-                    {
-                        modifiedInstallations2.Add(installation);
-                    }
+                    DeployKeyboardShortcuts(installation);
                 }
 
                 RegisterUninstaller(targetDir);
@@ -325,7 +317,6 @@ namespace RevitBalletInstaller
                 Directory.CreateDirectory(mainFolder);
 
                 bool wasInstalled = File.Exists(Path.Combine(mainFolder, "revit-ballet.dll"));
-                bool filesAreLocked = false;
 
                 // Try to copy all files to main folder
                 try
@@ -336,21 +327,6 @@ namespace RevitBalletInstaller
 
                     // Extract dependencies
                     ExtractDependenciesSafe(installation.Year, mainFolder);
-
-                    // Copy KeyboardShortcuts.xml template if provided
-                    var kbResource = assembly.GetManifestResourceNames().FirstOrDefault(r => r.EndsWith("KeyboardShortcuts.xml"));
-                    if (kbResource != null)
-                    {
-                        string kbTemplatePath = Path.Combine(mainFolder, "KeyboardShortcuts-template.xml");
-                        try
-                        {
-                            ExtractResourceSafe(kbResource, kbTemplatePath);
-                        }
-                        catch
-                        {
-                            // Non-critical
-                        }
-                    }
 
                     // Successfully updated main folder - no need to create .update folder
                     // But we still need to create/update .addin file if it's a fresh install
@@ -380,28 +356,12 @@ namespace RevitBalletInstaller
                 catch (IOException)
                 {
                     // Files are locked (Revit is running) - use update folder strategy
-                    filesAreLocked = true;
                     Directory.CreateDirectory(updateFolder);
 
                     // Extract to update folder
                     string updateDllPath = Path.Combine(updateFolder, "revit-ballet.dll");
                     ExtractResource(dllResource, updateDllPath);
                     ExtractDependencies(installation.Year, updateFolder);
-
-                    // Copy KeyboardShortcuts.xml template to update folder
-                    var kbResource = assembly.GetManifestResourceNames().FirstOrDefault(r => r.EndsWith("KeyboardShortcuts.xml"));
-                    if (kbResource != null)
-                    {
-                        string kbTemplatePath = Path.Combine(updateFolder, "KeyboardShortcuts-template.xml");
-                        try
-                        {
-                            ExtractResource(kbResource, kbTemplatePath);
-                        }
-                        catch
-                        {
-                            // Non-critical
-                        }
-                    }
 
                     // Update .addin file to point to update folder
                     string addinContent = GetResourceText(addinResource);
@@ -724,154 +684,116 @@ namespace RevitBalletInstaller
             }
         }
 
-        private bool ModifyKeyboardShortcuts(RevitInstallation installation)
+        private void DeployKeyboardShortcuts(RevitInstallation installation)
         {
             try
             {
                 string kbPath = Path.Combine(installation.RevitDataPath, "KeyboardShortcuts.xml");
+                bool fileExists = File.Exists(kbPath);
 
-                if (!File.Exists(kbPath))
-                {
-                    // KeyboardShortcuts.xml doesn't exist - silently skip
-                    return false;
-                }
-
-                // Load existing KeyboardShortcuts.xml
-                var doc = XDocument.Load(kbPath);
-
-                // Get shortcuts to add from template
+                // Get embedded keyboard shortcuts resource for this year
                 var assembly = Assembly.GetExecutingAssembly();
-                var kbResource = assembly.GetManifestResourceNames().FirstOrDefault(r => r.EndsWith("KeyboardShortcuts.xml"));
+                string kbResourceName = $"KeyboardShortcuts-{installation.Year}.xml";
+                var kbResource = assembly.GetManifestResourceNames()
+                    .FirstOrDefault(r => r.EndsWith(kbResourceName));
 
                 if (kbResource == null)
                 {
-                    return false;
+                    // No keyboard shortcuts resource for this version
+                    return;
                 }
 
-                string templateContent = GetResourceText(kbResource);
-                var templateDoc = XDocument.Parse(templateContent);
+                string resourceContent = GetResourceText(kbResource);
+                var resourceDoc = XDocument.Parse(resourceContent);
 
-                // Extract External Tools shortcuts from template
-                var externalToolsShortcuts = templateDoc.Descendants("ShortcutItem")
-                    .Where(e => e.Attribute("CommandName")?.Value.StartsWith("External Tools:") == true)
-                    .ToList();
+                // Get all addin-specific shortcuts (matching UUIDs from .addin file)
+                var addinDoc = XDocument.Parse(GetResourceText(
+                    assembly.GetManifestResourceNames().FirstOrDefault(r => r.EndsWith("revit-ballet.addin"))));
+                var addinUuids = addinDoc.Descendants("AddInId")
+                    .Select(e => e.Value.Trim().ToLower())
+                    .ToHashSet();
 
-                if (externalToolsShortcuts.Count == 0)
+                if (!fileExists)
                 {
-                    return false;
+                    // KeyboardShortcuts.xml doesn't exist - deploy the full merged version
+                    // (contains both Revit defaults and revit-ballet customizations)
+                    Directory.CreateDirectory(installation.RevitDataPath);
+                    resourceDoc.Save(kbPath);
                 }
-
-                // Get root Shortcuts element
-                var shortcutsRoot = doc.Element("Shortcuts");
-                if (shortcutsRoot == null)
+                else
                 {
-                    return false;
-                }
+                    // KeyboardShortcuts.xml exists - only add/update addin-specific shortcuts
+                    var doc = XDocument.Load(kbPath);
+                    var shortcutsRoot = doc.Element("Shortcuts");
 
-                // Create backup
-                string backupPath = kbPath + ".bak";
-                if (!File.Exists(backupPath))
-                {
-                    File.Copy(kbPath, backupPath);
-                }
+                    if (shortcutsRoot == null)
+                        return;
 
-                bool modified = false;
+                    bool modified = false;
 
-                // Add or update each External Tools shortcut
-                foreach (var shortcut in externalToolsShortcuts)
-                {
-                    string commandId = shortcut.Attribute("CommandId")?.Value?.ToLower();
+                    // Get addin shortcuts from resource
+                    var addinShortcuts = resourceDoc.Descendants("ShortcutItem")
+                        .Where(e => {
+                            string cmdId = e.Attribute("CommandId")?.Value?.ToLower();
+                            return cmdId != null && addinUuids.Contains(cmdId);
+                        })
+                        .ToList();
 
-                    if (string.IsNullOrEmpty(commandId))
-                        continue;
-
-                    // Find existing shortcut with matching CommandId
-                    var existingShortcut = shortcutsRoot.Descendants("ShortcutItem")
-                        .FirstOrDefault(e => e.Attribute("CommandId")?.Value?.ToLower() == commandId);
-
-                    if (existingShortcut != null)
+                    // Add or update each addin shortcut
+                    foreach (var shortcut in addinShortcuts)
                     {
-                        // Update existing shortcut - copy all attributes from template
-                        // This handles cases where shortcut exists but Shortcuts attribute is empty
-                        bool needsUpdate = false;
+                        string commandId = shortcut.Attribute("CommandId")?.Value?.ToLower();
 
-                        foreach (var attr in shortcut.Attributes())
+                        if (string.IsNullOrEmpty(commandId))
+                            continue;
+
+                        // Find existing shortcut with matching CommandId
+                        var existingShortcut = shortcutsRoot.Descendants("ShortcutItem")
+                            .FirstOrDefault(e => e.Attribute("CommandId")?.Value?.ToLower() == commandId);
+
+                        if (existingShortcut != null)
                         {
-                            var existingValue = existingShortcut.Attribute(attr.Name)?.Value;
-                            if (existingValue != attr.Value)
+                            // Update existing shortcut
+                            bool needsUpdate = false;
+
+                            foreach (var attr in shortcut.Attributes())
                             {
-                                existingShortcut.SetAttributeValue(attr.Name, attr.Value);
-                                needsUpdate = true;
+                                var existingValue = existingShortcut.Attribute(attr.Name)?.Value;
+                                if (existingValue != attr.Value)
+                                {
+                                    existingShortcut.SetAttributeValue(attr.Name, attr.Value);
+                                    needsUpdate = true;
+                                }
+                            }
+
+                            if (needsUpdate)
+                            {
+                                modified = true;
                             }
                         }
-
-                        if (needsUpdate)
+                        else
                         {
+                            // Create new shortcut element
+                            var newShortcut = new XElement("ShortcutItem");
+                            foreach (var attr in shortcut.Attributes())
+                            {
+                                newShortcut.SetAttributeValue(attr.Name, attr.Value);
+                            }
+                            shortcutsRoot.Add(newShortcut);
                             modified = true;
                         }
                     }
-                    else
+
+                    if (modified)
                     {
-                        // Create new element with attributes (not a copy) to avoid XML formatting issues
-                        var newShortcut = new XElement("ShortcutItem");
-                        foreach (var attr in shortcut.Attributes())
-                        {
-                            newShortcut.SetAttributeValue(attr.Name, attr.Value);
-                        }
-                        shortcutsRoot.Add(newShortcut);
-                        modified = true;
+                        doc.Save(kbPath);
                     }
                 }
-
-                if (modified)
-                {
-                    doc.Save(kbPath);
-                    return true;
-                }
-
-                return false;
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Failed to modify keyboard shortcuts for Revit {installation.Year}: {ex.Message}",
+                MessageBox.Show($"Failed to deploy keyboard shortcuts for Revit {installation.Year}: {ex.Message}",
                     "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return false;
-            }
-        }
-
-        private void ShowMissingKeyboardShortcutsWarning()
-        {
-            var missingVersions = new List<string>();
-
-            foreach (var installation in installations)
-            {
-                string kbPath = Path.Combine(installation.RevitDataPath, "KeyboardShortcuts.xml");
-                if (!File.Exists(kbPath))
-                {
-                    missingVersions.Add(installation.Year);
-                }
-            }
-
-            if (missingVersions.Count > 0)
-            {
-                // Sort versions numerically
-                missingVersions.Sort((a, b) => int.Parse(a).CompareTo(int.Parse(b)));
-
-                string versionsText = string.Join(", ", missingVersions.Select(y => $"Revit {y}"));
-
-                MessageBox.Show(
-                    $"KeyboardShortcuts.xml not found for: {versionsText}\n\n" +
-                    "This is a Revit limitation - the file only exists after you modify at least one keyboard shortcut.\n\n" +
-                    "To fix this:\n" +
-                    "1. Open each Revit version listed above\n" +
-                    "2. Go to View > User Interface > Keyboard Shortcuts\n" +
-                    "3. Modify any shortcut (for example, add 'ET' to 'Type Properties' command)\n" +
-                    "4. Click OK\n" +
-                    "5. Re-run this installer\n\n" +
-                    "The installer will now skip keyboard shortcut installation for these versions.",
-                    "Revit Ballet - Manual Step Required",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning);
             }
         }
 
@@ -961,170 +883,6 @@ namespace RevitBalletInstaller
             }
         }
 
-        private List<RevitInstallation> CheckMissingShortcuts()
-        {
-            var installationsNeedingShortcuts = new List<RevitInstallation>();
-
-            foreach (var installation in installations)
-            {
-                string kbPath = Path.Combine(installation.RevitDataPath, "KeyboardShortcuts.xml");
-
-                if (!File.Exists(kbPath))
-                {
-                    // File doesn't exist - will need to be created by user first
-                    continue;
-                }
-
-                try
-                {
-                    var doc = XDocument.Load(kbPath);
-                    var shortcutsRoot = doc.Element("Shortcuts");
-
-                    if (shortcutsRoot == null)
-                        continue;
-
-                    // Check if any External Tools shortcuts are missing
-                    var existingExternalTools = shortcutsRoot.Descendants("ShortcutItem")
-                        .Where(e => e.Attribute("CommandName")?.Value.StartsWith("External Tools:") == true)
-                        .Select(e => e.Attribute("CommandId")?.Value?.ToLower())
-                        .Where(id => !string.IsNullOrEmpty(id))
-                        .ToHashSet();
-
-                    // Get template shortcuts
-                    var assembly = Assembly.GetExecutingAssembly();
-                    var kbResource = assembly.GetManifestResourceNames().FirstOrDefault(r => r.EndsWith("KeyboardShortcuts.xml"));
-
-                    if (kbResource == null)
-                        continue;
-
-                    string templateContent = GetResourceText(kbResource);
-                    var templateDoc = XDocument.Parse(templateContent);
-
-                    var templateShortcuts = templateDoc.Descendants("ShortcutItem")
-                        .Where(e => e.Attribute("CommandName")?.Value.StartsWith("External Tools:") == true)
-                        .Select(e => e.Attribute("CommandId")?.Value?.ToLower())
-                        .Where(id => !string.IsNullOrEmpty(id))
-                        .ToList();
-
-                    // Check if any template shortcuts are missing
-                    bool hasMissing = templateShortcuts.Any(id => !existingExternalTools.Contains(id));
-
-                    if (hasMissing)
-                    {
-                        installationsNeedingShortcuts.Add(installation);
-                    }
-                }
-                catch
-                {
-                    // If we can't read the file, skip this installation
-                }
-            }
-
-            return installationsNeedingShortcuts;
-        }
-
-        private bool OfferToAddShortcuts(List<RevitInstallation> installationsNeedingShortcuts)
-        {
-            // Get list of shortcuts that will be added
-            var assembly = Assembly.GetExecutingAssembly();
-            var kbResource = assembly.GetManifestResourceNames().FirstOrDefault(r => r.EndsWith("KeyboardShortcuts.xml"));
-
-            if (kbResource == null)
-                return false;
-
-            string templateContent = GetResourceText(kbResource);
-            var templateDoc = XDocument.Parse(templateContent);
-
-            var shortcuts = templateDoc.Descendants("ShortcutItem")
-                .Where(e => e.Attribute("CommandName")?.Value.StartsWith("External Tools:") == true)
-                .Select(e => new
-                {
-                    Command = e.Attribute("CommandName")?.Value?.Replace("External Tools:", "").Trim(),
-                    Shortcut = e.Attribute("Shortcuts")?.Value ?? ""
-                })
-                .Where(s => !string.IsNullOrEmpty(s.Command))
-                .ToList();
-
-            // Create form with DataGridView
-            var form = new Form
-            {
-                Text = "Add Keyboard Shortcuts",
-                Width = 700,
-                Height = 600,
-                StartPosition = FormStartPosition.CenterScreen,
-                FormBorderStyle = FormBorderStyle.FixedDialog,
-                MaximizeBox = false,
-                MinimizeBox = false
-            };
-
-            var label = new Label
-            {
-                Text = "Revit Ballet keyboard shortcuts are missing for: " +
-                       string.Join(", ", installationsNeedingShortcuts.Select(i => $"Revit {i.Year}")) +
-                       $"\n\nThe following {shortcuts.Count} shortcuts will be added:",
-                Location = new Point(20, 20),
-                Size = new Size(640, 60),
-                Font = new Font("Segoe UI", 10)
-            };
-            form.Controls.Add(label);
-
-            var grid = new DataGridView
-            {
-                Location = new Point(20, 90),
-                Size = new Size(640, 400),
-                ReadOnly = true,
-                AllowUserToAddRows = false,
-                AllowUserToDeleteRows = false,
-                AllowUserToResizeRows = false,
-                RowHeadersVisible = false,
-                SelectionMode = DataGridViewSelectionMode.FullRowSelect,
-                MultiSelect = false,
-                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill
-            };
-
-            grid.Columns.Add(new DataGridViewTextBoxColumn
-            {
-                Name = "Command",
-                HeaderText = "Command",
-                FillWeight = 60
-            });
-
-            grid.Columns.Add(new DataGridViewTextBoxColumn
-            {
-                Name = "Shortcut",
-                HeaderText = "Keyboard Shortcut",
-                FillWeight = 40
-            });
-
-            foreach (var shortcut in shortcuts)
-            {
-                grid.Rows.Add(shortcut.Command, shortcut.Shortcut);
-            }
-
-            form.Controls.Add(grid);
-
-            var btnYes = new Button
-            {
-                Text = "Add Shortcuts",
-                Location = new Point(460, 510),
-                Size = new Size(120, 30),
-                DialogResult = DialogResult.Yes
-            };
-            form.Controls.Add(btnYes);
-            form.AcceptButton = btnYes;
-
-            var btnNo = new Button
-            {
-                Text = "Cancel",
-                Location = new Point(590, 510),
-                Size = new Size(70, 30),
-                DialogResult = DialogResult.No
-            };
-            form.Controls.Add(btnNo);
-            form.CancelButton = btnNo;
-
-            return form.ShowDialog() == DialogResult.Yes;
-        }
 
         private void ExtractResource(string resourceName, string targetPath)
         {
@@ -1233,6 +991,24 @@ namespace RevitBalletInstaller
             // Find all KeyboardShortcuts.xml files
             string[] kbFiles = Directory.GetFiles(autodeskPath, "KeyboardShortcuts.xml", SearchOption.AllDirectories);
 
+            // Get addin UUIDs to remove
+            var assembly = Assembly.GetExecutingAssembly();
+            var addinResource = assembly.GetManifestResourceNames().FirstOrDefault(r => r.EndsWith("revit-ballet.addin"));
+
+            HashSet<string> addinUuids = new HashSet<string>();
+            if (addinResource != null)
+            {
+                try
+                {
+                    string addinContent = GetResourceText(addinResource);
+                    var addinDoc = XDocument.Parse(addinContent);
+                    addinUuids = addinDoc.Descendants("AddInId")
+                        .Select(e => e.Value.Trim().ToLower())
+                        .ToHashSet();
+                }
+                catch { }
+            }
+
             foreach (string kbPath in kbFiles)
             {
                 try
@@ -1246,13 +1022,16 @@ namespace RevitBalletInstaller
                     if (shortcutsRoot == null)
                         continue;
 
-                    // Remove all External Tools shortcuts
-                    var externalToolsShortcuts = shortcutsRoot.Descendants("ShortcutItem")
-                        .Where(e => e.Attribute("CommandName")?.Value.StartsWith("External Tools:") == true)
+                    // Remove only revit-ballet shortcuts (matching our addin UUIDs)
+                    var addinShortcuts = shortcutsRoot.Descendants("ShortcutItem")
+                        .Where(e => {
+                            string cmdId = e.Attribute("CommandId")?.Value?.ToLower();
+                            return cmdId != null && addinUuids.Contains(cmdId);
+                        })
                         .ToList();
 
                     bool modified = false;
-                    foreach (var shortcut in externalToolsShortcuts)
+                    foreach (var shortcut in addinShortcuts)
                     {
                         shortcut.Remove();
                         modified = true;
@@ -1262,16 +1041,24 @@ namespace RevitBalletInstaller
                     {
                         doc.Save(kbPath);
                     }
-
-                    // Restore backup if it exists
-                    string backupPath = kbPath + ".bak";
-                    if (File.Exists(backupPath))
-                    {
-                        File.Delete(backupPath);
-                    }
                 }
                 catch { }
             }
+        }
+
+        private string GetResourceText(string resourceName)
+        {
+            using (Stream stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(resourceName))
+            {
+                if (stream != null)
+                {
+                    using (StreamReader reader = new StreamReader(stream))
+                    {
+                        return reader.ReadToEnd();
+                    }
+                }
+            }
+            return null;
         }
 
         private void RemoveFromRegistry()

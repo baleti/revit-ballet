@@ -1,61 +1,53 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Autodesk.Revit.DB;
+using Autodesk.Revit.UI;
 
 public partial class CustomGUIs
 {
+    // Store the current UIDocument for edit operations
+    private static UIDocument _currentUIDoc = null;
+
+    /// <summary>
+    /// Set the current UIDocument for edit operations
+    /// Call this from your command before showing the DataGrid
+    /// </summary>
+    public static void SetCurrentUIDocument(UIDocument uidoc)
+    {
+        _currentUIDoc = uidoc;
+    }
+
     /// <summary>
     /// Apply pending cell edits to actual Revit elements
-    /// TODO: This requires Revit API implementation
     /// </summary>
-    private static void ApplyCellEditsToEntities()
+    public static bool ApplyCellEditsToEntities()
     {
         if (_pendingCellEdits.Count == 0)
         {
             System.Windows.Forms.MessageBox.Show("No edits to apply.", "Apply Edits",
                 System.Windows.Forms.MessageBoxButtons.OK, System.Windows.Forms.MessageBoxIcon.Information);
-            return;
+            return false;
         }
 
-        // Mark that edits were applied
-        _editsWereApplied = true;
+        if (_currentUIDoc == null)
+        {
+            System.Windows.Forms.MessageBox.Show(
+                "Cannot apply edits: No active Revit document.\n\n" +
+                "Make sure to call CustomGUIs.SetCurrentUIDocument(uidoc) before showing the DataGrid.",
+                "Apply Edits Error",
+                System.Windows.Forms.MessageBoxButtons.OK,
+                System.Windows.Forms.MessageBoxIcon.Error);
+            return false;
+        }
 
-        // TODO: Implement Revit-specific edit application
-        // This requires:
-        // 1. Grouping edits by Document (for multi-document support)
-        // 2. Starting Revit transactions for each document
-        // 3. Resolving ElementIds from the entry data
-        // 4. Applying property changes based on column names
-        // 5. Handling errors and rollback if needed
-        // 6. Committing transactions
+        Document doc = _currentUIDoc.Document;
+        int successCount = 0;
+        int errorCount = 0;
+        var errorMessages = new List<string>();
 
-        System.Windows.Forms.MessageBox.Show(
-            $"Applied {_pendingCellEdits.Count} edits to {_modifiedEntries.Count} elements.\n\n" +
-            "NOTE: This is a stub implementation.\n" +
-            "Revit-specific edit application needs to be implemented.\n\n" +
-            "Required implementation:\n" +
-            "- Group edits by Document\n" +
-            "- Start Revit Transaction\n" +
-            "- Resolve ElementId from entry data\n" +
-            "- Apply property changes:\n" +
-            "  • Element properties (Name, Comments, Mark)\n" +
-            "  • Parameters (param_*, sharedparam_*, typeparam_*)\n" +
-            "  • Type properties (TypeName, FamilyName)\n" +
-            "  • View properties (ViewName, Scale, DetailLevel)\n" +
-            "  • Sheet properties (SheetNumber, SheetName)\n" +
-            "  • Level/Phase (LevelName, PhaseCreated)\n" +
-            "  • Workset (WorksetName)\n" +
-            "- Commit Transaction\n" +
-            "- Handle errors gracefully",
-            "Apply Edits - TODO",
-            System.Windows.Forms.MessageBoxButtons.OK,
-            System.Windows.Forms.MessageBoxIcon.Information
-        );
-
-        /* EXAMPLE IMPLEMENTATION STRUCTURE (requires Revit API references):
-
-        // Group edits by document
-        var editsByDocument = new Dictionary<Document, List<EditInfo>>();
+        // Group edits by entry (element) for efficient transaction handling
+        var editsByEntry = new Dictionary<long, List<(string columnName, object newValue)>>();
 
         foreach (var kvp in _pendingCellEdits)
         {
@@ -64,128 +56,535 @@ public partial class CustomGUIs
 
             // Parse edit key
             var parts = editKey.Split('|');
+            if (parts.Length != 2) continue;
+
             long internalId = long.Parse(parts[0]);
             string columnName = parts[1];
 
-            // Find the entry with this internal ID
-            var entry = _modifiedEntries.FirstOrDefault(e => GetInternalId(e) == internalId);
-            if (entry == null) continue;
+            if (!editsByEntry.ContainsKey(internalId))
+                editsByEntry[internalId] = new List<(string, object)>();
 
-            // Extract ElementId and Document from entry
-            // This depends on how your DataGrid entries are structured
-            // Example: entry["ElementId"], entry["Document"], etc.
-
-            // Add to appropriate document group
-            // editsByDocument[doc].Add(new EditInfo { ElementId, ColumnName, NewValue });
+            editsByEntry[internalId].Add((columnName, newValue));
         }
 
-        // Apply edits for each document
-        foreach (var docGroup in editsByDocument)
+        // Find the entries and apply edits
+        using (Transaction trans = new Transaction(doc, "Apply DataGrid Edits"))
         {
-            Document doc = docGroup.Key;
-            var edits = docGroup.Value;
+            trans.Start();
 
-            using (Transaction trans = new Transaction(doc, "Apply DataGrid Edits"))
+            try
             {
-                trans.Start();
-
-                try
+                foreach (var entryGroup in editsByEntry)
                 {
-                    foreach (var edit in edits)
-                    {
-                        Element elem = doc.GetElement(edit.ElementId);
-                        if (elem == null) continue;
+                    long internalId = entryGroup.Key;
+                    var edits = entryGroup.Value;
 
-                        // Apply edit based on column name
-                        ApplyPropertyEdit(elem, edit.ColumnName, edit.NewValue);
+                    // Find the entry with this internal ID
+                    var entry = _modifiedEntries.FirstOrDefault(e => GetInternalId(e) == internalId);
+                    if (entry == null)
+                    {
+                        errorMessages.Add($"Could not find entry with internal ID {internalId}");
+                        errorCount++;
+                        continue;
                     }
 
-                    trans.Commit();
+                    // Get the Revit element
+                    Element elem = GetElementFromEntry(doc, entry);
+                    if (elem == null)
+                    {
+                        errorMessages.Add($"Could not find Revit element for entry: {GetEntryDisplayName(entry)}");
+                        errorCount++;
+                        continue;
+                    }
+
+                    // Apply each edit for this element
+                    foreach (var (columnName, newValue) in edits)
+                    {
+                        try
+                        {
+                            if (ApplyPropertyEdit(elem, columnName, newValue, entry))
+                                successCount++;
+                            else
+                            {
+                                errorMessages.Add($"{GetEntryDisplayName(entry)}.{columnName}: Failed to apply");
+                                errorCount++;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            errorMessages.Add($"{GetEntryDisplayName(entry)}.{columnName}: {ex.Message}");
+                            errorCount++;
+                        }
+                    }
                 }
-                catch (Exception ex)
-                {
-                    trans.RollBack();
-                    // Handle error
-                }
+
+                trans.Commit();
+                _editsWereApplied = true;
+            }
+            catch (Exception ex)
+            {
+                trans.RollBack();
+                System.Windows.Forms.MessageBox.Show(
+                    $"Transaction failed: {ex.Message}\n\nAll edits have been rolled back.",
+                    "Apply Edits Error",
+                    System.Windows.Forms.MessageBoxButtons.OK,
+                    System.Windows.Forms.MessageBoxIcon.Error);
+                return false;
             }
         }
 
-        */
+        // Show results
+        string resultMessage = $"Applied {successCount} edit(s) successfully.";
+        if (errorCount > 0)
+        {
+            resultMessage += $"\n\n{errorCount} edit(s) failed:";
+            resultMessage += "\n" + string.Join("\n", errorMessages.Take(10));
+            if (errorMessages.Count > 10)
+                resultMessage += $"\n... and {errorMessages.Count - 10} more";
+        }
+
+        System.Windows.Forms.MessageBox.Show(
+            resultMessage,
+            "Apply Edits Complete",
+            System.Windows.Forms.MessageBoxButtons.OK,
+            errorCount > 0 ? System.Windows.Forms.MessageBoxIcon.Warning : System.Windows.Forms.MessageBoxIcon.Information);
+
+        return true;
     }
 
-    /* TODO: Implement property-specific edit handlers
+    /// <summary>
+    /// Get a Revit Element from a DataGrid entry
+    /// Supports various entry formats: ElementId, ElementIdObject, Id (long)
+    /// </summary>
+    private static Element GetElementFromEntry(Document doc, Dictionary<string, object> entry)
+    {
+        // Try ElementIdObject first (most direct)
+        if (entry.ContainsKey("ElementIdObject") && entry["ElementIdObject"] is ElementId elemId)
+        {
+            return doc.GetElement(elemId);
+        }
 
-    private static void ApplyPropertyEdit(Element elem, string columnName, object newValue)
+        // Try ElementId (if stored directly)
+        if (entry.ContainsKey("ElementId") && entry["ElementId"] is ElementId elemId2)
+        {
+            return doc.GetElement(elemId2);
+        }
+
+        // Try Id as long
+        if (entry.ContainsKey("Id"))
+        {
+            try
+            {
+                long id = Convert.ToInt64(entry["Id"]);
+                return doc.GetElement(id.ToElementId());
+            }
+            catch { }
+        }
+
+        // Try parsing various ID fields
+        foreach (var key in new[] { "ElementId", "Id", "ElemId", "Element Id" })
+        {
+            if (entry.ContainsKey(key))
+            {
+                try
+                {
+                    var value = entry[key];
+                    if (value is int intId)
+                        return doc.GetElement(intId.ToElementId());
+                    else if (value is long longId)
+                        return doc.GetElement(longId.ToElementId());
+                    else if (value is string strId && long.TryParse(strId, out long parsedId))
+                        return doc.GetElement(parsedId.ToElementId());
+                }
+                catch { }
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Get display name for an entry (for error messages)
+    /// </summary>
+    private static string GetEntryDisplayName(Dictionary<string, object> entry)
+    {
+        if (entry.ContainsKey("Name") && entry["Name"] != null)
+            return entry["Name"].ToString();
+        if (entry.ContainsKey("DisplayName") && entry["DisplayName"] != null)
+            return entry["DisplayName"].ToString();
+        if (entry.ContainsKey("Id"))
+            return $"ID {entry["Id"]}";
+        return "Unknown";
+    }
+
+    /// <summary>
+    /// Apply a property edit to a Revit element
+    /// </summary>
+    private static bool ApplyPropertyEdit(Element elem, string columnName, object newValue, Dictionary<string, object> entry)
     {
         string lowerName = columnName.ToLowerInvariant();
+        string strValue = newValue?.ToString() ?? "";
 
+        // Built-in element properties
         switch (lowerName)
         {
             case "name":
-                elem.Name = newValue.ToString();
-                break;
+                try
+                {
+                    elem.Name = strValue;
+                    return true;
+                }
+                catch
+                {
+                    return false;
+                }
 
             case "comments":
-                {
-                    Parameter param = elem.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS);
-                    if (param != null && !param.IsReadOnly)
-                        param.Set(newValue.ToString());
-                }
-                break;
+                return SetBuiltInParameter(elem, BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS, strValue);
 
             case "mark":
-                {
-                    Parameter param = elem.get_Parameter(BuiltInParameter.ALL_MODEL_MARK);
-                    if (param != null && !param.IsReadOnly)
-                        param.Set(newValue.ToString());
-                }
-                break;
+                return SetBuiltInParameter(elem, BuiltInParameter.ALL_MODEL_MARK, strValue);
 
-            // Add more property handlers here...
+            case "description":
+                return SetBuiltInParameter(elem, BuiltInParameter.ALL_MODEL_DESCRIPTION, strValue);
+
+            // Workset
+            case "workset":
+            case "worksetname":
+                return SetWorkset(elem, strValue);
+
+            // Level
+            case "level":
+            case "levelname":
+                return SetLevel(elem, strValue);
+
+            // Phase
+            case "phasecreated":
+                return SetPhase(elem, BuiltInParameter.PHASE_CREATED, strValue);
+
+            case "phasedemolished":
+                return SetPhase(elem, BuiltInParameter.PHASE_DEMOLISHED, strValue);
+
+            // Sheet properties
+            case "sheetnumber":
+                if (elem is ViewSheet sheet)
+                {
+                    try
+                    {
+                        sheet.SheetNumber = strValue;
+                        return true;
+                    }
+                    catch { return false; }
+                }
+                return false;
+
+            case "sheetname":
+                return SetBuiltInParameter(elem, BuiltInParameter.SHEET_NAME, strValue);
+
+            // View properties
+            case "viewname":
+                if (elem is View view)
+                {
+                    try
+                    {
+                        view.Name = strValue;
+                        return true;
+                    }
+                    catch { return false; }
+                }
+                return false;
+
+            case "scale":
+            case "viewscale":
+                if (elem is View v && v.CanBePrinted) // Only views that can be printed have scale
+                {
+                    if (int.TryParse(strValue, out int scaleValue))
+                    {
+                        try
+                        {
+                            v.Scale = scaleValue;
+                            return true;
+                        }
+                        catch { return false; }
+                    }
+                }
+                return false;
+
+            case "detaillevel":
+                if (elem is View vDetail)
+                {
+                    if (Enum.TryParse(strValue, true, out ViewDetailLevel detailLevel))
+                    {
+                        try
+                        {
+                            vDetail.DetailLevel = detailLevel;
+                            return true;
+                        }
+                        catch { return false; }
+                    }
+                }
+                return false;
+
+            // Room/Space properties (handled via parameters)
+            case "number":
+                return SetParameterValue(elem, "Number", strValue);
+
+            case "area":
+                // Area is usually read-only, but try anyway
+                return SetParameterValue(elem, "Area", strValue);
+
+            case "volume":
+                // Volume is usually read-only, but try anyway
+                return SetParameterValue(elem, "Volume", strValue);
 
             default:
                 // Handle parameter columns (param_*, sharedparam_*, typeparam_*)
                 if (lowerName.StartsWith("param_"))
                 {
                     string paramName = columnName.Substring(6); // Remove "param_" prefix
-                    Parameter param = elem.LookupParameter(paramName);
-                    if (param != null && !param.IsReadOnly)
-                    {
-                        SetParameterValue(param, newValue);
-                    }
+                    return SetParameterValue(elem, paramName, strValue);
                 }
-                break;
+                else if (lowerName.StartsWith("sharedparam_"))
+                {
+                    string paramName = columnName.Substring(12); // Remove "sharedparam_" prefix
+                    return SetParameterValue(elem, paramName, strValue);
+                }
+                else if (lowerName.StartsWith("typeparam_"))
+                {
+                    string paramName = columnName.Substring(10); // Remove "typeparam_" prefix
+                    // For type parameters, get the element type and set its parameter
+                    ElementType elemType = elem.Document.GetElement(elem.GetTypeId()) as ElementType;
+                    if (elemType != null)
+                        return SetParameterValue(elemType, paramName, strValue);
+                    return false;
+                }
+                else
+                {
+                    // Try as a regular parameter lookup
+                    return SetParameterValue(elem, columnName, strValue);
+                }
         }
     }
 
-    private static void SetParameterValue(Parameter param, object value)
+    /// <summary>
+    /// Set a built-in parameter value
+    /// </summary>
+    private static bool SetBuiltInParameter(Element elem, BuiltInParameter builtInParam, string value)
     {
-        if (param == null || param.IsReadOnly) return;
+        Parameter param = elem.get_Parameter(builtInParam);
+        if (param == null || param.IsReadOnly)
+            return false;
 
-        string strValue = value?.ToString() ?? "";
+        return SetParameterValueInternal(param, value);
+    }
 
-        switch (param.StorageType)
+    /// <summary>
+    /// Set a parameter by name
+    /// </summary>
+    private static bool SetParameterValue(Element elem, string paramName, string value)
+    {
+        // Try exact match first
+        Parameter param = elem.LookupParameter(paramName);
+
+        // If not found, try case-insensitive match
+        if (param == null)
         {
-            case StorageType.String:
-                param.Set(strValue);
-                break;
+            foreach (Parameter p in elem.Parameters)
+            {
+                if (string.Equals(p.Definition.Name, paramName, StringComparison.OrdinalIgnoreCase))
+                {
+                    param = p;
+                    break;
+                }
+            }
+        }
 
-            case StorageType.Integer:
-                if (int.TryParse(strValue, out int intValue))
-                    param.Set(intValue);
-                break;
+        // Try with underscore/space conversion
+        if (param == null)
+        {
+            string paramNameWithSpaces = paramName.Replace("_", " ");
+            param = elem.LookupParameter(paramNameWithSpaces);
+        }
 
-            case StorageType.Double:
-                if (double.TryParse(strValue, out double doubleValue))
-                    param.Set(doubleValue);
-                break;
+        if (param == null)
+        {
+            string paramNameWithUnderscores = paramName.Replace(" ", "_");
+            param = elem.LookupParameter(paramNameWithUnderscores);
+        }
 
-            case StorageType.ElementId:
-                if (int.TryParse(strValue, out int elemIdValue))
-                    param.Set(new ElementId(elemIdValue));
-                break;
+        if (param == null || param.IsReadOnly)
+            return false;
+
+        return SetParameterValueInternal(param, value);
+    }
+
+    /// <summary>
+    /// Set parameter value based on storage type
+    /// </summary>
+    private static bool SetParameterValueInternal(Parameter param, string value)
+    {
+        try
+        {
+            switch (param.StorageType)
+            {
+                case StorageType.String:
+                    param.Set(value);
+                    return true;
+
+                case StorageType.Integer:
+                    if (int.TryParse(value, out int intValue))
+                    {
+                        param.Set(intValue);
+                        return true;
+                    }
+                    // Also try as ElementId for integer parameters
+                    if (int.TryParse(value, out int elemIdInt))
+                    {
+                        param.Set(elemIdInt.ToElementId());
+                        return true;
+                    }
+                    return false;
+
+                case StorageType.Double:
+                    if (double.TryParse(value, out double doubleValue))
+                    {
+                        param.Set(doubleValue);
+                        return true;
+                    }
+                    return false;
+
+                case StorageType.ElementId:
+                    // Try parsing as integer first
+                    if (int.TryParse(value, out int idValue))
+                    {
+                        param.Set(idValue.ToElementId());
+                        return true;
+                    }
+                    // Try parsing as long
+                    if (long.TryParse(value, out long longIdValue))
+                    {
+                        param.Set(longIdValue.ToElementId());
+                        return true;
+                    }
+                    // Try finding element by name (for named references like levels, worksets, etc.)
+                    // This is a fallback for user-friendly input
+                    return false;
+
+                default:
+                    return false;
+            }
+        }
+        catch
+        {
+            return false;
         }
     }
 
-    */
+    /// <summary>
+    /// Set element's workset by name
+    /// </summary>
+    private static bool SetWorkset(Element elem, string worksetName)
+    {
+        Document doc = elem.Document;
+
+        if (!doc.IsWorkshared)
+            return false;
+
+        Parameter worksetParam = elem.get_Parameter(BuiltInParameter.ELEM_PARTITION_PARAM);
+        if (worksetParam == null || worksetParam.IsReadOnly)
+            return false;
+
+        // Find workset by name
+        var worksets = new FilteredWorksetCollector(doc)
+            .OfKind(WorksetKind.UserWorkset)
+            .ToList();
+
+        Workset targetWorkset = worksets.FirstOrDefault(w =>
+            string.Equals(w.Name, worksetName, StringComparison.OrdinalIgnoreCase));
+
+        if (targetWorkset == null)
+            return false;
+
+        try
+        {
+            worksetParam.Set(targetWorkset.Id.IntegerValue);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Set element's level by name
+    /// </summary>
+    private static bool SetLevel(Element elem, string levelName)
+    {
+        Document doc = elem.Document;
+
+        Parameter levelParam = elem.get_Parameter(BuiltInParameter.LEVEL_PARAM);
+        if (levelParam == null || levelParam.IsReadOnly)
+            return false;
+
+        // Find level by name
+        var levels = new FilteredElementCollector(doc)
+            .OfClass(typeof(Level))
+            .Cast<Level>()
+            .ToList();
+
+        Level targetLevel = levels.FirstOrDefault(l =>
+            string.Equals(l.Name, levelName, StringComparison.OrdinalIgnoreCase));
+
+        if (targetLevel == null)
+            return false;
+
+        try
+        {
+            levelParam.Set(targetLevel.Id);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Set element's phase by name
+    /// </summary>
+    private static bool SetPhase(Element elem, BuiltInParameter phaseParam, string phaseName)
+    {
+        Document doc = elem.Document;
+
+        Parameter param = elem.get_Parameter(phaseParam);
+        if (param == null || param.IsReadOnly)
+            return false;
+
+        // Find phase by name
+        PhaseArray phases = doc.Phases;
+        Phase targetPhase = null;
+
+        foreach (Phase phase in phases)
+        {
+            if (string.Equals(phase.Name, phaseName, StringComparison.OrdinalIgnoreCase))
+            {
+                targetPhase = phase;
+                break;
+            }
+        }
+
+        if (targetPhase == null)
+            return false;
+
+        try
+        {
+            param.Set(targetPhase.Id);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
 }
