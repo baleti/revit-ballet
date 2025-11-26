@@ -35,7 +35,7 @@
   <!-- Run Python script to prepare resources before build -->
   <Target Name="PrepareDeduplicatedResources" BeforeTargets="BeforeBuild;BeforeCompile">
     <Message Text="Merging keyboard shortcuts..." Importance="high" />
-    <Exec Command="python3 _merge-shortcuts.py" WorkingDirectory="$(MSBuildProjectDirectory)" />
+    <Exec Command="python3 _installer-merge-shortcuts.py" WorkingDirectory="$(MSBuildProjectDirectory)" />
     <Message Text="Preparing deduplicated resources..." Importance="high" />
     <Exec Command="python3 _installer-deduplicate.py"
           WorkingDirectory="$(MSBuildProjectDirectory)"
