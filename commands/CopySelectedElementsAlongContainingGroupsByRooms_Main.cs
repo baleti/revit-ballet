@@ -15,7 +15,6 @@ using System.Threading;
 public partial class CopySelectedElementsAlongContainingGroupsByRooms : IExternalCommand
 {
     // Track room validation statistics
-    private int totalRoomsChecked = 0;
     private int roomsValidatedBySimilarity = 0;
     private int roomsInvalidatedByDissimilarity = 0;
     private int roomsAsDirectMembers = 0;

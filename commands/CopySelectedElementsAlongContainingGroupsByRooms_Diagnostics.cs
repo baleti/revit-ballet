@@ -22,7 +22,6 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
     // Tracking why groups are skipped
     private Dictionary<string, int> skipReasons = new Dictionary<string, int>();
     private List<string> skippedGroupDetails = new List<string>();
-    private int totalGroupsEvaluated = 0;
 
     private void InitializeDiagnostics()
     {
@@ -32,7 +31,6 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
         callCounts.Clear();
         skipReasons.Clear();
         skippedGroupDetails.Clear();
-        totalGroupsEvaluated = 0;
         globalStopwatch.Restart();
         
         diagnosticLog.AppendLine($"=== PERFORMANCE TIMING ANALYSIS - {DateTime.Now:yyyy-MM-dd HH:mm:ss} ===");

@@ -190,7 +190,7 @@ public class DWGNamingDialog : System.Windows.Forms.Form
     private bool isPlaceholderActive = true;
     private List<string> formatHistory;
     private int lastCursorPosition = 0;
-    private Dictionary<string, string> pdfNamingPresets; // Store PDF naming presets
+    private Dictionary<string, string> pdfNamingPresets = new Dictionary<string, string>(); // Store PDF naming presets
     private Stack<string> undoStack = new Stack<string>(); // For undo functionality
     private Stack<string> redoStack = new Stack<string>(); // For redo functionality
     

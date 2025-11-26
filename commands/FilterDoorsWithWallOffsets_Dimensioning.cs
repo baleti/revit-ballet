@@ -197,8 +197,9 @@ namespace FilterDoorsWithWallOffsets
                     continue;
                 }
             }
-#endif
+
             return calculatedDistances;
+#endif
         }
 
         /// <summary>

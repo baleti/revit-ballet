@@ -2,17 +2,17 @@
 
 #+html:<p align="center"><i>Dance around Revit 🩰</i></p>
 
-Collection of custom commands for Revit. Solves common challenges encountered at technical delivery of buildings.
+collection of custom commands for Revit
 
 ** supported versions
 
-| Revit Version | Status        | Notes                                   |
-|---------------+---------------+-----------------------------------------|
-| 2022-2026     | Full support  | All commands available                  |
-| 2021          | Full support  | All commands available*                 |
-| 2020          | Mostly works  | 29 commands excluded                    |
-| 2019          | Mostly works  | 29 commands excluded                    |
-| 2017-2018     | Mostly works  | 31 commands excluded                    |
+| Revit Version | Notes                   |
+|---------------+-------------------------|
+|     2022-2026 | All commands available  |
+|          2021 | All commands available* |
+|          2020 | 29 commands excluded    |
+|          2019 | 29 commands excluded    |
+|     2017-2018 | 31 commands excluded    |
 
 *Revit 2017-2020: Remote scripting server requires manual SSL certificate generation.
 Run in PowerShell: ~New-SelfSignedCertificate -DnsName 'localhost' -CertStoreLocation 'Cert:\CurrentUser\My'~
