@@ -9,114 +9,99 @@ using System.Linq;
 using System.Collections.Generic;
 using RevitBallet.Commands;
 
-public class LogViewChanges : IExternalApplication
+namespace RevitBallet
 {
-    private string logFilePath;
-    private static bool serverInitialized = false;
-
-    public Result OnStartup(UIControlledApplication application)
+    /// <summary>
+    /// Logs view changes and maintains view history for each project.
+    /// </summary>
+    public static class LogViewChanges
     {
-        // Run all startup tasks (directory initialization and update migration)
-        Startup.RunStartupTasks(application);
+        private static string logFilePath;
+        private static bool serverInitialized = false;
 
-        application.ViewActivated += OnViewActivated;
-        application.ControlledApplication.DocumentOpened += OnDocumentOpened;
-
-        // Initialize the server (it doesn't need UIApplication immediately)
-        try
+        /// <summary>
+        /// Initializes view change logging by registering event handlers.
+        /// </summary>
+        public static void Initialize(UIControlledApplication application)
         {
-            RevitBalletServer.InitializeServer();
-        }
-        catch
-        {
-            // Silently fail - don't interrupt Revit startup
+            application.ViewActivated += OnViewActivated;
+            application.ControlledApplication.DocumentOpened += OnDocumentOpened;
         }
 
-        return Result.Succeeded;
-    }
-
-    public Result OnShutdown(UIControlledApplication application)
-    {
-        application.ViewActivated -= OnViewActivated;
-        application.ControlledApplication.DocumentOpened -= OnDocumentOpened;
-
-        // Terminate the server
-        try
+        /// <summary>
+        /// Cleans up view change logging by unregistering event handlers.
+        /// </summary>
+        public static void Cleanup(UIControlledApplication application)
         {
-            RevitBalletServer.TerminateServer();
-        }
-        catch
-        {
-            // Silently fail
+            application.ViewActivated -= OnViewActivated;
+            application.ControlledApplication.DocumentOpened -= OnDocumentOpened;
         }
 
-        return Result.Succeeded;
-    }
-
-    private void OnViewActivated(object sender, ViewActivatedEventArgs e)
-    {
-        // Set UIApplication for the server on first view activation
-        if (!serverInitialized && sender is UIApplication uiApp)
+        private static void OnViewActivated(object sender, ViewActivatedEventArgs e)
         {
-            RevitBalletServer.SetUIApplication(uiApp);
-            serverInitialized = true;
-        }
-
-        Document doc = e.Document;
-
-        // Check if the document is a family document
-        if (doc.IsFamilyDocument)
-        {
-            return; // Exit if it's a family document
-        }
-
-        string projectName = doc != null ? doc.Title : "UnknownProject";
-
-        // Get the log file path using PathHelper (ensures directory exists)
-        logFilePath = PathHelper.GetLogViewChangesPath(projectName);
-
-        List<string> logEntries = File.Exists(logFilePath) ? File.ReadAllLines(logFilePath).ToList() : new List<string>();
-
-        // Add the new entry
-        logEntries.Add($"{e.CurrentActiveView.Id} {e.CurrentActiveView.Title}");
-
-        // Remove duplicates, preserving the order (keeping the first entry from the bottom)
-        HashSet<string> seen = new HashSet<string>();
-        int insertIndex = logEntries.Count;
-        for (int i = logEntries.Count - 1; i >= 0; i--)
-        {
-            if (seen.Add(logEntries[i]))
+            // Set UIApplication for the server on first view activation
+            if (!serverInitialized && sender is UIApplication uiApp)
             {
-                logEntries[--insertIndex] = logEntries[i];
+                RevitBalletServer.SetUIApplication(uiApp);
+                serverInitialized = true;
             }
+
+            Document doc = e.Document;
+
+            // Check if the document is a family document
+            if (doc.IsFamilyDocument)
+            {
+                return; // Exit if it's a family document
+            }
+
+            string projectName = doc != null ? doc.Title : "UnknownProject";
+
+            // Get the log file path using PathHelper (ensures directory exists)
+            logFilePath = PathHelper.GetLogViewChangesPath(projectName);
+
+            List<string> logEntries = File.Exists(logFilePath) ? File.ReadAllLines(logFilePath).ToList() : new List<string>();
+
+            // Add the new entry
+            logEntries.Add($"{e.CurrentActiveView.Id} {e.CurrentActiveView.Title}");
+
+            // Remove duplicates, preserving the order (keeping the first entry from the bottom)
+            HashSet<string> seen = new HashSet<string>();
+            int insertIndex = logEntries.Count;
+            for (int i = logEntries.Count - 1; i >= 0; i--)
+            {
+                if (seen.Add(logEntries[i]))
+                {
+                    logEntries[--insertIndex] = logEntries[i];
+                }
+            }
+            logEntries = logEntries.Skip(insertIndex).ToList();
+
+            File.WriteAllLines(logFilePath, logEntries);
         }
-        logEntries = logEntries.Skip(insertIndex).ToList();
 
-        File.WriteAllLines(logFilePath, logEntries);
-    }
-
-    private void OnDocumentOpened(object sender, DocumentOpenedEventArgs e)
-    {
-        Document doc = e.Document;
-        string projectName = doc != null ? doc.Title : "UnknownProject";
-
-        // Check if the document is a family document
-        if (doc.IsFamilyDocument)
+        private static void OnDocumentOpened(object sender, DocumentOpenedEventArgs e)
         {
-            return; // Exit if it's a family document
-        }
+            Document doc = e.Document;
+            string projectName = doc != null ? doc.Title : "UnknownProject";
 
-        // Get the log file path using PathHelper (ensures directory exists)
-        logFilePath = PathHelper.GetLogViewChangesPath(projectName);
+            // Check if the document is a family document
+            if (doc.IsFamilyDocument)
+            {
+                return; // Exit if it's a family document
+            }
 
-        // Clear the contents of the log file
-        if (File.Exists(logFilePath))
-        {
-            // Create a backup copy with a .last suffix
-            string backupFilePath = logFilePath + ".last";
-            File.Copy(logFilePath, backupFilePath, true);
+            // Get the log file path using PathHelper (ensures directory exists)
+            logFilePath = PathHelper.GetLogViewChangesPath(projectName);
 
-            // Clear the contents of the log file
+            // Clear the contents of the log file or create it if it doesn't exist
+            if (File.Exists(logFilePath))
+            {
+                // Create a backup copy with a .last suffix
+                string backupFilePath = logFilePath + ".last";
+                File.Copy(logFilePath, backupFilePath, true);
+            }
+
+            // Clear/create the log file (WriteAllText creates the file if it doesn't exist)
             File.WriteAllText(logFilePath, string.Empty);
         }
     }
