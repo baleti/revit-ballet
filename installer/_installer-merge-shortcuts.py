@@ -16,7 +16,7 @@ def normalize_command_id(cmd_id):
 
 def main():
     script_dir = Path(__file__).parent
-    shortcuts_dir = script_dir / "keyboard-shortcuts"
+    shortcuts_dir = script_dir / "KeyboardShortcuts"
     merged_dir = script_dir / "bin" / "keyboard-shortcuts-merged"
     custom_file = shortcuts_dir / "KeyboardShortcuts-custom.xml"
     addin_file = script_dir / "revit-ballet.addin"

@@ -15,7 +15,7 @@ public partial class CustomGUIs
         private static string GetHistoryDirectory()
         {
             string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            string historyDir = Path.Combine(appData, "revit-ballet", "runtime", "searchbox-queries");
+            string historyDir = Path.Combine(appData, "revit-ballet", "runtime", "SearchboxQueries");
 
             if (!Directory.Exists(historyDir))
             {
