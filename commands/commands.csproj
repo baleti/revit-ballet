@@ -1,11 +1,4 @@
-﻿<Project>
-  <!-- Set intermediate output path before SDK import to allow parallel builds -->
-  <PropertyGroup>
-    <BaseIntermediateOutputPath Condition="'$(RevitYear)' != ''">obj\$(RevitYear)\</BaseIntermediateOutputPath>
-  </PropertyGroup>
-
-  <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
-
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <!-- Default to Revit 2024 if no year specified -->
     <RevitYear Condition="'$(RevitYear)' == ''">2024</RevitYear>
@@ -115,6 +108,4 @@
     <Delete Files="@(UnnecessaryDlls)" />
     <Message Text="Removed $(UnnecessaryDlls->Count()) unnecessary .NET facade DLLs from output" Importance="high" />
   </Target>
-
-  <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
 </Project>

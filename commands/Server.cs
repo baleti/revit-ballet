@@ -1126,7 +1126,7 @@ namespace RevitBallet.Commands
     /// </summary>
     internal static class SslCertificateHelper
     {
-        private static readonly string CertificateStorePath = PathHelper.GetRuntimeFilePath("server-cert.pfx");
+        private static readonly string CertificateStorePath = PathHelper.GetRuntimeFilePath("ServerCert.pfx");
 
         private const string CertificatePassword = "revit-ballet-localhost";
 
