@@ -1,4 +1,11 @@
 <RevitAddIns>
+    <AddIn Type="Application">
+        <Name>revit-ballet</Name>
+        <Assembly>revit-ballet.dll</Assembly>
+        <FullClassName>RevitBallet.RevitBallet</FullClassName>
+        <AddInId>A1B2C3D4-E5F6-4A7B-8C9D-0E1F2A3B4C5D</AddInId>
+        <VendorId>revit-ballet</VendorId>
+    </AddIn>
     <AddIn Type="Command">
         <Name>revit-ballet</Name>
         <Assembly>revit-ballet.dll</Assembly>

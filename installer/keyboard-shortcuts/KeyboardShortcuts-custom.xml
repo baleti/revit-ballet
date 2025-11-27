@@ -16,8 +16,8 @@
   <ShortcutItem CommandId="8b3f7e2a-9c4d-4f1b-8a6e-3d7f2b9a1c4e" Shortcuts="WE"/>
   <ShortcutItem CommandId="2f6a9d3e-4b7c-4e2a-9d6f-1c8e4a7b2d9f" Shortcuts="WR"/>
   <ShortcutItem CommandId="5e8b2f7a-3c9d-4a1e-8b7f-2d9a1c6e4b3f" Shortcuts="WW"/>
-  <ShortcutItem CommandId="9a4f7c2e-6b3d-4e9a-7c2f-1d8b4e9a6c3f" Shortcuts="WQ"/>
-  <ShortcutItem CommandId="3c7e9a2d-4f6b-4a8e-9c7f-2d1b4a8e9c6f" Shortcuts="WC"/>
+  <ShortcutItem CommandId="9a4f7c2e-6b3d-4e9a-7c2f-1d8b4e9a6c3f" Shortcuts="WC"/>
+  <ShortcutItem CommandId="3c7e9a2d-4f6b-4a8e-9c7f-2d1b4a8e9c6f" Shortcuts="WQ"/>
   <ShortcutItem CommandId="6d9f2a3e-7c4b-4e1a-8d9f-3c2e4b7a9d1f" Shortcuts="Ctrl+Alt+A"/>
   <ShortcutItem CommandId="1e8a3f7b-9d4c-4a2e-7e9f-4c1d3a8b2e7f" Shortcuts="SCA"/>
   <ShortcutItem CommandId="7f3a9d2c-6e4b-4f8a-9d3e-2c7f1b4a8e9f" Shortcuts="SCV"/>
