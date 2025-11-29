@@ -14,6 +14,13 @@ def normalize_command_id(cmd_id):
     """Normalize CommandId for case-insensitive comparison"""
     return cmd_id.lower() if cmd_id else ""
 
+def parse_shortcuts(shortcuts_attr):
+    """Parse the Shortcuts attribute into individual shortcut keys"""
+    if not shortcuts_attr:
+        return []
+    # Split by # to get individual shortcuts
+    return [s.strip() for s in shortcuts_attr.split('#') if s.strip()]
+
 def main():
     script_dir = Path(__file__).parent
     shortcuts_dir = script_dir / "KeyboardShortcuts"
@@ -85,6 +92,55 @@ def main():
             if cmd_id:
                 existing_shortcuts[normalize_command_id(cmd_id)] = shortcut
 
+        # Build a map of shortcuts from custom file
+        custom_shortcut_map = {}  # shortcut_key -> CommandId
+        for custom_shortcut in custom_shortcuts:
+            cmd_id = custom_shortcut.get('CommandId')
+            shortcuts_attr = custom_shortcut.get('Shortcuts')
+            if cmd_id and shortcuts_attr:
+                shortcut_keys = parse_shortcuts(shortcuts_attr)
+                for key in shortcut_keys:
+                    custom_shortcut_map[key] = cmd_id
+
+        # Filter base shortcuts to remove conflicts with custom shortcuts
+        filtered_shortcuts = []
+        conflict_count = 0
+
+        for shortcut in root.findall('ShortcutItem'):
+            cmd_id = shortcut.get('CommandId')
+            shortcuts_attr = shortcut.get('Shortcuts')
+
+            if not cmd_id or not shortcuts_attr:
+                filtered_shortcuts.append(shortcut)
+                continue
+
+            # Check each shortcut key for conflicts
+            shortcut_keys = parse_shortcuts(shortcuts_attr)
+            non_conflicting_keys = []
+
+            for key in shortcut_keys:
+                if key in custom_shortcut_map:
+                    # Conflict found - custom takes precedence
+                    if custom_shortcut_map[key] != normalize_command_id(cmd_id):
+                        conflict_count += 1
+                        print(f"    Conflict: '{key}' used in base for '{cmd_id}' but overridden by custom for '{custom_shortcut_map[key]}'")
+                    # Skip this key (whether same command or different)
+                else:
+                    non_conflicting_keys.append(key)
+
+            # Only keep this shortcut if it has non-conflicting keys
+            if non_conflicting_keys:
+                # Update the Shortcuts attribute to only include non-conflicting keys
+                shortcut.set('Shortcuts', '#'.join(non_conflicting_keys))
+                filtered_shortcuts.append(shortcut)
+
+        # Clear root and add filtered shortcuts
+        for shortcut in root.findall('ShortcutItem'):
+            root.remove(shortcut)
+
+        for shortcut in filtered_shortcuts:
+            root.append(shortcut)
+
         # Merge custom shortcuts
         added_count = 0
         updated_count = 0
@@ -96,20 +152,17 @@ def main():
 
             normalized_id = normalize_command_id(cmd_id)
 
-            # Check if this shortcut already exists
+            # Check if this command already exists in base
             if normalized_id in existing_shortcuts:
-                # Update: remove old one and add new one
-                old_shortcut = existing_shortcuts[normalized_id]
-                root.remove(old_shortcut)
+                # This means we're updating/replacing
                 updated_count += 1
+            else:
+                added_count += 1
 
             # Add the custom shortcut
             new_shortcut = ET.SubElement(root, 'ShortcutItem')
             for attr_name, attr_value in custom_shortcut.attrib.items():
                 new_shortcut.set(attr_name, attr_value)
-
-            if normalized_id not in existing_shortcuts:
-                added_count += 1
 
         # Write to merged directory (not original)
         merged_file = merged_dir / f"KeyboardShortcuts-{year}.xml"
@@ -123,7 +176,8 @@ def main():
 
         tree.write(merged_file, encoding='utf-8', xml_declaration=True)
 
-        print(f"  Revit {year}: +{added_count} new, ~{updated_count} updated -> {merged_file.name}")
+        conflict_msg = f", {conflict_count} conflicts resolved" if conflict_count > 0 else ""
+        print(f"  Revit {year}: +{added_count} new, ~{updated_count} updated{conflict_msg} -> {merged_file.name}")
 
     print(f"\nMerged files written to: {merged_dir}")
     return 0
