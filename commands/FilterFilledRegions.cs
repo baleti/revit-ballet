@@ -292,8 +292,8 @@ public class FilterFilledRegions : IExternalCommand
                 .ToList();
 
             // Reorder to put most useful columns first, including sheet info
-            var orderedProps = new List<string> { 
-                "DisplayName", 
+            var orderedProps = new List<string> {
+                "Name", 
                 "Scope Boxes Outline", 
                 "Scope Boxes Center",
                 "Category",
