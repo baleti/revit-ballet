@@ -133,21 +133,21 @@ public partial class CustomGUIs
             }
         }
 
-        // Show results
-        string resultMessage = $"Applied {successCount} edit(s) successfully.";
+        // Show results only if there were errors
         if (errorCount > 0)
         {
+            string resultMessage = $"Applied {successCount} edit(s) successfully.";
             resultMessage += $"\n\n{errorCount} edit(s) failed:";
             resultMessage += "\n" + string.Join("\n", errorMessages.Take(10));
             if (errorMessages.Count > 10)
                 resultMessage += $"\n... and {errorMessages.Count - 10} more";
-        }
 
-        System.Windows.Forms.MessageBox.Show(
-            resultMessage,
-            "Apply Edits Complete",
-            System.Windows.Forms.MessageBoxButtons.OK,
-            errorCount > 0 ? System.Windows.Forms.MessageBoxIcon.Warning : System.Windows.Forms.MessageBoxIcon.Information);
+            System.Windows.Forms.MessageBox.Show(
+                resultMessage,
+                "Apply Edits - Some Failed",
+                System.Windows.Forms.MessageBoxButtons.OK,
+                System.Windows.Forms.MessageBoxIcon.Warning);
+        }
 
         return true;
     }
@@ -229,6 +229,40 @@ public partial class CustomGUIs
         switch (lowerName)
         {
             case "name":
+            case "type":
+                // If element IS a group itself, rename its group type
+                if (elem is Group selectedGroup)
+                {
+                    try
+                    {
+                        selectedGroup.GroupType.Name = strValue;
+                        return true;
+                    }
+                    catch
+                    {
+                        return false;
+                    }
+                }
+
+                // If element is in a group, rename the group type instead
+                if (elem.GroupId != null && elem.GroupId != ElementId.InvalidElementId && elem.GroupId.AsLong() != -1)
+                {
+                    Element groupElem = elem.Document.GetElement(elem.GroupId);
+                    if (groupElem is Group group)
+                    {
+                        try
+                        {
+                            group.GroupType.Name = strValue;
+                            return true;
+                        }
+                        catch
+                        {
+                            return false;
+                        }
+                    }
+                }
+
+                // Not in a group, try to rename the element directly
                 try
                 {
                     elem.Name = strValue;
