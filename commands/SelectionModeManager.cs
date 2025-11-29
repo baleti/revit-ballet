@@ -438,31 +438,6 @@ public static class SelectionModeManager
     }
 }
 
-// Simple toggle command - switches between modes quickly
-[Transaction(TransactionMode.Manual)]
-[Regeneration(RegenerationOption.Manual)]
-public class ToggleSelectionMode : IExternalCommand
-{
-    public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
-    {
-        var currentMode = SelectionModeManager.CurrentMode;
-        var newMode = currentMode == SelectionModeManager.SelectionMode.RevitUI 
-            ? SelectionModeManager.SelectionMode.SelectionSet 
-            : SelectionModeManager.SelectionMode.RevitUI;
-        
-        SelectionModeManager.CurrentMode = newMode;
-        
-        // Clear temp selection set when switching to SelectionSet mode
-        if (newMode == SelectionModeManager.SelectionMode.SelectionSet)
-        {
-            var doc = commandData.Application.ActiveUIDocument.Document;
-            SelectionModeManager.ClearTempSelectionSet(doc);
-        }
-        
-        return Result.Succeeded;
-    }
-}
-
 // DataGrid command - shows current mode and allows selection
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
