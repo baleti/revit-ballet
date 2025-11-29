@@ -87,7 +87,7 @@ public class CopySelectedRevisionCloudsToSheetsAndInheritRevision : IExternalCom
         var selectedSheetDicts = CustomGUIs.DataGrid(
             sheetDictionaries,
             new List<string> { "Title" },
-            spanAllScreens: false
+            false
         );
         
         if (!selectedSheetDicts.Any())

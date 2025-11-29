@@ -137,12 +137,9 @@ public class DeleteViewFiltersFromProject : IExternalCommand
         // -------------------------------------------------------------
         // 5. Show the DataGrid so user can pick which filters to delete
         // -------------------------------------------------------------
-        List<DeleteFilterRow> selectedRows = CustomGUIs.DataGrid(
-            entries: gridData,
-            propertyNames: columns,
-            initialSelectionIndices: null,
-            Title: "Select Filters to Delete"
-        );
+        var filterDicts = CustomGUIs.ConvertToDataGridFormat(gridData, columns);
+        var selectedDicts = CustomGUIs.DataGrid(filterDicts, columns, false);
+        List<DeleteFilterRow> selectedRows = CustomGUIs.ExtractOriginalObjects<DeleteFilterRow>(selectedDicts);
 
         // If user made no selection, just end quietly
         if (!selectedRows.Any())

@@ -90,7 +90,7 @@ namespace RevitCustomCommands
 
                 // Prompt user to select line style
                 List<string> propertyNames = new List<string> { "Title", "SheetFolder", "Id" };
-                List<Dictionary<string, object>> selectedEntries = CustomGUIs.DataGrid(entries, propertyNames, spanAllScreens: false);
+                List<Dictionary<string, object>> selectedEntries = CustomGUIs.DataGrid(entries, propertyNames, false);
                 
                 if (selectedEntries == null || selectedEntries.Count == 0)
                 {

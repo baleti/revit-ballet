@@ -112,7 +112,7 @@ namespace MyRevitCommands
 
                 // 6. Show the DataGrid UI to the user.
                 //    This custom function displays the list and returns the selected rows.
-                List<Dictionary<string, object>> selectedEntries = CustomGUIs.DataGrid(entries, propertyNames, spanAllScreens: false);
+                List<Dictionary<string, object>> selectedEntries = CustomGUIs.DataGrid(entries, propertyNames, false);
 
                 if (selectedEntries == null || selectedEntries.Count == 0)
                 {

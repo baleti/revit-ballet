@@ -53,8 +53,10 @@ namespace YourNamespace   // ← adjust
             }
 
             var props   = new List<string> { "Name" };
-            var chosen  = CustomGUIs.DataGrid<FilterWrapper>(allFilters, props);
-            if (chosen == null || chosen.Count == 0) return Result.Cancelled;
+            var filterDicts = CustomGUIs.ConvertToDataGridFormat(allFilters, props);
+            var chosenDicts = CustomGUIs.DataGrid(filterDicts, props, false);
+            if (chosenDicts == null || chosenDicts.Count == 0) return Result.Cancelled;
+            var chosen = CustomGUIs.ExtractOriginalObjects<FilterWrapper>(chosenDicts);
 
             // 2. Build combined filter ----------------------------------------
             ElementFilter filter = null;

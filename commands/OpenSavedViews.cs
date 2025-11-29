@@ -46,7 +46,10 @@ public class OpenSavedViews : IExternalCommand
         }
 
         // Display the saved views using CustomGUIs.DataGrid
-        var selectedViews = CustomGUIs.DataGrid(savedViewTitles, new List<string> { "Title" }, false);
+        var propertyNames = new List<string> { "Title" };
+        var savedViewDicts = CustomGUIs.ConvertToDataGridFormat(savedViewTitles, propertyNames);
+        var selectedDicts = CustomGUIs.DataGrid(savedViewDicts, propertyNames, false);
+        var selectedViews = CustomGUIs.ExtractOriginalObjects<Dictionary<string, object>>(selectedDicts);
 
         // Open the selected views in Revit
         UIApplication uiapp = commandData.Application;

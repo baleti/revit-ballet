@@ -63,47 +63,106 @@ public partial class CustomGUIs
     {
         string lowerName = columnName.ToLowerInvariant();
 
+        // System columns that should NOT be editable
+        switch (lowerName)
+        {
+            case "id":
+            case "elementid":
+            case "elementidobject":
+            case "linkname":
+            case "islinked":
+            case "linkinstanceobject":
+            case "linkedelementidobject":
+            case "category":
+            case "ownerview":
+            case "scopeboxes":
+            case "__datagrid_internal_id__":
+            // Group membership (use Revit group commands instead)
+            case "group":
+            case "groupname":
+            case "grouptype":
+            // Read-only calculated properties
+            case "area":
+            case "volume":
+            case "length":
+            case "width":
+            case "height":
+            case "perimeter":
+            case "crosssection":
+            case "cross-section":
+            // Read-only identifiers
+            case "ifcguid":
+            case "ifc guid":
+            case "uniqueid":
+            case "unique id":
+            case "uniquekey":
+            case "unique key":
+            // Read-only image/visual properties
+            case "image":
+                return false;
+        }
+
         // Revit-specific editable columns
         switch (lowerName)
         {
-            // Common element properties
+            // Element names and families
             case "name":
+            case "displayname":
+            case "typename":
+            case "type":
+            case "familyname":
+            case "family":
+
+            // Basic properties
             case "comments":
             case "mark":
             case "description":
-            case "type":
-
-            // Type properties
-            case "typename":
-            case "familyname":
             case "typemark":
+
+            // Organization
+            case "workset":
+            case "worksetname":
+            case "level":
+            case "levelname":
+            case "phasecreated":
+            case "phasedemolished":
+            case "designoption":
+            case "subcategory":
 
             // View properties
             case "viewname":
             case "scale":
+            case "viewscale":
             case "detaillevel":
             case "viewtemplate":
+            case "template":
+            case "discipline":
+            case "title":
+            case "titleonsheet":
 
-            // Level and Phase
-            case "levelname":
-            case "phasecreated":
-            case "phasedemolished":
-
-            // Workset
-            case "worksetname":
+            // Sheet properties
+            case "sheetnumber":
+            case "sheetname":
+            case "drawnby":
+            case "checkedby":
+            case "approvedby":
+            case "issuedby":
+            case "issuedto":
+            case "sheetissuedate":
+            case "issuedate":
+            case "currentrevision":
+            case "revisionnumber":
+            case "currentrevisiondate":
+            case "revisiondate":
+            case "currentrevisiondescription":
+            case "revisiondescription":
 
             // Location/Geometry (read-only in most cases, but allow for special operations)
             case "location":
             case "rotation":
 
-            // Sheet properties
-            case "sheetnumber":
-            case "sheetname":
-
             // Room/Space properties
             case "number":
-            case "area":
-            case "volume":
                 return true;
         }
 
@@ -116,7 +175,10 @@ public partial class CustomGUIs
         // Allow type parameter columns (typeparam_*)
         if (lowerName.StartsWith("typeparam_")) return true;
 
-        return false;
+        // IMPORTANT: Allow ALL other columns as potentially editable instance parameters
+        // The ApplyPropertyEdit method will determine if it's actually editable
+        // This assumes any column not explicitly blocked above is a parameter
+        return true;
     }
 
     private static void ToggleEditMode(DataGridView grid)

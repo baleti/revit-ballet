@@ -97,7 +97,7 @@ namespace RevitBallet.Commands
             uiApp = application;
         }
 
-        private void LogToRevit(string message)
+        internal static void LogToRevit(string message)
         {
             try
             {
@@ -596,11 +596,20 @@ namespace RevitBallet.Commands
                     catch (AuthenticationException ex)
                     {
                         LogToRevit($"[{DateTime.Now:HH:mm:ss}] SSL handshake failed: {ex.Message}");
+                        LogToRevit($"[{DateTime.Now:HH:mm:ss}] Exception type: {ex.GetType().FullName}");
+                        LogToRevit($"[{DateTime.Now:HH:mm:ss}] Stack trace:\n{ex.StackTrace}");
                         LogToRevit($"[{DateTime.Now:HH:mm:ss}] Hint: Client may be using HTTP instead of HTTPS");
                     }
                     catch (System.Exception ex)
                     {
                         LogToRevit($"[{DateTime.Now:HH:mm:ss}] Error in SSL stream: {ex.Message}");
+                        LogToRevit($"[{DateTime.Now:HH:mm:ss}] Exception type: {ex.GetType().FullName}");
+                        LogToRevit($"[{DateTime.Now:HH:mm:ss}] Stack trace:\n{ex.StackTrace}");
+                        if (ex.InnerException != null)
+                        {
+                            LogToRevit($"[{DateTime.Now:HH:mm:ss}] Inner exception: {ex.InnerException.Message}");
+                            LogToRevit($"[{DateTime.Now:HH:mm:ss}] Inner stack trace:\n{ex.InnerException.StackTrace}");
+                        }
                     }
                     finally
                     {
@@ -615,6 +624,13 @@ namespace RevitBallet.Commands
             catch (System.Exception ex)
             {
                 LogToRevit($"[{DateTime.Now:HH:mm:ss}] Error handling HTTPS request from {clientEndpoint}: {ex.Message}");
+                LogToRevit($"[{DateTime.Now:HH:mm:ss}] Exception type: {ex.GetType().FullName}");
+                LogToRevit($"[{DateTime.Now:HH:mm:ss}] Stack trace:\n{ex.StackTrace}");
+                if (ex.InnerException != null)
+                {
+                    LogToRevit($"[{DateTime.Now:HH:mm:ss}] Inner exception: {ex.InnerException.Message}");
+                    LogToRevit($"[{DateTime.Now:HH:mm:ss}] Inner stack trace:\n{ex.InnerException.StackTrace}");
+                }
             }
         }
 
@@ -824,11 +840,15 @@ namespace RevitBallet.Commands
             }
             catch (System.Exception ex)
             {
+                LogToRevit($"[{DateTime.Now:HH:mm:ss}] Script compilation exception: {ex.Message}");
+                LogToRevit($"[{DateTime.Now:HH:mm:ss}] Exception type: {ex.GetType().FullName}");
+                LogToRevit($"[{DateTime.Now:HH:mm:ss}] Stack trace:\n{ex.StackTrace}");
+
                 result.Success = false;
                 result.ErrorResponse = new ScriptResponse
                 {
                     Success = false,
-                    Error = ex.Message
+                    Error = $"{ex.Message}\n\nException Type: {ex.GetType().Name}\nStack Trace: {ex.StackTrace}"
                 };
             }
 
@@ -862,7 +882,15 @@ namespace RevitBallet.Commands
             }
             catch (System.Exception ex)
             {
-                await SendHttpResponse(stream, new ScriptResponse { Success = false, Error = ex.Message });
+                LogToRevit($"[{DateTime.Now:HH:mm:ss}] Screenshot request exception: {ex.Message}");
+                LogToRevit($"[{DateTime.Now:HH:mm:ss}] Exception type: {ex.GetType().FullName}");
+                LogToRevit($"[{DateTime.Now:HH:mm:ss}] Stack trace:\n{ex.StackTrace}");
+
+                await SendHttpResponse(stream, new ScriptResponse
+                {
+                    Success = false,
+                    Error = $"{ex.Message}\n\nException Type: {ex.GetType().Name}"
+                });
             }
         }
 
@@ -998,8 +1026,17 @@ namespace RevitBallet.Commands
             }
             catch (System.Exception ex)
             {
+                RevitBalletServer.LogToRevit($"[{DateTime.Now:HH:mm:ss}] Script execution exception: {ex.Message}");
+                RevitBalletServer.LogToRevit($"[{DateTime.Now:HH:mm:ss}] Exception type: {ex.GetType().FullName}");
+                RevitBalletServer.LogToRevit($"[{DateTime.Now:HH:mm:ss}] Stack trace:\n{ex.StackTrace}");
+                if (ex.InnerException != null)
+                {
+                    RevitBalletServer.LogToRevit($"[{DateTime.Now:HH:mm:ss}] Inner exception: {ex.InnerException.Message}");
+                    RevitBalletServer.LogToRevit($"[{DateTime.Now:HH:mm:ss}] Inner stack trace:\n{ex.InnerException.StackTrace}");
+                }
+
                 response.Success = false;
-                response.Error = ex.Message;
+                response.Error = $"{ex.Message}\n\nException Type: {ex.GetType().Name}\n\nStack Trace:\n{ex.StackTrace}";
                 response.Output = outputCapture.ToString();
                 tcs.SetResult(response);
             }

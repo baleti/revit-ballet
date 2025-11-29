@@ -56,7 +56,7 @@ public class SelectFamilyTypesInCurrentView : IExternalCommand
 
         // Step 2: Display the list of unique family types using CustomGUIs.DataGrid
         var propertyNames = new List<string> { "Type Name", "Family", "Category" };
-        var selectedEntries = CustomGUIs.DataGrid(typeEntries, propertyNames, spanAllScreens: false);
+        var selectedEntries = CustomGUIs.DataGrid(typeEntries, propertyNames, false);
 
         if (selectedEntries.Count == 0)
         {
@@ -102,7 +102,7 @@ public class SelectFamilyTypesInCurrentView : IExternalCommand
 
         // Step 5: Display the parameters of the selected family types in a second DataGrid
         var paramPropertyNames = parameterEntries.FirstOrDefault()?.Keys.ToList();
-        var finalSelection = CustomGUIs.DataGrid(parameterEntries, paramPropertyNames, spanAllScreens: false);
+        var finalSelection = CustomGUIs.DataGrid(parameterEntries, paramPropertyNames, false);
 
         if (finalSelection.Count == 0)
         {

@@ -328,12 +328,14 @@ public abstract class SelectCategoriesInSelectedLinkedModelsBase : IExternalComm
             
             // Define properties to display
             var linkPropertyNames = new List<string> { "Name", "LinkType" };
-            
+
             // Show the DataGrid to let the user select linked models
-            var selectedLinkWrappers = CustomGUIs.DataGrid<LinkedModelWrapper>(linkWrappers, linkPropertyNames);
-            if (selectedLinkWrappers.Count == 0)
+            var linkDicts = CustomGUIs.ConvertToDataGridFormat(linkWrappers, linkPropertyNames);
+            var selectedLinkDicts = CustomGUIs.DataGrid(linkDicts, linkPropertyNames, false);
+            if (selectedLinkDicts.Count == 0)
                 return Result.Cancelled;
-            
+            var selectedLinkWrappers = CustomGUIs.ExtractOriginalObjects<LinkedModelWrapper>(selectedLinkDicts);
+
             // Extract the selected link instances
             selectedLinkInstances = selectedLinkWrappers.Select(w => w.LinkInstance).ToList();
         }
@@ -407,11 +409,13 @@ public abstract class SelectCategoriesInSelectedLinkedModelsBase : IExternalComm
         
         // Define properties to display
         var propertyNames = new List<string> { "Name" };
-        
+
         // Show the DataGrid to let the user select categories
-        List<LinkedCategoryWrapper> selectedCategories = CustomGUIs.DataGrid<LinkedCategoryWrapper>(allLinkedCategories, propertyNames);
-        if (selectedCategories.Count == 0)
+        var categoryDicts = CustomGUIs.ConvertToDataGridFormat(allLinkedCategories, propertyNames);
+        var selectedCategoryDicts = CustomGUIs.DataGrid(categoryDicts, propertyNames, false);
+        if (selectedCategoryDicts.Count == 0)
             return Result.Cancelled;
+        List<LinkedCategoryWrapper> selectedCategories = CustomGUIs.ExtractOriginalObjects<LinkedCategoryWrapper>(selectedCategoryDicts);
         
         // Gather references for elements in selected categories
         List<Reference> elementReferences = new List<Reference>();

@@ -242,4 +242,62 @@ public partial class CustomGUIs
             _searchIndexAllColumns[i] = allValuesBuilder.ToString();
         }
     }
+
+    // ──────────────────────────────────────────────────────────────
+    //  Object-to-Dictionary Conversion Helpers
+    //  (For migrating from old DataGrid1 generic implementation)
+    // ──────────────────────────────────────────────────────────────
+
+    private const string ORIGINAL_OBJECT_KEY = "__OriginalObject";
+
+    /// <summary>
+    /// Converts a list of objects to DataGrid-compatible dictionaries using reflection.
+    /// Stores original object reference for later retrieval.
+    /// </summary>
+    /// <typeparam name="T">Type of objects to convert</typeparam>
+    /// <param name="objects">List of objects to convert</param>
+    /// <param name="propertyNames">Property names to extract</param>
+    /// <returns>List of dictionaries suitable for DataGrid</returns>
+    public static List<Dictionary<string, object>> ConvertToDataGridFormat<T>(
+        List<T> objects,
+        List<string> propertyNames)
+    {
+        var result = new List<Dictionary<string, object>>();
+
+        foreach (var obj in objects)
+        {
+            var dict = new Dictionary<string, object>();
+
+            // Add requested properties using reflection
+            foreach (var propName in propertyNames)
+            {
+                var prop = typeof(T).GetProperty(propName);
+                if (prop != null)
+                {
+                    dict[propName] = prop.GetValue(obj, null);
+                }
+            }
+
+            // Store original object for later retrieval
+            dict[ORIGINAL_OBJECT_KEY] = obj;
+
+            result.Add(dict);
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Extracts original objects from DataGrid result dictionaries.
+    /// </summary>
+    /// <typeparam name="T">Type of objects to extract</typeparam>
+    /// <param name="dictionaries">Result from DataGrid</param>
+    /// <returns>List of original objects</returns>
+    public static List<T> ExtractOriginalObjects<T>(List<Dictionary<string, object>> dictionaries)
+    {
+        return dictionaries
+            .Where(d => d.ContainsKey(ORIGINAL_OBJECT_KEY))
+            .Select(d => (T)d[ORIGINAL_OBJECT_KEY])
+            .ToList();
+    }
 }

@@ -60,7 +60,9 @@ public class SetParametersOfSelectedInstances : IExternalCommand
         allParameters = allParameters.OrderBy(p => p.ElementName).ToList();
 
         // Show DataGrid: ElementName, ParameterName, CurrentValue
-        var chosenParameterEntries = CustomGUIs.DataGrid(allParameters, new List<string> { "ElementName", "ParameterName", "CurrentValue" }, null, "Select Instance Parameters");
+        var parameterDicts = CustomGUIs.ConvertToDataGridFormat(allParameters, new List<string> { "ElementName", "ParameterName", "CurrentValue" });
+        var selectedParameterDicts = CustomGUIs.DataGrid(parameterDicts, new List<string> { "ElementName", "ParameterName", "CurrentValue" }, false, null);
+        var chosenParameterEntries = CustomGUIs.ExtractOriginalObjects<ParameterEntryForMultiple>(selectedParameterDicts);
         if (!chosenParameterEntries.Any()) return Result.Cancelled;
 
         // Ask user for new value

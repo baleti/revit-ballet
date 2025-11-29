@@ -106,7 +106,9 @@ public class ListSheetsByDetailItemSelected : IExternalCommand
                 }
             }
 
-            List<SheetEntry> selectedSheets = CustomGUIs.DataGrid(sheetEntries, propertyNames, initialSelectionIndices, "Select Sheet");
+            var sheetDicts = CustomGUIs.ConvertToDataGridFormat(sheetEntries, propertyNames);
+            var selectedDicts = CustomGUIs.DataGrid(sheetDicts, propertyNames, false, initialSelectionIndices);
+            List<SheetEntry> selectedSheets = CustomGUIs.ExtractOriginalObjects<SheetEntry>(selectedDicts);
 
             if (selectedSheets != null && selectedSheets.Count > 0)
             {

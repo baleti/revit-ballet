@@ -96,7 +96,7 @@ namespace RevitWorksetVisibilityCommands
             List<Dictionary<string, object>> pickedRows =
                 CustomGUIs.DataGrid(rows,
                                     new List<string> { "Workset", "Elements" },
-                                    spanAllScreens: false);
+                                    false);
 
             if (pickedRows == null || pickedRows.Count == 0)
                 return Result.Cancelled;   // user cancelled grid

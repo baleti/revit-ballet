@@ -304,7 +304,7 @@ namespace YourNamespace
 
             List<string> propertyNames = new List<string> { "Id", "Title", "Sheet", "SheetFolder" };
             // CustomGUIs.DataGrid is assumed to be defined elsewhere.
-            List<Dictionary<string, object>> selectedEntries = CustomGUIs.DataGrid(entries, propertyNames, spanAllScreens: false);
+            List<Dictionary<string, object>> selectedEntries = CustomGUIs.DataGrid(entries, propertyNames, false);
 
             if (selectedEntries == null || selectedEntries.Count == 0)
             {

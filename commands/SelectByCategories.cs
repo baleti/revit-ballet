@@ -89,7 +89,7 @@ public class SelectByCategories : IExternalCommand
         
         // Convert dictionary to list
         List<Dictionary<string, object>> categoryList = uniqueCategories.Values.ToList();
-        
+
         // Add a special entry for "All Direct Shapes" at the beginning
         var directShapeEntry = new Dictionary<string, object>
         {
@@ -98,7 +98,41 @@ public class SelectByCategories : IExternalCommand
             { "IsDirectShape", true }
         };
         categoryList.Insert(0, directShapeEntry);
-        
+
+        // Remove any View-related category entries (OST_Viewers, OST_Schedules for schedule views, etc.)
+        // We'll add custom "Views" and "View Templates" entries instead
+        categoryList = categoryList.Where(c =>
+        {
+            var catId = c["CategoryId"] as ElementId;
+            if (catId == null) return true;
+            long catIdValue = catId.AsLong();
+            // Remove OST_Viewers and OST_Schedules (which can contain schedule templates)
+            return catIdValue != (int)BuiltInCategory.OST_Viewers &&
+                   catIdValue != (int)BuiltInCategory.OST_Schedules;
+        }).ToList();
+
+        // Add separate entries for Views and View Templates
+        // Use a null CategoryId to indicate we'll collect all View objects, not just a specific category
+        var viewsEntry = new Dictionary<string, object>
+        {
+            { "Name", "Views" },
+            { "CategoryId", null },
+            { "IsDirectShape", false },
+            { "IsViewTemplate", false },
+            { "IsViewCategory", true }
+        };
+        categoryList.Add(viewsEntry);
+
+        var viewTemplatesEntry = new Dictionary<string, object>
+        {
+            { "Name", "View Templates" },
+            { "CategoryId", null },
+            { "IsDirectShape", false },
+            { "IsViewTemplate", true },
+            { "IsViewCategory", true }
+        };
+        categoryList.Add(viewTemplatesEntry);
+
         // Sort the rest alphabetically (excluding the first Direct Shapes entry)
         categoryList = new List<Dictionary<string, object>> { categoryList[0] }
             .Concat(categoryList.Skip(1).OrderBy(c => (string)c["Name"]))
@@ -117,50 +151,81 @@ public class SelectByCategories : IExternalCommand
         foreach (var selectedCategory in selectedCategories)
         {
             bool isDirectShape = (bool)selectedCategory["IsDirectShape"];
-            
+
             if (isDirectShape)
             {
                 // Collect all Direct Shapes from the document
                 FilteredElementCollector directShapeCollector = new FilteredElementCollector(doc);
                 directShapeCollector.WhereElementIsNotElementType();
                 directShapeCollector.OfClass(typeof(DirectShape));
-                
+
                 var directShapeIds = directShapeCollector.Select(e => e.Id).ToList();
                 elementIds.AddRange(directShapeIds);
             }
             else
             {
-                // Regular category selection
-                ElementId catId = (ElementId)selectedCategory["CategoryId"];
-                
+                // Check if this is a Views/View Templates selection
+                bool isViewCategory = selectedCategory.ContainsKey("IsViewCategory") &&
+                                     (bool)selectedCategory["IsViewCategory"];
+                bool? isViewTemplate = selectedCategory.ContainsKey("IsViewTemplate")
+                    ? (bool?)selectedCategory["IsViewTemplate"]
+                    : null;
+
                 try
                 {
-                    // Collect elements of this category from the entire document
-                    FilteredElementCollector categoryCollector = new FilteredElementCollector(doc);
-                    categoryCollector.WhereElementIsNotElementType();
-                    
-                    // Create a list to store elements of this category (excluding DirectShapes)
                     List<ElementId> categoryElementIds = new List<ElementId>();
-                    
-                    // Try using OfCategory with BuiltInCategory if it's a built-in category
-                    if (catId.AsLong() < 0) // Built-in categories have negative IDs
+
+                    if (isViewCategory && isViewTemplate.HasValue)
                     {
-                        try
+                        // Collect ALL View objects (regardless of their Revit category)
+                        FilteredElementCollector viewCollector = new FilteredElementCollector(doc);
+                        var views = viewCollector
+                            .OfClass(typeof(View))
+                            .Cast<View>()
+                            .Where(v => v.IsTemplate == isViewTemplate.Value)
+                            .Select(v => v.Id)
+                            .ToList();
+                        categoryElementIds.AddRange(views);
+                    }
+                    else
+                    {
+                        // Regular category selection
+                        ElementId catId = (ElementId)selectedCategory["CategoryId"];
+
+                        // Collect elements of this category from the entire document
+                        FilteredElementCollector categoryCollector = new FilteredElementCollector(doc);
+                        categoryCollector.WhereElementIsNotElementType();
+
+                        // Try using OfCategory with BuiltInCategory if it's a built-in category
+                        if (catId.AsLong() < 0) // Built-in categories have negative IDs
                         {
-                            var builtInCat = (BuiltInCategory)catId.AsLong();
-                            var elementsOfCategory = categoryCollector
-                                .OfCategory(builtInCat)
-                                .Where(e => !(e is DirectShape)) // Exclude DirectShapes
-                                .Select(e => e.Id)
-                                .ToList();
-                            categoryElementIds.AddRange(elementsOfCategory);
+                            try
+                            {
+                                var builtInCat = (BuiltInCategory)catId.AsLong();
+                                var elementsOfCategory = categoryCollector
+                                    .OfCategory(builtInCat)
+                                    .Where(e => !(e is DirectShape)) // Exclude DirectShapes
+                                    .Select(e => e.Id)
+                                    .ToList();
+                                categoryElementIds.AddRange(elementsOfCategory);
+                            }
+                            catch
+                            {
+                                // If OfCategory fails, try OfCategoryId
+                                categoryCollector = new FilteredElementCollector(doc);
+                                var elementsOfCategory = categoryCollector
+                                    .WhereElementIsNotElementType()
+                                    .OfCategoryId(catId)
+                                    .Where(e => !(e is DirectShape)) // Exclude DirectShapes
+                                    .Select(e => e.Id)
+                                    .ToList();
+                                categoryElementIds.AddRange(elementsOfCategory);
+                            }
                         }
-                        catch
+                        else
                         {
-                            // If OfCategory fails, try OfCategoryId
-                            categoryCollector = new FilteredElementCollector(doc);
+                            // For custom categories, use OfCategoryId
                             var elementsOfCategory = categoryCollector
-                                .WhereElementIsNotElementType()
                                 .OfCategoryId(catId)
                                 .Where(e => !(e is DirectShape)) // Exclude DirectShapes
                                 .Select(e => e.Id)
@@ -168,17 +233,7 @@ public class SelectByCategories : IExternalCommand
                             categoryElementIds.AddRange(elementsOfCategory);
                         }
                     }
-                    else
-                    {
-                        // For custom categories, use OfCategoryId
-                        var elementsOfCategory = categoryCollector
-                            .OfCategoryId(catId)
-                            .Where(e => !(e is DirectShape)) // Exclude DirectShapes
-                            .Select(e => e.Id)
-                            .ToList();
-                        categoryElementIds.AddRange(elementsOfCategory);
-                    }
-                    
+
                     elementIds.AddRange(categoryElementIds);
                 }
                 catch

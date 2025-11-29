@@ -63,7 +63,9 @@ public class SwitchViewByHistory : IExternalCommand
         // Adjusted call to DataGrid to use a list with a single index for initial selection
         List<int> initialSelectionIndices = selectedIndex >= 0 ? new List<int> { selectedIndex } : new List<int>();
 
-        List<View> selectedViews = CustomGUIs.DataGrid(views, propertyNames, initialSelectionIndices); // Null for sorting as we've already sorted
+        var viewDicts = CustomGUIs.ConvertToDataGridFormat(views, propertyNames);
+        var selectedDicts = CustomGUIs.DataGrid(viewDicts, propertyNames, false, initialSelectionIndices);
+        List<View> selectedViews = CustomGUIs.ExtractOriginalObjects<View>(selectedDicts);
 
         if (selectedViews.Count == 0)
             return Result.Failed;

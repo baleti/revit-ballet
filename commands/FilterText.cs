@@ -193,7 +193,7 @@ public class FilterText : IExternalCommand
         var filteredEntries = CustomGUIs.DataGrid(
             entries,
             propertyNames,
-            spanAllScreens: false,
+            false,
             initialSelectionIndices: null
         );
 

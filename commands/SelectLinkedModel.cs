@@ -24,7 +24,9 @@ public class SelectLinkedModels : IExternalCommand
 
         var propertyNames = new List<string> { "Name" };
         //Create a new DataGridView
-        var selectedCategories = CustomGUIs.DataGrid<RevitLinkInstance>(linkedInstances, propertyNames);
+        var itemDicts = CustomGUIs.ConvertToDataGridFormat(linkedInstances, propertyNames);
+        var selectedDicts = CustomGUIs.DataGrid(itemDicts, propertyNames, false);
+        List<RevitLinkInstance> selectedCategories = CustomGUIs.ExtractOriginalObjects<RevitLinkInstance>(selectedDicts);
 
         // Select the linked models
         List<ElementId> linkedModelIds = selectedCategories.Select(x => x.Id).ToList();

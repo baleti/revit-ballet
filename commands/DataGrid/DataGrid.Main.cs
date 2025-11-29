@@ -439,7 +439,7 @@ public partial class CustomGUIs
         // Column header click for sorting
         grid.ColumnHeaderMouseClick += (s, e) =>
         {
-            string colName = grid.Columns[e.ColumnIndex].HeaderText;
+            string colName = grid.Columns[e.ColumnIndex].Name;
             SortCriteria existing = sortCriteria.FirstOrDefault(sc => sc.ColumnName == colName);
 
             if ((Control.ModifierKeys & Keys.Shift) == Keys.Shift)
@@ -641,6 +641,26 @@ public partial class CustomGUIs
             else if (e.KeyCode == Keys.Enter)
             {
                 FinishSelection();
+            }
+            // Spacebar: Select next/previous entry and close (when search box is empty)
+            else if (e.KeyCode == Keys.Space && string.IsNullOrWhiteSpace(searchBox.Text) && !_isEditMode)
+            {
+                int count = grid.Rows.Count;
+                if (count == 0) return;
+
+                int cur = grid.CurrentRow?.Index ?? -1;
+                int next = e.Shift ? (cur - 1 + count) % count : (cur + 1) % count;
+
+                int firstVisible = GetFirstVisibleColumnIndex();
+                if (firstVisible >= 0)
+                {
+                    grid.ClearSelection();
+                    grid.CurrentCell = grid.Rows[next].Cells[firstVisible];
+                    grid.Rows[next].Selected = true;
+                }
+
+                FinishSelection();
+                e.Handled = true;
             }
             else if (e.KeyCode == Keys.Tab && sender == grid && !e.Shift)
             {

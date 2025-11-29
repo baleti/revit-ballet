@@ -25,7 +25,9 @@ public class CloseViews : IExternalCommand
             Views.Add(view);
         }
         List<string> properties = new List<string> { "Title", "ViewType" };
-        List<View> selectedUIViews = CustomGUIs.DataGrid<View>(Views, properties);
+        var viewDicts = CustomGUIs.ConvertToDataGridFormat(Views, properties);
+        var selectedDicts = CustomGUIs.DataGrid(viewDicts, properties, false);
+        List<View> selectedUIViews = CustomGUIs.ExtractOriginalObjects<View>(selectedDicts);
 
         if (selectedUIViews.Count == 0)
             return Result.Failed;

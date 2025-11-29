@@ -60,12 +60,9 @@ public class SetInstanceParameterToNumberSequenceAlongX : IExternalCommand
 
         // Let user select parameters
         var paramList = paramNames.Select(n => new ParameterInfo { Name = n }).ToList();
-        var selectedParams = CustomGUIs.DataGrid(
-            paramList, 
-            new List<string> { "Name" }, 
-            null, 
-            "Select Parameters to Number"
-        );
+        var itemDicts = CustomGUIs.ConvertToDataGridFormat(paramList, new List<string> { "Name" });
+        var selectedDicts = CustomGUIs.DataGrid(itemDicts, new List<string> { "Name" }, false);
+        var selectedParams = CustomGUIs.ExtractOriginalObjects<ParameterInfo>(selectedDicts);
 
         if (selectedParams.Count == 0)
         {

@@ -72,7 +72,7 @@ public class SelectModelGroupsInProject : IExternalCommand
         var propertyNames = new List<string> { "Group Name", "Instances" };
 
         // Prompt the user to select one or more group types using the custom DataGrid GUI
-        var selectedEntries = CustomGUIs.DataGrid(entries, propertyNames, spanAllScreens: false);
+        var selectedEntries = CustomGUIs.DataGrid(entries, propertyNames, false);
 
         if (selectedEntries == null || selectedEntries.Count == 0)
         {

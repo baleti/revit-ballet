@@ -64,7 +64,7 @@ public class CopySelectedElementsToViews : IExternalCommand
         List<Dictionary<string, object>> selectedViewDicts = CustomGUIs.DataGrid(
             viewDictionaries,
             new List<string> { "Title" },
-            spanAllScreens: false,
+            false,
             initialSelectionIndices: initialSelectionIndices
         );
         

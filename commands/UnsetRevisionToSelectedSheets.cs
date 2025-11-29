@@ -93,7 +93,7 @@ public class UnsetRevisionToSelectedSheets : IExternalCommand
             CustomGUIs.DataGrid(
                 revEntries,
                 revProps,
-                spanAllScreens: false,
+                false,
                 /* no pre-selection */ null);
 
         if (selectedRevisions == null || selectedRevisions.Count == 0)

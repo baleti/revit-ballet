@@ -77,7 +77,7 @@ namespace MyRevitAddin
             }
 
             // Display the data grid and capture the selected entries.
-            List<Dictionary<string, object>> selectedEntries = CustomGUIs.DataGrid(entries, propertyNames, spanAllScreens: false);
+            List<Dictionary<string, object>> selectedEntries = CustomGUIs.DataGrid(entries, propertyNames, false);
 
             // If the user didn't select anything, abort the command immediately.
             if (selectedEntries == null || selectedEntries.Count == 0)

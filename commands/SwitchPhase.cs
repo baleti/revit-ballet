@@ -89,11 +89,13 @@ public class SwitchPhase : IExternalCommand
         List<int> initialSelectionIndices = selectedIndex >= 0 ? new List<int> { selectedIndex } : new List<int>();
 
         // Display the phases using the custom DataGrid UI.
-        List<PhaseWrapper> selectedPhaseWrappers = CustomGUIs.DataGrid(phaseWrappers, propertyNames, initialSelectionIndices);
-        if (selectedPhaseWrappers == null || selectedPhaseWrappers.Count == 0)
+        var phaseDicts = CustomGUIs.ConvertToDataGridFormat(phaseWrappers, propertyNames);
+        var selectedPhaseDicts = CustomGUIs.DataGrid(phaseDicts, propertyNames, false, initialSelectionIndices);
+        if (selectedPhaseDicts == null || selectedPhaseDicts.Count == 0)
             return Result.Failed;
 
         // Retrieve the underlying Phase from the selected wrapper.
+        var selectedPhaseWrappers = CustomGUIs.ExtractOriginalObjects<PhaseWrapper>(selectedPhaseDicts);
         Phase chosenPhase = selectedPhaseWrappers.First().Phase;
 
         // Start a transaction to update the active view's phase parameter.

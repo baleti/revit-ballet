@@ -69,7 +69,7 @@ namespace RevitWorksetVisibilityCommands
 
             // Allow the user to select worksets from the grid
             List<Dictionary<string, object>> selectedEntries =
-                CustomGUIs.DataGrid(entries, new List<string> { "Workset", "Visibility" }, spanAllScreens: false);
+                CustomGUIs.DataGrid(entries, new List<string> { "Workset", "Visibility" }, false);
 
             if (selectedEntries == null || selectedEntries.Count == 0)
                 return Result.Cancelled;
@@ -154,7 +154,7 @@ namespace RevitWorksetVisibilityCommands
 
             // Allow the user to select worksets from the grid
             List<Dictionary<string, object>> selectedEntries =
-                CustomGUIs.DataGrid(entries, new List<string> { "Workset", "Visibility" }, spanAllScreens: false);
+                CustomGUIs.DataGrid(entries, new List<string> { "Workset", "Visibility" }, false);
 
             if (selectedEntries == null || selectedEntries.Count == 0)
                 return Result.Cancelled;
@@ -239,7 +239,7 @@ namespace RevitWorksetVisibilityCommands
 
             // Allow the user to select worksets from the grid
             List<Dictionary<string, object>> selectedEntries =
-                CustomGUIs.DataGrid(entries, new List<string> { "Workset", "Visibility" }, spanAllScreens: false);
+                CustomGUIs.DataGrid(entries, new List<string> { "Workset", "Visibility" }, false);
 
             if (selectedEntries == null || selectedEntries.Count == 0)
                 return Result.Cancelled;
@@ -324,7 +324,7 @@ namespace RevitWorksetVisibilityCommands
 
             // Allow the user to select the worksets they want to remain visible
             List<Dictionary<string, object>> selectedEntries =
-                CustomGUIs.DataGrid(entries, new List<string> { "Workset", "Visibility" }, spanAllScreens: false);
+                CustomGUIs.DataGrid(entries, new List<string> { "Workset", "Visibility" }, false);
 
             if (selectedEntries == null || selectedEntries.Count == 0)
                 return Result.Cancelled;

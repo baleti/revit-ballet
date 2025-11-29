@@ -127,7 +127,7 @@ public class SwapSelectedModelGroups : IExternalCommand
         var selectedEntries = CustomGUIs.DataGrid(
             entries, 
             propertyNames, 
-            spanAllScreens: false
+            false
         );
 
         if (selectedEntries == null || selectedEntries.Count == 0)

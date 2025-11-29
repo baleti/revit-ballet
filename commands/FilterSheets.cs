@@ -96,7 +96,7 @@ namespace MyCompany.RevitCommands
 
             // --- show chooser grid -----------------------------------------------------------
             List<Dictionary<string, object>> chosen =
-                CustomGUIs.DataGrid(gridData, columns, spanAllScreens: false);
+                CustomGUIs.DataGrid(gridData, columns, false);
 
             if (chosen == null || chosen.Count == 0)
                 return Result.Cancelled;   // user cancelled or unchecked everything

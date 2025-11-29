@@ -47,7 +47,10 @@ public class MoveSelectedViewsToSheet : IExternalCommand
         }).ToList();
 
         // Display the sheet selection dialog with the active sheet pre-selected
-        var selectedSheets = CustomGUIs.DataGrid(sheetEntries, new List<string> { "Sheet Name", "Sheet Number" }, false, new List<int> { activeSheetIndex });
+        var propertyNames = new List<string> { "Sheet Name", "Sheet Number" };
+        var sheetEntryDicts = CustomGUIs.ConvertToDataGridFormat(sheetEntries, propertyNames);
+        var selectedDicts = CustomGUIs.DataGrid(sheetEntryDicts, propertyNames, false, new List<int> { activeSheetIndex });
+        var selectedSheets = CustomGUIs.ExtractOriginalObjects<Dictionary<string, object>>(selectedDicts);
 
         if (selectedSheets == null || selectedSheets.Count == 0)
         {

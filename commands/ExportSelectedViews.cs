@@ -21,15 +21,15 @@ public class ExportSelectedViewsCommand : IExternalCommand
             .ToList();
 
         // Prepare data for the DataGrid GUI
-        var sheetData = sheets.Select(sheet => new
+        var sheetData = sheets.Select(sheet => new Dictionary<string, object>
         {
-            SheetNumber = sheet.get_Parameter(BuiltInParameter.SHEET_NUMBER).AsString(),
-            SheetName = sheet.get_Parameter(BuiltInParameter.SHEET_NAME).AsString(),
-            Id = sheet.Id
+            { "SheetNumber", sheet.get_Parameter(BuiltInParameter.SHEET_NUMBER).AsString() },
+            { "SheetName", sheet.get_Parameter(BuiltInParameter.SHEET_NAME).AsString() },
+            { "Id", sheet.Id }
         }).ToList();
 
         // Prompt user to select sheets
-        var selectedSheets = CustomGUIs.DataGrid(sheetData, new List<string> { "SheetNumber", "SheetName" }, Title: "Select Sheets");
+        var selectedSheets = CustomGUIs.DataGrid(sheetData, new List<string> { "SheetNumber", "SheetName" }, false);
 
         if (selectedSheets == null || !selectedSheets.Any())
         {
@@ -38,7 +38,7 @@ public class ExportSelectedViewsCommand : IExternalCommand
         }
 
         // Get the selected sheet IDs
-        var selectedSheetIds = selectedSheets.Select(sheet => (ElementId)sheet.Id).ToList();
+        var selectedSheetIds = selectedSheets.Select(sheet => (ElementId)sheet["Id"]).ToList();
 
         // Use PostableCommand to save sheets as library views
         foreach (ElementId sheetId in selectedSheetIds)
