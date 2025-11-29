@@ -171,8 +171,6 @@ public static class ElementDataHelper
             ["LinkedElementIdObject"] = linkedElementId // Store linked element ID for reference creation
         };
 
-        data["DisplayName"] = element.Name;
-
         // Add scope box information
         var containingScopeBoxes = new List<string>();
         try
@@ -365,7 +363,7 @@ public abstract class FilterElementsBase : IExternalCommand
                 .ToList();
 
             // Reorder to put most useful columns first, with ScopeBoxes as second column
-            var orderedProps = new List<string> { "DisplayName", "ScopeBoxes", "Category", "LinkName", "Group", "OwnerView", "Id" };
+            var orderedProps = new List<string> { "Name", "ScopeBoxes", "Category", "LinkName", "Group", "OwnerView", "Id" };
             var remainingProps = propertyNames.Except(orderedProps).OrderBy(p => p);
             propertyNames = orderedProps.Where(p => propertyNames.Contains(p))
                 .Concat(remainingProps)
@@ -648,7 +646,7 @@ public class FilterSelectedInViews : IExternalCommand
                 .ToList();
 
             // Reorder to put most useful columns first, with ScopeBoxes as second column
-            var orderedProps = new List<string> { "DisplayName", "ScopeBoxes", "Category", "LinkName", "Group", "OwnerView", "Id" };
+            var orderedProps = new List<string> { "Name", "ScopeBoxes", "Category", "LinkName", "Group", "OwnerView", "Id" };
             var remainingProps = propertyNames.Except(orderedProps).OrderBy(p => p);
             propertyNames = orderedProps.Where(p => propertyNames.Contains(p))
                 .Concat(remainingProps)
