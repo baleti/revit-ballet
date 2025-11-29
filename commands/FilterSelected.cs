@@ -287,16 +287,16 @@ public abstract class FilterElementsBase : IExternalCommand
             // Create a unique key for each element to map back to full data
             var elementDataMap = new Dictionary<string, Dictionary<string, object>>();
             var displayData = new List<Dictionary<string, object>>();
-            
+
             for (int i = 0; i < elementData.Count; i++)
             {
                 var data = elementData[i];
                 // Create a unique key combining multiple properties
                 string uniqueKey = $"{data["Id"]}_{data["Name"]}_{data["Category"]}_{data["LinkName"]}_{i}";
-                
+
                 // Store the full data in our map
                 elementDataMap[uniqueKey] = data;
-                
+
                 // Create display data with the unique key
                 var display = new Dictionary<string, object>(data);
                 display["UniqueKey"] = uniqueKey;
@@ -315,7 +315,17 @@ public abstract class FilterElementsBase : IExternalCommand
                 .Concat(remainingProps)
                 .ToList();
 
+            // Set the current UIDocument for edit operations
+            CustomGUIs.SetCurrentUIDocument(uiDoc);
+
             var chosenRows = CustomGUIs.DataGrid(displayData, propertyNames, SpanAllScreens);
+
+            // Apply any pending edits to Revit elements
+            if (CustomGUIs.HasPendingEdits())
+            {
+                CustomGUIs.ApplyCellEditsToEntities();
+            }
+
             if (chosenRows.Count == 0)
                 return Result.Cancelled;
 
@@ -588,7 +598,17 @@ public class FilterSelectedInViews : IExternalCommand
                 .Concat(remainingProps)
                 .ToList();
 
+            // Set the current UIDocument for edit operations
+            CustomGUIs.SetCurrentUIDocument(uiDoc);
+
             var chosenRows = CustomGUIs.DataGrid(displayData, propertyNames, spanAllScreens: false);
+
+            // Apply any pending edits to Revit elements
+            if (CustomGUIs.HasPendingEdits())
+            {
+                CustomGUIs.ApplyCellEditsToEntities();
+            }
+
             if (chosenRows.Count == 0)
                 return Result.Cancelled;
 
