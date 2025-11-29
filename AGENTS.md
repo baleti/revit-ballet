@@ -1,45 +1,442 @@
-# Revit Ballet - Agent Development Guide
+# Revit Ballet - AI Agent Integration & Code Conventions
 
-## Code Conventions for AI Agents
+> **Documentation Size Limit**: This file must stay under 20KB. Keep changes concise and avoid approaching this limit to allow for future additions.
 
-When working on the Revit Ballet codebase, follow these naming conventions:
+This file provides guidance to AI agents (like Claude Code) when working with code in this repository and querying Revit sessions.
 
-### Naming Standards (C# PascalCase)
+## Project Overview
 
-**CRITICAL**: This project uses **PascalCase** for all code identifiers, NOT kebab-case.
+Revit Ballet is a collection of custom commands for Revit that provides enhanced productivity tools. The project consists of two main components:
 
-- **Classes/Interfaces**: PascalCase (e.g., `TransformSelectedElements`)
-- **Methods/Functions**: PascalCase (e.g., `GetRuntimeFilePath`)
-- **Properties**: PascalCase (e.g., `CurrentView`)
-- **Local Variables**: camelCase (e.g., `appData`, `currentView`)
-- **Constants**: PascalCase or UPPER_CASE (e.g., `MaxRetries` or `MAX_RETRIES`)
-- **File Names**: PascalCase matching class name (e.g., `Server.cs`)
-- **Directory Names**: PascalCase (e.g., `SearchboxQueries/`)
+1. **Commands** (`/commands/`) - C# plugin with custom Revit commands
+2. **Installer** (`/installer/`) - Windows Forms installer application
 
-### Migration Note
+## Development Environment
 
-This codebase was ported from AutoCAD Ballet which used kebab-case. All kebab-case has been standardized to PascalCase.
+**IMPORTANT**: This codebase is located in the same directory as `%APPDATA%/revit-ballet`, which means:
+- The `runtime/` folder in this repository reflects **live usage** of the plugin
+- You can examine runtime logs and data to verify code behavior and debug issues
+- **ALL runtime data MUST be stored in `runtime/` subdirectory** - includes logs, network data, screenshots
 
-Examples of corrections made:
-- `searchbox-queries/` → `SearchboxQueries/`
-- `server-cert.pfx` → `ServerCert.pfx`
-- `InvokeAddinCommand-history` → `InvokeAddinCommandHistory`
+## Architecture
 
-### Exception
+### Multi-Version Revit Support
+The project supports Revit versions 2017-2026 through conditional compilation:
+- Uses `RevitYear` property to target specific versions
+- Different .NET Framework targets based on Revit version:
+  - 2017-2018: .NET Framework 4.6
+  - 2019-2020: .NET Framework 4.7
+  - 2021-2024: .NET Framework 4.8
+  - 2025-2026: .NET 8.0 Windows
+- Revit.NET package versions are automatically selected based on target year
 
-The product name `revit-ballet` remains in kebab-case as it's a brand identifier, not a code element.
+### Roslyn Server for AI Agents
 
-## Development Guidelines
+Revit Ballet provides a Roslyn compiler-as-a-service that allows AI agents to execute C# code within Revit session context.
 
-When creating or modifying code:
-1. Always use PascalCase for new files, classes, and methods
-2. Convert any kebab-case to PascalCase when refactoring
-3. Follow existing C# conventions in the codebase
-4. Update references when renaming files or directories
+**Purpose:**
+- Query and analyze current Revit session programmatically
+- Perform validation tasks (element checks, parameter validation)
+- Inspect document state and element properties dynamically
+- Support automated BIM quality checks and audits
+- Enable cross-session network queries for multi-Revit workflows
+
+**Peer-to-Peer Network Architecture:**
+- Each Revit instance runs its own HTTPS server
+- Servers auto-start when Revit loads (no manual command needed)
+- Port allocation: 23717-23817 (automatic first-available selection)
+- Shared token authentication across all sessions
+- File-based service discovery via `%appdata%/revit-ballet/runtime/network/`
+
+**Network Registry Structure:**
+```
+%appdata%/revit-ballet/runtime/network/
+  ├── sessions      # CSV: SessionId,Port,Hostname,ProcessId,RegisteredAt,LastHeartbeat,Documents
+  └── token         # Shared 256-bit authentication token
+```
+
+**Design Decision: Shared Token**
+- All Revit sessions in the network share a single authentication token
+- First session to start generates the token and stores it in `network/token`
+- Subsequent sessions read and reuse this token
+- Token regenerates when all sessions close and a new one starts
+- Simplifies authentication: only one token to manage
+- Enables seamless cross-session communication
+
+**Endpoints:**
+- **`/roslyn`** - Execute C# scripts in Revit context
+- **`/screenshot`** - Capture screenshot of Revit window, saved to `runtime/screenshots/`
+
+**Implementation:**
+- Auto-initialized by `RevitBallet` extension application in `commands/RevitBallet.cs`
+- Background thread with UI marshalling via `ExternalEvent`
+- Network registry heartbeat every 30 seconds, 2-minute timeout for dead sessions
+
+## Querying and Testing Revit Sessions
+
+**When you need to query Revit state, test commands, or inspect models:**
+
+1. **Use the Roslyn Server** - Every Revit session runs an HTTPS server that executes C# scripts
+2. **Location**: Token at `runtime/network/token`, sessions at `runtime/network/sessions`
+3. **Find active port**: `grep -v '^#' runtime/network/sessions | head -1 | cut -d',' -f2`
+
+**Quick Start - List Levels:**
+```bash
+TOKEN=$(cat runtime/network/token)
+PORT=$(grep -v '^#' runtime/network/sessions | head -1 | cut -d',' -f2)
+
+curl -k -s -X POST https://127.0.0.1:$PORT/roslyn \
+  -H "X-Auth-Token: $TOKEN" \
+  -d 'var collector = new FilteredElementCollector(Doc);
+var levels = collector.OfClass(typeof(Level)).Cast<Level>();
+foreach (var level in levels.OrderBy(l => l.Elevation))
+{
+    Console.WriteLine($"{level.Name}: {level.Elevation}");
+}'
+```
+
+**Note:** Use `-k` or `--insecure` flag with curl to accept self-signed SSL certificates (localhost only).
+
+## Available Context
+
+Scripts have access to these global variables:
+
+- **`UIApp`** - UIApplication instance
+- **`UIDoc`** - Active UIDocument
+- **`Doc`** - Active Document
+
+Pre-imported namespaces:
+- `System`, `System.Linq`, `System.Collections.Generic`
+- `Autodesk.Revit.DB`
+- `Autodesk.Revit.UI`
+
+**Response Format:**
+```json
+{
+  "Success": true,
+  "Output": "Hello from Revit!\n",
+  "Error": null,
+  "Diagnostics": []
+}
+```
+
+## Common Query Patterns
+
+### Listing Information
+
+**Get All Levels:**
+```bash
+TOKEN=$(cat runtime/network/token)
+curl -k -X POST https://127.0.0.1:23717/roslyn \
+  -H "X-Auth-Token: $TOKEN" \
+  -d 'var collector = new FilteredElementCollector(Doc);
+var levels = collector.OfClass(typeof(Level)).Cast<Level>();
+foreach (var level in levels.OrderBy(l => l.Elevation))
+{
+    Console.WriteLine($"{level.Name}: {level.Elevation}");
+}'
+```
+
+**Count Elements by Category:**
+```bash
+TOKEN=$(cat runtime/network/token)
+curl -k -X POST https://127.0.0.1:23717/roslyn \
+  -H "X-Auth-Token: $TOKEN" \
+  -d 'var collector = new FilteredElementCollector(Doc);
+var elements = collector.WhereElementIsNotElementType().ToElements();
+var typeCounts = elements.GroupBy(e => e.Category?.Name ?? "None")
+    .OrderByDescending(g => g.Count());
+foreach (var group in typeCounts)
+{
+    Console.WriteLine($"{group.Key}: {group.Count()}");
+}'
+```
+
+### Validation Queries
+
+**Check for Unplaced Rooms:**
+```bash
+TOKEN=$(cat runtime/network/token)
+curl -k -X POST https://127.0.0.1:23717/roslyn \
+  -H "X-Auth-Token: $TOKEN"  -d 'var collector = new FilteredElementCollector(Doc);
+var rooms = collector.OfCategory(BuiltInCategory.OST_Rooms).Cast<Room>();
+var unplaced = rooms.Where(r => r.Area == 0 || r.Location == null).ToList();
+if (unplaced.Count > 0)
+{
+    Console.WriteLine($"Found {unplaced.Count} unplaced rooms:");
+    foreach (var room in unplaced)
+    {
+        Console.WriteLine($"  - Room {room.Number}: {room.Name}");
+    }
+}
+else
+{
+    Console.WriteLine("All rooms are placed!");
+}'
+```
+
+**Check for Elements Without Parameters:**
+```bash
+TOKEN=$(cat runtime/network/token)
+curl -k -X POST https://127.0.0.1:23717/roslyn \
+  -H "X-Auth-Token: $TOKEN"  -d 'var collector = new FilteredElementCollector(Doc);
+var walls = collector.OfCategory(BuiltInCategory.OST_Walls).WhereElementIsNotElementType();
+var missingMark = new List<Element>();
+foreach (var wall in walls)
+{
+    var mark = wall.get_Parameter(BuiltInParameter.ALL_MODEL_MARK);
+    if (mark == null || string.IsNullOrEmpty(mark.AsString()))
+    {
+        missingMark.Add(wall);
+    }
+}
+Console.WriteLine($"Walls missing Mark parameter: {missingMark.Count}");'
+```
+
+### Statistical Queries
+
+**Get Document Statistics:**
+```bash
+TOKEN=$(cat runtime/network/token)
+curl -k -X POST https://127.0.0.1:23717/roslyn \
+  -H "X-Auth-Token: $TOKEN"  -d 'var collector = new FilteredElementCollector(Doc);
+var allElements = collector.WhereElementIsNotElementType().ToElements();
+var categories = allElements.Where(e => e.Category != null)
+    .GroupBy(e => e.Category.Name)
+    .OrderByDescending(g => g.Count())
+    .Take(10);
+
+Console.WriteLine("Top 10 Categories by Count:");
+foreach (var cat in categories)
+{
+    Console.WriteLine($"  {cat.Key}: {cat.Count()}");
+}
+
+var levels = new FilteredElementCollector(Doc)
+    .OfClass(typeof(Level)).ToElements().Count;
+var views = new FilteredElementCollector(Doc)
+    .OfClass(typeof(View)).ToElements().Count;
+
+Console.WriteLine($"\nTotal Levels: {levels}");
+Console.WriteLine($"Total Views: {views}");'
+```
+
+### Screenshot Capture
+
+**Capture Revit Window Screenshot:**
+```bash
+TOKEN=$(cat runtime/network/token)
+curl -k -X POST https://127.0.0.1:23717/screenshot \
+  -H "X-Auth-Token: $TOKEN"
+```
+
+**Response:**
+```json
+{
+  "Success": true,
+  "Output": "C:\\Users\\YourName\\AppData\\Roaming\\revit-ballet\\runtime\\screenshots\\20231116-143022-456-session-id.png",
+  "Error": null,
+  "Diagnostics": []
+}
+```
+
+**Features:**
+- Captures entire Revit window including ribbon, properties panel, and view area
+- Screenshots saved to `%appdata%/revit-ballet/runtime/screenshots/`
+- Filename format: `{timestamp}-{sessionId}.png`
+- Auto-cleanup: Keeps last 20 screenshots, older ones deleted automatically
+- Returns absolute file path for immediate use
+
+**Use Cases:**
+- Visual debugging of command execution
+- Verify view state and element visibility
+- Inspect UI state and properties
+- Document model state for analysis
+- Capture warnings or dialogs
+
+## Error Handling
+
+### Compilation Errors
+
+If code has syntax errors, the server returns them:
+
+```json
+{
+  "Success": false,
+  "Output": "",
+  "Error": "Compilation failed",
+  "Diagnostics": [
+    "(1,23): error CS1002: ; expected"
+  ]
+}
+```
+
+The server **continues listening** after errors, so you can send corrected code.
+
+### Runtime Errors
+
+If code compiles but fails during execution:
+
+```json
+{
+  "Success": false,
+  "Output": "Any output before the error\n",
+  "Error": "System.NullReferenceException: Object reference not set...",
+  "Diagnostics": []
+}
+```
+
+## Revit .NET API Best Practices
+
+### Transactions for Modifications
+**CRITICAL**: Always use `Transaction` when performing document modifications:
+
+```csharp
+using (var trans = new Transaction(Doc, "Description"))
+{
+    trans.Start();
+    // Your modifications here
+    trans.Commit();
+}
+```
+
+**When to use transactions:** Creating/modifying/deleting elements, changing parameters, adding to symbol tables.
+
+### ExternalEvent for Background Operations
+For operations initiated from background threads (like the server), use `ExternalEvent`:
+
+```csharp
+// Create once during API execution context
+private ExternalEvent myEvent;
+private MyHandler myHandler;
+
+public void Initialize()
+{
+    myHandler = new MyHandler();
+    myEvent = ExternalEvent.Create(myHandler);
+}
+
+// Raise from background thread
+myEvent.Raise();
+```
+
+### FilteredElementCollector Patterns
+
+**Get all elements by category:**
+```csharp
+var collector = new FilteredElementCollector(Doc);
+var walls = collector.OfCategory(BuiltInCategory.OST_Walls)
+    .WhereElementIsNotElementType()
+    .ToElements();
+```
+
+**Get all of a specific class:**
+```csharp
+var collector = new FilteredElementCollector(Doc);
+var levels = collector.OfClass(typeof(Level)).Cast<Level>();
+```
+
+### Output and Return Values
+
+- **Use Console.WriteLine for Output**: All output should go through `Console.WriteLine()`
+- **Handle Null Values**: Always check for null when working with Revit objects
+- **Format Output Consistently**: Make output easy to parse programmatically
+  ```csharp
+  Console.WriteLine($"ELEMENT|{element.Id}|{element.Name}|{element.Category?.Name}");
+  ```
+- **Return Values**: Scripts can return values that will be appended to output
+  ```csharp
+  return collector.ToElements().Count();
+  ```
+- **Check Document State**: Verify active document exists before operations
+  ```csharp
+  if (Doc == null)
+  {
+      Console.WriteLine("No active document");
+      return;
+  }
+  ```
+
+## Integration with Claude Code
+
+When Claude Code needs to query the Revit session:
+
+1. **Read shared token**: Load token from `runtime/network/token`
+2. **Discover active sessions**: Read network registry from `runtime/network/sessions`
+3. **Construct query**: Build appropriate C# code based on task
+4. **Send request**: POST to `/roslyn` endpoint with authentication
+5. **Parse JSON response**: Extract `Success`, `Output`, `Error`, and `Diagnostics`
+6. **Iterate if needed**: If compilation fails, fix errors and retry
+
+Example workflow:
+```bash
+# Read authentication token
+TOKEN_FILE="runtime/network/token"
+if [ ! -f "$TOKEN_FILE" ]; then
+    echo "No authentication token found. Revit Ballet server may not be running."
+    exit 1
+fi
+TOKEN=$(cat "$TOKEN_FILE")
+
+# Find first available session port from registry
+SESSIONS_FILE="runtime/network/sessions"
+if [ ! -f "$SESSIONS_FILE" ]; then
+    echo "No active sessions found."
+    exit 1
+fi
+
+# Extract first port from CSV (skip comment lines)
+PORT=$(grep -v '^#' "$SESSIONS_FILE" | head -1 | cut -d',' -f2)
+
+# Send query and parse response (requires jq for JSON parsing)
+RESPONSE=$(curl -k -s -X POST https://127.0.0.1:$PORT/roslyn \
+  -H "X-Auth-Token: $TOKEN" \
+  -d 'Console.WriteLine("Test");')
+SUCCESS=$(echo $RESPONSE | jq -r '.Success')
+OUTPUT=$(echo $RESPONSE | jq -r '.Output')
+
+if [ "$SUCCESS" == "true" ]; then
+    echo "Success: $OUTPUT"
+fi
+```
+
+## Security Considerations
+
+- **HTTPS with TLS 1.2/1.3**: All communication is encrypted using self-signed certificates
+- **Localhost-only binding**: Servers only listen on 127.0.0.1 - not accessible from network
+- **Shared token authentication**: 256-bit random token shared across all sessions
+- **Token storage**: `%appdata%/revit-ballet/runtime/network/token` (plain text file)
+- **Code execution**: Scripts have **full Revit API access** - can read, modify, and delete model data
+- **Intended use**: Local development and automation only
+- **Do not**:
+  - Expose this service to untrusted networks
+  - Share the authentication token with untrusted parties
+  - Run Revit with elevated privileges when using the server
+
+## Naming Conventions
+
+**IMPORTANT**: Revit Ballet uses **PascalCase** (also called UpperCamelCase) for all naming conventions, following standard C# conventions.
+
+This codebase was partially ported from AutoCAD Ballet which used kebab-case. All kebab-case naming has been migrated to PascalCase to maintain consistency with C# standards.
+
+### Naming Standards:
+- **Classes**: PascalCase (e.g., `TransformSelectedElements`, `DataGrid2SearchHistory`)
+- **Methods**: PascalCase (e.g., `GetRuntimeFilePath`, `ProcessCommand`)
+- **Properties**: PascalCase (e.g., `CurrentView`, `SelectedElements`)
+- **Variables**: camelCase (e.g., `appData`, `searchHistory`)
+- **File Names**: PascalCase (e.g., `Server.cs`, `SearchboxQueries/`)
+- **Directory Names**: PascalCase (e.g., `runtime/SearchboxQueries/`)
+
+### Migration from AutoCAD Ballet:
+- ❌ `searchbox-queries` → ✅ `SearchboxQueries`
+- ❌ `server-cert.pfx` → ✅ `ServerCert.pfx`
+- ❌ `InvokeAddinCommand-history` → ✅ `InvokeAddinCommandHistory`
+
+**Note**: The project name `revit-ballet` itself uses kebab-case as it's a product name/brand identity, not a code identifier.
 
 ## Build Limitations
 
-**IMPORTANT**: Do NOT attempt to build the installer yourself using `cd installer && dotnet build -c Release`.
+**IMPORTANT**: Do NOT attempt to build the installer using `cd installer && dotnet build -c Release`.
 
 Due to limitations of the underlying 9p filesystem in the isolated environment, builds may take excessive amounts of time (over 5 minutes or may hang indefinitely).
 
@@ -60,3 +457,29 @@ This ensures consistency across Revit 2017-2026. Use this when:
 - Modifying core functionality
 - Changing Revit API interactions
 - Making significant refactoring changes
+
+## Building
+
+```bash
+# Build plugin (default 2026)
+dotnet build commands/revit-ballet.csproj
+
+# Build for specific version
+dotnet build commands/revit-ballet.csproj -p:RevitYear=2024
+
+# Build installer
+dotnet build installer/installer.csproj
+```
+
+## Key Files
+
+- `commands/revit-ballet.csproj` - Main plugin project
+- `commands/RevitBallet.cs` - Extension application entry point (initializes server)
+- `commands/Server.cs` - Auto-started Roslyn server for AI agents and network queries
+- `commands/PathHelper.cs` - Runtime path management
+
+## File Naming Conventions
+
+- **Command Files**: PascalCase matching class name (e.g., `DataGrid2EditMode.cs`)
+- **One Command Per File**: Complete implementation
+- **Internal/Utility Files**: PascalCase (e.g., `Server.cs`, `PathHelper.cs`)
