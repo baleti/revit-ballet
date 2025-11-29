@@ -107,8 +107,13 @@ public class SelectByCategories : IExternalCommand
             if (catId == null) return true;
             long catIdValue = catId.AsLong();
             // Remove OST_Viewers and OST_Schedules (which can contain schedule templates)
+#if REVIT2017
+            // OST_Schedules doesn't exist in Revit 2017 API
+            return catIdValue != (int)BuiltInCategory.OST_Viewers;
+#else
             return catIdValue != (int)BuiltInCategory.OST_Viewers &&
                    catIdValue != (int)BuiltInCategory.OST_Schedules;
+#endif
         }).ToList();
 
         // Add separate entries for Views and View Templates
