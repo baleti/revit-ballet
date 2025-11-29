@@ -1,5 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-  <ShortcutItem CommandId="ID_TOGGLE_ALLOW_LINK_SELECTION" Shortcuts="TEEE"/>
   <ShortcutItem CommandId="ID_EDIT_TYPE" Shortcuts="ET"/>
   <ShortcutItem CommandId="ID_FAMILY_TYPE" Shortcuts="FT"/>
   <ShortcutItem CommandId="ID_OBJECTS_EXTRUSION" Shortcuts="EX"/>
@@ -146,6 +145,7 @@
   <ShortcutItem CommandId="IDC_RADIO_COPY_CURVE" Shortcuts="PL"/>
   <ShortcutItem CommandId="IDC_RADIO_RECT" Shortcuts="RR"/>
   <ShortcutItem CommandId="ID_SEL_ALL_IN_VIEW" Shortcuts="SV"/>
+  <ShortcutItem CommandId="ID_SEL_ALL_IN_PRJ" Shortcuts="SS"/>
   <ShortcutItem CommandId="ID_OBJECTS_CURVE_RECT" Shortcuts="RR"/>
-  <ShortcutItem CommandId="ID_EDIT_SELECT_PREVIOUS" Shortcuts="SS"/>
+  <ShortcutItem CommandId="ID_EDIT_SELECT_PREVIOUS" Shortcuts="ZZ"/>
   <ShortcutItem CommandId="ID_DUPLICATE_SHEET_WITH_VIEWS" Shortcuts="DWV"/>

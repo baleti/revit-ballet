@@ -246,27 +246,9 @@ public partial class CustomGUIs
                     }
                 }
 
-                // If element is in a group, rename the group type instead
-                if (elem.GroupId != null && elem.GroupId != ElementId.InvalidElementId && elem.GroupId.AsLong() != -1)
-                {
-                    Element groupElem = elem.Document.GetElement(elem.GroupId);
-                    if (groupElem is Group group)
-                    {
-                        try
-                        {
-                            group.GroupType.Name = strValue;
-                            return true;
-                        }
-                        catch
-                        {
-                            return false;
-                        }
-                    }
-                }
-
-                // For all other elements, rename the TYPE
-                // Note: elem.Name actually refers to the type name, but setting it doesn't work directly
-                // We need to get the element type and rename that
+                // For all other elements (including group members), rename the element's TYPE
+                // Note: Even if an element is in a group, we can still rename its family type
+                // The element's Name property refers to its type name, not the group name
                 ElementId typeId = elem.GetTypeId();
                 if (typeId != null && typeId != ElementId.InvalidElementId)
                 {
