@@ -20,3 +20,14 @@ This codebase was partially ported from AutoCAD Ballet which used kebab-case. Al
 - ❌ `InvokeAddinCommand-history` → ✅ `InvokeAddinCommandHistory`
 
 **Note**: The project name `revit-ballet` itself uses kebab-case as it's a product name/brand identity, not a code identifier.
+
+## Build Limitations
+
+**IMPORTANT**: Do NOT attempt to build the installer using `cd installer && dotnet build -c Release`.
+
+Due to limitations of the underlying 9p filesystem in the isolated environment, builds may take excessive amounts of time (over 5 minutes or may hang indefinitely).
+
+Instead:
+- Ask the user to test the build and return results if needed
+- Focus on code changes and let the user handle compilation
+- If build verification is required, request the user run the build command in their environment

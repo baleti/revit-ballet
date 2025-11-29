@@ -485,24 +485,20 @@ namespace RevitBalletInstaller
                     // Extract dependencies
                     ExtractDependenciesSafe(installation.Year, mainFolder);
 
-                    // Successfully updated main folder - no need to create .update folder
-                    // But we still need to create/update .addin file if it's a fresh install
-                    if (!File.Exists(addinPath))
+                    // Successfully updated main folder - always update .addin file to ensure command definitions are current
+                    string addinContent = GetResourceText(addinResource);
+                    var doc = XDocument.Parse(addinContent);
+
+                    foreach (var assemblyElement in doc.Descendants("Assembly"))
                     {
-                        string addinContent = GetResourceText(addinResource);
-                        var doc = XDocument.Parse(addinContent);
-
-                        foreach (var assemblyElement in doc.Descendants("Assembly"))
+                        string currentValue = assemblyElement.Value;
+                        if (!currentValue.Contains("\\") && !currentValue.Contains("/"))
                         {
-                            string currentValue = assemblyElement.Value;
-                            if (!currentValue.Contains("\\") && !currentValue.Contains("/"))
-                            {
-                                assemblyElement.Value = Path.Combine(mainFolder, currentValue);
-                            }
+                            assemblyElement.Value = Path.Combine(mainFolder, currentValue);
                         }
-
-                        doc.Save(addinPath);
                     }
+
+                    doc.Save(addinPath);
 
                     installationResults.Add(new InstallationResult
                     {
