@@ -20,14 +20,18 @@ namespace RevitBalletInstaller
 
             string exeName = Path.GetFileName(Assembly.GetExecutingAssembly().Location).ToLower();
             bool isUninstaller = exeName.Contains("uninstall") || (args.Length > 0 && args[0] == "/uninstall");
+            bool quietMode = args.Any(arg => arg.Equals("/q", StringComparison.OrdinalIgnoreCase) ||
+                                             arg.Equals("/quiet", StringComparison.OrdinalIgnoreCase) ||
+                                             arg.Equals("-q", StringComparison.OrdinalIgnoreCase) ||
+                                             arg.Equals("--quiet", StringComparison.OrdinalIgnoreCase));
 
             if (isUninstaller)
             {
-                new BalletUninstaller().Run();
+                new BalletUninstaller().Run(quietMode);
             }
             else
             {
-                new BalletInstaller().Run();
+                new BalletInstaller().Run(quietMode);
             }
         }
     }
@@ -55,7 +59,7 @@ namespace RevitBalletInstaller
             public List<string> Years { get; set; }
         }
 
-        public void Run()
+        public void Run(bool quietMode = false)
         {
             try
             {
@@ -68,8 +72,11 @@ namespace RevitBalletInstaller
 
                 if (installations.Count == 0)
                 {
-                    MessageBox.Show("No Revit installations found.",
-                        "Revit Ballet", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    if (!quietMode)
+                    {
+                        MessageBox.Show("No Revit installations found.",
+                            "Revit Ballet", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    }
                     return;
                 }
 
@@ -97,12 +104,23 @@ namespace RevitBalletInstaller
                 // Register addins as trusted to avoid "Load Always/Load Once" prompts
                 RegisterTrustedAddins();
 
-                ShowSuccessDialog();
+                if (!quietMode)
+                {
+                    ShowSuccessDialog();
+                }
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Installation error: {ex.Message}\n\n{ex.StackTrace}",
-                    "Revit Ballet Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                if (!quietMode)
+                {
+                    MessageBox.Show($"Installation error: {ex.Message}\n\n{ex.StackTrace}",
+                        "Revit Ballet Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+                else
+                {
+                    // In quiet mode, exit with error code
+                    Environment.Exit(1);
+                }
             }
         }
 
@@ -1058,13 +1076,16 @@ namespace RevitBalletInstaller
 
     public class BalletUninstaller
     {
-        public void Run()
+        public void Run(bool quietMode = false)
         {
             try
             {
-                if (MessageBox.Show("Uninstall Revit Ballet?", "Revit Ballet",
-                    MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
-                    return;
+                if (!quietMode)
+                {
+                    if (MessageBox.Show("Uninstall Revit Ballet?", "Revit Ballet",
+                        MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
+                        return;
+                }
 
                 RemoveFromRevit();
                 RestoreKeyboardShortcuts();
@@ -1081,13 +1102,23 @@ namespace RevitBalletInstaller
 
                 RemoveFromRegistry();
 
-                MessageBox.Show("Revit Ballet uninstalled successfully.", "Uninstaller",
-                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                if (!quietMode)
+                {
+                    MessageBox.Show("Revit Ballet uninstalled successfully.", "Uninstaller",
+                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Uninstallation failed: {ex.Message}", "Uninstaller",
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                if (!quietMode)
+                {
+                    MessageBox.Show($"Uninstallation failed: {ex.Message}", "Uninstaller",
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+                else
+                {
+                    Environment.Exit(1);
+                }
             }
         }
 
