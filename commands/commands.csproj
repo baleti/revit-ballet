@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <!-- Default to Revit 2024 if no year specified -->
-    <RevitYear Condition="'$(RevitYear)' == ''">2024</RevitYear>
+    <RevitYear Condition="'$(RevitYear)' == ''">2025</RevitYear>
 
     <!-- Suppress NU1701 warnings for legacy packages that work fine on .NET 8 -->
     <NoWarn>$(NoWarn);NU1701</NoWarn>
