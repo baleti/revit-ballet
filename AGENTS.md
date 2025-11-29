@@ -83,16 +83,9 @@ Revit Ballet provides a Roslyn compiler-as-a-service that allows AI agents to ex
 **Quick Start - List Levels:**
 ```bash
 TOKEN=$(cat runtime/network/token)
-PORT=$(grep -v '^#' runtime/network/sessions | head -1 | cut -d',' -f2)
-
-curl -k -s -X POST https://127.0.0.1:$PORT/roslyn \
+curl -k -X POST https://127.0.0.1:23717/roslyn \
   -H "X-Auth-Token: $TOKEN" \
-  -d 'var collector = new FilteredElementCollector(Doc);
-var levels = collector.OfClass(typeof(Level)).Cast<Level>();
-foreach (var level in levels.OrderBy(l => l.Elevation))
-{
-    Console.WriteLine($"{level.Name}: {level.Elevation}");
-}'
+  -d 'var collector = new FilteredElementCollector(Doc); var levels = collector.OfClass(typeof(Level)).Cast<Level>(); Console.WriteLine("Total Levels: " + levels.Count()); foreach (var level in levels.OrderBy(l => l.Elevation).Take(5)) { Console.WriteLine("  " + level.Name + ": " + level.Elevation); }'
 ```
 
 **Note:** Use `-k` or `--insecure` flag with curl to accept self-signed SSL certificates (localhost only).
@@ -126,108 +119,38 @@ Pre-imported namespaces:
 
 **Get All Levels:**
 ```bash
-TOKEN=$(cat runtime/network/token)
-curl -k -X POST https://127.0.0.1:23717/roslyn \
-  -H "X-Auth-Token: $TOKEN" \
-  -d 'var collector = new FilteredElementCollector(Doc);
-var levels = collector.OfClass(typeof(Level)).Cast<Level>();
-foreach (var level in levels.OrderBy(l => l.Elevation))
-{
-    Console.WriteLine($"{level.Name}: {level.Elevation}");
-}'
+curl --insecure -X POST https://127.0.0.1:23717/roslyn -H "X-Auth-Token: $(cat revit-ballet/runtime/network/token)" -d 'var collector = new FilteredElementCollector(Doc); var levels = collector.OfClass(typeof(Level)).Cast<Level>(); Console.WriteLine("Total Levels: " + levels.Count()); foreach (var level in levels.OrderBy(l => l.Elevation).Take(5)) { Console.WriteLine("  " + level.Name + ": " + level.Elevation); }' | jq
 ```
 
 **Count Elements by Category:**
 ```bash
-TOKEN=$(cat runtime/network/token)
-curl -k -X POST https://127.0.0.1:23717/roslyn \
-  -H "X-Auth-Token: $TOKEN" \
-  -d 'var collector = new FilteredElementCollector(Doc);
-var elements = collector.WhereElementIsNotElementType().ToElements();
-var typeCounts = elements.GroupBy(e => e.Category?.Name ?? "None")
-    .OrderByDescending(g => g.Count());
-foreach (var group in typeCounts)
-{
-    Console.WriteLine($"{group.Key}: {group.Count()}");
-}'
+curl --insecure -X POST https://127.0.0.1:23717/roslyn -H "X-Auth-Token: $(cat revit-ballet/runtime/network/token)" -d 'var collector = new FilteredElementCollector(Doc); var elements = collector.WhereElementIsNotElementType().ToElements(); var typeCounts = elements.GroupBy(e => e.Category?.Name ?? "None").OrderByDescending(g => g.Count()).Take(5); foreach (var group in typeCounts) { Console.WriteLine(group.Key + ": " + group.Count()); }' | jq
 ```
 
 ### Validation Queries
 
 **Check for Unplaced Rooms:**
 ```bash
-TOKEN=$(cat runtime/network/token)
-curl -k -X POST https://127.0.0.1:23717/roslyn \
-  -H "X-Auth-Token: $TOKEN"  -d 'var collector = new FilteredElementCollector(Doc);
-var rooms = collector.OfCategory(BuiltInCategory.OST_Rooms).Cast<Room>();
-var unplaced = rooms.Where(r => r.Area == 0 || r.Location == null).ToList();
-if (unplaced.Count > 0)
-{
-    Console.WriteLine($"Found {unplaced.Count} unplaced rooms:");
-    foreach (var room in unplaced)
-    {
-        Console.WriteLine($"  - Room {room.Number}: {room.Name}");
-    }
-}
-else
-{
-    Console.WriteLine("All rooms are placed!");
-}'
+curl --insecure -X POST https://127.0.0.1:23717/roslyn -H "X-Auth-Token: $(cat revit-ballet/runtime/network/token)" -d 'var collector = new FilteredElementCollector(Doc); var rooms = collector.OfCategory(BuiltInCategory.OST_Rooms).Cast<Room>(); var unplaced = rooms.Where(r => r.Area == 0 || r.Location == null).ToList(); if (unplaced.Count > 0) { Console.WriteLine("Found " + unplaced.Count + " unplaced rooms:"); foreach (var room in unplaced) { Console.WriteLine("  - Room " + room.Number + ": " + room.Name); } } else { Console.WriteLine("All rooms are placed!"); }' | jq
 ```
 
 **Check for Elements Without Parameters:**
 ```bash
-TOKEN=$(cat runtime/network/token)
-curl -k -X POST https://127.0.0.1:23717/roslyn \
-  -H "X-Auth-Token: $TOKEN"  -d 'var collector = new FilteredElementCollector(Doc);
-var walls = collector.OfCategory(BuiltInCategory.OST_Walls).WhereElementIsNotElementType();
-var missingMark = new List<Element>();
-foreach (var wall in walls)
-{
-    var mark = wall.get_Parameter(BuiltInParameter.ALL_MODEL_MARK);
-    if (mark == null || string.IsNullOrEmpty(mark.AsString()))
-    {
-        missingMark.Add(wall);
-    }
-}
-Console.WriteLine($"Walls missing Mark parameter: {missingMark.Count}");'
+curl --insecure -X POST https://127.0.0.1:23717/roslyn -H "X-Auth-Token: $(cat revit-ballet/runtime/network/token)" -d 'var collector = new FilteredElementCollector(Doc); var walls = collector.OfCategory(BuiltInCategory.OST_Walls).WhereElementIsNotElementType(); var missingMark = new List<Element>(); foreach (var wall in walls) { var mark = wall.get_Parameter(BuiltInParameter.ALL_MODEL_MARK); if (mark == null || string.IsNullOrEmpty(mark.AsString())) { missingMark.Add(wall); } } Console.WriteLine("Walls missing Mark parameter: " + missingMark.Count);' | jq
 ```
 
 ### Statistical Queries
 
 **Get Document Statistics:**
 ```bash
-TOKEN=$(cat runtime/network/token)
-curl -k -X POST https://127.0.0.1:23717/roslyn \
-  -H "X-Auth-Token: $TOKEN"  -d 'var collector = new FilteredElementCollector(Doc);
-var allElements = collector.WhereElementIsNotElementType().ToElements();
-var categories = allElements.Where(e => e.Category != null)
-    .GroupBy(e => e.Category.Name)
-    .OrderByDescending(g => g.Count())
-    .Take(10);
-
-Console.WriteLine("Top 10 Categories by Count:");
-foreach (var cat in categories)
-{
-    Console.WriteLine($"  {cat.Key}: {cat.Count()}");
-}
-
-var levels = new FilteredElementCollector(Doc)
-    .OfClass(typeof(Level)).ToElements().Count;
-var views = new FilteredElementCollector(Doc)
-    .OfClass(typeof(View)).ToElements().Count;
-
-Console.WriteLine($"\nTotal Levels: {levels}");
-Console.WriteLine($"Total Views: {views}");'
+curl --insecure -X POST https://127.0.0.1:23717/roslyn -H "X-Auth-Token: $(cat revit-ballet/runtime/network/token)" -d 'var collector = new FilteredElementCollector(Doc); var allElements = collector.WhereElementIsNotElementType().ToElements(); var categories = allElements.Where(e => e.Category != null).GroupBy(e => e.Category.Name).OrderByDescending(g => g.Count()).Take(10); Console.WriteLine("Top 10 Categories by Count:"); foreach (var cat in categories) { Console.WriteLine("  " + cat.Key + ": " + cat.Count()); } var levels = new FilteredElementCollector(Doc).OfClass(typeof(Level)).ToElements().Count; var views = new FilteredElementCollector(Doc).OfClass(typeof(View)).ToElements().Count; Console.WriteLine("Total Levels: " + levels); Console.WriteLine("Total Views: " + views);' | jq
 ```
 
 ### Screenshot Capture
 
 **Capture Revit Window Screenshot:**
 ```bash
-TOKEN=$(cat runtime/network/token)
-curl -k -X POST https://127.0.0.1:23717/screenshot \
-  -H "X-Auth-Token: $TOKEN"
+curl --insecure -X POST https://127.0.0.1:23717/screenshot -H "X-Auth-Token: $(cat revit-ballet/runtime/network/token)" | jq
 ```
 
 **Response:**

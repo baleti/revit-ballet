@@ -83,6 +83,10 @@ namespace RevitBallet.Commands
         private X509Certificate2 serverCertificate;
         private string sessionId;
         private static UIApplication uiApp;
+        private ExternalEvent scriptExecutionEvent;
+        private ExternalEvent screenshotEvent;
+        private ScriptExecutionHandler scriptHandler;
+        private ScreenshotHandler screenshotHandler;
 
         public bool IsRunning => isRunning;
         public int Port => serverPort;
@@ -138,6 +142,14 @@ namespace RevitBallet.Commands
             cancellationTokenSource = new CancellationTokenSource();
             listener = new TcpListener(IPAddress.Loopback, serverPort);
             listener.Start();
+
+            // Create ExternalEvent handlers (must be done during API execution)
+            scriptHandler = new ScriptExecutionHandler();
+            scriptExecutionEvent = ExternalEvent.Create(scriptHandler);
+
+            screenshotHandler = new ScreenshotHandler(sessionId);
+            screenshotEvent = ExternalEvent.Create(screenshotHandler);
+
             isRunning = true;
 
             // Register in network registry
@@ -178,6 +190,20 @@ namespace RevitBallet.Commands
             {
                 serverCertificate?.Dispose();
                 serverCertificate = null;
+            }
+            catch { }
+
+            try
+            {
+                scriptExecutionEvent?.Dispose();
+                scriptExecutionEvent = null;
+            }
+            catch { }
+
+            try
+            {
+                screenshotEvent?.Dispose();
+                screenshotEvent = null;
             }
             catch { }
 
@@ -813,12 +839,11 @@ namespace RevitBallet.Commands
         {
             var tcs = new TaskCompletionSource<ScriptResponse>();
 
-            // Create an external event handler to execute the script on the Revit UI thread
-            var handler = new ScriptExecutionHandler(script, tcs);
-            var externalEvent = ExternalEvent.Create(handler);
+            // Queue the script execution request in the handler
+            scriptHandler.QueueExecution(script, tcs);
 
             // Raise the external event to execute on the UI thread
-            externalEvent.Raise();
+            scriptExecutionEvent.Raise();
 
             return tcs.Task;
         }
@@ -845,12 +870,11 @@ namespace RevitBallet.Commands
         {
             var tcs = new TaskCompletionSource<string>();
 
-            // Create an external event handler to capture screenshot on the Revit UI thread
-            var handler = new ScreenshotHandler(tcs, sessionId);
-            var externalEvent = ExternalEvent.Create(handler);
+            // Queue the screenshot request in the handler
+            screenshotHandler.QueueCapture(tcs);
 
             // Raise the external event to execute on the UI thread
-            externalEvent.Raise();
+            screenshotEvent.Raise();
 
             return tcs.Task;
         }
@@ -888,17 +912,42 @@ namespace RevitBallet.Commands
     /// </summary>
     internal class ScriptExecutionHandler : IExternalEventHandler
     {
-        private Script<object> script;
-        private TaskCompletionSource<ScriptResponse> tcs;
+        private Script<object> pendingScript;
+        private TaskCompletionSource<ScriptResponse> pendingTcs;
+        private readonly object lockObject = new object();
 
-        public ScriptExecutionHandler(Script<object> script, TaskCompletionSource<ScriptResponse> tcs)
+        public ScriptExecutionHandler()
         {
-            this.script = script;
-            this.tcs = tcs;
+        }
+
+        public void QueueExecution(Script<object> script, TaskCompletionSource<ScriptResponse> tcs)
+        {
+            lock (lockObject)
+            {
+                pendingScript = script;
+                pendingTcs = tcs;
+            }
         }
 
         public void Execute(UIApplication app)
         {
+            Script<object> script;
+            TaskCompletionSource<ScriptResponse> tcs;
+
+            // Get the pending request
+            lock (lockObject)
+            {
+                script = pendingScript;
+                tcs = pendingTcs;
+                pendingScript = null;
+                pendingTcs = null;
+            }
+
+            if (script == null || tcs == null)
+            {
+                return; // No pending execution
+            }
+
             var response = new ScriptResponse();
             var outputCapture = new StringWriter();
             var originalOut = Console.Out;
@@ -971,17 +1020,39 @@ namespace RevitBallet.Commands
     /// </summary>
     internal class ScreenshotHandler : IExternalEventHandler
     {
-        private TaskCompletionSource<string> tcs;
-        private string sessionId;
+        private TaskCompletionSource<string> pendingTcs;
+        private readonly string sessionId;
+        private readonly object lockObject = new object();
 
-        public ScreenshotHandler(TaskCompletionSource<string> tcs, string sessionId)
+        public ScreenshotHandler(string sessionId)
         {
-            this.tcs = tcs;
             this.sessionId = sessionId;
+        }
+
+        public void QueueCapture(TaskCompletionSource<string> tcs)
+        {
+            lock (lockObject)
+            {
+                pendingTcs = tcs;
+            }
         }
 
         public void Execute(UIApplication app)
         {
+            TaskCompletionSource<string> tcs;
+
+            // Get the pending request
+            lock (lockObject)
+            {
+                tcs = pendingTcs;
+                pendingTcs = null;
+            }
+
+            if (tcs == null)
+            {
+                return; // No pending capture
+            }
+
             try
             {
                 // Get Revit main application window handle
@@ -1001,7 +1072,9 @@ namespace RevitBallet.Commands
                 // Capture screenshot using Windows API
                 CaptureWindowToFile(windowHandle, filepath);
 
-                tcs.SetResult(filepath);
+                // Convert absolute path to relative path from revit-ballet root
+                string relativePath = ConvertToRelativePath(filepath);
+                tcs.SetResult(relativePath);
             }
             catch (System.Exception ex)
             {
@@ -1014,11 +1087,30 @@ namespace RevitBallet.Commands
             return "RevitBalletScreenshotHandler";
         }
 
+        private string ConvertToRelativePath(string absolutePath)
+        {
+            // Convert absolute path to relative path from revit-ballet root
+            // e.g., C:\Users\...\AppData\Roaming\revit-ballet\runtime\screenshots\file.png
+            // becomes revit-ballet\runtime\screenshots\file.png
+            string revitBalletBase = PathHelper.RevitBalletDirectory;
+
+            if (absolutePath.StartsWith(revitBalletBase, StringComparison.OrdinalIgnoreCase))
+            {
+                // Remove the base path and leading separator
+                string relativePart = absolutePath.Substring(revitBalletBase.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                // Prepend "revit-ballet\"
+                return Path.Combine("revit-ballet", relativePart);
+            }
+
+            // If path doesn't start with revit-ballet base, return as-is
+            return absolutePath;
+        }
+
         private void CaptureWindowToFile(IntPtr windowHandle, string filepath)
         {
-            // Get window rectangle
+            // Get window client rectangle (excludes borders)
             RECT rect;
-            GetWindowRect(windowHandle, out rect);
+            GetClientRect(windowHandle, out rect);
             int width = rect.Right - rect.Left;
             int height = rect.Bottom - rect.Top;
 
@@ -1027,9 +1119,20 @@ namespace RevitBallet.Commands
             {
                 using (var graphics = System.Drawing.Graphics.FromImage(bitmap))
                 {
-                    // Use CopyFromScreen to capture everything visible on screen
-                    // This captures the actual rendered pixels including ribbon, panels, command line
-                    graphics.CopyFromScreen(rect.Left, rect.Top, 0, 0, new System.Drawing.Size(width, height));
+                    // Get device context from the window
+                    IntPtr windowDC = GetDC(windowHandle);
+                    IntPtr targetDC = graphics.GetHdc();
+
+                    try
+                    {
+                        // Copy pixels from window DC to bitmap DC
+                        BitBlt(targetDC, 0, 0, width, height, windowDC, 0, 0, SRCCOPY);
+                    }
+                    finally
+                    {
+                        graphics.ReleaseHdc(targetDC);
+                        ReleaseDC(windowHandle, windowDC);
+                    }
                 }
 
                 // Save to file
@@ -1067,7 +1170,18 @@ namespace RevitBallet.Commands
 
         // Windows API declarations for screenshot capture
         [System.Runtime.InteropServices.DllImport("user32.dll")]
-        private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+        private static extern bool GetClientRect(IntPtr hWnd, out RECT lpRect);
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern IntPtr GetDC(IntPtr hWnd);
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
+
+        [System.Runtime.InteropServices.DllImport("gdi32.dll")]
+        private static extern bool BitBlt(IntPtr hdcDest, int xDest, int yDest, int wDest, int hDest, IntPtr hdcSource, int xSrc, int ySrc, int RasterOp);
+
+        private const int SRCCOPY = 0x00CC0020;
 
         [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
         private struct RECT
