@@ -9,7 +9,7 @@ using System.Windows.Forms;
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 
 [Transaction(TransactionMode.Manual)]
-public class SelectElementsInSelectedGroups : IExternalCommand
+public class SelectInSelectedGroups : IExternalCommand
 {
     // Categories and types to exclude
     private static readonly HashSet<string> ExcludedCategories = new HashSet<string>

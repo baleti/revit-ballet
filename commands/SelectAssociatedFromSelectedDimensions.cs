@@ -6,7 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 [Transaction(TransactionMode.Manual)]
-public class SelectAssociatedElementsFromSelectedDimensions : IExternalCommand
+public class SelectAssociatedFromSelectedDimensions : IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
     {

@@ -79,28 +79,28 @@
     <AddIn Type="Command">
         <Name>revit-ballet</Name>
         <Assembly>revit-ballet.dll</Assembly>
-        <FullClassName>SelectAllElementsInViewAndInGroups</FullClassName>
+        <FullClassName>SelectAllInViewAndInGroups</FullClassName>
         <AddInId>6D9F2A3E-7C4B-4E1A-8D9F-3C2E4B7A9D1F</AddInId>
         <VendorId>revit-ballet</VendorId>
     </AddIn>
     <AddIn Type="Command">
         <Name>revit-ballet</Name>
         <Assembly>revit-ballet.dll</Assembly>
-        <FullClassName>SelectElementsInProjectByCategories</FullClassName>
+        <FullClassName>SelectByCategoriesInProject</FullClassName>
         <AddInId>1E8A3F7B-9D4C-4A2E-7E9F-4C1D3A8B2E7F</AddInId>
         <VendorId>revit-ballet</VendorId>
     </AddIn>
     <AddIn Type="Command">
         <Name>revit-ballet</Name>
         <Assembly>revit-ballet.dll</Assembly>
-        <FullClassName>SelectElementsInViewByCategories</FullClassName>
+        <FullClassName>SelectByCategoriesInViews</FullClassName>
         <AddInId>7F3A9D2C-6E4B-4F8A-9D3E-2C7F1B4A8E9F</AddInId>
         <VendorId>revit-ballet</VendorId>
     </AddIn>
     <AddIn Type="Command">
         <Name>revit-ballet</Name>
         <Assembly>revit-ballet.dll</Assembly>
-        <FullClassName>SelectElementsByCategories</FullClassName>
+        <FullClassName>SelectByCategories</FullClassName>
         <AddInId>4B9E7A3F-2D6C-4E1A-8B9E-3F7D2A4C1E8F</AddInId>
         <VendorId>revit-ballet</VendorId>
     </AddIn>
@@ -114,8 +114,15 @@
     <AddIn Type="Command">
         <Name>revit-ballet</Name>
         <Assembly>revit-ballet.dll</Assembly>
-        <FullClassName>FilterSelectedElements</FullClassName>
+        <FullClassName>FilterSelectedInProject</FullClassName>
         <AddInId>2A7E4F9B-3D6C-4E8A-7F2E-9C4D1A8B3E6F</AddInId>
+        <VendorId>revit-ballet</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>revit-ballet</Name>
+        <Assembly>revit-ballet.dll</Assembly>
+        <FullClassName>FilterSelectedInViews</FullClassName>
+        <AddInId>3C8E2F9A-7D4B-4E1A-9F8E-4C2D1A7B3E9F</AddInId>
         <VendorId>revit-ballet</VendorId>
     </AddIn>
     <AddIn Type="Command">

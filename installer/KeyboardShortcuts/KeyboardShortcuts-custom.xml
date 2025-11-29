@@ -23,7 +23,7 @@
   <ShortcutItem CommandId="7f3a9d2c-6e4b-4f8a-9d3e-2c7f1b4a8e9f" Shortcuts="SCV"/>
   <ShortcutItem CommandId="4b9e7a3f-2d6c-4e1a-8b9e-3f7d2a4c1e8f" Shortcuts="SCC"/>
   <ShortcutItem CommandId="8e2f9a4b-7c3d-4a6e-9f8e-1d2c4b7a9e3f" Shortcuts="WO"/>
-  <ShortcutItem CommandId="2a7e4f9b-3d6c-4e8a-7f2e-9c4d1a8b3e6f" Shortcuts="EP#EE"/>
+  <ShortcutItem CommandId="2a7e4f9b-3d6c-4e8a-7f2e-9c4d1a8b3e6f" Shortcuts="FS"/>
   <ShortcutItem CommandId="9f3a7e2b-6d4c-4a1e-8f9e-3c2d4a7b1e9f" Shortcuts="EA"/>
   <ShortcutItem CommandId="5c8e2a7f-9b3d-4e6a-7c8f-2d9a1b4e6c9f" Shortcuts="ZS"/>
   <ShortcutItem CommandId="1d9f3a6e-7c4b-4e2a-9f8e-4c1d2a7b3e8f" Shortcuts="Q`"/>
@@ -47,7 +47,7 @@
   <ShortcutItem CommandId="ID_CUT_HOST" Shortcuts="CU"/>
   <ShortcutItem CommandId="ID_JOIN_ELEMENTS_EDITOR" Shortcuts="JO"/>
   <ShortcutItem CommandId="ID_TRIM_EXTEND_SINGLE" Shortcuts="TT"/>
-  <ShortcutItem CommandId="ID_LOAD_INTO_PROJECTS_CLOSE" Shortcuts="FS"/>
+  <ShortcutItem CommandId="3c8e2f9a-7d4b-4e1a-9f8e-4c2d1a7b3e9f" Shortcuts="FV"/>
   <ShortcutItem CommandId="ID_OBJECTS_AREA_SEPARATION" Shortcuts="RS"/>
   <ShortcutItem CommandId="ID_BUTTON_TAG_ALL" Shortcuts="TA"/>
   <ShortcutItem CommandId="ID_OBJECTS_REPEATING_DETAIL" Shortcuts="RDC"/>
