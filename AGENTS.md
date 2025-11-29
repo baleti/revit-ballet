@@ -36,3 +36,14 @@ When creating or modifying code:
 2. Convert any kebab-case to PascalCase when refactoring
 3. Follow existing C# conventions in the codebase
 4. Update references when renaming files or directories
+
+## Build Limitations
+
+**IMPORTANT**: Do NOT attempt to build the installer yourself using `cd installer && dotnet build -c Release`.
+
+Due to limitations of the underlying 9p filesystem in the isolated environment, builds may take excessive amounts of time (over 5 minutes or may hang indefinitely).
+
+Instead:
+- Ask the user to test the build and return results if needed
+- Focus on code changes and let the user handle compilation
+- If build verification is required, request the user run the build command in their environment
