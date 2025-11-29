@@ -71,6 +71,7 @@ public partial class CustomGUIs
             case "comments":
             case "mark":
             case "description":
+            case "type":
 
             // Type properties
             case "typename":
