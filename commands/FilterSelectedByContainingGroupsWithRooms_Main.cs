@@ -10,7 +10,7 @@ using Autodesk.Revit.UI.Selection;
 using Autodesk.Revit.DB.Architecture;
 
 [Transaction(TransactionMode.Manual)]
-public partial class FilterSelectedElementsByContainingGroupsWithRooms : IExternalCommand
+public partial class FilterSelectedByContainingGroupsWithRooms : IExternalCommand
 {
     // Diagnostic data collection
     private StringBuilder _diagnostics = new StringBuilder();

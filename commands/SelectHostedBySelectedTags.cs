@@ -7,7 +7,7 @@ using System.Linq;
 
 #if REVIT2022 || REVIT2023 || REVIT2024 || REVIT2025 || REVIT2026
 [Transaction(TransactionMode.Manual)]
-public class SelectElementsHostedBySelectedTags : IExternalCommand
+public class SelectHostedBySelectedTags : IExternalCommand
 {
     public Result Execute(
         ExternalCommandData commandData,

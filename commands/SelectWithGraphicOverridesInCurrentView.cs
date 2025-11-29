@@ -7,7 +7,7 @@ using Autodesk.Revit.UI;
 
 [Transaction(TransactionMode.ReadOnly)]
 [Regeneration(RegenerationOption.Manual)]
-public class SelectElementsWithGraphicOverridesInCurrentView : IExternalCommand
+public class SelectWithGraphicOverridesInCurrentView : IExternalCommand
 {
     public Result Execute(
         ExternalCommandData commandData,

@@ -4,7 +4,7 @@ using Autodesk.Revit.UI;
 
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
-public class SelectAllElementsInViewAndInGroups : IExternalCommand
+public class SelectAllInViewAndInGroups : IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
     {

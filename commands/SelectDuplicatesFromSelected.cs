@@ -12,7 +12,7 @@ namespace RevitCommands
 {
     [Transaction(TransactionMode.Manual)]
     [Regeneration(RegenerationOption.Manual)]
-    public class SelectDuplicatesFromSelectedElements : IExternalCommand
+    public class SelectDuplicatesFromSelected : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
         {

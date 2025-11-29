@@ -156,12 +156,12 @@
   <ShortcutItem CommandName="External Tools:CloseViews" CommandId="3c7e9a2d-4f6b-4a8e-9c7f-2d1b4a8e9c6f" Paths="Add-Ins&gt;External" />
   <ShortcutItem CommandName="External Tools:ZoomSelected" CommandId="5c8e2a7f-9b3d-4e6a-7c8f-2d9a1b4e6c9f" Paths="Add-Ins&gt;External" />
   <ShortcutItem CommandName="External Tools:SelectViews" CommandId="9a6f3e7b-2d4c-4a1e-8f9e-3c7d1a2b4e8f" Paths="Add-Ins&gt;External" />
-  <ShortcutItem CommandName="External Tools:SelectAllElementsInViewAndInGroups" CommandId="6d9f2a3e-7c4b-4e1a-8d9f-3c2e4b7a9d1f" Paths="Add-Ins&gt;External" />
-  <ShortcutItem CommandName="External Tools:SelectElementsInProjectByCategories" CommandId="1e8a3f7b-9d4c-4a2e-7e9f-4c1d3a8b2e7f" Paths="Add-Ins&gt;External" />
-  <ShortcutItem CommandName="External Tools:SelectElementsInViewByCategories" CommandId="7f3a9d2c-6e4b-4f8a-9d3e-2c7f1b4a8e9f" Paths="Add-Ins&gt;External" />
-  <ShortcutItem CommandName="External Tools:SelectElementsByCategories" CommandId="4b9e7a3f-2d6c-4e1a-8b9e-3f7d2a4c1e8f" Paths="Add-Ins&gt;External" />
+  <ShortcutItem CommandName="External Tools:SelectAllInViewAndInGroups" CommandId="6d9f2a3e-7c4b-4e1a-8d9f-3c2e4b7a9d1f" Paths="Add-Ins&gt;External" />
+  <ShortcutItem CommandName="External Tools:SelectByCategoriesInProject" CommandId="1e8a3f7b-9d4c-4a2e-7e9f-4c1d3a8b2e7f" Paths="Add-Ins&gt;External" />
+  <ShortcutItem CommandName="External Tools:SelectByCategoriesInViews" CommandId="7f3a9d2c-6e4b-4f8a-9d3e-2c7f1b4a8e9f" Paths="Add-Ins&gt;External" />
+  <ShortcutItem CommandName="External Tools:SelectByCategories" CommandId="4b9e7a3f-2d6c-4e1a-8b9e-3f7d2a4c1e8f" Paths="Add-Ins&gt;External" />
   <ShortcutItem CommandName="External Tools:OpenViews" CommandId="8e2f9a4b-7c3d-4a6e-9f8e-1d2c4b7a9e3f" Paths="Add-Ins&gt;External" />
-  <ShortcutItem CommandName="External Tools:FilterSelectedElements" CommandId="2a7e4f9b-3d6c-4e8a-7f2e-9c4d1a8b3e6f" Paths="Add-Ins&gt;External" />
+  <ShortcutItem CommandName="External Tools:FilterSelectedInProject" CommandId="2a7e4f9b-3d6c-4e8a-7f2e-9c4d1a8b3e6f" Paths="Add-Ins&gt;External" />
   <ShortcutItem CommandName="External Tools:SelectFamilyTypeInstancesInCurrentView" CommandId="6f3e9a2b-7d4c-4a8e-9f6e-1c3d4a2b8e9f" Paths="Add-Ins&gt;External" />
   <ShortcutItem CommandName="External Tools:EditSelectionSets" CommandId="7c2e4a9f-3d6b-4e1a-8c7f-2d9a1e4b7c3f" Paths="Add-Ins&gt;External" />
   <ShortcutItem CommandName="External Tools:SwitchSelectionMode" CommandId="8a9f2e3b-6d4c-4a7e-9a8f-3c1d2e7b4a9f" Paths="Add-Ins&gt;External" />

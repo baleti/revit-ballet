@@ -13,7 +13,7 @@ using System.Linq;
 /// </summary>
 [Transaction(TransactionMode.ReadOnly)]
 [Regeneration(RegenerationOption.Manual)]
-public class FilterSelectedElementsByScopeBoxes : IExternalCommand
+public class FilterSelectedByScopeBoxes : IExternalCommand
 {
     // Tolerance for bounding box intersections (0.5 feet = 6 inches)
     private const double BoundingBoxTolerance = 0.5;

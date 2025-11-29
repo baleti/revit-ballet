@@ -441,7 +441,7 @@ public abstract class FilterElementsBase : IExternalCommand
 #region Concrete commands
 
 [Transaction(TransactionMode.Manual)]
-public class FilterSelectedElements : FilterElementsBase
+public class FilterSelected : FilterElementsBase
 {
     public override bool SpanAllScreens      => false;
     public override bool UseSelectedElements => true;
@@ -449,11 +449,266 @@ public class FilterSelectedElements : FilterElementsBase
 }
 
 [Transaction(TransactionMode.Manual)]
-public class FilterSelectedElementsSpanAllScreens : FilterElementsBase
+public class FilterSelectedInProject : FilterElementsBase
 {
-    public override bool SpanAllScreens      => true;
+    public override bool SpanAllScreens      => false;
     public override bool UseSelectedElements => true;
     public override bool IncludeParameters   => true;
+}
+
+[Transaction(TransactionMode.Manual)]
+public class FilterSelectedInViews : IExternalCommand
+{
+    public Result Execute(ExternalCommandData cData, ref string message, ElementSet elements)
+    {
+        try
+        {
+            var uiDoc = cData.Application.ActiveUIDocument;
+            var doc = uiDoc.Document;
+
+            // Get selected elements
+            var elementData = ElementDataHelper.GetElementData(uiDoc, selectedOnly: true, includeParameters: true);
+
+            if (!elementData.Any())
+            {
+                TaskDialog.Show("Info", "No elements selected.");
+                return Result.Cancelled;
+            }
+
+            // Get current view and any selected views
+            var currentView = doc.ActiveView;
+            var viewsToCheck = new HashSet<ElementId> { currentView.Id };
+
+            // Check if any selected elements are views
+            var selectedIds = uiDoc.GetSelectionIds();
+            foreach (var id in selectedIds)
+            {
+                var elem = doc.GetElement(id);
+                if (elem is View view && !view.IsTemplate)
+                {
+                    viewsToCheck.Add(view.Id);
+                }
+            }
+
+            // Filter elements to only those visible in the views we're checking
+            var filteredData = new List<Dictionary<string, object>>();
+
+            foreach (var data in elementData)
+            {
+                bool isVisibleInAnyView = false;
+
+                // Get the element ID
+                ElementId elementId = null;
+                if (data.TryGetValue("ElementIdObject", out var elemIdObj) && elemIdObj is ElementId eid)
+                {
+                    elementId = eid;
+                }
+                else if (data.TryGetValue("Id", out var intId) && intId is int id)
+                {
+                    elementId = id.ToElementId();
+                }
+
+                if (elementId == null)
+                    continue;
+
+                // Check if linked element
+                bool isLinked = data.TryGetValue("IsLinked", out var linkedObj) && linkedObj is bool linked && linked;
+
+                if (isLinked)
+                {
+                    // For linked elements, we can't easily check view visibility, so include them all
+                    isVisibleInAnyView = true;
+                }
+                else
+                {
+                    // Check each view
+                    foreach (var viewId in viewsToCheck)
+                    {
+                        try
+                        {
+                            var view = doc.GetElement(viewId) as View;
+                            if (view == null)
+                                continue;
+
+                            // Use FilteredElementCollector to check if element is in view
+                            var elementsInView = new FilteredElementCollector(doc, viewId)
+                                .ToElementIds();
+
+                            if (elementsInView.Contains(elementId))
+                            {
+                                isVisibleInAnyView = true;
+                                break;
+                            }
+                        }
+                        catch { /* Skip problematic views */ }
+                    }
+                }
+
+                if (isVisibleInAnyView)
+                {
+                    filteredData.Add(data);
+                }
+            }
+
+            if (!filteredData.Any())
+            {
+                string viewNames = string.Join(", ", viewsToCheck.Select(id => doc.GetElement(id)?.Name ?? "Unknown"));
+                TaskDialog.Show("Info", $"None of the selected elements are visible in the checked view(s): {viewNames}");
+                return Result.Cancelled;
+            }
+
+            // Create a unique key for each element to map back to full data
+            var elementDataMap = new Dictionary<string, Dictionary<string, object>>();
+            var displayData = new List<Dictionary<string, object>>();
+
+            for (int i = 0; i < filteredData.Count; i++)
+            {
+                var data = filteredData[i];
+                // Create a unique key combining multiple properties
+                string uniqueKey = $"{data["Id"]}_{data["Name"]}_{data["Category"]}_{data["LinkName"]}_{i}";
+
+                // Store the full data in our map
+                elementDataMap[uniqueKey] = data;
+
+                // Create display data with the unique key
+                var display = new Dictionary<string, object>(data);
+                display["UniqueKey"] = uniqueKey;
+                displayData.Add(display);
+            }
+
+            // Get property names, including UniqueKey but excluding internal object fields
+            var propertyNames = displayData.First().Keys
+                .Where(k => !k.EndsWith("Object"))
+                .ToList();
+
+            // Reorder to put most useful columns first, with ScopeBoxes as second column
+            var orderedProps = new List<string> { "DisplayName", "ScopeBoxes", "Category", "LinkName", "Group", "OwnerView", "Id" };
+            var remainingProps = propertyNames.Except(orderedProps).OrderBy(p => p);
+            propertyNames = orderedProps.Where(p => propertyNames.Contains(p))
+                .Concat(remainingProps)
+                .ToList();
+
+            var chosenRows = CustomGUIs.DataGrid(displayData, propertyNames, spanAllScreens: false);
+            if (chosenRows.Count == 0)
+                return Result.Cancelled;
+
+            // Separate regular elements and linked elements
+            var regularIds = new List<ElementId>();
+            var linkedReferences = new List<Reference>();
+
+            foreach (var row in chosenRows)
+            {
+                // Get the unique key to look up full data
+                if (!row.TryGetValue("UniqueKey", out var keyObj) || !(keyObj is string uniqueKey))
+                    continue;
+
+                // Get the full data from our map
+                if (!elementDataMap.TryGetValue(uniqueKey, out var fullData))
+                    continue;
+
+                // Check if this is a linked element
+                if (fullData.TryGetValue("LinkInstanceObject", out var linkObj) && linkObj is RevitLinkInstance linkInstance &&
+                    fullData.TryGetValue("LinkedElementIdObject", out var linkedIdObj) && linkedIdObj is ElementId linkedElementId)
+                {
+                    // This is a linked element - create reference the same way SelectCategories does
+                    try
+                    {
+                        Document linkedDoc = linkInstance.GetLinkDocument();
+                        if (linkedDoc != null)
+                        {
+                            Element linkedElement = linkedDoc.GetElement(linkedElementId);
+                            if (linkedElement != null)
+                            {
+                                // Create reference for the element
+                                Reference elemRef = new Reference(linkedElement);
+                                Reference linkedRef = elemRef.CreateLinkReference(linkInstance);
+
+                                if (linkedRef != null)
+                                {
+                                    linkedReferences.Add(linkedRef);
+                                }
+                            }
+                        }
+                    }
+                    catch { }
+                }
+                else if (fullData.TryGetValue("ElementIdObject", out var idObj) && idObj is ElementId elemId)
+                {
+                    // This is a regular element (not linked)
+                    regularIds.Add(elemId);
+                }
+                // Handle backward compatibility - if someone stored just the integer ID
+                else if (fullData.TryGetValue("Id", out var intId) && intId is int id)
+                {
+                    regularIds.Add(id.ToElementId());
+                }
+            }
+
+            // Set selection based on what we have
+            if (linkedReferences.Any() && !regularIds.Any())
+            {
+                // Only linked elements - use SetReferences
+                uiDoc.SetReferences(linkedReferences);
+            }
+            else if (!linkedReferences.Any() && regularIds.Any())
+            {
+                // Only regular elements - use SetElementIds
+                uiDoc.SetSelectionIds(regularIds);
+            }
+            else if (linkedReferences.Any() && regularIds.Any())
+            {
+                // Mixed selection - Revit API doesn't support mixing SetElementIds with SetReferences
+                // We need to choose one approach. Let's prioritize what we have more of.
+                if (linkedReferences.Count >= regularIds.Count)
+                {
+                    // More linked elements - convert regular elements to references if possible
+                    var allReferences = new List<Reference>(linkedReferences);
+
+                    // Try to add regular elements as references
+                    foreach (var elemId in regularIds)
+                    {
+                        try
+                        {
+                            Element elem = cData.Application.ActiveUIDocument.Document.GetElement(elemId);
+                            if (elem != null)
+                            {
+                                Reference elemRef = new Reference(elem);
+                                if (elemRef != null)
+                                {
+                                    allReferences.Add(elemRef);
+                                }
+                            }
+                        }
+                        catch { }
+                    }
+
+                    uiDoc.SetReferences(allReferences);
+                }
+                else
+                {
+                    // More regular elements - just select those
+                    uiDoc.SetSelectionIds(regularIds);
+
+                    TaskDialog.Show("Mixed Selection",
+                        $"Selected {regularIds.Count} regular elements.\n" +
+                        $"Note: {linkedReferences.Count} linked elements could not be included in the selection " +
+                        "because Revit doesn't support mixing regular and linked selections.");
+                }
+            }
+
+            return Result.Succeeded;
+        }
+        catch (InvalidOperationException ex)
+        {
+            message = ex.Message;
+            return Result.Failed;
+        }
+        catch (Exception ex)
+        {
+            message = $"Unexpected error: {ex.Message}";
+            return Result.Failed;
+        }
+    }
 }
 
 #endregion

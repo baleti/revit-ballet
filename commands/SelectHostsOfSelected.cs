@@ -9,7 +9,7 @@ using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace YourNamespace
 {
     [Transaction(TransactionMode.Manual)]
-    public class SelectHostsOfSelectedElements : IExternalCommand
+    public class SelectHostsOfSelected : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData,
                               ref string message,

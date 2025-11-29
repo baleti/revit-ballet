@@ -6,7 +6,7 @@ using System.Linq;
 
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
-public class SelectElementsInViewsByCategories : IExternalCommand
+public class SelectByCategoriesInViews : IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
     {

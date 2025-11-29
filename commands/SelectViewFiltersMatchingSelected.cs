@@ -10,7 +10,7 @@ namespace YourAddinNamespace
 {
     [Transaction(TransactionMode.Manual)]
     [Regeneration(RegenerationOption.Manual)]
-    public class SelectViewFiltersMatchingSelectedElements : IExternalCommand
+    public class SelectViewFiltersMatchingSelected : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData,
                               ref string message,
@@ -208,7 +208,7 @@ namespace YourAddinNamespace
         /* ===================== *
          * Static constructor    *
          * ===================== */
-        static SelectViewFiltersMatchingSelectedElements()
+        static SelectViewFiltersMatchingSelected()
         {
             // because DuplicateTypeCount needs all selection data
             // we hook into static ctor to run after SelInfo list assembled

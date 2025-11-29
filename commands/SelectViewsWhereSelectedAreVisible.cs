@@ -9,7 +9,7 @@ using WinForms = System.Windows.Forms;
 
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
-public class SelectViewsWhereSelectedElementsAreVisible : IExternalCommand
+public class SelectViewsWhereSelectedAreVisible : IExternalCommand
 {
     // View info class for DataGrid display
     public class ViewInfo

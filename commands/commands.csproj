@@ -3,6 +3,9 @@
     <!-- Default to Revit 2024 if no year specified -->
     <RevitYear Condition="'$(RevitYear)' == ''">2024</RevitYear>
 
+    <!-- Suppress NU1701 warnings for legacy packages that work fine on .NET 8 -->
+    <NoWarn>$(NoWarn);NU1701</NoWarn>
+
     <!-- Map Revit versions to .NET Framework targets -->
     <TargetFramework Condition="'$(RevitYear)' == '2017'">net46</TargetFramework>
     <TargetFramework Condition="'$(RevitYear)' == '2018'">net46</TargetFramework>
@@ -86,7 +89,8 @@
   </ItemGroup>
 
   <!-- Standard System references needed by Revit plugins -->
-  <ItemGroup>
+  <!-- For .NET Framework builds (Revit 2017-2024): use framework references -->
+  <ItemGroup Condition="!$(TargetFramework.StartsWith('net8'))">
     <Reference Include="PresentationCore" />
     <Reference Include="PresentationFramework" />
     <Reference Include="System.Drawing" />
@@ -96,6 +100,9 @@
     <Reference Include="UIAutomationClient" />
     <Reference Include="UIAutomationTypes" />
   </ItemGroup>
+
+  <!-- For .NET 8 builds (Revit 2025-2026): these are provided by the SDK automatically via UseWindowsForms=true -->
+  <!-- No additional references needed - System.Drawing, WindowsBase, etc. come from the SDK -->
 
   <!-- Post-build: Remove unnecessary .NET Framework facade DLLs -->
   <Target Name="CleanupUnnecessaryDlls" AfterTargets="Build">

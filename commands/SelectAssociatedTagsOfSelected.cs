@@ -9,7 +9,7 @@ using System.Reflection;
 
 #if REVIT2022 || REVIT2023 || REVIT2024 || REVIT2025 || REVIT2026
 [Transaction(TransactionMode.Manual)]
-public class SelectAssociatedTagsOfSelectedElements : IExternalCommand
+public class SelectAssociatedTagsOfSelected : IExternalCommand
 {
     public Result Execute(ExternalCommandData cData, ref string msg, ElementSet els)
     {
