@@ -65,7 +65,7 @@ public class SelectViewTemplates : IExternalCommand
         // 4. Show the pick list and capture the user’s choice(s)
         // ───────────────────────────────────────────────────────────────
         List<Dictionary<string, object>> picked =
-            CustomGUIs.DataGrid(templateData, columns, spanAllScreens: false);
+            CustomGUIs.DataGrid(templateData, columns, false);
 
         // ───────────────────────────────────────────────────────────────
         // 5. If anything was picked, merge into the current selection

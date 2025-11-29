@@ -391,14 +391,16 @@ public class LoadSelection : IExternalCommand
             
             // Create wrappers for DataGrid
             var selectionSetWrappers = selectionSetNames.Select(name => new SelectionSetWrapper { Name = name }).ToList();
-            
+
             // Let user choose a selection set using DataGrid
             var propertyNames = new List<string> { "Name" };
-            var selectedWrappers = CustomGUIs.DataGrid(selectionSetWrappers, propertyNames, new List<int> { 0 });
-            
+            var wrapperDicts = CustomGUIs.ConvertToDataGridFormat(selectionSetWrappers, propertyNames);
+            var selectedDicts = CustomGUIs.DataGrid(wrapperDicts, propertyNames, false, new List<int> { 0 });
+            var selectedWrappers = CustomGUIs.ExtractOriginalObjects<SelectionSetWrapper>(selectedDicts);
+
             if (selectedWrappers == null || !selectedWrappers.Any())
                 return Result.Cancelled;
-            
+
             string selectedName = selectedWrappers.First().Name;
             
             // Find the selection set

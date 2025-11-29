@@ -57,7 +57,7 @@ public class SetRevisionsToCurrentSheet : IExternalCommand
             "Issued By", 
             "Issued To" 
         };
-        var selectedRevisions = CustomGUIs.DataGrid(revisionEntries, revisionProperties, spanAllScreens: false, new List<int> { revisionEntries.Count - 1 });
+        var selectedRevisions = CustomGUIs.DataGrid(revisionEntries, revisionProperties, false, new List<int> { revisionEntries.Count - 1 });
 
         if (!selectedRevisions.Any())
         {

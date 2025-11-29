@@ -57,17 +57,14 @@ namespace RevitCommands
                 }
 
                 // Configure and show selection dialog
-                List<string> propertyNames = new List<string> 
-                { 
+                List<string> propertyNames = new List<string>
+                {
                     "Name"
                 };
 
-                var selectedFilters = CustomGUIs.DataGrid(
-                    savedSelections,
-                    propertyNames,
-                    null,
-                    "Select Saved Selections to Delete"
-                );
+                var selectionDicts = CustomGUIs.ConvertToDataGridFormat(savedSelections, propertyNames);
+                var selectedDicts = CustomGUIs.DataGrid(selectionDicts, propertyNames, false);
+                var selectedFilters = CustomGUIs.ExtractOriginalObjects<SavedSelection>(selectedDicts);
 
                 if (selectedFilters.Count > 0)
                 {

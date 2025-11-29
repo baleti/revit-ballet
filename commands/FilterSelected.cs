@@ -20,6 +20,40 @@ public static class ElementDataHelper
             .Where(e => e.Name != null)
             .ToList();
 
+        // Also collect scope boxes from linked models if SelectInLinksMode is enabled
+        var linkedScopeBoxes = new List<Tuple<Element, RevitLinkInstance>>();
+        if (SelectInLinksMode.IsEnabled())
+        {
+            var linkInstances = new FilteredElementCollector(doc)
+                .OfClass(typeof(RevitLinkInstance))
+                .Cast<RevitLinkInstance>()
+                .Where(link => link.GetLinkDocument() != null)
+                .ToList();
+
+            foreach (var linkInstance in linkInstances)
+            {
+                try
+                {
+                    Document linkedDoc = linkInstance.GetLinkDocument();
+                    if (linkedDoc != null)
+                    {
+                        var linkedSBs = new FilteredElementCollector(linkedDoc)
+                            .OfCategory(BuiltInCategory.OST_VolumeOfInterest)
+                            .WhereElementIsNotElementType()
+                            .Cast<Element>()
+                            .Where(e => e.Name != null)
+                            .ToList();
+
+                        foreach (var sb in linkedSBs)
+                        {
+                            linkedScopeBoxes.Add(new Tuple<Element, RevitLinkInstance>(sb, linkInstance));
+                        }
+                    }
+                }
+                catch { /* Skip problematic links */ }
+            }
+        }
+
         if (selectedOnly)
         {
             // Handle both regular elements and linked elements (via References)
@@ -39,7 +73,7 @@ public static class ElementDataHelper
                 if (element != null)
                 {
                     processedElements.Add(id);
-                    var data = GetElementDataDictionary(element, doc, null, null, null, includeParameters, scopeBoxes);
+                    var data = GetElementDataDictionary(element, doc, null, null, null, includeParameters, scopeBoxes, linkedScopeBoxes);
                     elementData.Add(data);
                 }
             }
@@ -64,7 +98,7 @@ public static class ElementDataHelper
                                 if (linkedElement != null)
                                 {
                                     // Store the linked instance and element ID for later reference creation
-                                    var data = GetElementDataDictionary(linkedElement, linkedDoc, linkedInstance.Name, linkedInstance, linkedElement.Id, includeParameters, scopeBoxes);
+                                    var data = GetElementDataDictionary(linkedElement, linkedDoc, linkedInstance.Name, linkedInstance, linkedElement.Id, includeParameters, scopeBoxes, linkedScopeBoxes);
                                     elementData.Add(data);
                                 }
                             }
@@ -80,7 +114,7 @@ public static class ElementDataHelper
                             if (element != null)
                             {
                                 processedElements.Add(reference.ElementId);
-                                var data = GetElementDataDictionary(element, doc, null, null, null, includeParameters, scopeBoxes);
+                                var data = GetElementDataDictionary(element, doc, null, null, null, includeParameters, scopeBoxes, linkedScopeBoxes);
                                 elementData.Add(data);
                             }
                         }
@@ -98,7 +132,7 @@ public static class ElementDataHelper
                 Element element = doc.GetElement(id);
                 if (element != null)
                 {
-                    var data = GetElementDataDictionary(element, doc, null, null, null, includeParameters, scopeBoxes);
+                    var data = GetElementDataDictionary(element, doc, null, null, null, includeParameters, scopeBoxes, linkedScopeBoxes);
                     elementData.Add(data);
                 }
             }
@@ -107,7 +141,7 @@ public static class ElementDataHelper
         return elementData;
     }
 
-    private static Dictionary<string, object> GetElementDataDictionary(Element element, Document elementDoc, string linkName, RevitLinkInstance linkInstance, ElementId linkedElementId, bool includeParameters, List<Element> scopeBoxes)
+    private static Dictionary<string, object> GetElementDataDictionary(Element element, Document elementDoc, string linkName, RevitLinkInstance linkInstance, ElementId linkedElementId, bool includeParameters, List<Element> scopeBoxes, List<Tuple<Element, RevitLinkInstance>> linkedScopeBoxes)
     {
         string groupName = string.Empty;
         if (element.GroupId != null && element.GroupId != ElementId.InvalidElementId && element.GroupId.AsLong() != -1)
@@ -165,13 +199,35 @@ public static class ElementDataHelper
                     elementBB = TransformBoundingBox(elementBB, transform);
                 }
 
-                // Check each scope box
+                // Check each scope box in current document
                 foreach (var scopeBox in scopeBoxes)
                 {
                     BoundingBoxXYZ scopeBB = scopeBox.get_BoundingBox(null);
                     if (scopeBB != null && DoesBoundingBoxIntersect(elementBB, scopeBB))
                     {
                         containingScopeBoxes.Add(scopeBox.Name);
+                    }
+                }
+
+                // Check each scope box in linked models (if enabled)
+                foreach (var linkedSB in linkedScopeBoxes)
+                {
+                    Element linkedScopeBox = linkedSB.Item1;
+                    RevitLinkInstance linkedSBInstance = linkedSB.Item2;
+
+                    BoundingBoxXYZ linkedScopeBB = linkedScopeBox.get_BoundingBox(null);
+                    if (linkedScopeBB != null)
+                    {
+                        // Transform the linked scope box to host coordinates
+                        Transform linkedTransform = linkedSBInstance.GetTotalTransform();
+                        BoundingBoxXYZ transformedScopeBB = TransformBoundingBox(linkedScopeBB, linkedTransform);
+
+                        if (DoesBoundingBoxIntersect(elementBB, transformedScopeBB))
+                        {
+                            // Add with link name prefix for clarity
+                            string linkedSBName = $"{linkedSBInstance.Name}:{linkedScopeBox.Name}";
+                            containingScopeBoxes.Add(linkedSBName);
+                        }
                     }
                 }
             }
@@ -601,7 +657,7 @@ public class FilterSelectedInViews : IExternalCommand
             // Set the current UIDocument for edit operations
             CustomGUIs.SetCurrentUIDocument(uiDoc);
 
-            var chosenRows = CustomGUIs.DataGrid(displayData, propertyNames, spanAllScreens: false);
+            var chosenRows = CustomGUIs.DataGrid(displayData, propertyNames, false);
 
             // Apply any pending edits to Revit elements
             if (CustomGUIs.HasPendingEdits())

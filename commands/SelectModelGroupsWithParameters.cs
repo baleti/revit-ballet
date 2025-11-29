@@ -49,7 +49,7 @@ public class SelectModelGroupsWithParameters : IExternalCommand
 
         // Step 2: Display the list of groups using CustomGUIs.DataGrid
         var propertyNames = new List<string> { "Group Name", "Group Type", "Category" };
-        var selectedEntries = CustomGUIs.DataGrid(groupEntries, propertyNames, spanAllScreens: false);
+        var selectedEntries = CustomGUIs.DataGrid(groupEntries, propertyNames, false);
 
         if (selectedEntries.Count == 0)
         {
@@ -107,7 +107,7 @@ public class SelectModelGroupsWithParameters : IExternalCommand
 
         // Step 5: Display the parameters of the selected groups in a second DataGrid
         var paramPropertyNames = parameterEntries.FirstOrDefault()?.Keys.ToList();
-        var finalSelection = CustomGUIs.DataGrid(parameterEntries, paramPropertyNames, spanAllScreens: false);
+        var finalSelection = CustomGUIs.DataGrid(parameterEntries, paramPropertyNames, false);
 
         if (finalSelection.Count == 0)
         {

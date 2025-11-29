@@ -17,19 +17,38 @@ public class SelectByCategoriesInProject : IExternalCommand
         // Collect elements from the entire document.
         FilteredElementCollector collector = new FilteredElementCollector(doc);
         collector.WhereElementIsNotElementType();
-        
+
         // Build a unique set of category IDs and track Direct Shapes and regular elements separately.
         HashSet<ElementId> categoryIds = new HashSet<ElementId>();
         Dictionary<ElementId, List<DirectShape>> directShapesByCategory = new Dictionary<ElementId, List<DirectShape>>();
         Dictionary<ElementId, List<ElementId>> regularElementsByCategory = new Dictionary<ElementId, List<ElementId>>();
-        
+
+        // Separate tracking for views and view templates
+        List<ElementId> viewIds = new List<ElementId>();
+        List<ElementId> viewTemplateIds = new List<ElementId>();
+
         foreach (Element elem in collector)
         {
+            // Special handling for ALL views to separate from view templates (regardless of category)
+            if (elem is View view)
+            {
+                if (view.IsTemplate)
+                {
+                    viewTemplateIds.Add(elem.Id);
+                }
+                else
+                {
+                    viewIds.Add(elem.Id);
+                }
+                // Don't process views as regular category elements
+                continue;
+            }
+
             Category category = elem.Category;
             if (category != null)
             {
                 categoryIds.Add(category.Id);
-                
+
                 // Check if this is a DirectShape
                 if (elem is DirectShape directShape)
                 {
@@ -41,7 +60,7 @@ public class SelectByCategoriesInProject : IExternalCommand
                 }
                 else
                 {
-                    // Store regular (non-DirectShape) element IDs
+                    // Store regular (non-DirectShape, non-View) element IDs
                     if (!regularElementsByCategory.ContainsKey(category.Id))
                     {
                         regularElementsByCategory[category.Id] = new List<ElementId>();
@@ -53,16 +72,37 @@ public class SelectByCategoriesInProject : IExternalCommand
         
         // Build a list of dictionaries for the DataGrid.
         List<Dictionary<string, object>> categoryList = new List<Dictionary<string, object>>();
-        
+
         foreach (ElementId id in categoryIds)
         {
+            // Skip OST_Viewers - we'll handle it separately below
+            if (id.AsLong() == (int)BuiltInCategory.OST_Viewers)
+            {
+                // Add direct shapes for OST_Viewers if any
+                if (directShapesByCategory.ContainsKey(id))
+                {
+                    int directShapeCount = directShapesByCategory[id].Count;
+                    string directShapeName = "Direct Shapes: Views";
+                    var entry = new Dictionary<string, object>
+                    {
+                        { "Name", directShapeName },
+                        { "Count", directShapeCount },
+                        { "CategoryId", id },
+                        { "IsDirectShape", true },
+                        { "DirectShapes", directShapesByCategory[id] }
+                    };
+                    categoryList.Add(entry);
+                }
+                continue;
+            }
+
             Category cat = Category.GetCategory(doc, id);
             if (cat != null)
             {
                 // Only add the regular category entry if it has non-DirectShape elements
-                bool hasRegularElements = regularElementsByCategory.ContainsKey(id) && 
+                bool hasRegularElements = regularElementsByCategory.ContainsKey(id) &&
                                         regularElementsByCategory[id].Count > 0;
-                
+
                 if (hasRegularElements)
                 {
                     var entry = new Dictionary<string, object>
@@ -75,7 +115,7 @@ public class SelectByCategoriesInProject : IExternalCommand
                     };
                     categoryList.Add(entry);
                 }
-                
+
                 // If this category contains Direct Shapes, add a separate entry for them
                 if (directShapesByCategory.ContainsKey(id))
                 {
@@ -92,41 +132,37 @@ public class SelectByCategoriesInProject : IExternalCommand
                     categoryList.Add(entry);
                 }
             }
-            else if (id.AsLong() == (int)BuiltInCategory.OST_Viewers)
+        }
+
+        // Add separate entries for Views and View Templates
+        ElementId viewsCategoryId = ((long)BuiltInCategory.OST_Viewers).ToElementId();
+
+        if (viewIds.Count > 0)
+        {
+            var viewsEntry = new Dictionary<string, object>
             {
-                // Only add if it has regular elements (not just Direct Shapes)
-                bool hasRegularElements = regularElementsByCategory.ContainsKey(id) && 
-                                        regularElementsByCategory[id].Count > 0;
-                
-                if (hasRegularElements)
-                {
-                    var entry = new Dictionary<string, object>
-                    {
-                        { "Name", "Views (OST_Viewers)" },
-                        { "Count", regularElementsByCategory[id].Count },
-                        { "CategoryId", id },
-                        { "IsDirectShape", false },
-                        { "ElementIds", regularElementsByCategory[id] }
-                    };
-                    categoryList.Add(entry);
-                }
-                
-                // If this category contains Direct Shapes, add a separate entry
-                if (directShapesByCategory.ContainsKey(id))
-                {
-                    int directShapeCount = directShapesByCategory[id].Count;
-                    string directShapeName = "Direct Shapes: Views (OST_Viewers)";
-                    var entry = new Dictionary<string, object>
-                    {
-                        { "Name", directShapeName },
-                        { "Count", directShapeCount },
-                        { "CategoryId", id },
-                        { "IsDirectShape", true },
-                        { "DirectShapes", directShapesByCategory[id] }
-                    };
-                    categoryList.Add(entry);
-                }
-            }
+                { "Name", "Views" },
+                { "Count", viewIds.Count },
+                { "CategoryId", viewsCategoryId },
+                { "IsDirectShape", false },
+                { "IsViewTemplate", false },
+                { "ElementIds", viewIds }
+            };
+            categoryList.Add(viewsEntry);
+        }
+
+        if (viewTemplateIds.Count > 0)
+        {
+            var viewTemplatesEntry = new Dictionary<string, object>
+            {
+                { "Name", "View Templates" },
+                { "Count", viewTemplateIds.Count },
+                { "CategoryId", viewsCategoryId },
+                { "IsDirectShape", false },
+                { "IsViewTemplate", true },
+                { "ElementIds", viewTemplateIds }
+            };
+            categoryList.Add(viewTemplatesEntry);
         }
         
         // Sort the list to keep Direct Shapes grouped with their parent categories

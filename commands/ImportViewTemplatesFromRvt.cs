@@ -44,7 +44,9 @@ public class ImportViewTemplatesFromRvt : IExternalCommand
 
         // Select view templates to import
         List<string> properties = new List<string> { "Title" };
-        var selectedViews = CustomGUIs.DataGrid<Autodesk.Revit.DB.View>(viewTemplates, properties);
+        var viewDicts = CustomGUIs.ConvertToDataGridFormat(viewTemplates, properties);
+        var selectedDicts = CustomGUIs.DataGrid(viewDicts, properties, false);
+        var selectedViews = CustomGUIs.ExtractOriginalObjects<Autodesk.Revit.DB.View>(selectedDicts);
 
         if (selectedViews.Count == 0)
             return Result.Cancelled;

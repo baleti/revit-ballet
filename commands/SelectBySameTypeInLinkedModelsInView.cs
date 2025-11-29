@@ -153,10 +153,10 @@ public class SelectBySameTypeInLinkedModelsInView : IExternalCommand
             false, // spanAllScreens
             preSelectedIndices.Count > 0 ? preSelectedIndices : null
         );
-        
+
         if (selectedEntries == null || selectedEntries.Count == 0)
             return Result.Cancelled;
-        
+
         // Extract the selected link instances based on selected entries
         var selectedLinkInstances = new List<RevitLinkInstance>();
         foreach (var entry in selectedEntries)

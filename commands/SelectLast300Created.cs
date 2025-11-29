@@ -86,7 +86,7 @@ namespace YourAddinNamespace
             var chosenRows    = CustomGUIs.DataGrid(
                                     elementData,
                                     propertyNames,
-                                    spanAllScreens: false);
+                                    false);
 
             // User pressed “Cancel” or unchecked every row.
             if (chosenRows.Count == 0)

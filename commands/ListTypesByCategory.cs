@@ -43,7 +43,7 @@ public class ListTypesByCategory : IExternalCommand
 
         // Step 4: Display the list of categories using CustomGUIs.DataGrid
         var categoryPropertyNames = new List<string> { "Category Name" };
-        var selectedCategoryEntry = CustomGUIs.DataGrid(categoryEntries, categoryPropertyNames, spanAllScreens: false).FirstOrDefault();
+        var selectedCategoryEntry = CustomGUIs.DataGrid(categoryEntries, categoryPropertyNames, false).FirstOrDefault();
 
         if (selectedCategoryEntry == null)
         {
@@ -94,7 +94,7 @@ public class ListTypesByCategory : IExternalCommand
 
         // Step 8: Display the list of types using CustomGUIs.DataGrid
         var propertyNames = new List<string> { "Type Name", "Family", "Category" };
-        var selectedEntries = CustomGUIs.DataGrid(typeEntries, propertyNames, spanAllScreens: false);
+        var selectedEntries = CustomGUIs.DataGrid(typeEntries, propertyNames, false);
 
         if (selectedEntries.Count == 0)
         {

@@ -32,7 +32,7 @@ public class TagElementsInViews : IExternalCommand
         List<string> viewPropertyNames = new List<string> { "Title" };
 
         // Prompt user to choose views
-        List<Dictionary<string, object>> selectedViewEntries = CustomGUIs.DataGrid(viewEntries, viewPropertyNames, spanAllScreens: false);
+        List<Dictionary<string, object>> selectedViewEntries = CustomGUIs.DataGrid(viewEntries, viewPropertyNames, false);
         if (selectedViewEntries.Count == 0)
         {
             return Result.Failed;
@@ -82,7 +82,7 @@ public class TagElementsInViews : IExternalCommand
             .Select(kv => new Dictionary<string, object> { { "Category", kv.Value.CategoryName }, { "Family", kv.Value.FamilyName }, { "Type", kv.Value.TypeName } })
             .ToList();
         List<string> propertyNames = new List<string> { "Category", "Family", "Type" };
-        List<Dictionary<string, object>> selectedEntries = CustomGUIs.DataGrid(entries, propertyNames, spanAllScreens: false);
+        List<Dictionary<string, object>> selectedEntries = CustomGUIs.DataGrid(entries, propertyNames, false);
         if (selectedEntries.Count == 0)
         {
             return Result.Failed;

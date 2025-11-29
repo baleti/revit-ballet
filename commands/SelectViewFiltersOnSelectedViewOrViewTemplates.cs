@@ -556,7 +556,7 @@ namespace MyRevitCommands
             }
          }
          
-         return CustomGUIs.DataGrid(entries, propertyNames, spanAllScreens: false);
+         return CustomGUIs.DataGrid(entries, propertyNames, false);
       }
    }
 

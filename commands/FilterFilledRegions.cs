@@ -313,7 +313,7 @@ public class FilterFilledRegions : IExternalCommand
                 .Concat(remainingProps)
                 .ToList();
 
-            var chosenRows = CustomGUIs.DataGrid(displayData, propertyNames, spanAllScreens: false);
+            var chosenRows = CustomGUIs.DataGrid(displayData, propertyNames, false);
             if (chosenRows.Count == 0)
                 return Result.Cancelled;
 

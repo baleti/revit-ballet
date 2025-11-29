@@ -494,7 +494,9 @@ public class SwitchSelectionMode : IExternalCommand
         var initialSelectionIndices = new List<int> { selectedIndex };
         
         // Display modes using DataGrid
-        var selectedModes = CustomGUIs.DataGrid(modes, propertyNames, initialSelectionIndices);
+        var itemDicts = CustomGUIs.ConvertToDataGridFormat(modes, propertyNames);
+        var selectedDicts = CustomGUIs.DataGrid(itemDicts, propertyNames, false, initialSelectionIndices);
+        var selectedModes = CustomGUIs.ExtractOriginalObjects<SelectionModeWrapper>(selectedDicts);
         
         if (selectedModes == null || selectedModes.Count == 0)
         {

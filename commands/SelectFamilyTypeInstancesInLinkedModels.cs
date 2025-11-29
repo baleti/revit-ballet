@@ -73,7 +73,7 @@ public class SelectFamilyTypeInstancesInLinkedModels : IExternalCommand
 
         // Step 2: Display the list of types using CustomGUIs.DataGrid
         var propertyNames = new List<string> { "Type Name", "Family", "Category", "Link" };
-        var selectedEntries = CustomGUIs.DataGrid(typeEntries, propertyNames, spanAllScreens: false);
+        var selectedEntries = CustomGUIs.DataGrid(typeEntries, propertyNames, false);
 
         if (selectedEntries.Count == 0)
         {

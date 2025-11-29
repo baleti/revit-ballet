@@ -79,7 +79,7 @@ namespace MyRevitCommands
 
             // Define the order of columns for the first prompt.
             List<string> viewPropertyNames = new List<string> { "Sheet", "View Title", "Sheet Folder", "Id" };
-            List<Dictionary<string, object>> selectedViewEntries = CustomGUIs.DataGrid(viewEntries, viewPropertyNames, spanAllScreens: false);
+            List<Dictionary<string, object>> selectedViewEntries = CustomGUIs.DataGrid(viewEntries, viewPropertyNames, false);
             if (selectedViewEntries == null || selectedViewEntries.Count == 0)
             {
                 TaskDialog.Show("Duplicate Views To Sheets", "No views were selected.");
@@ -125,7 +125,7 @@ namespace MyRevitCommands
                 });
             }
             List<string> sheetPropertyNames = new List<string> { "Sheet Number", "Title", "Sheet Folder", "Id" };
-            List<Dictionary<string, object>> selectedSheetEntries = CustomGUIs.DataGrid(sheetEntries, sheetPropertyNames, spanAllScreens: false);
+            List<Dictionary<string, object>> selectedSheetEntries = CustomGUIs.DataGrid(sheetEntries, sheetPropertyNames, false);
             if (selectedSheetEntries == null || selectedSheetEntries.Count == 0)
             {
                 TaskDialog.Show("Duplicate Views To Sheets", "No sheets were selected.");

@@ -1,14 +1,14 @@
 # DataGrid Enhancement Implementation Summary
 
 ## Overview
-Successfully migrated advanced DataGrid functionality from **autocad-ballet** to **revit-ballet**, bringing professional-grade cell editing, navigation, and UX improvements to Revit Ballet's DataGrid2 implementation.
+Successfully migrated advanced DataGrid functionality from **autocad-ballet** to **revit-ballet**, bringing professional-grade cell editing, navigation, and UX improvements to Revit Ballet's DataGrid implementation.
 
 ---
 
 ## What Was Implemented
 
 ### Phase 1: Core Infrastructure ✅
-**Files Modified:** `DataGrid2_Helpers.cs`, `DataGrid2_Main.cs`
+**Files Modified:** `DataGrid_Helpers.cs`, `DataGrid_Main.cs`
 
 #### Internal ID Tracking System
 - Added `__DATAGRID_INTERNAL_ID__` constant and `_nextInternalId` counter
@@ -29,7 +29,7 @@ Successfully migrated advanced DataGrid functionality from **autocad-ballet** to
 ---
 
 ### Phase 2: Search History ✅
-**Files Created:** `DataGrid2_SearchHistory.cs`
+**Files Created:** `DataGrid_SearchHistory.cs`
 
 **Features:**
 - Persistent search query storage per command in `AppData/revit-ballet/runtime/searchbox-queries/`
@@ -42,7 +42,7 @@ Successfully migrated advanced DataGrid functionality from **autocad-ballet** to
 ---
 
 ### Phase 3: UI/UX Enhancements ✅
-**Files Modified:** `DataGrid2_Main.cs`
+**Files Modified:** `DataGrid_Main.cs`
 
 #### Column Header Formatting
 - Added `FormatColumnHeader()` method
@@ -97,7 +97,7 @@ Successfully migrated advanced DataGrid functionality from **autocad-ballet** to
 ---
 
 ### Phase 5: Edit Mode Module ✅
-**Files Created:** `DataGrid2_EditMode.cs` (1000+ lines)
+**Files Created:** `DataGrid_EditMode.cs` (1000+ lines)
 
 #### Core Edit Mode
 - **F2**: Toggle edit mode / Open advanced editor for selected cells
@@ -144,7 +144,7 @@ Currently configured for common Revit properties:
 ---
 
 ### Phase 6: Edit Application Module (Stub) ⚠️
-**Files Created:** `DataGrid2_EditApply.cs`
+**Files Created:** `DataGrid_EditApply.cs`
 
 **Status:** Stub implementation with documentation
 
@@ -167,7 +167,7 @@ This module requires **Revit API implementation** to apply edits to actual Revit
 ---
 
 ### Phase 7: Integration & Wiring ✅
-**Files Modified:** `DataGrid2_Main.cs`
+**Files Modified:** `DataGrid_Main.cs`
 
 #### Keybindings Wired
 - **F2**: Toggle edit mode / Show advanced editor
@@ -204,15 +204,15 @@ This module requires **Revit API implementation** to apply edits to actual Revit
 
 ```
 commands/
-├── DataGrid1.cs                      (Legacy - unchanged)
-├── DataGrid2_Main.cs                 (Enhanced with edit mode)
-├── DataGrid2_Filtering.cs            (Unchanged)
-├── DataGrid2_Helpers.cs              (Enhanced with Internal IDs)
-├── DataGrid2_Sorting.cs              (Unchanged)
-├── DataGrid2_VirtualMode.cs          (Unchanged)
-├── DataGrid2_EditMode.cs             (NEW - 1000+ lines)
-├── DataGrid2_EditApply.cs            (NEW - Stub for Revit API)
-├── DataGrid2_SearchHistory.cs        (NEW - 137 lines)
+├── DataGrid (legacy).cs                      (Legacy - unchanged)
+├── DataGrid_Main.cs                 (Enhanced with edit mode)
+├── DataGrid_Filtering.cs            (Unchanged)
+├── DataGrid_Helpers.cs              (Enhanced with Internal IDs)
+├── DataGrid_Sorting.cs              (Unchanged)
+├── DataGrid_VirtualMode.cs          (Unchanged)
+├── DataGrid_EditMode.cs             (NEW - 1000+ lines)
+├── DataGrid_EditApply.cs            (NEW - Stub for Revit API)
+├── DataGrid_SearchHistory.cs        (NEW - 137 lines)
 └── AdvancedEditDialog.cs             (NEW - Reusable dialog, 779 lines)
 ```
 
@@ -282,7 +282,7 @@ commands/
 
 ## What Needs Implementation
 
-### Critical: Edit Application (DataGrid2_EditApply.cs)
+### Critical: Edit Application (DataGrid_EditApply.cs)
 **Requires:** `Autodesk.Revit.DB` namespace, Revit API knowledge
 
 **Steps to implement:**
@@ -331,7 +331,7 @@ commands/
 ### Optional Enhancements
 
 #### Enhanced Validation
-Extend `ValidateEdit()` in DataGrid2_EditMode.cs:
+Extend `ValidateEdit()` in DataGrid_EditMode.cs:
 - Sheet number format validation
 - View name uniqueness checks
 - Parameter value range validation
@@ -414,7 +414,7 @@ If entries contain `DocumentPath` or `Document` columns:
 
 ## Migration Guide (for other commands)
 
-### Before (DataGrid1 or simple DataGrid2)
+### Before (DataGrid (legacy) or simple DataGrid)
 ```csharp
 var selected = CustomGUIs.DataGrid(entries, propertyNames, false);
 ```

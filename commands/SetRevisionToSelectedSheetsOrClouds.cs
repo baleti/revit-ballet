@@ -55,7 +55,7 @@ public class SetRevisionToSelectedSheetsOrClouds : IExternalCommand
             CustomGUIs.DataGrid(
                 revisionEntries,
                 revisionProps,
-                spanAllScreens: false,
+                false,
                 new List<int> { revisionEntries.Count - 1 });
 
         if (selectedRevisions == null || selectedRevisions.Count == 0)

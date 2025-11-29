@@ -45,16 +45,19 @@ public class ListAllTypesInProject : IExternalCommand
 
         // Step 2: Display the list of types using CustomGUIs.DataGrid
         var propertyNames = new List<string> { "Type Name", "Family", "Category" };
-        var selectedEntries = CustomGUIs.DataGrid(typeEntries, propertyNames, spanAllScreens: false);
+        var typeEntryDicts = CustomGUIs.ConvertToDataGridFormat(typeEntries, propertyNames);
+        var selectedDicts = CustomGUIs.DataGrid(typeEntryDicts, propertyNames, false);
 
-        if (selectedEntries.Count == 0)
+        if (selectedDicts.Count == 0)
         {
             return Result.Cancelled; // No selection made
         }
 
+        var selectedEntries = CustomGUIs.ExtractOriginalObjects<Dictionary<string, object>>(selectedDicts);
+
         // Step 3: Collect ElementIds of the selected types using the typeElementMap
         List<ElementId> selectedTypeIds = selectedEntries
-            .Select(entry => 
+            .Select(entry =>
             {
                 string uniqueKey = $"{entry["Family"]}:{entry["Type Name"]}";
                 return typeElementMap[uniqueKey].Id; // Retrieve the ElementType from the map and get its Id

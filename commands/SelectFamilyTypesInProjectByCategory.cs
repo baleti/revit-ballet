@@ -57,7 +57,7 @@ namespace YourCompany.YourAddIn
                 CustomGUIs.DataGrid(
                     categoryRows,
                     categoryColumns,
-                    spanAllScreens: false);
+                    false);
 
             if (selectedCatRows.Count == 0)
                 return Result.Cancelled;
@@ -137,7 +137,7 @@ namespace YourCompany.YourAddIn
             var selectedTypeRows = CustomGUIs.DataGrid(
                                        typeRows,
                                        typeColumns,
-                                       spanAllScreens: false);
+                                       false);
 
             if (selectedTypeRows.Count == 0)
                 return Result.Cancelled;

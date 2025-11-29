@@ -253,7 +253,7 @@ public class FilterTags : IExternalCommand
         var filteredEntries = CustomGUIs.DataGrid(
             entries,
             propertyNames,
-            spanAllScreens: false,
+            false,
             initialSelectionIndices: null
         );
         if (filteredEntries == null || !filteredEntries.Any())

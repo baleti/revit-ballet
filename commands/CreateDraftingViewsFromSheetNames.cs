@@ -32,7 +32,10 @@ public class CreateDraftingViewsFromSheetNames : IExternalCommand
 
         List<string> propertyNames = new List<string>() { "Title" };
 
-        var selectedProject  = CustomGUIs.DataGrid(projectNames, propertyNames, null, "Pick Project to Copy Sheet Names from").FirstOrDefault();
+        var projectDicts = CustomGUIs.ConvertToDataGridFormat(projectNames, propertyNames);
+        var selectedDicts = CustomGUIs.DataGrid(projectDicts, propertyNames, false);
+        var selectedProjects = CustomGUIs.ExtractOriginalObjects<Document>(selectedDicts);
+        var selectedProject = selectedProjects.FirstOrDefault();
 
         if (selectedProject == null)
             return Result.Failed;
@@ -48,7 +51,9 @@ public class CreateDraftingViewsFromSheetNames : IExternalCommand
         List<string> sheetPropertyNames = new List<string>() { "SheetNumber", "Name" };
 
         // Use DataGrid again to display sheets for further processing
-        List<ViewSheet> selectedSheets = CustomGUIs.DataGrid(sheetList, sheetPropertyNames, null, "Select Sheets from the Project to Copy Names from");
+        var sheetDicts = CustomGUIs.ConvertToDataGridFormat(sheetList, sheetPropertyNames);
+        var selectedSheetDicts = CustomGUIs.DataGrid(sheetDicts, sheetPropertyNames, false);
+        List<ViewSheet> selectedSheets = CustomGUIs.ExtractOriginalObjects<ViewSheet>(selectedSheetDicts);
 
         if (selectedSheets.Count == 0)
             return Result.Failed;

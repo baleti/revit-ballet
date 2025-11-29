@@ -50,7 +50,9 @@ namespace MyRevitAddin
             List<string> propertyNames = new List<string> { "Id", "Name" };
 
             // Prompt the user to select families.
-            var selectedRows = CustomGUIs.DataGrid(gridEntries, propertyNames, spanAllScreens: false);
+            var gridEntryDicts = CustomGUIs.ConvertToDataGridFormat(gridEntries, propertyNames);
+            var selectedDicts = CustomGUIs.DataGrid(gridEntryDicts, propertyNames, false);
+            var selectedRows = CustomGUIs.ExtractOriginalObjects<Dictionary<string, object>>(selectedDicts);
             if (selectedRows == null || selectedRows.Count == 0)
                 return Result.Succeeded;
 

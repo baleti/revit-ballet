@@ -354,7 +354,7 @@ namespace MyRevitCommands
          List<string> propertyNames = new List<string> { "Name", "Id", "Rule Category", "Rule Subject", "Rule Verb", "Rule Value" };
 
          // Show a DataGrid for filter selection (using your helper).
-         List<Dictionary<string, object>> selectedEntries = CustomGUIs.DataGrid(gridEntries, propertyNames, spanAllScreens: false);
+         List<Dictionary<string, object>> selectedEntries = CustomGUIs.DataGrid(gridEntries, propertyNames, false);
          if (selectedEntries == null || selectedEntries.Count == 0)
          {
             TaskDialog.Show("Cancelled", "No filters selected.");
@@ -454,7 +454,7 @@ namespace MyRevitCommands
 
          List<Dictionary<string, object>> gridEntries = FilterCommandHelper.BuildFilterGridEntries(doc, appliedFilters);
          List<string> propertyNames = new List<string> { "Name", "Id", "Rule Category", "Rule Subject", "Rule Verb", "Rule Value" };
-         List<Dictionary<string, object>> selectedEntries = CustomGUIs.DataGrid(gridEntries, propertyNames, spanAllScreens: false);
+         List<Dictionary<string, object>> selectedEntries = CustomGUIs.DataGrid(gridEntries, propertyNames, false);
          if (selectedEntries == null || selectedEntries.Count == 0)
          {
             TaskDialog.Show("Cancelled", "No filters selected for modification.");
@@ -551,7 +551,7 @@ namespace MyRevitCommands
 
          List<Dictionary<string, object>> gridEntries = FilterCommandHelper.BuildFilterGridEntries(doc, appliedFilters);
          List<string> propertyNames = new List<string> { "Name", "Id", "Rule Category", "Rule Subject", "Rule Verb", "Rule Value" };
-         List<Dictionary<string, object>> selectedEntries = CustomGUIs.DataGrid(gridEntries, propertyNames, spanAllScreens: false);
+         List<Dictionary<string, object>> selectedEntries = CustomGUIs.DataGrid(gridEntries, propertyNames, false);
          if (selectedEntries == null || selectedEntries.Count == 0)
          {
             TaskDialog.Show("Cancelled", "No filters selected for deletion.");

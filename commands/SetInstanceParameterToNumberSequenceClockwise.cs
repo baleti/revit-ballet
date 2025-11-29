@@ -203,12 +203,9 @@ public class SetInstanceParameterToNumberSequenceClockwise : IExternalCommand
     private List<string> GetUserSelectedParameters(HashSet<string> paramNames)
     {
         var paramList = paramNames.Select(n => new ParameterInfo { Name = n }).ToList();
-        var selectedParams = CustomGUIs.DataGrid(
-            paramList,
-            new List<string> { "Name" },
-            null,
-            "Select Parameters to Number"
-        );
+        var paramDicts = CustomGUIs.ConvertToDataGridFormat(paramList, new List<string> { "Name" });
+        var selectedDicts = CustomGUIs.DataGrid(paramDicts, new List<string> { "Name" }, false, null);
+        var selectedParams = CustomGUIs.ExtractOriginalObjects<ParameterInfo>(selectedDicts);
         return selectedParams.Select(p => p.Name).ToList();
     }
 

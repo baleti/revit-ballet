@@ -75,7 +75,7 @@ public class SelectFamilyTypesInProject : IExternalCommand
         // Step 2: Display a DataGrid for the user to select types.
         // 'CustomGUIs.DataGrid' is assumed to be a method that displays the data in a grid and returns the selected rows.
         var propertyNames = new List<string> { "Type Name", "Family", "Category" };
-        var selectedEntries = CustomGUIs.DataGrid(typeEntries, propertyNames, spanAllScreens: false);
+        var selectedEntries = CustomGUIs.DataGrid(typeEntries, propertyNames, false);
 
         if (selectedEntries.Count == 0)
         {

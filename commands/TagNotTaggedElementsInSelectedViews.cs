@@ -143,7 +143,7 @@ public class TagNotTaggedElementsInSelectedViews : IExternalCommand
         List<string> propertyNames = new List<string> { "Category", "Family", "Type", "Tagged (Estimate)", "Untagged (Estimate)" };
         // Display the DataGrid (assumed to be a custom UI helper).
         List<Dictionary<string, object>> selectedEntries =
-            CustomGUIs.DataGrid(entries, propertyNames, spanAllScreens: false);
+            CustomGUIs.DataGrid(entries, propertyNames, false);
         if (selectedEntries == null || selectedEntries.Count == 0)
         {
             TaskDialog.Show("Information", "No family types selected to tag.");

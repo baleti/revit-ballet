@@ -55,14 +55,16 @@ public class OpenSheets : IExternalCommand
         // Step 2: Display the list of sheets using CustomGUIs.DataGrid
         var propertyNames = new List<string>
         {
-            "Sheet Number", 
-            "Sheet Name", 
-            "Current Revision", 
-            "Current Revision Issued To", 
+            "Sheet Number",
+            "Sheet Name",
+            "Current Revision",
+            "Current Revision Issued To",
             "Current Revision Description"
         };
 
-        var selectedEntries = CustomGUIs.DataGrid(sheetEntries, propertyNames, spanAllScreens: false);
+        var sheetEntryDicts = CustomGUIs.ConvertToDataGridFormat(sheetEntries, propertyNames);
+        var selectedDicts = CustomGUIs.DataGrid(sheetEntryDicts, propertyNames, false);
+        var selectedEntries = CustomGUIs.ExtractOriginalObjects<Dictionary<string, object>>(selectedDicts);
 
         if (selectedEntries.Count == 0)
         {

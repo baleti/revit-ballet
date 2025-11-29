@@ -229,7 +229,9 @@ public partial class CustomGUIs
         switch (lowerName)
         {
             case "name":
+            case "displayname":
             case "type":
+            case "typename":
                 // If element IS a group itself, rename its group type
                 if (elem is Group selectedGroup)
                 {
@@ -262,7 +264,28 @@ public partial class CustomGUIs
                     }
                 }
 
-                // Not in a group, try to rename the element directly
+                // For all other elements, rename the TYPE
+                // Note: elem.Name actually refers to the type name, but setting it doesn't work directly
+                // We need to get the element type and rename that
+                ElementId typeId = elem.GetTypeId();
+                if (typeId != null && typeId != ElementId.InvalidElementId)
+                {
+                    Element elemType = elem.Document.GetElement(typeId);
+                    if (elemType != null)
+                    {
+                        try
+                        {
+                            elemType.Name = strValue;
+                            return true;
+                        }
+                        catch
+                        {
+                            return false;
+                        }
+                    }
+                }
+
+                // Fallback: try to rename the element directly (this may not work for most elements)
                 try
                 {
                     elem.Name = strValue;
@@ -292,6 +315,27 @@ public partial class CustomGUIs
             case "levelname":
                 return SetLevel(elem, strValue);
 
+            // Constraint parameters (wall-specific)
+            case "baseconstraint":
+            case "base constraint":
+                return SetLevelParameter(elem, BuiltInParameter.WALL_BASE_CONSTRAINT, strValue);
+
+            case "topconstraint":
+            case "top constraint":
+                return SetLevelParameter(elem, BuiltInParameter.WALL_HEIGHT_TYPE, strValue);
+
+            case "baseoffset":
+            case "base offset":
+                return SetBuiltInParameter(elem, BuiltInParameter.WALL_BASE_OFFSET, strValue);
+
+            case "topoffset":
+            case "top offset":
+                return SetBuiltInParameter(elem, BuiltInParameter.WALL_TOP_OFFSET, strValue);
+
+            case "unconnectedheight":
+            case "unconnected height":
+                return SetBuiltInParameter(elem, BuiltInParameter.WALL_USER_HEIGHT_PARAM, strValue);
+
             // Phase
             case "phasecreated":
                 return SetPhase(elem, BuiltInParameter.PHASE_CREATED, strValue);
@@ -314,6 +358,37 @@ public partial class CustomGUIs
 
             case "sheetname":
                 return SetBuiltInParameter(elem, BuiltInParameter.SHEET_NAME, strValue);
+
+            case "drawnby":
+                return SetBuiltInParameter(elem, BuiltInParameter.SHEET_DRAWN_BY, strValue);
+
+            case "checkedby":
+                return SetBuiltInParameter(elem, BuiltInParameter.SHEET_CHECKED_BY, strValue);
+
+            case "approvedby":
+                return SetBuiltInParameter(elem, BuiltInParameter.SHEET_APPROVED_BY, strValue);
+
+            case "issuedby":
+                return SetParameterValue(elem, "Issued By", strValue);
+
+            case "issuedto":
+                return SetParameterValue(elem, "Issued To", strValue);
+
+            case "sheetissuedate":
+            case "issuedate":
+                return SetBuiltInParameter(elem, BuiltInParameter.SHEET_ISSUE_DATE, strValue);
+
+            case "currentrevision":
+            case "revisionnumber":
+                return SetBuiltInParameter(elem, BuiltInParameter.SHEET_CURRENT_REVISION, strValue);
+
+            case "currentrevisiondate":
+            case "revisiondate":
+                return SetBuiltInParameter(elem, BuiltInParameter.SHEET_CURRENT_REVISION_DATE, strValue);
+
+            case "currentrevisiondescription":
+            case "revisiondescription":
+                return SetBuiltInParameter(elem, BuiltInParameter.SHEET_CURRENT_REVISION_DESCRIPTION, strValue);
 
             // View properties
             case "viewname":
@@ -359,17 +434,107 @@ public partial class CustomGUIs
                 }
                 return false;
 
+            case "viewtemplate":
+            case "template":
+                if (elem is View vTemplate)
+                {
+                    // Find view template by name
+                    var templates = new FilteredElementCollector(elem.Document)
+                        .OfClass(typeof(View))
+                        .Cast<View>()
+                        .Where(v => v.IsTemplate)
+                        .ToList();
+
+                    View targetTemplate = templates.FirstOrDefault(t =>
+                        string.Equals(t.Name, strValue, StringComparison.OrdinalIgnoreCase));
+
+                    if (targetTemplate != null)
+                    {
+                        try
+                        {
+                            vTemplate.ViewTemplateId = targetTemplate.Id;
+                            return true;
+                        }
+                        catch { return false; }
+                    }
+                    else if (string.IsNullOrEmpty(strValue) || strValue.Equals("none", StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Remove template
+                        try
+                        {
+                            vTemplate.ViewTemplateId = ElementId.InvalidElementId;
+                            return true;
+                        }
+                        catch { return false; }
+                    }
+                }
+                return false;
+
+            case "discipline":
+                if (elem is View vDisc)
+                {
+                    if (Enum.TryParse(strValue, true, out ViewDiscipline discipline))
+                    {
+                        try
+                        {
+                            vDisc.Discipline = discipline;
+                            return true;
+                        }
+                        catch { return false; }
+                    }
+                }
+                return false;
+
+            case "title":
+            case "titleonsheet":
+                if (elem is View vTitle)
+                {
+                    try
+                    {
+                        vTitle.get_Parameter(BuiltInParameter.VIEW_DESCRIPTION).Set(strValue);
+                        return true;
+                    }
+                    catch { return false; }
+                }
+                return false;
+
+            // Family properties
+            case "familyname":
+            case "family":
+                ElementId famTypeId = elem.GetTypeId();
+                if (famTypeId != null && famTypeId != ElementId.InvalidElementId)
+                {
+                    Element famElemType = elem.Document.GetElement(famTypeId);
+                    if (famElemType is FamilySymbol familySymbol)
+                    {
+                        try
+                        {
+                            Family family = familySymbol.Family;
+                            family.Name = strValue;
+                            return true;
+                        }
+                        catch { return false; }
+                    }
+                }
+                return false;
+
+            // Design Option
+            case "designoption":
+                return SetDesignOption(elem, strValue);
+
+            // Subcategory
+            case "subcategory":
+                return SetSubcategory(elem, strValue);
+
             // Room/Space properties (handled via parameters)
             case "number":
                 return SetParameterValue(elem, "Number", strValue);
 
-            case "area":
-                // Area is usually read-only, but try anyway
-                return SetParameterValue(elem, "Area", strValue);
-
-            case "volume":
-                // Volume is usually read-only, but try anyway
-                return SetParameterValue(elem, "Volume", strValue);
+            // IFC parameters
+            case "exporttoifc":
+            case "export to ifc":
+            case "ifc export":
+                return SetYesNoByTypeParameter(elem, "Export to IFC", strValue);
 
             default:
                 // Handle parameter columns (param_*, sharedparam_*, typeparam_*)
@@ -480,12 +645,35 @@ public partial class CustomGUIs
                     return false;
 
                 case StorageType.Double:
-                    if (double.TryParse(value, out double doubleValue))
+                    // CRITICAL: Use SetValueString FIRST to handle unit conversion properly
+                    // SetValueString respects the project's display units (metric vs imperial)
+                    // and converts the user's input to internal units automatically.
+                    // Direct Set() assumes the value is already in internal units (feet),
+                    // which causes incorrect conversions in metric projects.
+                    try
                     {
-                        param.Set(doubleValue);
+                        param.SetValueString(value);
                         return true;
                     }
-                    return false;
+                    catch
+                    {
+                        // SetValueString failed - try direct parsing as fallback
+                        // This handles cases where the parameter doesn't support SetValueString
+                        // or the value is already in internal units
+                        if (double.TryParse(value, out double doubleValue))
+                        {
+                            try
+                            {
+                                param.Set(doubleValue);
+                                return true;
+                            }
+                            catch
+                            {
+                                return false;
+                            }
+                        }
+                        return false;
+                    }
 
                 case StorageType.ElementId:
                     // Try parsing as integer first
@@ -585,6 +773,92 @@ public partial class CustomGUIs
     }
 
     /// <summary>
+    /// Set a Yes/No/By Type parameter (like Export to IFC)
+    /// </summary>
+    private static bool SetYesNoByTypeParameter(Element elem, string paramName, string value)
+    {
+        Parameter param = elem.LookupParameter(paramName);
+        if (param == null || param.IsReadOnly)
+            return false;
+
+        // Parse the value
+        string lowerValue = value.Trim().ToLowerInvariant();
+        int intValue;
+
+        switch (lowerValue)
+        {
+            case "yes":
+            case "true":
+            case "1":
+                intValue = 1;
+                break;
+
+            case "no":
+            case "false":
+            case "0":
+                intValue = 0;
+                break;
+
+            case "by type":
+            case "bytype":
+            case "-1":
+            case "default":
+                intValue = -1;
+                break;
+
+            default:
+                // Try parsing as integer directly
+                if (!int.TryParse(value, out intValue))
+                    return false;
+                break;
+        }
+
+        try
+        {
+            param.Set(intValue);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Set a level parameter (like Base Constraint, Top Constraint) by level name
+    /// </summary>
+    private static bool SetLevelParameter(Element elem, BuiltInParameter builtInParam, string levelName)
+    {
+        Document doc = elem.Document;
+
+        Parameter param = elem.get_Parameter(builtInParam);
+        if (param == null || param.IsReadOnly)
+            return false;
+
+        // Find level by name
+        var levels = new FilteredElementCollector(doc)
+            .OfClass(typeof(Level))
+            .Cast<Level>()
+            .ToList();
+
+        Level targetLevel = levels.FirstOrDefault(l =>
+            string.Equals(l.Name, levelName, StringComparison.OrdinalIgnoreCase));
+
+        if (targetLevel == null)
+            return false;
+
+        try
+        {
+            param.Set(targetLevel.Id);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
     /// Set element's phase by name
     /// </summary>
     private static bool SetPhase(Element elem, BuiltInParameter phaseParam, string phaseName)
@@ -614,6 +888,107 @@ public partial class CustomGUIs
         try
         {
             param.Set(targetPhase.Id);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Set element's design option by name
+    /// </summary>
+    private static bool SetDesignOption(Element elem, string designOptionName)
+    {
+        Document doc = elem.Document;
+
+        Parameter designOptionParam = elem.get_Parameter(BuiltInParameter.DESIGN_OPTION_ID);
+        if (designOptionParam == null || designOptionParam.IsReadOnly)
+            return false;
+
+        // Handle "Main Model" or "None" to remove from design option
+        if (string.IsNullOrEmpty(designOptionName) ||
+            designOptionName.Equals("Main Model", StringComparison.OrdinalIgnoreCase) ||
+            designOptionName.Equals("None", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                designOptionParam.Set(ElementId.InvalidElementId);
+                return true;
+            }
+            catch { return false; }
+        }
+
+        // Find design option by name
+        var designOptions = new FilteredElementCollector(doc)
+            .OfClass(typeof(DesignOption))
+            .Cast<DesignOption>()
+            .ToList();
+
+        DesignOption targetOption = designOptions.FirstOrDefault(opt =>
+            string.Equals(opt.Name, designOptionName, StringComparison.OrdinalIgnoreCase));
+
+        if (targetOption == null)
+            return false;
+
+        try
+        {
+            designOptionParam.Set(targetOption.Id);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Set element's subcategory by name
+    /// </summary>
+    private static bool SetSubcategory(Element elem, string subcategoryName)
+    {
+        Document doc = elem.Document;
+
+        // Get the element's category
+        Category category = elem.Category;
+        if (category == null)
+            return false;
+
+        // Get subcategory parameter
+        Parameter subcatParam = elem.get_Parameter(BuiltInParameter.FAMILY_ELEM_SUBCATEGORY);
+        if (subcatParam == null || subcatParam.IsReadOnly)
+            return false;
+
+        // Handle "None" or empty to use parent category
+        if (string.IsNullOrEmpty(subcategoryName) ||
+            subcategoryName.Equals("None", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                subcatParam.Set(category.Id);
+                return true;
+            }
+            catch { return false; }
+        }
+
+        // Find subcategory by name within this category
+        Category targetSubcategory = null;
+        foreach (Category subcat in category.SubCategories)
+        {
+            if (string.Equals(subcat.Name, subcategoryName, StringComparison.OrdinalIgnoreCase))
+            {
+                targetSubcategory = subcat;
+                break;
+            }
+        }
+
+        if (targetSubcategory == null)
+            return false;
+
+        try
+        {
+            subcatParam.Set(targetSubcategory.Id);
             return true;
         }
         catch

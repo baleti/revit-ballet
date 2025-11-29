@@ -144,18 +144,20 @@ public class SelectBySameTypeInLinkedModelsInProject : IExternalCommand
         
         // Define properties to display
         var linkPropertyNames = new List<string> { "Name", "LinkType" };
-        
+
         // Show the DataGrid to let the user select linked models to search
-        var selectedEntries = CustomGUIs.DataGrid(
-            linkEntries,
+        var linkEntryDicts = CustomGUIs.ConvertToDataGridFormat(linkEntries, linkPropertyNames);
+        var selectedDicts = CustomGUIs.DataGrid(
+            linkEntryDicts,
             linkPropertyNames,
             false, // spanAllScreens
             preSelectedIndices.Count > 0 ? preSelectedIndices : null
         );
-        
+        var selectedEntries = CustomGUIs.ExtractOriginalObjects<Dictionary<string, object>>(selectedDicts);
+
         if (selectedEntries == null || selectedEntries.Count == 0)
             return Result.Cancelled;
-        
+
         // Extract the selected link instances based on selected entries
         var selectedLinkInstances = new List<RevitLinkInstance>();
         foreach (var entry in selectedEntries)

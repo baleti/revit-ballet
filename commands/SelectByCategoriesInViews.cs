@@ -28,7 +28,7 @@ public class SelectByCategoriesInViews : IExternalCommand
                 Element elem = doc.GetElement(id);
                 
                 // Check if it's a View
-                if (elem is View view && !(view is ViewSheet))
+                if (elem is View view)
                 {
                     // Add the view directly
                     viewsToProcess.Add(view);
@@ -39,7 +39,7 @@ public class SelectByCategoriesInViews : IExternalCommand
                     // Get the view from the viewport
                     ElementId viewId = viewport.ViewId;
                     View viewFromViewport = doc.GetElement(viewId) as View;
-                    if (viewFromViewport != null && !(viewFromViewport is ViewSheet))
+                    if (viewFromViewport != null)
                     {
                         viewsToProcess.Add(viewFromViewport);
                     }
@@ -64,7 +64,7 @@ public class SelectByCategoriesInViews : IExternalCommand
         foreach (View view in viewsToProcess)
         {
             // Skip invalid views
-            if (view == null || view is ViewSheet)
+            if (view == null)
                 continue;
             
             // Collect elements visible in this view
@@ -167,41 +167,58 @@ public class SelectByCategoriesInViews : IExternalCommand
         // Build a list of dictionaries for the DataGrid.
         List<Dictionary<string, object>> categoryList = new List<Dictionary<string, object>>();
 
-        // Group viewer elements by their VIEW_FAMILY parameter for split categories
-        Dictionary<string, List<ElementId>> viewersByFamily = new Dictionary<string, List<ElementId>>();
+        // Group viewer elements by their VIEW_FAMILY parameter, separating views from templates
+        Dictionary<string, List<ElementId>> viewsByFamily = new Dictionary<string, List<ElementId>>();
+        Dictionary<string, List<ElementId>> viewTemplatesByFamily = new Dictionary<string, List<ElementId>>();
 
         foreach (ElementId id in categoryIds)
         {
             // Handle OST_Viewers specially for in-view mode
             if (id.AsLong() == (int)BuiltInCategory.OST_Viewers)
             {
-                
-                // Group the viewer elements by their VIEW_FAMILY parameter
+
+                // Group the viewer elements by their VIEW_FAMILY parameter, separating views from templates
                 var viewers = elementsNotInGroups
                     .Select(eid => doc.GetElement(eid))
                     .Where(e => e != null && e.Category != null &&
                                 e.Category.Id.AsLong() == (int)BuiltInCategory.OST_Viewers &&
                                 !(e is DirectShape))
+                    .Cast<View>()
                     .ToList();
-                
-                foreach (var viewer in viewers)
+
+                foreach (var view in viewers)
                 {
-                    string familyName = viewer.get_Parameter(BuiltInParameter.VIEW_FAMILY)?.AsValueString() ?? "Unknown";
-                    if (!viewersByFamily.ContainsKey(familyName))
+                    string familyName = view.get_Parameter(BuiltInParameter.VIEW_FAMILY)?.AsValueString() ?? "Unknown";
+
+                    if (view.IsTemplate)
                     {
-                        viewersByFamily[familyName] = new List<ElementId>();
+                        if (!viewTemplatesByFamily.ContainsKey(familyName))
+                        {
+                            viewTemplatesByFamily[familyName] = new List<ElementId>();
+                        }
+                        if (!viewTemplatesByFamily[familyName].Contains(view.Id))
+                        {
+                            viewTemplatesByFamily[familyName].Add(view.Id);
+                        }
                     }
-                    if (!viewersByFamily[familyName].Contains(viewer.Id))
+                    else
                     {
-                        viewersByFamily[familyName].Add(viewer.Id);
+                        if (!viewsByFamily.ContainsKey(familyName))
+                        {
+                            viewsByFamily[familyName] = new List<ElementId>();
+                        }
+                        if (!viewsByFamily[familyName].Contains(view.Id))
+                        {
+                            viewsByFamily[familyName].Add(view.Id);
+                        }
                     }
                 }
-                
+
                 // Handle Direct Shapes separately for OST_Viewers
                 if (directShapesByCategory.ContainsKey(id))
                 {
                     int directShapeCount = directShapesByCategory[id].Count;
-                    string directShapeName = "Direct Shapes: Views (OST_Viewers)";
+                    string directShapeName = "Direct Shapes: Views";
                     var entry = new Dictionary<string, object>
                     {
                         { "Name", directShapeName },
@@ -212,7 +229,7 @@ public class SelectByCategoriesInViews : IExternalCommand
                     };
                     categoryList.Add(entry);
                 }
-                
+
                 continue; // Skip regular processing for OST_Viewers
             }
             
@@ -254,8 +271,8 @@ public class SelectByCategoriesInViews : IExternalCommand
             }
         }
         
-        // Add split viewer categories based on VIEW_FAMILY
-        foreach (var kvp in viewersByFamily)
+        // Add split viewer categories based on VIEW_FAMILY, separating views from templates
+        foreach (var kvp in viewsByFamily)
         {
             var entry = new Dictionary<string, object>
             {
@@ -263,6 +280,23 @@ public class SelectByCategoriesInViews : IExternalCommand
                 { "Count", kvp.Value.Count },
                 { "CategoryId", ((long)BuiltInCategory.OST_Viewers).ToElementId() },
                 { "IsDirectShape", false },
+                { "IsViewTemplate", false },
+                { "IsViewerFamily", true },
+                { "ViewFamilyName", kvp.Key },
+                { "ElementIds", kvp.Value }
+            };
+            categoryList.Add(entry);
+        }
+
+        foreach (var kvp in viewTemplatesByFamily)
+        {
+            var entry = new Dictionary<string, object>
+            {
+                { "Name", "View Templates: " + kvp.Key },
+                { "Count", kvp.Value.Count },
+                { "CategoryId", ((long)BuiltInCategory.OST_Viewers).ToElementId() },
+                { "IsDirectShape", false },
+                { "IsViewTemplate", true },
                 { "IsViewerFamily", true },
                 { "ViewFamilyName", kvp.Key },
                 { "ElementIds", kvp.Value }

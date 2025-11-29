@@ -65,7 +65,9 @@ namespace RevitAddin.Commands
                 }).ToList();
                 var columns = new List<string> { "Number", "Name" };
 
-                var selectedRows = CustomGUIs.DataGrid(sheetRows, columns, false);
+                var sheetRowDicts = CustomGUIs.ConvertToDataGridFormat(sheetRows, columns);
+                var selectedDicts = CustomGUIs.DataGrid(sheetRowDicts, columns, false);
+                var selectedRows = CustomGUIs.ExtractOriginalObjects<Dictionary<string, object>>(selectedDicts);
                 if (selectedRows == null || selectedRows.Count == 0)
                     return Result.Cancelled;
 

@@ -4,6 +4,7 @@ using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using System.Xml.Linq;
 using Microsoft.Win32;
@@ -12,6 +13,14 @@ namespace RevitBalletInstaller
 {
     internal static class Program
     {
+        [DllImport("kernel32.dll")]
+        private static extern bool AttachConsole(int dwProcessId);
+
+        [DllImport("kernel32.dll")]
+        private static extern bool AllocConsole();
+
+        private const int ATTACH_PARENT_PROCESS = -1;
+
         [STAThread]
         static void Main(string[] args)
         {
@@ -24,6 +33,12 @@ namespace RevitBalletInstaller
                                              arg.Equals("/quiet", StringComparison.OrdinalIgnoreCase) ||
                                              arg.Equals("-q", StringComparison.OrdinalIgnoreCase) ||
                                              arg.Equals("--quiet", StringComparison.OrdinalIgnoreCase));
+
+            // In quiet mode, attach to parent console to enable stdout/stderr output
+            if (quietMode)
+            {
+                AttachConsole(ATTACH_PARENT_PROCESS);
+            }
 
             if (isUninstaller)
             {
@@ -77,6 +92,10 @@ namespace RevitBalletInstaller
                         MessageBox.Show("No Revit installations found.",
                             "Revit Ballet", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     }
+                    else
+                    {
+                        Console.WriteLine("No Revit installations found.");
+                    }
                     return;
                 }
 
@@ -108,6 +127,10 @@ namespace RevitBalletInstaller
                 {
                     ShowSuccessDialog();
                 }
+                else
+                {
+                    OutputSuccessToConsole();
+                }
             }
             catch (Exception ex)
             {
@@ -118,7 +141,9 @@ namespace RevitBalletInstaller
                 }
                 else
                 {
-                    // In quiet mode, exit with error code
+                    // In quiet mode, output error to stderr and exit with error code
+                    Console.Error.WriteLine($"Installation error: {ex.Message}");
+                    Console.Error.WriteLine(ex.StackTrace);
                     Environment.Exit(1);
                 }
             }
@@ -271,6 +296,53 @@ namespace RevitBalletInstaller
             form.ClientSize = new Size(550, currentY);
 
             form.ShowDialog();
+        }
+
+        private void OutputSuccessToConsole()
+        {
+            // Group results by state and sort by year (numerically)
+            var freshInstalls = installationResults.Where(r => r.State == InstallState.FreshInstall)
+                .OrderBy(r => int.Parse(r.Year)).ToList();
+            var updatedSuccessfully = installationResults.Where(r => r.State == InstallState.UpdatedSuccessfully)
+                .OrderBy(r => int.Parse(r.Year)).ToList();
+            var needsRestart = installationResults.Where(r => r.State == InstallState.UpdatedNeedsRestart)
+                .OrderBy(r => int.Parse(r.Year)).ToList();
+
+            if (freshInstalls.Count > 0)
+            {
+                Console.WriteLine("Successfully installed to:");
+                foreach (var result in freshInstalls)
+                {
+                    Console.WriteLine($"  - Revit {result.Year}");
+                }
+            }
+
+            if (updatedSuccessfully.Count > 0)
+            {
+                Console.WriteLine("Successfully updated:");
+                foreach (var result in updatedSuccessfully)
+                {
+                    Console.WriteLine($"  - Revit {result.Year}");
+                }
+            }
+
+            if (needsRestart.Count > 0)
+            {
+                Console.WriteLine("Updated (restart Revit to use new version):");
+                foreach (var result in needsRestart)
+                {
+                    Console.WriteLine($"  - Revit {result.Year}");
+                }
+                Console.WriteLine("Note: These versions had Revit running during installation.");
+                Console.WriteLine("New commands are available immediately via InvokeAddinCommand,");
+                Console.WriteLine("but you need to restart Revit to load the updated addin.");
+            }
+
+            if (installationResults.Count == 0)
+            {
+                Console.WriteLine("Installation completed, but no Revit versions were updated.");
+                Console.WriteLine("This might indicate missing DLL resources.");
+            }
         }
 
         private bool IsInstalled()
@@ -1103,6 +1175,10 @@ namespace RevitBalletInstaller
                     MessageBox.Show("Revit Ballet uninstalled successfully.", "Uninstaller",
                         MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
+                else
+                {
+                    Console.WriteLine("Revit Ballet uninstalled successfully.");
+                }
             }
             catch (Exception ex)
             {
@@ -1113,6 +1189,8 @@ namespace RevitBalletInstaller
                 }
                 else
                 {
+                    Console.Error.WriteLine($"Uninstallation failed: {ex.Message}");
+                    Console.Error.WriteLine(ex.StackTrace);
                     Environment.Exit(1);
                 }
             }

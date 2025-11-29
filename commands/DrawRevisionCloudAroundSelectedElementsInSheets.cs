@@ -239,7 +239,7 @@ namespace MyCompany.RevitCommands
           numToId[vs.SheetNumber] = vs.Id;
         }
 
-        var picked = CustomGUIs.DataGrid(gridRows, cols, spanAllScreens:false);
+        var picked = CustomGUIs.DataGrid(gridRows, cols, false);
         if (picked == null || picked.Count == 0)
           return Result.Cancelled;
 

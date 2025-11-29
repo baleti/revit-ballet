@@ -25,9 +25,11 @@ public class SetParametersOfFamilyTypes : IExternalCommand
             .ToList();
 
         var categoryEntries = categories.Select(c => new CategoryEntry { Name = c.Name, Category = c }).ToList();
-        var chosenCategoryEntries = CustomGUIs.DataGrid(categoryEntries, new List<string> { "Name" }, null, "Select One or More Categories");
-        
-        if (!chosenCategoryEntries.Any()) return Result.Cancelled;
+        var categoryDicts = CustomGUIs.ConvertToDataGridFormat(categoryEntries, new List<string> { "Name" });
+        var selectedCategoryDicts = CustomGUIs.DataGrid(categoryDicts, new List<string> { "Name" }, false, null);
+
+        if (!selectedCategoryDicts.Any()) return Result.Cancelled;
+        var chosenCategoryEntries = CustomGUIs.ExtractOriginalObjects<CategoryEntry>(selectedCategoryDicts);
 
         // Map known system family categories to their corresponding ElementType classes
         var categoryToClass = new Dictionary<string, Type>(StringComparer.OrdinalIgnoreCase)
@@ -104,7 +106,9 @@ public class SetParametersOfFamilyTypes : IExternalCommand
             .ToList();
 
         // Step 3: Show combined list of elements (family types or materials)
-        var chosenElementEntries = CustomGUIs.DataGrid(elementEntries, new List<string> { "ElementName" }, null, "Select Family Types/Materials (You can select multiple)");
+        var elementDicts = CustomGUIs.ConvertToDataGridFormat(elementEntries, new List<string> { "ElementName" });
+        var selectedElementDicts = CustomGUIs.DataGrid(elementDicts, new List<string> { "ElementName" }, false, null);
+        var chosenElementEntries = CustomGUIs.ExtractOriginalObjects<GenericElementEntry>(selectedElementDicts);
         var chosenElements = chosenElementEntries.Select(e => e.Element).ToList();
         if (!chosenElements.Any()) return Result.Cancelled;
 
@@ -139,7 +143,9 @@ public class SetParametersOfFamilyTypes : IExternalCommand
         allParameters = allParameters.OrderBy(p => p.ElementName).ToList();
 
         // Step 5: Show parameters for selection
-        var chosenParameterEntries = CustomGUIs.DataGrid(allParameters, new List<string> { "ElementName", "ParameterName", "CurrentValue" }, null, "Select Parameters (Multiple elements combined)");
+        var parameterDicts = CustomGUIs.ConvertToDataGridFormat(allParameters, new List<string> { "ElementName", "ParameterName", "CurrentValue" });
+        var selectedParameterDicts = CustomGUIs.DataGrid(parameterDicts, new List<string> { "ElementName", "ParameterName", "CurrentValue" }, false, null);
+        var chosenParameterEntries = CustomGUIs.ExtractOriginalObjects<ParameterEntryForMultiple>(selectedParameterDicts);
         if (!chosenParameterEntries.Any()) return Result.Cancelled;
 
         // Step 6: Ask user for new value

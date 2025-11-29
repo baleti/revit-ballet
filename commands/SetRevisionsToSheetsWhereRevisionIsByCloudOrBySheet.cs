@@ -49,7 +49,7 @@ public class SetRevisionsToSheetsWhereRevisionIsByCloudOrBySheet : IExternalComm
             "Issued By", 
             "Issued To" 
         };
-        var selectedRevisions = CustomGUIs.DataGrid(revisionEntries, revisionProperties, spanAllScreens: false, new List<int> { revisionEntries.Count - 1 });
+        var selectedRevisions = CustomGUIs.DataGrid(revisionEntries, revisionProperties, false, new List<int> { revisionEntries.Count - 1 });
 
         if (!selectedRevisions.Any())
         {
@@ -91,7 +91,7 @@ public class SetRevisionsToSheetsWhereRevisionIsByCloudOrBySheet : IExternalComm
 
         // Show sheet selection dialog
         List<string> sheetProperties = new List<string> { "Sheet Number", "Sheet Name" };
-        var selectedSheets = CustomGUIs.DataGrid(sheetEntries, sheetProperties, spanAllScreens: false);
+        var selectedSheets = CustomGUIs.DataGrid(sheetEntries, sheetProperties, false);
 
         if (!selectedSheets.Any())
         {

@@ -80,12 +80,43 @@ Revit Ballet provides a Roslyn compiler-as-a-service that allows AI agents to ex
 2. **Location**: Token at `runtime/network/token`, sessions at `runtime/network/sessions`
 3. **Find active port**: `grep -v '^#' runtime/network/sessions | head -1 | cut -d',' -f2`
 
-**Quick Start - List Levels:**
+**IMPORTANT - Query File Pattern:**
+
+For anything beyond the simplest single-line queries, **ALWAYS use a file-based approach** to avoid bash escaping issues:
+
+```bash
+# 1. Write your C# query to a file in /tmp
+cat > /tmp/query-$(uuidgen).cs << 'EOF'
+var collector = new FilteredElementCollector(Doc);
+var levels = collector.OfClass(typeof(Level)).Cast<Level>();
+Console.WriteLine("Total Levels: " + levels.Count());
+foreach (var level in levels.OrderBy(l => l.Elevation).Take(5))
+{
+    Console.WriteLine("  " + level.Name + ": " + level.Elevation);
+}
+EOF
+
+# 2. Send the file with --data-binary
+TOKEN=$(cat runtime/network/token)
+PORT=$(grep -v '^#' runtime/network/sessions | head -1 | cut -d',' -f2)
+curl -k -s -X POST https://127.0.0.1:$PORT/roslyn \
+  -H "X-Auth-Token: $TOKEN" \
+  --data-binary @/tmp/query-*.cs | jq -r '.Output'
+```
+
+**Why use files?**
+- Avoids bash escaping nightmares with quotes, operators (!=, ?, etc.)
+- Allows proper multi-line C# formatting
+- Enables complex queries with conditionals and loops
+- Supports comments in your C# code
+
+**Simple inline queries (single-line, no special characters):**
 ```bash
 TOKEN=$(cat runtime/network/token)
-curl -k -X POST https://127.0.0.1:23717/roslyn \
+PORT=$(grep -v '^#' runtime/network/sessions | head -1 | cut -d',' -f2)
+curl -k -s -X POST https://127.0.0.1:$PORT/roslyn \
   -H "X-Auth-Token: $TOKEN" \
-  -d 'var collector = new FilteredElementCollector(Doc); var levels = collector.OfClass(typeof(Level)).Cast<Level>(); Console.WriteLine("Total Levels: " + levels.Count()); foreach (var level in levels.OrderBy(l => l.Elevation).Take(5)) { Console.WriteLine("  " + level.Name + ": " + level.Elevation); }'
+  -d 'Console.WriteLine("Hello from Revit");' | jq -r '.Output'
 ```
 
 **Note:** Use `-k` or `--insecure` flag with curl to accept self-signed SSL certificates (localhost only).
@@ -115,35 +146,138 @@ Pre-imported namespaces:
 
 ## Common Query Patterns
 
+**NOTE:** All examples below use the file-based approach to avoid escaping issues. For helper function to simplify queries, see the Integration section below.
+
 ### Listing Information
 
 **Get All Levels:**
 ```bash
-curl --insecure -X POST https://127.0.0.1:23717/roslyn -H "X-Auth-Token: $(cat revit-ballet/runtime/network/token)" -d 'var collector = new FilteredElementCollector(Doc); var levels = collector.OfClass(typeof(Level)).Cast<Level>(); Console.WriteLine("Total Levels: " + levels.Count()); foreach (var level in levels.OrderBy(l => l.Elevation).Take(5)) { Console.WriteLine("  " + level.Name + ": " + level.Elevation); }' | jq
+cat > /tmp/query-$(uuidgen).cs << 'EOF'
+var collector = new FilteredElementCollector(Doc);
+var levels = collector.OfClass(typeof(Level)).Cast<Level>();
+Console.WriteLine("Total Levels: " + levels.Count());
+foreach (var level in levels.OrderBy(l => l.Elevation).Take(5))
+{
+    Console.WriteLine("  " + level.Name + ": " + level.Elevation);
+}
+EOF
+
+TOKEN=$(cat runtime/network/token)
+PORT=$(grep -v '^#' runtime/network/sessions | head -1 | cut -d',' -f2)
+curl -k -s -X POST https://127.0.0.1:$PORT/roslyn \
+  -H "X-Auth-Token: $TOKEN" \
+  --data-binary @/tmp/query-*.cs | jq -r '.Output'
 ```
 
 **Count Elements by Category:**
 ```bash
-curl --insecure -X POST https://127.0.0.1:23717/roslyn -H "X-Auth-Token: $(cat revit-ballet/runtime/network/token)" -d 'var collector = new FilteredElementCollector(Doc); var elements = collector.WhereElementIsNotElementType().ToElements(); var typeCounts = elements.GroupBy(e => e.Category?.Name ?? "None").OrderByDescending(g => g.Count()).Take(5); foreach (var group in typeCounts) { Console.WriteLine(group.Key + ": " + group.Count()); }' | jq
+cat > /tmp/query-$(uuidgen).cs << 'EOF'
+var collector = new FilteredElementCollector(Doc);
+var elements = collector.WhereElementIsNotElementType().ToElements();
+var typeCounts = elements
+    .GroupBy(e => e.Category?.Name ?? "None")
+    .OrderByDescending(g => g.Count())
+    .Take(5);
+
+foreach (var group in typeCounts)
+{
+    Console.WriteLine(group.Key + ": " + group.Count());
+}
+EOF
+
+TOKEN=$(cat runtime/network/token)
+PORT=$(grep -v '^#' runtime/network/sessions | head -1 | cut -d',' -f2)
+curl -k -s -X POST https://127.0.0.1:$PORT/roslyn \
+  -H "X-Auth-Token: $TOKEN" \
+  --data-binary @/tmp/query-*.cs | jq -r '.Output'
 ```
 
 ### Validation Queries
 
 **Check for Unplaced Rooms:**
 ```bash
-curl --insecure -X POST https://127.0.0.1:23717/roslyn -H "X-Auth-Token: $(cat revit-ballet/runtime/network/token)" -d 'var collector = new FilteredElementCollector(Doc); var rooms = collector.OfCategory(BuiltInCategory.OST_Rooms).Cast<Room>(); var unplaced = rooms.Where(r => r.Area == 0 || r.Location == null).ToList(); if (unplaced.Count > 0) { Console.WriteLine("Found " + unplaced.Count + " unplaced rooms:"); foreach (var room in unplaced) { Console.WriteLine("  - Room " + room.Number + ": " + room.Name); } } else { Console.WriteLine("All rooms are placed!"); }' | jq
+cat > /tmp/query-$(uuidgen).cs << 'EOF'
+var collector = new FilteredElementCollector(Doc);
+var rooms = collector.OfCategory(BuiltInCategory.OST_Rooms).Cast<Room>();
+var unplaced = rooms.Where(r => r.Area == 0 || r.Location == null).ToList();
+
+if (unplaced.Count > 0)
+{
+    Console.WriteLine("Found " + unplaced.Count + " unplaced rooms:");
+    foreach (var room in unplaced)
+    {
+        Console.WriteLine("  - Room " + room.Number + ": " + room.Name);
+    }
+}
+else
+{
+    Console.WriteLine("All rooms are placed!");
+}
+EOF
+
+TOKEN=$(cat runtime/network/token)
+PORT=$(grep -v '^#' runtime/network/sessions | head -1 | cut -d',' -f2)
+curl -k -s -X POST https://127.0.0.1:$PORT/roslyn \
+  -H "X-Auth-Token: $TOKEN" \
+  --data-binary @/tmp/query-*.cs | jq -r '.Output'
 ```
 
 **Check for Elements Without Parameters:**
 ```bash
-curl --insecure -X POST https://127.0.0.1:23717/roslyn -H "X-Auth-Token: $(cat revit-ballet/runtime/network/token)" -d 'var collector = new FilteredElementCollector(Doc); var walls = collector.OfCategory(BuiltInCategory.OST_Walls).WhereElementIsNotElementType(); var missingMark = new List<Element>(); foreach (var wall in walls) { var mark = wall.get_Parameter(BuiltInParameter.ALL_MODEL_MARK); if (mark == null || string.IsNullOrEmpty(mark.AsString())) { missingMark.Add(wall); } } Console.WriteLine("Walls missing Mark parameter: " + missingMark.Count);' | jq
+cat > /tmp/query-$(uuidgen).cs << 'EOF'
+var collector = new FilteredElementCollector(Doc);
+var walls = collector.OfCategory(BuiltInCategory.OST_Walls).WhereElementIsNotElementType();
+var missingMark = new List<Element>();
+
+foreach (var wall in walls)
+{
+    var mark = wall.get_Parameter(BuiltInParameter.ALL_MODEL_MARK);
+    if (mark == null || string.IsNullOrEmpty(mark.AsString()))
+    {
+        missingMark.Add(wall);
+    }
+}
+
+Console.WriteLine("Walls missing Mark parameter: " + missingMark.Count);
+EOF
+
+TOKEN=$(cat runtime/network/token)
+PORT=$(grep -v '^#' runtime/network/sessions | head -1 | cut -d',' -f2)
+curl -k -s -X POST https://127.0.0.1:$PORT/roslyn \
+  -H "X-Auth-Token: $TOKEN" \
+  --data-binary @/tmp/query-*.cs | jq -r '.Output'
 ```
 
 ### Statistical Queries
 
 **Get Document Statistics:**
 ```bash
-curl --insecure -X POST https://127.0.0.1:23717/roslyn -H "X-Auth-Token: $(cat revit-ballet/runtime/network/token)" -d 'var collector = new FilteredElementCollector(Doc); var allElements = collector.WhereElementIsNotElementType().ToElements(); var categories = allElements.Where(e => e.Category != null).GroupBy(e => e.Category.Name).OrderByDescending(g => g.Count()).Take(10); Console.WriteLine("Top 10 Categories by Count:"); foreach (var cat in categories) { Console.WriteLine("  " + cat.Key + ": " + cat.Count()); } var levels = new FilteredElementCollector(Doc).OfClass(typeof(Level)).ToElements().Count; var views = new FilteredElementCollector(Doc).OfClass(typeof(View)).ToElements().Count; Console.WriteLine("Total Levels: " + levels); Console.WriteLine("Total Views: " + views);' | jq
+cat > /tmp/query-$(uuidgen).cs << 'EOF'
+var collector = new FilteredElementCollector(Doc);
+var allElements = collector.WhereElementIsNotElementType().ToElements();
+var categories = allElements
+    .Where(e => e.Category != null)
+    .GroupBy(e => e.Category.Name)
+    .OrderByDescending(g => g.Count())
+    .Take(10);
+
+Console.WriteLine("Top 10 Categories by Count:");
+foreach (var cat in categories)
+{
+    Console.WriteLine("  " + cat.Key + ": " + cat.Count());
+}
+
+var levels = new FilteredElementCollector(Doc).OfClass(typeof(Level)).ToElements().Count;
+var views = new FilteredElementCollector(Doc).OfClass(typeof(View)).ToElements().Count;
+Console.WriteLine("Total Levels: " + levels);
+Console.WriteLine("Total Views: " + views);
+EOF
+
+TOKEN=$(cat runtime/network/token)
+PORT=$(grep -v '^#' runtime/network/sessions | head -1 | cut -d',' -f2)
+curl -k -s -X POST https://127.0.0.1:$PORT/roslyn \
+  -H "X-Auth-Token: $TOKEN" \
+  --data-binary @/tmp/query-*.cs | jq -r '.Output'
 ```
 
 ### Screenshot Capture
@@ -280,47 +414,98 @@ var levels = collector.OfClass(typeof(Level)).Cast<Level>();
   }
   ```
 
+### Parameter Setting and Unit Conversion
+
+**CRITICAL**: When setting numeric parameters (Double storage type), always use `SetValueString()` instead of `Set()` for user-facing values:
+
+```csharp
+// CORRECT: Uses SetValueString - handles unit conversion automatically
+param.SetValueString("100");  // In metric project: 100mm, in imperial: 100 feet
+
+// WRONG: Uses Set directly - assumes internal units (feet)
+param.Set(100);  // Always 100 feet, regardless of project units
+```
+
+**Why this matters:**
+- Revit stores all numeric values internally in **imperial units** (feet, square feet, cubic feet)
+- `SetValueString()` converts from display units to internal units based on project settings
+- `Set()` assumes the value is already in internal units, causing incorrect conversions in metric projects
+- Example: Setting "100" for a length in a metric project should be 100mm, not 30480mm (100 feet)
+
+**Implementation pattern:**
+```csharp
+try
+{
+    param.SetValueString(userInput);  // Prefer this for user-facing values
+}
+catch
+{
+    if (double.TryParse(userInput, out double val))
+        param.Set(val);  // Fallback for parameters that don't support SetValueString
+}
+```
+
 ## Integration with Claude Code
 
 When Claude Code needs to query the Revit session:
 
 1. **Read shared token**: Load token from `runtime/network/token`
 2. **Discover active sessions**: Read network registry from `runtime/network/sessions`
-3. **Construct query**: Build appropriate C# code based on task
-4. **Send request**: POST to `/roslyn` endpoint with authentication
+3. **Construct query**: Write C# code to `/tmp/query-$(uuidgen).cs`
+4. **Send request**: POST to `/roslyn` endpoint with `--data-binary` and authentication
 5. **Parse JSON response**: Extract `Success`, `Output`, `Error`, and `Diagnostics`
 6. **Iterate if needed**: If compilation fails, fix errors and retry
 
-Example workflow:
+**Recommended Helper Function:**
+
+Add this to your shell for simplified querying:
+
 ```bash
-# Read authentication token
-TOKEN_FILE="runtime/network/token"
-if [ ! -f "$TOKEN_FILE" ]; then
-    echo "No authentication token found. Revit Ballet server may not be running."
-    exit 1
-fi
-TOKEN=$(cat "$TOKEN_FILE")
+# Helper function for querying Revit
+query_revit() {
+    local query_file="/tmp/query-$(uuidgen).cs"
+    echo "$1" > "$query_file"
 
-# Find first available session port from registry
-SESSIONS_FILE="runtime/network/sessions"
-if [ ! -f "$SESSIONS_FILE" ]; then
-    echo "No active sessions found."
-    exit 1
-fi
+    local TOKEN=$(cat runtime/network/token 2>/dev/null)
+    local PORT=$(grep -v '^#' runtime/network/sessions 2>/dev/null | head -1 | cut -d',' -f2)
 
-# Extract first port from CSV (skip comment lines)
-PORT=$(grep -v '^#' "$SESSIONS_FILE" | head -1 | cut -d',' -f2)
+    if [ -z "$TOKEN" ] || [ -z "$PORT" ]; then
+        echo "Error: Revit Ballet server not running or not accessible"
+        return 1
+    fi
 
-# Send query and parse response (requires jq for JSON parsing)
-RESPONSE=$(curl -k -s -X POST https://127.0.0.1:$PORT/roslyn \
+    curl -k -s -X POST https://127.0.0.1:$PORT/roslyn \
+      -H "X-Auth-Token: $TOKEN" \
+      --data-binary "@$query_file" | jq -r '.Output // .Error'
+
+    rm -f "$query_file"
+}
+
+# Usage example:
+query_revit 'Console.WriteLine("Hello from Revit: " + Doc.Title);'
+```
+
+**Manual Query Workflow:**
+
+```bash
+# 1. Write your C# query to a file
+cat > /tmp/query-$(uuidgen).cs << 'EOF'
+var activeView = Doc.ActiveView;
+Console.WriteLine("Current View: " + activeView.Name);
+Console.WriteLine("View Type: " + activeView.ViewType);
+
+var collector = new FilteredElementCollector(Doc, activeView.Id);
+var elements = collector.WhereElementIsNotElementType().ToElements();
+Console.WriteLine("Elements in view: " + elements.Count);
+EOF
+
+# 2. Get credentials and send request
+TOKEN=$(cat runtime/network/token)
+PORT=$(grep -v '^#' runtime/network/sessions | head -1 | cut -d',' -f2)
+
+curl -k -s -X POST https://127.0.0.1:$PORT/roslyn \
   -H "X-Auth-Token: $TOKEN" \
-  -d 'Console.WriteLine("Test");')
-SUCCESS=$(echo $RESPONSE | jq -r '.Success')
-OUTPUT=$(echo $RESPONSE | jq -r '.Output')
-
-if [ "$SUCCESS" == "true" ]; then
-    echo "Success: $OUTPUT"
-fi
+  --data-binary @/tmp/query-*.cs | jq -r '.Output'
 ```
 
 ## Security Considerations

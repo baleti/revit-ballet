@@ -144,7 +144,7 @@ public class SelectOpenedViews : IExternalCommand
 
         // Returns rows the user checked, or null / empty if cancelled
         List<Dictionary<string, object>> chosen =
-            CustomGUIs.DataGrid(gridData, columns, spanAllScreens: false);
+            CustomGUIs.DataGrid(gridData, columns, false);
 
         if (chosen == null || !chosen.Any())
             return Result.Cancelled;

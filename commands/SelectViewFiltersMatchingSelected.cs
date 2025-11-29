@@ -151,7 +151,7 @@ namespace YourAddinNamespace
             var columns = new List<string> { "FilterName", "MatchesCount", "Used" };
             if (multiSel) columns.AddRange(elemColNames);
 
-            var chosen = CustomGUIs.DataGrid(rows, columns, spanAllScreens:false);
+            var chosen = CustomGUIs.DataGrid(rows, columns, false);
             if (chosen == null || chosen.Count == 0)
                 return Result.Cancelled;
 

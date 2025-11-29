@@ -117,7 +117,9 @@ public class SwitchView : IExternalCommand
         /* ─────────────────────────────┐
            Show picker & handle result  │
            ─────────────────────────────┘ */
-        List<View> chosen = CustomGUIs.DataGrid(views, propertyNames, initialSelectionIndices);
+        var viewDicts = CustomGUIs.ConvertToDataGridFormat(views, propertyNames);
+        var selectedDicts = CustomGUIs.DataGrid(viewDicts, propertyNames, false, initialSelectionIndices);
+        List<View> chosen = CustomGUIs.ExtractOriginalObjects<View>(selectedDicts);
 
         if (chosen.Count == 0)
             return Result.Failed;

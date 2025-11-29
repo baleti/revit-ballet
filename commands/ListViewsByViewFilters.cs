@@ -148,11 +148,9 @@ public abstract class BaseFilterCommand : IExternalCommand
         // -------------------------------------------------------------
         // 5. Show the first DataGrid (pick filter(s))
         // -------------------------------------------------------------
-        List<FilterGridRow> chosenFilters = CustomGUIs.DataGrid(
-            entries: firstGridData,
-            propertyNames: firstGridColumns,
-            Title: "All Filters"
-        );
+        var firstGridDicts = CustomGUIs.ConvertToDataGridFormat(firstGridData, firstGridColumns);
+        var selectedFirstDicts = CustomGUIs.DataGrid(firstGridDicts, firstGridColumns, false);
+        List<FilterGridRow> chosenFilters = CustomGUIs.ExtractOriginalObjects<FilterGridRow>(selectedFirstDicts);
 
         if (!chosenFilters.Any())
         {
@@ -281,18 +279,16 @@ public abstract class BaseFilterCommand : IExternalCommand
         // -------------------------------------------------------------
         List<string> secondGridColumns = new List<string>
         {
-            "FilterName", 
-            "ViewName", 
-            "ViewType", 
-            "SheetNumber", 
+            "FilterName",
+            "ViewName",
+            "ViewType",
+            "SheetNumber",
             "SheetName"
         };
 
-        List<UsageGridRow> selectedUsage = CustomGUIs.DataGrid(
-            entries: secondGridData,
-            propertyNames: secondGridColumns,
-            Title: "Filter Usage in Views"
-        );
+        var secondGridDicts = CustomGUIs.ConvertToDataGridFormat(secondGridData, secondGridColumns);
+        var selectedSecondDicts = CustomGUIs.DataGrid(secondGridDicts, secondGridColumns, false);
+        List<UsageGridRow> selectedUsage = CustomGUIs.ExtractOriginalObjects<UsageGridRow>(selectedSecondDicts);
 
         // If user selected rows, call our abstract method to open them
         if (selectedUsage.Any())

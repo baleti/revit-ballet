@@ -46,7 +46,7 @@ namespace YourNamespace
             // Change the order of columns: Title, SheetFolder, then Id.
             List<string> propertyNames = new List<string> { "Title", "SheetFolder", "Id" };
             // CustomGUIs.DataGrid is assumed to be defined elsewhere.
-            List<Dictionary<string, object>> selectedEntries = CustomGUIs.DataGrid(entries, propertyNames, spanAllScreens: false);
+            List<Dictionary<string, object>> selectedEntries = CustomGUIs.DataGrid(entries, propertyNames, false);
             if (selectedEntries == null || selectedEntries.Count == 0)
             {
                 TaskDialog.Show("Duplicate Sheets As Drafting Views", "No sheets were selected.");

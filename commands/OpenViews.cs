@@ -91,7 +91,7 @@ public class OpenViews : IExternalCommand
         // 4. Show the grid
         // ─────────────────────────────────────────────────────────────
         List<Dictionary<string, object>> selectedRows =
-            CustomGUIs.DataGrid(gridData, columns, spanAllScreens: false, initialSelectionIndices);
+            CustomGUIs.DataGrid(gridData, columns, false, initialSelectionIndices);
 
         // ─────────────────────────────────────────────────────────────
         // 5. Open every selected view (sheet or model view)

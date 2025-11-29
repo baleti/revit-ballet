@@ -211,7 +211,7 @@ public class SelectFamilyTypeInstancesInCurrentView : IExternalCommand
 
         // Display the list of unique types with counts
         var propertyNames = new List<string> { "Category", "Family", "Type Name", "Count" };
-        var selectedEntries = CustomGUIs.DataGrid(typeEntries, propertyNames, spanAllScreens: false);
+        var selectedEntries = CustomGUIs.DataGrid(typeEntries, propertyNames, false);
 
         if (selectedEntries.Count == 0)
         {
