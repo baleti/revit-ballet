@@ -7,17 +7,40 @@ using System.Linq;
 
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
-public class SelectBySameTypeInLinkedModelsInView : IExternalCommand
+public class SelectBySameTypeInLinkedModelsInViews : IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
     {
         UIApplication uiapp = commandData.Application;
         Document doc = uiapp.ActiveUIDocument.Document;
         UIDocument uiDoc = uiapp.ActiveUIDocument;
-        View activeView = uiapp.ActiveUIDocument.ActiveView;
-        
+
+        // Determine target views (selected views or active view)
+        ICollection<ElementId> currentSelection = uiDoc.GetSelectionIds();
+        List<View> targetViews = new List<View>();
+
+        bool hasSelectedViews = currentSelection.Any(id =>
+        {
+            Element elem = doc.GetElement(id);
+            return elem is View;
+        });
+
+        if (hasSelectedViews)
+        {
+            // Use selected views
+            targetViews = currentSelection
+                .Select(id => doc.GetElement(id))
+                .OfType<View>()
+                .ToList();
+        }
+        else
+        {
+            // Use current view only
+            targetViews.Add(uiapp.ActiveUIDocument.ActiveView);
+        }
+
         // Get currently selected elements using SelectionModeManager methods
-        var selectedIds = uiDoc.GetSelectionIds();
+        var selectedIds = currentSelection;
         var selectedRefs = uiDoc.GetReferences();
         
         if (!selectedIds.Any() && !selectedRefs.Any())
@@ -169,22 +192,22 @@ public class SelectBySameTypeInLinkedModelsInView : IExternalCommand
             }
         }
         
-        List<Reference> matchingReferences = new List<Reference>();
+        var matchingReferencesMap = new Dictionary<string, Reference>();
         int linksSearched = 0;
         int totalElementsFound = 0;
         int elementsInViewRange = 0;
-        
+
         // Search only the user-selected linked models for matching element types
         foreach (var linkInstance in selectedLinkInstances)
         {
             Document linkedDoc = linkInstance.GetLinkDocument();
             if (linkedDoc == null) continue;
-            
+
             linksSearched++;
-            
+
             FilteredElementCollector collector = new FilteredElementCollector(linkedDoc);
             collector.WhereElementIsNotElementType();
-            
+
             foreach (Element elem in collector)
             {
                 try
@@ -193,20 +216,30 @@ public class SelectBySameTypeInLinkedModelsInView : IExternalCommand
                     if (selectedTypes.Contains(elemTypeSignature))
                     {
                         totalElementsFound++;
-                        
-                        // Check if element's bounding box is within current view range
-                        bool isInViewRange = IsElementBoundingBoxInCurrentView(elem, linkInstance, activeView);
+
+                        // Check if element's bounding box is within any target view range
+                        bool isInViewRange = false;
+                        foreach (View view in targetViews)
+                        {
+                            if (IsElementBoundingBoxInCurrentView(elem, linkInstance, view))
+                            {
+                                isInViewRange = true;
+                                break;
+                            }
+                        }
+
                         if (!isInViewRange)
                             continue;
-                        
+
                         elementsInViewRange++;
-                        
+
                         Reference elemRef = new Reference(elem);
                         Reference linkedRef = elemRef.CreateLinkReference(linkInstance);
-                        
+
                         if (linkedRef != null)
                         {
-                            matchingReferences.Add(linkedRef);
+                            string stableRef = linkedRef.ConvertToStableRepresentation(doc);
+                            matchingReferencesMap[stableRef] = linkedRef;
                         }
                     }
                 }
@@ -218,10 +251,10 @@ public class SelectBySameTypeInLinkedModelsInView : IExternalCommand
             }
         }
         
-        if (matchingReferences.Count > 0)
+        if (matchingReferencesMap.Count > 0)
         {
             // Select all matching elements using SelectionModeManager
-            uiDoc.SetReferences(matchingReferences);
+            uiDoc.SetReferences(matchingReferencesMap.Values.ToList());
         }
         else
         {

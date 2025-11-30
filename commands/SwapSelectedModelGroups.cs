@@ -311,7 +311,7 @@ public class SwapSelectedModelGroups : IExternalCommand
             // Update selection to show the new groups
             if (newGroupIds.Count > 0)
             {
-                uidoc.Selection.SetElementIds(newGroupIds);
+                uidoc.SetSelectionIds(newGroupIds);
             }
 
             // Show results

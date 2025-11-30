@@ -80,7 +80,7 @@ namespace RevitCommands
             }
 
             // Set the new regions as the current selection
-            sel.SetElementIds(newRegionIds);
+            uidoc.SetSelectionIds(newRegionIds);
 
             return Result.Succeeded;
         }

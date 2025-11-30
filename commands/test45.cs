@@ -21,7 +21,7 @@ namespace RevitCommands
             try
             {
                 // Get currently selected elements
-                ICollection<ElementId> selectedIds = uidoc.Selection.GetElementIds();
+                ICollection<ElementId> selectedIds = uidoc.GetSelectionIds();
                 if (selectedIds.Count == 0)
                 {
                     TaskDialog.Show("Error", "No elements selected. Please select one or more group instances.");

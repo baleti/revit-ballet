@@ -657,7 +657,7 @@ namespace MyRevitCommands
          try
          {
             // Get current selection
-            ICollection<ElementId> currentSelection = uiDoc.Selection.GetElementIds();
+            ICollection<ElementId> currentSelection = uiDoc.GetSelectionIds();
             
             // Create new selection set
             List<ElementId> newSelection = new List<ElementId>(currentSelection);
@@ -670,9 +670,9 @@ namespace MyRevitCommands
                   newSelection.Add(filterId);
                }
             }
-            
+
             // Update selection
-            uiDoc.Selection.SetElementIds(newSelection);
+            uiDoc.SetSelectionIds(newSelection);
             
             return Result.Succeeded;
          }

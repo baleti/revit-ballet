@@ -755,14 +755,6 @@ public partial class CustomGUIs
 
             // Update grid display
             grid.Invalidate();
-
-            // Report results
-            string message = $"Pasted {pastedCells} cell(s)";
-            if (skippedCells > 0)
-                message += $"\n({skippedCells} cell(s) skipped - out of range or non-editable)";
-            message += $"\n\nTotal pending edits: {_pendingCellEdits.Count}";
-
-            MessageBox.Show(message, "Paste Complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         catch (System.Exception ex)
         {
