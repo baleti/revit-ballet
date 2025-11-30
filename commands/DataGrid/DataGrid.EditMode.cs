@@ -81,6 +81,8 @@ public partial class CustomGUIs
             case "group":
             case "groupname":
             case "grouptype":
+            // View type (cannot be changed after creation)
+            case "viewtype":
             // Read-only calculated properties
             case "area":
             case "volume":

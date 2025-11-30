@@ -232,6 +232,32 @@ public partial class CustomGUIs
             case "displayname":
             case "type":
             case "typename":
+                // SPECIAL CASE: ViewSheets use SHEET_NAME built-in parameter
+                if (elem is ViewSheet viewSheet)
+                {
+                    try
+                    {
+                        Parameter sheetNameParam = viewSheet.get_Parameter(BuiltInParameter.SHEET_NAME);
+                        if (sheetNameParam != null)
+                        {
+                            sheetNameParam.Set(strValue);
+                            return true;
+                        }
+                    }
+                    catch { }
+                }
+
+                // SPECIAL CASE: Regular Views use the Name property directly
+                if (elem is View regularView && !(elem is ViewSheet))
+                {
+                    try
+                    {
+                        regularView.Name = strValue;
+                        return true;
+                    }
+                    catch { }
+                }
+
                 // If element IS a group itself, rename its group type
                 if (elem is Group selectedGroup)
                 {
@@ -247,7 +273,7 @@ public partial class CustomGUIs
                 }
 
                 // IMPORTANT: Check if element has a writable "Name" instance parameter first
-                // Elements like Grids, Levels, Views, etc. have Name instance parameters that should take precedence
+                // Elements like Grids, Levels, etc. have Name instance parameters that should take precedence
                 Parameter nameParam = elem.LookupParameter("Name");
                 if (nameParam != null && !nameParam.IsReadOnly && nameParam.StorageType == StorageType.String)
                 {
