@@ -223,7 +223,8 @@ public partial class CustomGUIs
             BackgroundColor = Color.White,
             RowTemplate = { Height = 18 },
             VirtualMode = true,
-            ScrollBars = ScrollBars.Both
+            ScrollBars = ScrollBars.Both,
+            ShowCellToolTips = false  // Disable tooltips on hover
         };
 
         // Disable built-in sorting
