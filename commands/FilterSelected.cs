@@ -505,14 +505,6 @@ public abstract class FilterElementsBase : IExternalCommand
 #region Concrete commands
 
 [Transaction(TransactionMode.Manual)]
-public class FilterSelected : FilterElementsBase
-{
-    public override bool SpanAllScreens      => false;
-    public override bool UseSelectedElements => true;
-    public override bool IncludeParameters   => true;
-}
-
-[Transaction(TransactionMode.Manual)]
 public class FilterSelectedInProject : FilterElementsBase
 {
     public override bool SpanAllScreens      => false;

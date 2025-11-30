@@ -93,16 +93,85 @@ namespace RevitBallet
             // Get the log file path using PathHelper (ensures directory exists)
             logFilePath = PathHelper.GetLogViewChangesPath(projectName);
 
-            // Clear the contents of the log file or create it if it doesn't exist
+            // Handle reopening: restore from .last backup if it exists
             if (File.Exists(logFilePath))
             {
                 // Create a backup copy with a .last suffix
                 string backupFilePath = logFilePath + ".last";
                 File.Copy(logFilePath, backupFilePath, true);
+
+                // Update element IDs in case they changed (detachment, copying)
+                UpdateElementIdsInLog(doc, logFilePath);
+            }
+            else
+            {
+                // New document - try to restore from .last backup
+                string backupFilePath = logFilePath + ".last";
+                if (File.Exists(backupFilePath))
+                {
+                    File.Copy(backupFilePath, logFilePath, false);
+                    UpdateElementIdsInLog(doc, logFilePath);
+                }
+                else
+                {
+                    // Create new empty log
+                    File.WriteAllText(logFilePath, string.Empty);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Updates element IDs in the log file to match current document IDs.
+        /// This handles cases where IDs change due to detachment or copying.
+        /// </summary>
+        private static void UpdateElementIdsInLog(Document doc, string logFilePath)
+        {
+            if (!File.Exists(logFilePath))
+                return;
+
+            var logEntries = File.ReadAllLines(logFilePath).ToList();
+            bool modified = false;
+
+            // Build a lookup of all views by title
+            var viewsByTitle = new FilteredElementCollector(doc)
+                .OfClass(typeof(View))
+                .Cast<View>()
+                .GroupBy(v => v.Title)
+                .ToDictionary(g => g.Key, g => g.First());
+
+            // Update each entry with current element ID
+            for (int i = 0; i < logEntries.Count; i++)
+            {
+                string entry = logEntries[i].Trim();
+                if (string.IsNullOrEmpty(entry))
+                    continue;
+
+                // Parse: "ElementId Title"
+                var parts = entry.Split(new[] { ' ' }, 2);
+                if (parts.Length != 2)
+                    continue;
+
+                string title = parts[1];
+
+                // Find view by title
+                if (viewsByTitle.TryGetValue(title, out View view))
+                {
+                    // Update with current element ID
+                    string newEntry = $"{view.Id} {title}";
+                    if (newEntry != entry)
+                    {
+                        logEntries[i] = newEntry;
+                        modified = true;
+                    }
+                }
+                // If view not found by title, keep the old entry (might have been deleted/renamed)
             }
 
-            // Clear/create the log file (WriteAllText creates the file if it doesn't exist)
-            File.WriteAllText(logFilePath, string.Empty);
+            // Write back if modified
+            if (modified)
+            {
+                File.WriteAllLines(logFilePath, logEntries);
+            }
         }
     }
 }

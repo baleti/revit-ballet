@@ -378,20 +378,28 @@ public partial class CustomGUIs
         {
             int firstVisible = GetFirstVisibleColumnIndex();
             bool currentCellSet = false;
-            
+            int firstSelectedIndex = -1;
+
             foreach (int idx in initialSelectionIndices)
             {
                 if (idx >= 0 && idx < grid.Rows.Count && firstVisible >= 0)
                 {
                     grid.Rows[idx].Selected = true;
-                    
+
                     // Only set CurrentCell once, for the first valid selection
                     if (!currentCellSet)
                     {
                         grid.CurrentCell = grid.Rows[idx].Cells[firstVisible];
+                        firstSelectedIndex = idx;
                         currentCellSet = true;
                     }
                 }
+            }
+
+            // Scroll to make the first selected row visible
+            if (firstSelectedIndex >= 0)
+            {
+                grid.FirstDisplayedScrollingRowIndex = firstSelectedIndex;
             }
         }
 

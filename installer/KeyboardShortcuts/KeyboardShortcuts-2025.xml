@@ -151,7 +151,6 @@
   <ShortcutItem CommandId="ID_SNAP_OVERRIDE_QUADRANT" Shortcuts="SQ"/>
   <ShortcutItem CommandId="ID_ZOOM_ALL_ALL" Shortcuts="ZA"/>
   <ShortcutItem CommandId="ID_PARALLEL_INDICATOR" Shortcuts="Fn11"/>
-  <ShortcutItem CommandId="ID_FIND_IN_PROJECT_BROWSER" Shortcuts="FF"/>
   <ShortcutItem CommandId="ID_TEMPHIDE_ISOLATECAT" Shortcuts="IC"/>
   <ShortcutItem CommandId="ID_REPEAT_LASTCOMMAND" Shortcuts="RC"/>
   <ShortcutItem CommandId="ID_SNAP_OVERRIDE_END" Shortcuts="SE"/>

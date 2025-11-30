@@ -1,8 +1,10 @@
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
+using RevitBallet.Commands;
 
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
@@ -31,30 +33,35 @@ public class OpenViews : IExternalCommand
             .ToList();
 
         // ─────────────────────────────────────────────────────────────
-        // 2. Prepare data for the grid
+        // 2. Prepare data for the grid with SheetNumber, Name, ViewType
         // ─────────────────────────────────────────────────────────────
         List<Dictionary<string, object>> gridData =
             new List<Dictionary<string, object>>();
-        Dictionary<string, View> titleToView =
-            new Dictionary<string, View>();
 
         foreach (View v in allViews)
         {
-            string sheetFolder =
-                v.LookupParameter("Sheet Folder")?.AsString() ?? string.Empty;
+            var dict = new Dictionary<string, object>();
 
-            gridData.Add(new Dictionary<string, object>
+            if (v is ViewSheet sheet)
             {
-                { "Title",       v.Title },
-                { "SheetFolder", sheetFolder }
-            });
+                dict["SheetNumber"] = sheet.SheetNumber;
+                dict["Name"] = sheet.Name;
+            }
+            else
+            {
+                dict["SheetNumber"] = ""; // Empty for non-sheet views
+                dict["Name"] = v.Name;
+            }
 
-            // (assumes titles are unique; adjust if needed)
-            titleToView[v.Title] = v;
+            dict["ViewType"] = v.ViewType;
+            dict["ElementIdObject"] = v.Id; // Required for edit functionality
+            dict["__OriginalObject"] = v; // Store original object for extraction
+
+            gridData.Add(dict);
         }
 
         // Column headers (order determines column order)
-        List<string> columns = new List<string> { "Title", "SheetFolder" };
+        List<string> columns = new List<string> { "SheetNumber", "Name", "ViewType" };
 
         // ─────────────────────────────────────────────────────────────
         // 3. Figure out which row should be pre-selected
@@ -90,23 +97,98 @@ public class OpenViews : IExternalCommand
         // ─────────────────────────────────────────────────────────────
         // 4. Show the grid
         // ─────────────────────────────────────────────────────────────
+        CustomGUIs.SetCurrentUIDocument(uidoc);
         List<Dictionary<string, object>> selectedRows =
             CustomGUIs.DataGrid(gridData, columns, false, initialSelectionIndices);
 
         // ─────────────────────────────────────────────────────────────
-        // 5. Open every selected view (sheet or model view)
+        // 5. Apply any pending edits to Revit elements
         // ─────────────────────────────────────────────────────────────
-        if (selectedRows != null && selectedRows.Any())
+        bool editsWereApplied = false;
+        if (CustomGUIs.HasPendingEdits())
         {
-            foreach (Dictionary<string, object> row in selectedRows)
+            CustomGUIs.ApplyCellEditsToEntities();
+
+            // Update LogViewChanges to reflect renamed views/sheets
+            UpdateLogViewChangesAfterRenames(doc);
+
+            editsWereApplied = true;
+        }
+
+        // ─────────────────────────────────────────────────────────────
+        // 6. Open every selected view (sheet or model view)
+        //    BUT skip if user made edits (stay in current view instead)
+        // ─────────────────────────────────────────────────────────────
+        if (!editsWereApplied)
+        {
+            List<View> selectedViews = CustomGUIs.ExtractOriginalObjects<View>(selectedRows);
+
+            if (selectedViews != null && selectedViews.Any())
             {
-                string title = row["Title"].ToString();
-                View view;
-                if (titleToView.TryGetValue(title, out view))
+                foreach (View view in selectedViews)
+                {
                     uidoc.RequestViewChange(view);
+                }
             }
         }
 
         return Result.Succeeded;
+    }
+
+    /// <summary>
+    /// Updates LogViewChanges file to reflect renamed views/sheets.
+    /// Call this after ApplyCellEditsToEntities() to keep the log in sync.
+    /// </summary>
+    private static void UpdateLogViewChangesAfterRenames(Document doc)
+    {
+        string projectName = doc != null ? doc.Title : "UnknownProject";
+        string logFilePath = PathHelper.GetLogViewChangesPath(projectName);
+
+        if (!System.IO.File.Exists(logFilePath))
+            return;
+
+        // Read all log entries
+        var logEntries = System.IO.File.ReadAllLines(logFilePath).ToList();
+        bool modified = false;
+
+        // Update each entry with current view title
+        for (int i = 0; i < logEntries.Count; i++)
+        {
+            string entry = logEntries[i].Trim();
+            if (string.IsNullOrEmpty(entry))
+                continue;
+
+            // Parse: "ElementId Title"
+            var parts = entry.Split(new[] { ' ' }, 2);
+            if (parts.Length != 2)
+                continue;
+
+            // Try to parse element ID
+            if (!long.TryParse(parts[0], out long elementIdValue))
+                continue;
+
+            // Get the current view/sheet from document
+            ElementId elemId = elementIdValue.ToElementId();
+            Element elem = doc.GetElement(elemId);
+
+            if (elem is View view)
+            {
+                // Update entry with current title
+                string currentTitle = view.Title;
+                string newEntry = $"{elementIdValue} {currentTitle}";
+
+                if (newEntry != entry)
+                {
+                    logEntries[i] = newEntry;
+                    modified = true;
+                }
+            }
+        }
+
+        // Write back if modified
+        if (modified)
+        {
+            System.IO.File.WriteAllLines(logFilePath, logEntries);
+        }
     }
 }
