@@ -56,10 +56,10 @@ public class DeselectOccluded : IExternalCommand
                 using (Transaction trans = new Transaction(doc, "Deselect Occluded Elements"))
                 {
                     trans.Start();
-                    
+
                     // Set new selection (only visible elements)
-                    selection.SetElementIds(visibleElementIds.ToList());
-                    
+                    uiDoc.SetSelectionIds(visibleElementIds.ToList());
+
                     trans.Commit();
                 }
                 

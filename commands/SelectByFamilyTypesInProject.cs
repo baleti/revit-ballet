@@ -5,7 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 [Transaction(TransactionMode.Manual)]
-public class SelectFamilyTypeInstancesInProject : IExternalCommand
+public class SelectByFamilyTypesInProject : IExternalCommand
 {
     public Result Execute(
         ExternalCommandData commandData,

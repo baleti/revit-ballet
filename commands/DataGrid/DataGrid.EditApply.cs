@@ -606,6 +606,17 @@ public partial class CustomGUIs
     /// </summary>
     private static bool SetParameterValue(Element elem, string paramName, string value)
     {
+        // Special handling for built-in properties that aren't regular parameters
+        string lowerParamName = paramName.ToLowerInvariant();
+
+        // Workset
+        if (lowerParamName == "workset" || lowerParamName == "worksetname")
+            return SetWorkset(elem, value);
+
+        // Level
+        if (lowerParamName == "level" || lowerParamName == "levelname")
+            return SetLevel(elem, value);
+
         // Try exact match first
         Parameter param = elem.LookupParameter(paramName);
 
@@ -740,6 +751,11 @@ public partial class CustomGUIs
         if (worksetParam == null || worksetParam.IsReadOnly)
             return false;
 
+        // Trim whitespace from input
+        worksetName = worksetName?.Trim();
+        if (string.IsNullOrEmpty(worksetName))
+            return false;
+
         // Find workset by name
         var worksets = new FilteredWorksetCollector(doc)
             .OfKind(WorksetKind.UserWorkset)
@@ -756,8 +772,10 @@ public partial class CustomGUIs
             worksetParam.Set(targetWorkset.Id.IntegerValue);
             return true;
         }
-        catch
+        catch (Exception ex)
         {
+            // Log the actual exception for debugging
+            System.Diagnostics.Debug.WriteLine($"Failed to set workset: {ex.Message}");
             return false;
         }
     }

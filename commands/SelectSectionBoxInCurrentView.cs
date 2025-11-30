@@ -80,9 +80,9 @@ public class Select3DSectionBoxInCurrentView : IExternalCommand
                 return Result.Failed;
             }
         }
-        
+
         // Clear current selection and select the section box
-        uidoc.Selection.SetElementIds(sectionBoxIds);
+        uidoc.SetSelectionIds(sectionBoxIds);
         
         if (sectionBoxIds.Count == 1)
         {

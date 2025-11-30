@@ -697,7 +697,7 @@ public class SelectViewsWhereSelectedAreVisible : IExternalCommand
         try
         {
             // Get currently selected elements
-            var selectedIds = uidoc.Selection.GetElementIds();
+            var selectedIds = uidoc.GetSelectionIds();
             
             if (selectedIds == null || selectedIds.Count == 0)
             {
@@ -775,7 +775,7 @@ public class SelectViewsWhereSelectedAreVisible : IExternalCommand
                     if (viewElementIds.Count > 0)
                     {
                         // Select the views
-                        uidoc.Selection.SetElementIds(viewElementIds);
+                        uidoc.SetSelectionIds(viewElementIds);
                         
                         // Show confirmation
                         TaskDialog.Show("Views Selected", 

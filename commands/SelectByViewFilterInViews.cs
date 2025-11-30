@@ -1,8 +1,9 @@
-// SelectByFilterInView.cs
+// SelectByViewFilterInViews.cs
 //
 // Revit 2024 API – C# 7.3
-// Select all elements *visible in the active view* that pass one or more
+// Select all elements *visible in the target view(s)* that pass one or more
 // user-chosen Parameter Filters, in both host and linked models.
+// If views are selected, uses those views; otherwise uses active view.
 
 using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
@@ -25,7 +26,7 @@ namespace YourNamespace   // ← adjust
 
     [Transaction(TransactionMode.Manual)]
     [Regeneration(RegenerationOption.Manual)]
-    public class SelectByViewFilterInView : IExternalCommand
+    public class SelectByViewFilterInViews : IExternalCommand
     {
         #region IExternalCommand
         public Result Execute(ExternalCommandData commandData,
@@ -35,7 +36,30 @@ namespace YourNamespace   // ← adjust
             // Handles ---------------------------------------------------------
             UIDocument uiDoc = commandData.Application.ActiveUIDocument;
             Document   doc   = uiDoc.Document;
-            View       view  = uiDoc.ActiveView;
+
+            // 0. Determine target views (selected views or active view) ----------
+            ICollection<ElementId> currentSelection = uiDoc.GetSelectionIds();
+            List<View> targetViews = new List<View>();
+
+            bool hasSelectedViews = currentSelection.Any(id =>
+            {
+                Element elem = doc.GetElement(id);
+                return elem is View;
+            });
+
+            if (hasSelectedViews)
+            {
+                // Use selected views
+                targetViews = currentSelection
+                    .Select(id => doc.GetElement(id))
+                    .OfType<View>()
+                    .ToList();
+            }
+            else
+            {
+                // Use current view only
+                targetViews.Add(uiDoc.ActiveView);
+            }
 
             // 1. Pick filters --------------------------------------------------
             var allFilters =
@@ -77,16 +101,24 @@ namespace YourNamespace   // ← adjust
             }
             if (filter == null) return Result.Cancelled;
 
-            // 3. Host elements already scoped to the view ---------------------
-            var hostIds =
-                new FilteredElementCollector(doc, view.Id)
+            // 3. Host elements scoped to the target views ---------------------
+            HashSet<ElementId> hostIds = new HashSet<ElementId>();
+
+            foreach (View view in targetViews)
+            {
+                var viewHostElements = new FilteredElementCollector(doc, view.Id)
                     .WhereElementIsNotElementType()
                     .WherePasses(filter)
-                    .Select(e => e.Id)
-                    .ToList();
+                    .Select(e => e.Id);
+
+                foreach (var id in viewHostElements)
+                {
+                    hostIds.Add(id);
+                }
+            }
 
             // 4. Linked elements – visibility tested by bounding box ----------
-            var linkRefs = new List<Reference>();
+            var linkRefsMap = new Dictionary<string, Reference>();
 
             var linkInstances =
                 new FilteredElementCollector(doc)
@@ -95,35 +127,48 @@ namespace YourNamespace   // ← adjust
                     .Where(li => li.GetLinkDocument() != null)   // loaded only
                     .ToList();
 
-            foreach (var li in linkInstances)
+            foreach (View view in targetViews)
             {
-                Document linkDoc = li.GetLinkDocument();
-                if (linkDoc == null) continue;
-
-                var xf = li.GetTotalTransform();
-
-                foreach (Element e in new FilteredElementCollector(linkDoc)
-                                          .WhereElementIsNotElementType()
-                                          .WherePasses(filter))
+                foreach (var li in linkInstances)
                 {
-                    if (!IsLinkedElementVisibleInView(e, li, xf, view))
-                        continue;
+                    Document linkDoc = li.GetLinkDocument();
+                    if (linkDoc == null) continue;
 
-                    Reference linkRef =
-                        new Reference(e).CreateLinkReference(li);
-                    if (linkRef != null) linkRefs.Add(linkRef);
+                    var xf = li.GetTotalTransform();
+
+                    foreach (Element e in new FilteredElementCollector(linkDoc)
+                                              .WhereElementIsNotElementType()
+                                              .WherePasses(filter))
+                    {
+                        if (!IsLinkedElementVisibleInView(e, li, xf, view))
+                            continue;
+
+                        Reference linkRef =
+                            new Reference(e).CreateLinkReference(li);
+                        if (linkRef != null)
+                        {
+                            string stableRef = linkRef.ConvertToStableRepresentation(doc);
+                            linkRefsMap[stableRef] = linkRef;
+                        }
+                    }
                 }
             }
 
             // 5. Merge and apply selection via SelectionModeManager -----------
-            var idSet = new HashSet<ElementId>(uiDoc.GetSelectionIds());
-            foreach (ElementId id in hostIds) idSet.Add(id);
+            var idSet = new HashSet<ElementId>(currentSelection.Where(id =>
+            {
+                Element elem = doc.GetElement(id);
+                return !(elem is View);  // Keep non-view elements from original selection
+            }));
+
+            foreach (ElementId id in hostIds)
+                idSet.Add(id);
 
             var refMap = new Dictionary<string, Reference>();
             foreach (Reference r in uiDoc.GetReferences())
                 refMap[r.ConvertToStableRepresentation(doc)] = r;
-            foreach (Reference r in linkRefs)
-                refMap[r.ConvertToStableRepresentation(doc)] = r;
+            foreach (var kvp in linkRefsMap)
+                refMap[kvp.Key] = kvp.Value;
 
             uiDoc.SetSelectionIds(idSet.ToList());
             uiDoc.SetReferences(refMap.Values.ToList());

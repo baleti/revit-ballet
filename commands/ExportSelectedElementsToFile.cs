@@ -27,7 +27,7 @@ namespace RevitCommands
                 Document currentDoc = uiDoc.Document;
 
                 // Get selected elements
-                ICollection<ElementId> selectedIds = uiDoc.Selection.GetElementIds();
+                ICollection<ElementId> selectedIds = uiDoc.GetSelectionIds();
                 
                 if (selectedIds.Count == 0)
                 {

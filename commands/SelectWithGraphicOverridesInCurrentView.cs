@@ -50,11 +50,11 @@ public class SelectWithGraphicOverridesInCurrentView : IExternalCommand
                 return Result.Succeeded;
 
             // Merge with existing selection (additive)
-            var currentSel = uidoc.Selection.GetElementIds();
+            var currentSel = uidoc.GetSelectionIds();
             foreach (var id in currentSel)
                 overriddenIds.Add(id);
 
-            uidoc.Selection.SetElementIds(overriddenIds);
+            uidoc.SetSelectionIds(overriddenIds);
 
             return Result.Succeeded;
         }

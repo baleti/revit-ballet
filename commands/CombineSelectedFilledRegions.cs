@@ -224,7 +224,7 @@ namespace RevitCommands
                 doc.Delete(toDelete);
 
                 // Select the newly created combined region
-                sel.SetElementIds(new List<ElementId> { combinedRegion.Id });
+                uidoc.SetSelectionIds(new List<ElementId> { combinedRegion.Id });
 
                 trans.Commit();
             }

@@ -18,7 +18,7 @@ public class ViewsContainingElement : IExternalCommand
         Document doc = uiDoc.Document;
 
         // Get the currently selected element
-        var selection = uiDoc.Selection.GetElementIds();
+        var selection = uiDoc.GetSelectionIds();
         if (selection.Count == 0)
         {
             TaskDialog.Show("Error", "Please select an element first.");

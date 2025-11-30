@@ -38,9 +38,9 @@ public class ExportSelectedViewsToPDF : IExternalCommand
     {
         var uidoc = commandData.Application.ActiveUIDocument;
         var doc = uidoc.Document;
-        
+
         // Get current selection
-        var selectedIds = uidoc.Selection.GetElementIds();
+        var selectedIds = uidoc.GetSelectionIds();
         if (!selectedIds.Any())
         {
             Autodesk.Revit.UI.TaskDialog.Show("No Selection", "Please select sheets or views to export.");
