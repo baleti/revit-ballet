@@ -112,6 +112,9 @@ public class SelectByWorksetsInProject : IExternalCommand
             // ------------------------------------------------------------
             // 3. Ask user to pick one or more worksets
             // ------------------------------------------------------------
+            // Set UIDocument for edit mode support
+            CustomGUIs.SetCurrentUIDocument(uidoc);
+
             List<Dictionary<string, object>> pickedRows =
                 CustomGUIs.DataGrid(rows,
                                     new List<string> { "Type", "Workset", "Elements", "Editable", "Opened", "Visibility" },

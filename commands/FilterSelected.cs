@@ -242,6 +242,15 @@ public static class ElementDataHelper
                 try
                 {
                     string pName = p.Definition.Name;
+
+                    // Skip parameters we already have from element properties or that show incorrect/redundant information
+                    if (pName.Equals("Category", StringComparison.OrdinalIgnoreCase) ||
+                        pName.Equals("Name", StringComparison.OrdinalIgnoreCase) ||
+                        pName.Equals("Type Name", StringComparison.OrdinalIgnoreCase) ||
+                        pName.Equals("Family Name", StringComparison.OrdinalIgnoreCase) ||
+                        pName.Equals("Level", StringComparison.OrdinalIgnoreCase))
+                        continue;
+
                     string pValue = p.AsValueString() ?? p.AsString() ?? "None";
 
                     // Avoid conflicts with existing keys
@@ -338,32 +347,26 @@ public abstract class FilterElementsBase : IExternalCommand
                 return Result.Cancelled;
             }
 
-            // Create a unique key for each element to map back to full data
-            var elementDataMap = new Dictionary<string, Dictionary<string, object>>();
-            var displayData = new List<Dictionary<string, object>>();
-
-            for (int i = 0; i < elementData.Count; i++)
-            {
-                var data = elementData[i];
-                // Create a unique key combining multiple properties
-                string uniqueKey = $"{data["Id"]}_{data["Name"]}_{data["Category"]}_{data["LinkName"]}_{i}";
-
-                // Store the full data in our map
-                elementDataMap[uniqueKey] = data;
-
-                // Create display data with the unique key
-                var display = new Dictionary<string, object>(data);
-                display["UniqueKey"] = uniqueKey;
-                displayData.Add(display);
-            }
-
-            // Get property names, including UniqueKey but excluding internal object fields
-            var propertyNames = displayData.First().Keys
+            // Get property names, excluding internal object fields
+            var propertyNames = elementData.First().Keys
                 .Where(k => !k.EndsWith("Object"))
                 .ToList();
 
-            // Reorder to put most useful columns first, with ScopeBoxes as second column
-            var orderedProps = new List<string> { "Name", "ScopeBoxes", "Category", "LinkName", "Group", "OwnerView", "Id" };
+            // Check which optional columns have any non-empty values
+            bool hasScopeBoxes = elementData.Any(d => d.ContainsKey("ScopeBoxes") && !string.IsNullOrEmpty(d["ScopeBoxes"]?.ToString()));
+            bool hasLinkName = elementData.Any(d => d.ContainsKey("LinkName") && !string.IsNullOrEmpty(d["LinkName"]?.ToString()));
+            bool hasGroup = elementData.Any(d => d.ContainsKey("Group") && !string.IsNullOrEmpty(d["Group"]?.ToString()));
+            bool hasOwnerView = elementData.Any(d => d.ContainsKey("OwnerView") && !string.IsNullOrEmpty(d["OwnerView"]?.ToString()));
+
+            // Build ordered list, only including columns that have values
+            var orderedProps = new List<string> { "Name" };
+            if (hasScopeBoxes) orderedProps.Add("ScopeBoxes");
+            orderedProps.Add("Category");
+            if (hasLinkName) orderedProps.Add("LinkName");
+            if (hasGroup) orderedProps.Add("Group");
+            if (hasOwnerView) orderedProps.Add("OwnerView");
+            orderedProps.Add("Id");
+
             var remainingProps = propertyNames.Except(orderedProps).OrderBy(p => p);
             propertyNames = orderedProps.Where(p => propertyNames.Contains(p))
                 .Concat(remainingProps)
@@ -372,7 +375,7 @@ public abstract class FilterElementsBase : IExternalCommand
             // Set the current UIDocument for edit operations
             CustomGUIs.SetCurrentUIDocument(uiDoc);
 
-            var chosenRows = CustomGUIs.DataGrid(displayData, propertyNames, SpanAllScreens);
+            var chosenRows = CustomGUIs.DataGrid(elementData, propertyNames, SpanAllScreens);
 
             // Apply any pending edits to Revit elements
             if (CustomGUIs.HasPendingEdits())
@@ -389,17 +392,9 @@ public abstract class FilterElementsBase : IExternalCommand
 
             foreach (var row in chosenRows)
             {
-                // Get the unique key to look up full data
-                if (!row.TryGetValue("UniqueKey", out var keyObj) || !(keyObj is string uniqueKey))
-                    continue;
-                
-                // Get the full data from our map
-                if (!elementDataMap.TryGetValue(uniqueKey, out var fullData))
-                    continue;
-                
                 // Check if this is a linked element
-                if (fullData.TryGetValue("LinkInstanceObject", out var linkObj) && linkObj is RevitLinkInstance linkInstance &&
-                    fullData.TryGetValue("LinkedElementIdObject", out var linkedIdObj) && linkedIdObj is ElementId linkedElementId)
+                if (row.TryGetValue("LinkInstanceObject", out var linkObj) && linkObj is RevitLinkInstance linkInstance &&
+                    row.TryGetValue("LinkedElementIdObject", out var linkedIdObj) && linkedIdObj is ElementId linkedElementId)
                 {
                     // This is a linked element - create reference the same way SelectCategories does
                     try
@@ -413,7 +408,7 @@ public abstract class FilterElementsBase : IExternalCommand
                                 // Create reference for the element
                                 Reference elemRef = new Reference(linkedElement);
                                 Reference linkedRef = elemRef.CreateLinkReference(linkInstance);
-                                
+
                                 if (linkedRef != null)
                                 {
                                     linkedReferences.Add(linkedRef);
@@ -423,13 +418,13 @@ public abstract class FilterElementsBase : IExternalCommand
                     }
                     catch { }
                 }
-                else if (fullData.TryGetValue("ElementIdObject", out var idObj) && idObj is ElementId elemId)
+                else if (row.TryGetValue("ElementIdObject", out var idObj) && idObj is ElementId elemId)
                 {
                     // This is a regular element (not linked)
                     regularIds.Add(elemId);
                 }
                 // Handle backward compatibility - if someone stored just the integer ID
-                else if (fullData.TryGetValue("Id", out var intId) && intId is int id)
+                else if (row.TryGetValue("Id", out var intId) && intId is int id)
                 {
                     regularIds.Add(id.ToElementId());
                 }
@@ -613,32 +608,26 @@ public class FilterSelectedInViews : IExternalCommand
                 return Result.Cancelled;
             }
 
-            // Create a unique key for each element to map back to full data
-            var elementDataMap = new Dictionary<string, Dictionary<string, object>>();
-            var displayData = new List<Dictionary<string, object>>();
-
-            for (int i = 0; i < filteredData.Count; i++)
-            {
-                var data = filteredData[i];
-                // Create a unique key combining multiple properties
-                string uniqueKey = $"{data["Id"]}_{data["Name"]}_{data["Category"]}_{data["LinkName"]}_{i}";
-
-                // Store the full data in our map
-                elementDataMap[uniqueKey] = data;
-
-                // Create display data with the unique key
-                var display = new Dictionary<string, object>(data);
-                display["UniqueKey"] = uniqueKey;
-                displayData.Add(display);
-            }
-
-            // Get property names, including UniqueKey but excluding internal object fields
-            var propertyNames = displayData.First().Keys
+            // Get property names, excluding internal object fields
+            var propertyNames = filteredData.First().Keys
                 .Where(k => !k.EndsWith("Object"))
                 .ToList();
 
-            // Reorder to put most useful columns first, with ScopeBoxes as second column
-            var orderedProps = new List<string> { "Name", "ScopeBoxes", "Category", "LinkName", "Group", "OwnerView", "Id" };
+            // Check which optional columns have any non-empty values
+            bool hasScopeBoxes = filteredData.Any(d => d.ContainsKey("ScopeBoxes") && !string.IsNullOrEmpty(d["ScopeBoxes"]?.ToString()));
+            bool hasLinkName = filteredData.Any(d => d.ContainsKey("LinkName") && !string.IsNullOrEmpty(d["LinkName"]?.ToString()));
+            bool hasGroup = filteredData.Any(d => d.ContainsKey("Group") && !string.IsNullOrEmpty(d["Group"]?.ToString()));
+            bool hasOwnerView = filteredData.Any(d => d.ContainsKey("OwnerView") && !string.IsNullOrEmpty(d["OwnerView"]?.ToString()));
+
+            // Build ordered list, only including columns that have values
+            var orderedProps = new List<string> { "Name" };
+            if (hasScopeBoxes) orderedProps.Add("ScopeBoxes");
+            orderedProps.Add("Category");
+            if (hasLinkName) orderedProps.Add("LinkName");
+            if (hasGroup) orderedProps.Add("Group");
+            if (hasOwnerView) orderedProps.Add("OwnerView");
+            orderedProps.Add("Id");
+
             var remainingProps = propertyNames.Except(orderedProps).OrderBy(p => p);
             propertyNames = orderedProps.Where(p => propertyNames.Contains(p))
                 .Concat(remainingProps)
@@ -647,7 +636,7 @@ public class FilterSelectedInViews : IExternalCommand
             // Set the current UIDocument for edit operations
             CustomGUIs.SetCurrentUIDocument(uiDoc);
 
-            var chosenRows = CustomGUIs.DataGrid(displayData, propertyNames, false);
+            var chosenRows = CustomGUIs.DataGrid(filteredData, propertyNames, false);
 
             // Apply any pending edits to Revit elements
             if (CustomGUIs.HasPendingEdits())
@@ -664,17 +653,9 @@ public class FilterSelectedInViews : IExternalCommand
 
             foreach (var row in chosenRows)
             {
-                // Get the unique key to look up full data
-                if (!row.TryGetValue("UniqueKey", out var keyObj) || !(keyObj is string uniqueKey))
-                    continue;
-
-                // Get the full data from our map
-                if (!elementDataMap.TryGetValue(uniqueKey, out var fullData))
-                    continue;
-
                 // Check if this is a linked element
-                if (fullData.TryGetValue("LinkInstanceObject", out var linkObj) && linkObj is RevitLinkInstance linkInstance &&
-                    fullData.TryGetValue("LinkedElementIdObject", out var linkedIdObj) && linkedIdObj is ElementId linkedElementId)
+                if (row.TryGetValue("LinkInstanceObject", out var linkObj) && linkObj is RevitLinkInstance linkInstance &&
+                    row.TryGetValue("LinkedElementIdObject", out var linkedIdObj) && linkedIdObj is ElementId linkedElementId)
                 {
                     // This is a linked element - create reference the same way SelectCategories does
                     try
@@ -698,13 +679,13 @@ public class FilterSelectedInViews : IExternalCommand
                     }
                     catch { }
                 }
-                else if (fullData.TryGetValue("ElementIdObject", out var idObj) && idObj is ElementId elemId)
+                else if (row.TryGetValue("ElementIdObject", out var idObj) && idObj is ElementId elemId)
                 {
                     // This is a regular element (not linked)
                     regularIds.Add(elemId);
                 }
                 // Handle backward compatibility - if someone stored just the integer ID
-                else if (fullData.TryGetValue("Id", out var intId) && intId is int id)
+                else if (row.TryGetValue("Id", out var intId) && intId is int id)
                 {
                     regularIds.Add(id.ToElementId());
                 }

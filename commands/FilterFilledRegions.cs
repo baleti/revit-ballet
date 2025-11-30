@@ -266,28 +266,8 @@ public class FilterFilledRegions : IExternalCommand
                 return Result.Cancelled;
             }
 
-            // Create a unique key for each element to map back to full data
-            var elementDataMap = new Dictionary<string, Dictionary<string, object>>();
-            var displayData = new List<Dictionary<string, object>>();
-            
-            for (int i = 0; i < elementData.Count; i++)
-            {
-                var data = elementData[i];
-                // Create a unique key combining multiple properties
-                string linkName = data.ContainsKey("LinkName") ? data["LinkName"].ToString() : "";
-                string uniqueKey = $"{data["Id"]}_{data["Name"]}_{data["Category"]}_{linkName}_{i}";
-                
-                // Store the full data in our map
-                elementDataMap[uniqueKey] = data;
-                
-                // Create display data with the unique key
-                var display = new Dictionary<string, object>(data);
-                display["UniqueKey"] = uniqueKey;
-                displayData.Add(display);
-            }
-
-            // Get property names, including UniqueKey but excluding internal object fields
-            var propertyNames = displayData.First().Keys
+            // Get property names, excluding internal object fields
+            var propertyNames = elementData.First().Keys
                 .Where(k => !k.EndsWith("Object"))
                 .ToList();
 
@@ -313,7 +293,7 @@ public class FilterFilledRegions : IExternalCommand
                 .Concat(remainingProps)
                 .ToList();
 
-            var chosenRows = CustomGUIs.DataGrid(displayData, propertyNames, false);
+            var chosenRows = CustomGUIs.DataGrid(elementData, propertyNames, false);
             if (chosenRows.Count == 0)
                 return Result.Cancelled;
 
@@ -323,17 +303,9 @@ public class FilterFilledRegions : IExternalCommand
 
             foreach (var row in chosenRows)
             {
-                // Get the unique key to look up full data
-                if (!row.TryGetValue("UniqueKey", out var keyObj) || !(keyObj is string uniqueKey))
-                    continue;
-                
-                // Get the full data from our map
-                if (!elementDataMap.TryGetValue(uniqueKey, out var fullData))
-                    continue;
-                
                 // Check if this is a linked element
-                if (fullData.TryGetValue("LinkInstanceObject", out var linkObj) && linkObj is RevitLinkInstance linkInstance &&
-                    fullData.TryGetValue("LinkedElementIdObject", out var linkedIdObj) && linkedIdObj is ElementId linkedElementId)
+                if (row.TryGetValue("LinkInstanceObject", out var linkObj) && linkObj is RevitLinkInstance linkInstance &&
+                    row.TryGetValue("LinkedElementIdObject", out var linkedIdObj) && linkedIdObj is ElementId linkedElementId)
                 {
                     // This is a linked element - create reference
                     try
@@ -356,11 +328,11 @@ public class FilterFilledRegions : IExternalCommand
                     }
                     catch { }
                 }
-                else if (fullData.TryGetValue("ElementIdObject", out var idObj) && idObj is ElementId elemId)
+                else if (row.TryGetValue("ElementIdObject", out var idObj) && idObj is ElementId elemId)
                 {
                     regularIds.Add(elemId);
                 }
-                else if (fullData.TryGetValue("Id", out var intId) && intId is int id)
+                else if (row.TryGetValue("Id", out var intId) && intId is int id)
                 {
                     regularIds.Add(id.ToElementId());
                 }

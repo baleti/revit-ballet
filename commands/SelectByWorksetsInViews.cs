@@ -143,6 +143,9 @@ public class SelectByWorksetsInViews : IExternalCommand
             // ------------------------------------------------------------
             // 3. Ask user to pick one or more worksets
             // ------------------------------------------------------------
+            // Set UIDocument for edit mode support
+            CustomGUIs.SetCurrentUIDocument(uidoc);
+
             var columns = hasSelectedViews
                 ? new List<string> { "Type", "Workset", "Elements", "Editable", "Opened" }
                 : new List<string> { "Type", "Workset", "Elements", "Editable", "Opened", "Visibility" };

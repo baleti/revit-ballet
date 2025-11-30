@@ -158,32 +158,16 @@ public class FilterSelectedByScopeBoxes : IExternalCommand
                 TaskDialog.Show("Info", "No valid elements found.");
                 return Result.Cancelled;
             }
-            
-            // Create unique keys and prepare display data
-            var elementDataMap = new Dictionary<string, Dictionary<string, object>>();
-            var displayData = new List<Dictionary<string, object>>();
-            
-            for (int i = 0; i < elementData.Count; i++)
-            {
-                var data = elementData[i];
-                string uniqueKey = $"{data["Id"]}_{data["Type"]}_{data["LinkName"]}_{i}";
-                
-                elementDataMap[uniqueKey] = data;
-                
-                var display = new Dictionary<string, object>(data);
-                display["UniqueKey"] = uniqueKey;
-                displayData.Add(display);
-            }
-            
+
             // Define columns to show - Type, Id, Level, and only scope box columns with intersections
             var propertyNames = new List<string> { "Type", "Id", "Level" };
-            
+
             // Add project scope box column only if there are intersections
             if (hasProjectScopeBoxIntersections)
             {
                 propertyNames.Add("Project");
             }
-            
+
             // Add columns for each linked model that has scope box intersections
             // Sort by type name for consistent ordering
             var sortedLinkedModels = linkedModelsWithIntersections.OrderBy(k => k).ToList();
@@ -191,30 +175,24 @@ public class FilterSelectedByScopeBoxes : IExternalCommand
             {
                 propertyNames.Add(typeName);
             }
-            
+
             // Filter to only include existing columns
-            var existingProps = displayData.First().Keys;
+            var existingProps = elementData.First().Keys;
             propertyNames = propertyNames.Where(p => existingProps.Contains(p)).ToList();
-            
+
             // Show data grid
-            var chosenRows = CustomGUIs.DataGrid(displayData, propertyNames, false);
+            var chosenRows = CustomGUIs.DataGrid(elementData, propertyNames, false);
             if (chosenRows.Count == 0)
                 return Result.Cancelled;
             
             // Handle selection (same as before)
             var regularIds = new List<ElementId>();
             var linkedReferences = new List<Reference>();
-            
+
             foreach (var row in chosenRows)
             {
-                if (!row.TryGetValue("UniqueKey", out var keyObj) || !(keyObj is string uniqueKey))
-                    continue;
-                
-                if (!elementDataMap.TryGetValue(uniqueKey, out var fullData))
-                    continue;
-                
-                if (fullData.TryGetValue("LinkInstanceObject", out var linkObj) && linkObj is RevitLinkInstance linkInstance &&
-                    fullData.TryGetValue("LinkedElementIdObject", out var linkedIdObj) && linkedIdObj is ElementId linkedElementId)
+                if (row.TryGetValue("LinkInstanceObject", out var linkObj) && linkObj is RevitLinkInstance linkInstance &&
+                    row.TryGetValue("LinkedElementIdObject", out var linkedIdObj) && linkedIdObj is ElementId linkedElementId)
                 {
                     try
                     {
@@ -235,11 +213,11 @@ public class FilterSelectedByScopeBoxes : IExternalCommand
                     }
                     catch { }
                 }
-                else if (fullData.TryGetValue("ElementIdObject", out var idObj) && idObj is ElementId elemId)
+                else if (row.TryGetValue("ElementIdObject", out var idObj) && idObj is ElementId elemId)
                 {
                     regularIds.Add(elemId);
                 }
-                else if (fullData.TryGetValue("Id", out var intId) && intId is int id)
+                else if (row.TryGetValue("Id", out var intId) && intId is int id)
                 {
                     regularIds.Add(id.ToElementId());
                 }
