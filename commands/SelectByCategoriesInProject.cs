@@ -14,35 +14,47 @@ public class SelectByCategoriesInProject : IExternalCommand
         Document doc = uiapp.ActiveUIDocument.Document;
         UIDocument uiDoc = uiapp.ActiveUIDocument;
         
-        // Collect elements from the entire document.
-        FilteredElementCollector collector = new FilteredElementCollector(doc);
-        collector.WhereElementIsNotElementType();
-
         // Build a unique set of category IDs and track Direct Shapes and regular elements separately.
         HashSet<ElementId> categoryIds = new HashSet<ElementId>();
         Dictionary<ElementId, List<DirectShape>> directShapesByCategory = new Dictionary<ElementId, List<DirectShape>>();
         Dictionary<ElementId, List<ElementId>> regularElementsByCategory = new Dictionary<ElementId, List<ElementId>>();
 
-        // Separate tracking for views and view templates
+        // Separate tracking for views, view templates, and sheets
         List<ElementId> viewIds = new List<ElementId>();
         List<ElementId> viewTemplateIds = new List<ElementId>();
+        List<ElementId> sheetIds = new List<ElementId>();
+
+        // Explicitly collect all sheets first
+        FilteredElementCollector sheetCollector = new FilteredElementCollector(doc);
+        sheetIds = sheetCollector.OfClass(typeof(ViewSheet)).Select(s => s.Id).ToList();
+
+        // Explicitly collect all views and view templates
+        FilteredElementCollector viewCollector = new FilteredElementCollector(doc);
+        foreach (View view in viewCollector.OfClass(typeof(View)).Cast<View>())
+        {
+            // Skip sheets (they were already collected)
+            if (view is ViewSheet)
+                continue;
+
+            if (view.IsTemplate)
+            {
+                viewTemplateIds.Add(view.Id);
+            }
+            else
+            {
+                viewIds.Add(view.Id);
+            }
+        }
+
+        // Collect all other elements from the entire document
+        FilteredElementCollector collector = new FilteredElementCollector(doc);
+        collector.WhereElementIsNotElementType();
 
         foreach (Element elem in collector)
         {
-            // Special handling for ALL views to separate from view templates (regardless of category)
-            if (elem is View view)
-            {
-                if (view.IsTemplate)
-                {
-                    viewTemplateIds.Add(elem.Id);
-                }
-                else
-                {
-                    viewIds.Add(elem.Id);
-                }
-                // Don't process views as regular category elements
+            // Skip views and sheets - already processed
+            if (elem is View)
                 continue;
-            }
 
             Category category = elem.Category;
             if (category != null)
@@ -134,8 +146,9 @@ public class SelectByCategoriesInProject : IExternalCommand
             }
         }
 
-        // Add separate entries for Views and View Templates
+        // Add separate entries for Views, View Templates, and Sheets
         ElementId viewsCategoryId = ((long)BuiltInCategory.OST_Viewers).ToElementId();
+        ElementId sheetsCategoryId = ((long)BuiltInCategory.OST_Sheets).ToElementId();
 
         if (viewIds.Count > 0)
         {
@@ -163,6 +176,20 @@ public class SelectByCategoriesInProject : IExternalCommand
                 { "ElementIds", viewTemplateIds }
             };
             categoryList.Add(viewTemplatesEntry);
+        }
+
+        if (sheetIds.Count > 0)
+        {
+            var sheetsEntry = new Dictionary<string, object>
+            {
+                { "Name", "Sheets" },
+                { "Count", sheetIds.Count },
+                { "CategoryId", sheetsCategoryId },
+                { "IsDirectShape", false },
+                { "IsSheet", true },
+                { "ElementIds", sheetIds }
+            };
+            categoryList.Add(sheetsEntry);
         }
         
         // Sort the list to keep Direct Shapes grouped with their parent categories
