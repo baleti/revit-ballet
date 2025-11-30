@@ -1332,7 +1332,13 @@ if that's correct moving forward I will need to decide how to make changes to sh
 likely via an xml file and then running installer to update them
 or by running a script that updates xml file after making changes to shortcuts in production revit
 *** 30
-**** =22:28= testing of ui in revit likely can't be done from addin directly
+**** =22:28= testing of ui in revit likely can't be done from addin alone
 instead a separate server should be created outside of revit running on windows host
 it should perform all the actions as if it was the user
 possibly through windows UI automation or other api
+***** possible solution may be making ui modeless
+not sure if it won't break any functionality
+i may have tried it before already and ended up reverting to modal (not sure)
+***** openssh server on windows should be a perfect solution to drive ui automation
+i knew it, i knew it will be useful
+sounds like a more univeral and more robust solution

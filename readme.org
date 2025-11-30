@@ -8,14 +8,9 @@ collection of custom commands for Revit
 
 | Revit Version | Notes                   |
 |---------------+-------------------------|
-|     2022-2026 | All commands available  |
-|          2021 | All commands available* |
-|          2020 | 29 commands excluded    |
-|          2019 | 29 commands excluded    |
-|     2017-2018 | 31 commands excluded    |
-
-*Revit 2017-2020: Remote scripting server requires manual SSL certificate generation.
-Run in PowerShell: ~New-SelfSignedCertificate -DnsName 'localhost' -CertStoreLocation 'Cert:\CurrentUser\My'~
+|     2021-2026 | All commands available  |
+|     2020-2019 | 29 commands excluded    |
+|     2018-2017 | 31 commands excluded    |
 
 Excluded commands in older versions primarily use newer APIs for:
 - PDF export (2022+)
