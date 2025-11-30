@@ -69,6 +69,8 @@ public partial class CustomGUIs
             case "id":
             case "elementid":
             case "elementidobject":
+            case "typeid":
+            case "type id":
             case "linkname":
             case "islinked":
             case "linkinstanceobject":
@@ -95,12 +97,18 @@ public partial class CustomGUIs
             // Read-only identifiers
             case "ifcguid":
             case "ifc guid":
+            case "ifcpredefinedtype":
+            case "ifc predefined type":
             case "uniqueid":
             case "unique id":
             case "uniquekey":
             case "unique key":
             // Read-only image/visual properties
             case "image":
+            // SelectByWorksetsIn* commands - read-only columns
+            case "type":     // Workset type (User/Standard/Family/View) - cannot be changed
+            case "elements": // Element count - calculated value
+            case "opened":   // Workset opened state - TODO: Find correct API to change this at runtime
                 return false;
         }
 
@@ -111,7 +119,6 @@ public partial class CustomGUIs
             case "name":
             case "displayname":
             case "typename":
-            case "type":
             case "familyname":
             case "family":
 
@@ -165,6 +172,10 @@ public partial class CustomGUIs
 
             // Room/Space properties
             case "number":
+
+            // SelectByWorksetsIn* commands - editable columns
+            case "editable":   // Yes/No - can change editable state (checkout/relinquish)
+            case "visibility": // Workset visibility in view
                 return true;
         }
 

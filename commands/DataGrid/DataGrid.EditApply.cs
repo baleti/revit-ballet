@@ -88,32 +88,61 @@ public partial class CustomGUIs
                         continue;
                     }
 
-                    // Get the Revit element
-                    Element elem = GetElementFromEntry(doc, entry);
-                    if (elem == null)
-                    {
-                        errorMessages.Add($"Could not find Revit element for entry: {GetEntryDisplayName(entry)}");
-                        errorCount++;
-                        continue;
-                    }
+                    // Check if this is a workset entry (from SelectByWorksetsIn* commands)
+                    bool isWorksetEntry = entry.ContainsKey("Workset") && entry.ContainsKey("Type") &&
+                                         !entry.ContainsKey("ElementId") && !entry.ContainsKey("ElementIdObject");
 
-                    // Apply each edit for this element
-                    foreach (var (columnName, newValue) in edits)
+                    if (isWorksetEntry)
                     {
-                        try
+                        // Apply workset-specific edits
+                        foreach (var (columnName, newValue) in edits)
                         {
-                            if (ApplyPropertyEdit(elem, columnName, newValue, entry))
-                                successCount++;
-                            else
+                            try
                             {
-                                errorMessages.Add($"{GetEntryDisplayName(entry)}.{columnName}: Failed to apply");
+                                if (ApplyWorksetEdit(doc, entry, columnName, newValue))
+                                    successCount++;
+                                else
+                                {
+                                    errorMessages.Add($"{GetEntryDisplayName(entry)}.{columnName}: Failed to apply");
+                                    errorCount++;
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                errorMessages.Add($"{GetEntryDisplayName(entry)}.{columnName}: {ex.Message}");
                                 errorCount++;
                             }
                         }
-                        catch (Exception ex)
+                    }
+                    else
+                    {
+                        // Get the Revit element
+                        Element elem = GetElementFromEntry(doc, entry);
+                        if (elem == null)
                         {
-                            errorMessages.Add($"{GetEntryDisplayName(entry)}.{columnName}: {ex.Message}");
+                            errorMessages.Add($"Could not find Revit element for entry: {GetEntryDisplayName(entry)}");
                             errorCount++;
+                            continue;
+                        }
+
+                        // Apply each edit for this element
+                        foreach (var (columnName, newValue) in edits)
+                        {
+                            try
+                            {
+                                if (ApplyPropertyEdit(elem, columnName, newValue, entry))
+                                    successCount++;
+                                else
+                                {
+                                    errorMessages.Add($"{GetEntryDisplayName(entry)}.{columnName}: Failed to apply");
+                                    errorCount++;
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                errorMessages.Add($"{GetEntryDisplayName(entry)}.{columnName}: {ex.Message}");
+                                errorCount++;
+                            }
                         }
                     }
                 }
@@ -242,6 +271,46 @@ public partial class CustomGUIs
                         {
                             sheetNameParam.Set(strValue);
                             return true;
+                        }
+                    }
+                    catch { }
+                }
+
+                // SPECIAL CASE: OST_Viewers (Callouts, Sections, Elevations)
+                // These elements appear in category "Views" but may not be castable to View class
+                // Some are wrapper/reference elements that point to actual views via ID_PARAM
+                if (elem.Category?.Id.AsLong() == (int)BuiltInCategory.OST_Viewers)
+                {
+                    // First, try VIEW_NAME parameter (works for some view types like sections)
+                    try
+                    {
+                        Parameter viewNameParam = elem.get_Parameter(BuiltInParameter.VIEW_NAME);
+                        if (viewNameParam != null && !viewNameParam.IsReadOnly)
+                        {
+                            viewNameParam.Set(strValue);
+                            return true;
+                        }
+                    }
+                    catch { }
+
+                    // If VIEW_NAME didn't work, check if this is a reference element
+                    // that points to an actual view via ID_PARAM
+                    try
+                    {
+                        Parameter idParam = elem.get_Parameter(BuiltInParameter.ID_PARAM);
+                        if (idParam != null && idParam.HasValue)
+                        {
+                            ElementId referencedId = idParam.AsElementId();
+                            if (referencedId != null && referencedId != ElementId.InvalidElementId)
+                            {
+                                Element referencedElem = elem.Document.GetElement(referencedId);
+                                if (referencedElem is View referencedView)
+                                {
+                                    // Found the actual view - rename it
+                                    referencedView.Name = strValue;
+                                    return true;
+                                }
+                            }
                         }
                     }
                     catch { }
@@ -1036,6 +1105,132 @@ public partial class CustomGUIs
         catch
         {
             return false;
+        }
+    }
+
+    /// <summary>
+    /// Apply edits to workset entries (from SelectByWorksetsIn* commands)
+    /// </summary>
+    private static bool ApplyWorksetEdit(Document doc, Dictionary<string, object> entry, string columnName, object newValue)
+    {
+        if (!doc.IsWorkshared)
+            return false;
+
+        // Get the original workset name from the entry
+        if (!entry.TryGetValue("Workset", out var worksetNameObj) || worksetNameObj == null)
+            return false;
+
+        string originalWorksetName = worksetNameObj.ToString();
+        string strValue = newValue?.ToString() ?? "";
+        string lowerColumnName = columnName.ToLowerInvariant();
+
+        // Find the workset by its current name in the entry
+        var worksets = new FilteredWorksetCollector(doc).ToWorksets();
+        Workset targetWorkset = worksets.FirstOrDefault(w =>
+            string.Equals(w.Name, originalWorksetName, StringComparison.OrdinalIgnoreCase));
+
+        if (targetWorkset == null)
+            return false;
+
+        // Apply the edit based on column name
+        switch (lowerColumnName)
+        {
+            case "workset":
+            case "worksetname":
+                // Rename the workset
+                try
+                {
+                    WorksetTable worksetTable = doc.GetWorksetTable();
+                    WorksetTable.RenameWorkset(doc, targetWorkset.Id, strValue);
+                    return true;
+                }
+                catch
+                {
+                    return false;
+                }
+
+            case "editable":
+                // Change editable state (Editable means "owned by current user")
+                bool shouldBeEditable = strValue.Equals("Yes", StringComparison.OrdinalIgnoreCase) ||
+                                       strValue.Equals("True", StringComparison.OrdinalIgnoreCase);
+                try
+                {
+                    WorksetTable worksetTable = doc.GetWorksetTable();
+                    Workset ws = worksetTable.GetWorkset(targetWorkset.Id);
+
+                    if (shouldBeEditable && !ws.IsEditable)
+                    {
+                        // Make editable (checkout/borrow)
+                        TransactWithCentralOptions transOpts = new TransactWithCentralOptions();
+                        ISet<WorksetId> worksetIds = new HashSet<WorksetId> { ws.Id };
+                        WorksharingUtils.CheckoutWorksets(doc, worksetIds, transOpts);
+                    }
+                    else if (!shouldBeEditable && ws.IsEditable)
+                    {
+                        // Relinquish ownership (make non-editable)
+                        RelinquishOptions relOpts = new RelinquishOptions(false);
+                        relOpts.UserWorksets = true;
+                        TransactWithCentralOptions transOpts = new TransactWithCentralOptions();
+
+                        // Relinquish this specific workset
+                        WorksharingUtils.RelinquishOwnership(doc, relOpts, transOpts);
+                    }
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Failed to change editable state: {ex.Message}");
+                    return false;
+                }
+
+            case "opened":
+                // NOTE: The Revit API does not provide a direct method to open/close worksets at runtime.
+                // The Workset class and WorksetTable class do not have OpenWorkset/CloseWorkset methods.
+                // The IsOpen property is read-only and can only be set when opening the document.
+                //
+                // TODO: Investigate if there's an undocumented way to change this via the API
+                // that matches the functionality available in the Revit UI.
+                System.Diagnostics.Debug.WriteLine("Changing workset opened state is not supported by the Revit API");
+                return false;
+
+            case "visibility":
+                // Change workset visibility in active view
+                try
+                {
+                    View activeView = doc.ActiveView;
+                    if (activeView == null)
+                        return false;
+
+                    WorksetVisibility newVisibility;
+                    if (strValue.Equals("Shown", StringComparison.OrdinalIgnoreCase) ||
+                        strValue.Equals("Visible", StringComparison.OrdinalIgnoreCase))
+                    {
+                        newVisibility = WorksetVisibility.Visible;
+                    }
+                    else if (strValue.Equals("Hidden", StringComparison.OrdinalIgnoreCase))
+                    {
+                        newVisibility = WorksetVisibility.Hidden;
+                    }
+                    else if (strValue.IndexOf("Global", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                            strValue.IndexOf("Using Global", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        newVisibility = WorksetVisibility.UseGlobalSetting;
+                    }
+                    else
+                    {
+                        return false;
+                    }
+
+                    activeView.SetWorksetVisibility(targetWorkset.Id, newVisibility);
+                    return true;
+                }
+                catch
+                {
+                    return false;
+                }
+
+            default:
+                return false;
         }
     }
 }

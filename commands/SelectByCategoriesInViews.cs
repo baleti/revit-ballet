@@ -197,7 +197,7 @@ public class SelectByCategoriesInViews : IExternalCommand
                     .Select(eid => doc.GetElement(eid))
                     .Where(e => e != null && e.Category != null &&
                                 e.Category.Id.AsLong() == (int)BuiltInCategory.OST_Viewers &&
-                                !(e is DirectShape))
+                                e is View)
                     .Cast<View>()
                     .ToList();
 

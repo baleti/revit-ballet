@@ -204,7 +204,7 @@ public partial class CustomGUIs
         Form form = new Form
         {
             StartPosition = FormStartPosition.CenterScreen,
-            Text = "Total Entries: " + entries.Count,
+            Text = "Selected: 0, Filtered: " + entries.Count + ", Total: " + entries.Count,
             BackColor = Color.White,
             KeyPreview = true // Enable form-level key handling for Shift+Arrow interception
         };
@@ -325,12 +325,18 @@ public partial class CustomGUIs
             return -1;
         };
 
-        // Helper to update form title with edit mode indicator and entry counts
+        // Helper to update form title
         Action UpdateFormTitle = () =>
         {
-            string editModeIndicator = _isEditMode ? "[EDIT MODE] " : "";
+            // In FullRowSelect mode use SelectedRows.Count, in CellSelect mode count distinct rows from SelectedCells
+            int selectedCount = grid.SelectionMode == DataGridViewSelectionMode.FullRowSelect
+                ? grid.SelectedRows.Count
+                : grid.SelectedCells.Cast<DataGridViewCell>().Select(c => c.RowIndex).Distinct().Count();
+            int filteredCount = workingSet.Count;
+            int totalCount = entries.Count;
+            string editModeIndicator = _isEditMode ? " [EDIT MODE]" : "";
             string pendingEditsInfo = _pendingCellEdits.Count > 0 ? $" ({_pendingCellEdits.Count} pending edits)" : "";
-            form.Text = $"{editModeIndicator}Total Entries: {workingSet.Count} / {entries.Count}{pendingEditsInfo}";
+            form.Text = "Selected: " + selectedCount + ", Filtered: " + filteredCount + ", Total: " + totalCount + editModeIndicator + pendingEditsInfo;
         };
 
         // Helper to update filtered grid
@@ -511,6 +517,9 @@ public partial class CustomGUIs
                     }
                 }
             }
+
+            // Update title to reflect current selection count
+            UpdateFormTitle();
         };
 
         // Set selection anchor on mouse down in edit mode
