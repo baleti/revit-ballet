@@ -577,11 +577,10 @@ namespace RevitBallet.Commands
 
                         LogToRevit($"[{DateTime.Now:HH:mm:ss}] Starting SSL handshake...");
 
-#if NET8_0_OR_GREATER
-                        var protocols = SslProtocols.Tls12 | SslProtocols.Tls13;
-#else
+                        // Force TLS 1.2 only - TLS 1.3 has compatibility issues with some curl/OpenSSL versions
+                        // that send "decode error" alerts when they can't parse .NET's TLS 1.3 messages
                         var protocols = SslProtocols.Tls12;
-#endif
+
                         await sslStream.AuthenticateAsServerAsync(
                             serverCertificate,
                             clientCertificateRequired: false,
