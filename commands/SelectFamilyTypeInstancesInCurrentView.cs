@@ -68,7 +68,7 @@ public class SelectFamilyTypeInstancesInCurrentView : IExternalCommand
                 if (typeElement != null)
                 {
                     typeName = typeElement.Name;
-                    familyName = "Wall";
+                    familyName = GetSystemFamilyName(typeElement) ?? "Wall";
                 }
             }
             else if (element is Floor floor)
@@ -77,7 +77,7 @@ public class SelectFamilyTypeInstancesInCurrentView : IExternalCommand
                 if (typeElement != null)
                 {
                     typeName = typeElement.Name;
-                    familyName = "Floor";
+                    familyName = GetSystemFamilyName(typeElement) ?? "Floor";
                 }
             }
             else if (element is RoofBase roof)
@@ -86,7 +86,7 @@ public class SelectFamilyTypeInstancesInCurrentView : IExternalCommand
                 if (typeElement != null)
                 {
                     typeName = typeElement.Name;
-                    familyName = "Roof";
+                    familyName = GetSystemFamilyName(typeElement) ?? "Roof";
                 }
             }
             else if (element is Ceiling ceiling)
@@ -95,7 +95,7 @@ public class SelectFamilyTypeInstancesInCurrentView : IExternalCommand
                 if (typeElement != null)
                 {
                     typeName = typeElement.Name;
-                    familyName = "Ceiling";
+                    familyName = GetSystemFamilyName(typeElement) ?? "Ceiling";
                 }
             }
             else if (element is Grid grid)
@@ -155,7 +155,7 @@ public class SelectFamilyTypeInstancesInCurrentView : IExternalCommand
                         }
                         else
                         {
-                            familyName = element.GetType().Name;
+                            familyName = GetSystemFamilyName(typeElement) ?? element.GetType().Name;
                         }
                     }
                 }
@@ -167,7 +167,7 @@ public class SelectFamilyTypeInstancesInCurrentView : IExternalCommand
                     typeElement = element;
                 }
             }
-            
+
             if (typeElement != null && !string.IsNullOrEmpty(typeName))
             {
                 string uniqueKey = $"{familyName}:{typeName}:{element.Category.Name}";
@@ -292,7 +292,7 @@ public class SelectFamilyTypeInstancesInCurrentView : IExternalCommand
             if (typeElement != null)
             {
                 typeName = typeElement.Name;
-                familyName = "Wall";
+                familyName = GetSystemFamilyName(typeElement) ?? "Wall";
             }
         }
         else if (element is Floor floor)
@@ -301,7 +301,7 @@ public class SelectFamilyTypeInstancesInCurrentView : IExternalCommand
             if (typeElement != null)
             {
                 typeName = typeElement.Name;
-                familyName = "Floor";
+                familyName = GetSystemFamilyName(typeElement) ?? "Floor";
             }
         }
         else if (element is RoofBase roof)
@@ -310,7 +310,7 @@ public class SelectFamilyTypeInstancesInCurrentView : IExternalCommand
             if (typeElement != null)
             {
                 typeName = typeElement.Name;
-                familyName = "Roof";
+                familyName = GetSystemFamilyName(typeElement) ?? "Roof";
             }
         }
         else if (element is Ceiling ceiling)
@@ -319,7 +319,7 @@ public class SelectFamilyTypeInstancesInCurrentView : IExternalCommand
             if (typeElement != null)
             {
                 typeName = typeElement.Name;
-                familyName = "Ceiling";
+                familyName = GetSystemFamilyName(typeElement) ?? "Ceiling";
             }
         }
         else if (element is Grid grid)
@@ -371,7 +371,7 @@ public class SelectFamilyTypeInstancesInCurrentView : IExternalCommand
                     }
                     else
                     {
-                        familyName = element.GetType().Name;
+                        familyName = GetSystemFamilyName(typeElement) ?? element.GetType().Name;
                     }
                 }
             }
@@ -388,6 +388,14 @@ public class SelectFamilyTypeInstancesInCurrentView : IExternalCommand
         }
 
         return "";
+    }
+
+    private string GetSystemFamilyName(Element typeElement)
+    {
+        Parameter familyParam = typeElement.get_Parameter(BuiltInParameter.SYMBOL_FAMILY_NAME_PARAM);
+        return (familyParam != null && !string.IsNullOrEmpty(familyParam.AsString()))
+            ? familyParam.AsString()
+            : null;
     }
 
     private bool IsElementVisibleInView(Element element, View view)

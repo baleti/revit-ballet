@@ -38,11 +38,8 @@ public class SelectFamilyTypesInProject : IExternalCommand
             }
             else
             {
-                // For system types (like WallType), try to extract the family name via the built-in parameter.
-                Parameter familyParam = elementType.get_Parameter(BuiltInParameter.SYMBOL_FAMILY_NAME_PARAM);
-                familyName = (familyParam != null && !string.IsNullOrEmpty(familyParam.AsString()))
-                    ? familyParam.AsString()
-                    : "System Type";
+                // For system types (like WallType, FloorType), try to extract the family name
+                familyName = GetSystemFamilyName(elementType) ?? "System Type";
                 categoryName = elementType.Category != null ? elementType.Category.Name : "N/A";
             }
 
@@ -72,9 +69,16 @@ public class SelectFamilyTypesInProject : IExternalCommand
             typeEntries.Add(entry);
         }
 
+        // Sort by Category, then Family, then Type Name
+        typeEntries = typeEntries
+            .OrderBy(e => e["Category"].ToString())
+            .ThenBy(e => e["Family"].ToString())
+            .ThenBy(e => e["Type Name"].ToString())
+            .ToList();
+
         // Step 2: Display a DataGrid for the user to select types.
         // 'CustomGUIs.DataGrid' is assumed to be a method that displays the data in a grid and returns the selected rows.
-        var propertyNames = new List<string> { "Type Name", "Family", "Category" };
+        var propertyNames = new List<string> { "Category", "Family", "Type Name" };
         var selectedEntries = CustomGUIs.DataGrid(typeEntries, propertyNames, false);
 
         if (selectedEntries.Count == 0)
@@ -100,5 +104,13 @@ public class SelectFamilyTypesInProject : IExternalCommand
         uidoc.SetSelectionIds(selectedTypeIds);
 
         return Result.Succeeded;
+    }
+
+    private string GetSystemFamilyName(Element typeElement)
+    {
+        Parameter familyParam = typeElement.get_Parameter(BuiltInParameter.SYMBOL_FAMILY_NAME_PARAM);
+        return (familyParam != null && !string.IsNullOrEmpty(familyParam.AsString()))
+            ? familyParam.AsString()
+            : null;
     }
 }

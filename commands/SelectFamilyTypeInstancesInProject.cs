@@ -15,58 +15,95 @@ public class SelectFamilyTypeInstancesInProject : IExternalCommand
         UIDocument uidoc = commandData.Application.ActiveUIDocument;
         Document doc = uidoc.Document;
 
-        // Step 1: Prepare a list of types across all categories in the current project
+        // Step 1: Collect all element types (both loaded family types and system types) in the current project
         List<Dictionary<string, object>> typeEntries = new List<Dictionary<string, object>>();
-        Dictionary<string, FamilySymbol> typeElementMap = new Dictionary<string, FamilySymbol>(); // Map unique keys to FamilySymbols
+        Dictionary<string, ElementType> typeElementMap = new Dictionary<string, ElementType>();
 
-        // Collect all FamilySymbol elements in the project
-        var familySymbols = new FilteredElementCollector(doc)
-            .OfClass(typeof(FamilySymbol))
-            .Cast<FamilySymbol>()
+        var elementTypes = new FilteredElementCollector(doc)
+            .OfClass(typeof(ElementType))
+            .Cast<ElementType>()
             .ToList();
 
-        // Iterate through the FamilySymbols, and collect their info
-        foreach (var familySymbol in familySymbols)
+        foreach (var elementType in elementTypes)
         {
-            // Get the family for the current symbol
-            Family family = familySymbol.Family;
+            string typeName = elementType.Name;
+            string familyName = "";
+            string categoryName = "";
+
+            // If the element type is a FamilySymbol (loaded family), gather its family name and category
+            if (elementType is FamilySymbol fs)
+            {
+                familyName = fs.Family.Name;
+                categoryName = fs.Category != null ? fs.Category.Name : "N/A";
+            }
+            else
+            {
+                // For system types (like WallType, FloorType), try to extract the family name
+                familyName = GetSystemFamilyName(elementType) ?? "System Type";
+                categoryName = elementType.Category != null ? elementType.Category.Name : "N/A";
+            }
 
             var entry = new Dictionary<string, object>
             {
-                { "Type Name", familySymbol.Name },
-                { "Family", family.Name },
-                { "Category", familySymbol.Category.Name }
+                { "Type Name", typeName },
+                { "Family", familyName },
+                { "Category", categoryName }
             };
 
-            // Store the FamilySymbol with a unique key (Family:Type)
-            string uniqueKey = $"{family.Name}:{familySymbol.Name}";
-            typeElementMap[uniqueKey] = familySymbol;
+            // Build a unique key based on category, family and type name
+            string uniqueKey = $"{categoryName}:{familyName}:{typeName}";
 
+            // If duplicate keys exist, append an index
+            if (typeElementMap.ContainsKey(uniqueKey))
+            {
+                int duplicateIndex = 1;
+                string newKey = uniqueKey + "_" + duplicateIndex;
+                while (typeElementMap.ContainsKey(newKey))
+                {
+                    duplicateIndex++;
+                    newKey = uniqueKey + "_" + duplicateIndex;
+                }
+                uniqueKey = newKey;
+            }
+
+            typeElementMap[uniqueKey] = elementType;
             typeEntries.Add(entry);
         }
 
-        // Step 2: Display the list of types using CustomGUIs.DataGrid
-        var propertyNames = new List<string> { "Type Name", "Family", "Category" };
+        // Sort by Category, then Family, then Type Name
+        typeEntries = typeEntries
+            .OrderBy(e => e["Category"].ToString())
+            .ThenBy(e => e["Family"].ToString())
+            .ThenBy(e => e["Type Name"].ToString())
+            .ToList();
+
+        // Step 2: Display a DataGrid for the user to select types
+        var propertyNames = new List<string> { "Category", "Family", "Type Name" };
         var selectedEntries = CustomGUIs.DataGrid(typeEntries, propertyNames, false);
 
         if (selectedEntries.Count == 0)
         {
-            return Result.Cancelled; // No selection made
+            return Result.Cancelled;
         }
 
-        // Step 3: Collect ElementIds of the selected types using the typeElementMap
+        // Step 3: Retrieve the ElementIds from the selected entries using the typeElementMap
         List<ElementId> selectedTypeIds = selectedEntries
-            .Select(entry => 
+            .Select(entry =>
             {
-                string uniqueKey = $"{entry["Family"]}:{entry["Type Name"]}";
-                return typeElementMap[uniqueKey].Id; // Retrieve the FamilySymbol from the map and get its Id
+                string uniqueKey = $"{entry["Category"]}:{entry["Family"]}:{entry["Type Name"]}";
+                if (!typeElementMap.ContainsKey(uniqueKey))
+                {
+                    uniqueKey = typeElementMap.Keys.FirstOrDefault(k => k.StartsWith($"{entry["Category"]}:{entry["Family"]}:{entry["Type Name"]}"));
+                }
+                return typeElementMap.ContainsKey(uniqueKey) ? typeElementMap[uniqueKey].Id : null;
             })
+            .Where(id => id != null)
             .ToList();
 
         // Step 4: Collect all instances of the selected types in the model
         var selectedInstances = new FilteredElementCollector(doc)
-            .WherePasses(new ElementMulticlassFilter(new List<System.Type> { typeof(FamilyInstance), typeof(ElementType) }))
-            .Where(x => selectedTypeIds.Contains(x.GetTypeId())) // Filter elements by type
+            .WhereElementIsNotElementType()
+            .Where(x => x.GetTypeId() != null && x.GetTypeId() != ElementId.InvalidElementId && selectedTypeIds.Contains(x.GetTypeId()))
             .Select(x => x.Id)
             .ToList();
 
@@ -87,5 +124,13 @@ public class SelectFamilyTypeInstancesInProject : IExternalCommand
         uidoc.SetSelectionIds(combinedSelection);
 
         return Result.Succeeded;
+    }
+
+    private string GetSystemFamilyName(Element typeElement)
+    {
+        Parameter familyParam = typeElement.get_Parameter(BuiltInParameter.SYMBOL_FAMILY_NAME_PARAM);
+        return (familyParam != null && !string.IsNullOrEmpty(familyParam.AsString()))
+            ? familyParam.AsString()
+            : null;
     }
 }
