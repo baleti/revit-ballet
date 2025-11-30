@@ -99,19 +99,21 @@ public class SelectByCategories : IExternalCommand
         };
         categoryList.Insert(0, directShapeEntry);
 
-        // Remove any View-related category entries (OST_Viewers, OST_Schedules for schedule views, etc.)
-        // We'll add custom "Views" and "View Templates" entries instead
+        // Remove any View-related and Sheet-related category entries (OST_Viewers, OST_Sheets, OST_Schedules for schedule views, etc.)
+        // We'll add custom "Views", "View Templates", and "Sheets" entries instead
         categoryList = categoryList.Where(c =>
         {
             var catId = c["CategoryId"] as ElementId;
             if (catId == null) return true;
             long catIdValue = catId.AsLong();
-            // Remove OST_Viewers and OST_Schedules (which can contain schedule templates)
+            // Remove OST_Viewers, OST_Sheets, and OST_Schedules (which can contain schedule templates)
 #if REVIT2017
             // OST_Schedules doesn't exist in Revit 2017 API
-            return catIdValue != (int)BuiltInCategory.OST_Viewers;
+            return catIdValue != (int)BuiltInCategory.OST_Viewers &&
+                   catIdValue != (int)BuiltInCategory.OST_Sheets;
 #else
             return catIdValue != (int)BuiltInCategory.OST_Viewers &&
+                   catIdValue != (int)BuiltInCategory.OST_Sheets &&
                    catIdValue != (int)BuiltInCategory.OST_Schedules;
 #endif
         }).ToList();
@@ -137,6 +139,16 @@ public class SelectByCategories : IExternalCommand
             { "IsViewCategory", true }
         };
         categoryList.Add(viewTemplatesEntry);
+
+        // Add separate entry for Sheets
+        var sheetsEntry = new Dictionary<string, object>
+        {
+            { "Name", "Sheets" },
+            { "CategoryId", null },
+            { "IsDirectShape", false },
+            { "IsSheet", true }
+        };
+        categoryList.Add(sheetsEntry);
 
         // Sort the rest alphabetically (excluding the first Direct Shapes entry)
         categoryList = new List<Dictionary<string, object>> { categoryList[0] }
@@ -169,6 +181,10 @@ public class SelectByCategories : IExternalCommand
             }
             else
             {
+                // Check if this is a Sheets selection
+                bool isSheet = selectedCategory.ContainsKey("IsSheet") &&
+                              (bool)selectedCategory["IsSheet"];
+
                 // Check if this is a Views/View Templates selection
                 bool isViewCategory = selectedCategory.ContainsKey("IsViewCategory") &&
                                      (bool)selectedCategory["IsViewCategory"];
@@ -180,7 +196,17 @@ public class SelectByCategories : IExternalCommand
                 {
                     List<ElementId> categoryElementIds = new List<ElementId>();
 
-                    if (isViewCategory && isViewTemplate.HasValue)
+                    if (isSheet)
+                    {
+                        // Collect ALL Sheet objects
+                        FilteredElementCollector sheetCollector = new FilteredElementCollector(doc);
+                        var sheets = sheetCollector
+                            .OfClass(typeof(ViewSheet))
+                            .Select(s => s.Id)
+                            .ToList();
+                        categoryElementIds.AddRange(sheets);
+                    }
+                    else if (isViewCategory && isViewTemplate.HasValue)
                     {
                         // Collect ALL View objects (regardless of their Revit category)
                         FilteredElementCollector viewCollector = new FilteredElementCollector(doc);

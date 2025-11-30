@@ -246,6 +246,22 @@ public partial class CustomGUIs
                     }
                 }
 
+                // IMPORTANT: Check if element has a writable "Name" instance parameter first
+                // Elements like Grids, Levels, Views, etc. have Name instance parameters that should take precedence
+                Parameter nameParam = elem.LookupParameter("Name");
+                if (nameParam != null && !nameParam.IsReadOnly && nameParam.StorageType == StorageType.String)
+                {
+                    try
+                    {
+                        nameParam.Set(strValue);
+                        return true;
+                    }
+                    catch
+                    {
+                        // If setting the parameter fails, fall through to type renaming
+                    }
+                }
+
                 // For all other elements (including group members), rename the element's TYPE
                 // Note: Even if an element is in a group, we can still rename its family type
                 // The element's Name property refers to its type name, not the group name

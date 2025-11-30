@@ -59,6 +59,7 @@ public class SelectByCategoriesInViews : IExternalCommand
         Dictionary<ElementId, List<DirectShape>> directShapesByCategory = new Dictionary<ElementId, List<DirectShape>>();
         Dictionary<ElementId, List<ElementId>> regularElementsByCategory = new Dictionary<ElementId, List<ElementId>>();
         List<ElementId> elementsNotInGroups = new List<ElementId>();
+        List<ElementId> sheetIds = new List<ElementId>();
         
         // Collect elements from all views to process
         foreach (View view in viewsToProcess)
@@ -121,6 +122,20 @@ public class SelectByCategoriesInViews : IExternalCommand
                 if (!elementsNotInGroups.Contains(elemId))
                 {
                     elementsNotInGroups.Add(elemId);
+                }
+            }
+
+            // Collect any ViewSheets (sheets) in this view
+            var viewSheets = new FilteredElementCollector(doc, view.Id)
+                .OfClass(typeof(ViewSheet))
+                .Select(e => e.Id)
+                .ToList();
+
+            foreach (var sheetId in viewSheets)
+            {
+                if (!sheetIds.Contains(sheetId))
+                {
+                    sheetIds.Add(sheetId);
                 }
             }
         }
@@ -303,7 +318,22 @@ public class SelectByCategoriesInViews : IExternalCommand
             };
             categoryList.Add(entry);
         }
-        
+
+        // Add Sheets category if any sheets were found
+        if (sheetIds.Count > 0)
+        {
+            var sheetsEntry = new Dictionary<string, object>
+            {
+                { "Name", "Sheets" },
+                { "Count", sheetIds.Count },
+                { "CategoryId", ((long)BuiltInCategory.OST_Sheets).ToElementId() },
+                { "IsDirectShape", false },
+                { "IsSheet", true },
+                { "ElementIds", sheetIds }
+            };
+            categoryList.Add(sheetsEntry);
+        }
+
         // Sort the list to keep Direct Shapes grouped with their parent categories
         categoryList = categoryList.OrderBy(c => ((string)c["Name"]).Replace("Direct Shapes: ", "")).ToList();
         

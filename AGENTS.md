@@ -104,6 +104,59 @@ curl -k -s -X POST https://127.0.0.1:$PORT/roslyn \
   --data-binary @/tmp/query-*.cs | jq -r '.Output'
 ```
 
+**CRITICAL - Claude Code Bash Tool Limitation & Workaround:**
+
+Claude Code's Bash tool has a bug where **multiple command substitutions `$(...)` in one call fail with escaping errors**.
+
+**Workaround:** Write the bash script to a file and execute it:
+
+```bash
+# Tool call 1: Write script to file
+cat > /tmp/query-revit.sh << 'EOF'
+#!/bin/bash
+TOKEN=$(cat runtime/network/token)
+PORT=$(grep -v '^#' runtime/network/sessions | head -1 | cut -d',' -f2)
+curl -k -s -X POST https://127.0.0.1:$PORT/roslyn \
+  -H "X-Auth-Token: $TOKEN" \
+  --data-binary @/tmp/query-*.cs | jq -r '.Output'
+EOF
+
+# Tool call 2: Execute the script
+bash /tmp/query-revit.sh
+```
+
+**Alternative:** Use only one `$(...)` per Bash tool call with hardcoded values:
+```bash
+# Hardcode port 23717 and use token substitution
+curl -k -s -X POST https://127.0.0.1:23717/roslyn \
+  -H "X-Auth-Token: $(cat runtime/network/token)" \
+  --data-binary @/tmp/query-test.cs | jq -r '.Output'
+```
+
+**Recommended Helper Script Pattern:**
+
+For frequent queries, create a reusable helper script:
+
+```bash
+# Create helper once
+cat > /tmp/revit-query.sh << 'EOF'
+#!/bin/bash
+TOKEN=$(cat runtime/network/token)
+PORT=$(grep -v '^#' runtime/network/sessions | head -1 | cut -d',' -f2)
+curl -k -s -X POST https://127.0.0.1:$PORT/roslyn \
+  -H "X-Auth-Token: $TOKEN" \
+  --data-binary @"$1" | jq
+EOF
+chmod +x /tmp/revit-query.sh
+
+# Use it for any query
+cat > /tmp/my-query.cs << 'EOF'
+Console.WriteLine("Document: " + Doc.Title);
+EOF
+
+bash /tmp/revit-query.sh /tmp/my-query.cs
+```
+
 **Why use files?**
 - Avoids bash escaping nightmares with quotes, operators (!=, ?, etc.)
 - Allows proper multi-line C# formatting
