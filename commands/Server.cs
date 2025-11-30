@@ -87,6 +87,10 @@ namespace RevitBallet.Commands
         private ExternalEvent screenshotEvent;
         private ScriptExecutionHandler scriptHandler;
         private ScreenshotHandler screenshotHandler;
+        private int activeConnections = 0;
+        private int totalConnectionsAccepted = 0;
+        private int totalConnectionsSuccessful = 0;
+        private int totalConnectionsFailed = 0;
 
         public bool IsRunning => isRunning;
         public int Port => serverPort;
@@ -123,6 +127,13 @@ namespace RevitBallet.Commands
             try
             {
                 serverCertificate = SslCertificateHelper.GetOrCreateCertificate();
+
+                // Log certificate diagnostics
+                LogToRevit($"[CERT] Thumbprint: {serverCertificate.Thumbprint}");
+                LogToRevit($"[CERT] Subject: {serverCertificate.Subject}");
+                LogToRevit($"[CERT] Valid: {serverCertificate.NotBefore:yyyy-MM-dd} to {serverCertificate.NotAfter:yyyy-MM-dd}");
+                LogToRevit($"[CERT] Has Private Key: {serverCertificate.HasPrivateKey}");
+                LogToRevit($"[CERT] Key Algorithm: {serverCertificate.GetKeyAlgorithm()}");
             }
             catch (NotSupportedException ex)
             {
@@ -161,7 +172,14 @@ namespace RevitBallet.Commands
             // Start heartbeat to keep network registry alive
             Task.Run(() => UpdateNetworkHeartbeat(cancellationTokenSource.Token));
 
-            LogToRevit($"[Revit Ballet] Server started on port {serverPort} (Session: {sessionId.Substring(0, 8)})");
+#if NET8_0_OR_GREATER
+            var tlsVersions = "TLS 1.2, 1.3";
+#else
+            var tlsVersions = "TLS 1.2";
+#endif
+            LogToRevit($"[SERVER] Started on port {serverPort} (Session: {sessionId.Substring(0, 8)})");
+            LogToRevit($"[SERVER] TLS Protocols: {tlsVersions}");
+            LogToRevit($"[SERVER] .NET Version: {Environment.Version}");
         }
 
         public void Stop()
@@ -558,58 +576,123 @@ namespace RevitBallet.Commands
 
         private async Task HandleHttpsRequest(TcpClient client, string clientEndpoint, CancellationToken cancellationToken)
         {
-            LogToRevit($"[{DateTime.Now:HH:mm:ss}] TCP connection from {clientEndpoint}");
+            var connId = Guid.NewGuid().ToString("N").Substring(0, 8);
+            Interlocked.Increment(ref activeConnections);
+            Interlocked.Increment(ref totalConnectionsAccepted);
+
+            LogToRevit($"[CONN-{connId}] TCP connection from {clientEndpoint} (Active: {activeConnections}, Total Accepted: {totalConnectionsAccepted})");
+
+            var startTime = DateTime.Now;
+            bool handshakeSuccess = false;
 
             try
             {
                 using (client)
                 {
                     var networkStream = client.GetStream();
+                    LogToRevit($"[CONN-{connId}] NetworkStream acquired (CanRead: {networkStream.CanRead}, CanWrite: {networkStream.CanWrite})");
+
+                    // Check if network stream is still connected
+                    if (!client.Connected)
+                    {
+                        LogToRevit($"[CONN-{connId}] ERROR: Client disconnected before SSL handshake");
+                        Interlocked.Increment(ref totalConnectionsFailed);
+                        return;
+                    }
+
                     var sslStream = new SslStream(networkStream, false);
 
                     try
                     {
                         if (!serverCertificate.HasPrivateKey)
                         {
-                            LogToRevit($"[{DateTime.Now:HH:mm:ss}] ERROR: Certificate has no private key!");
+                            LogToRevit($"[CONN-{connId}] ERROR: Certificate has no private key!");
+                            Interlocked.Increment(ref totalConnectionsFailed);
                             return;
                         }
 
-                        LogToRevit($"[{DateTime.Now:HH:mm:ss}] Starting SSL handshake...");
+                        LogToRevit($"[CONN-{connId}] Starting SSL handshake...");
+                        var handshakeStart = DateTime.Now;
 
 #if NET8_0_OR_GREATER
                         var protocols = SslProtocols.Tls12 | SslProtocols.Tls13;
 #else
                         var protocols = SslProtocols.Tls12;
 #endif
-                        await sslStream.AuthenticateAsServerAsync(
+
+                        // Add timeout to handshake to detect hung connections
+                        var handshakeTask = sslStream.AuthenticateAsServerAsync(
                             serverCertificate,
                             clientCertificateRequired: false,
                             enabledSslProtocols: protocols,
                             checkCertificateRevocation: false
                         );
 
-                        LogToRevit($"[{DateTime.Now:HH:mm:ss}] SSL handshake successful");
+                        var timeoutTask = Task.Delay(10000); // 10 second timeout
+                        var completedTask = await Task.WhenAny(handshakeTask, timeoutTask);
 
-                        await HandleHttpRequest(sslStream, clientEndpoint, cancellationToken);
+                        if (completedTask == timeoutTask)
+                        {
+                            LogToRevit($"[CONN-{connId}] ERROR: SSL handshake timeout (>10s)");
+                            LogToRevit($"[CONN-{connId}] Client may have closed connection or sent invalid data");
+                            Interlocked.Increment(ref totalConnectionsFailed);
+                            return;
+                        }
+
+                        await handshakeTask; // Re-await to get any exceptions
+
+                        var handshakeDuration = (DateTime.Now - handshakeStart).TotalMilliseconds;
+                        handshakeSuccess = true;
+                        Interlocked.Increment(ref totalConnectionsSuccessful);
+
+                        LogToRevit($"[CONN-{connId}] SSL handshake successful ({handshakeDuration:F0}ms)");
+                        LogToRevit($"[CONN-{connId}] Protocol: {sslStream.SslProtocol}, Cipher: {sslStream.CipherAlgorithm}, Hash: {sslStream.HashAlgorithm}");
+
+                        await HandleHttpRequest(sslStream, connId, cancellationToken);
                     }
                     catch (AuthenticationException ex)
                     {
-                        LogToRevit($"[{DateTime.Now:HH:mm:ss}] SSL handshake failed: {ex.Message}");
-                        LogToRevit($"[{DateTime.Now:HH:mm:ss}] Exception type: {ex.GetType().FullName}");
-                        LogToRevit($"[{DateTime.Now:HH:mm:ss}] Stack trace:\n{ex.StackTrace}");
-                        LogToRevit($"[{DateTime.Now:HH:mm:ss}] Hint: Client may be using HTTP instead of HTTPS");
+                        var handshakeDuration = (DateTime.Now - startTime).TotalMilliseconds;
+                        LogToRevit($"[CONN-{connId}] SSL handshake failed after {handshakeDuration:F0}ms: {ex.Message}");
+                        LogToRevit($"[CONN-{connId}] Exception type: {ex.GetType().FullName}");
+                        LogToRevit($"[CONN-{connId}] Stack trace:\n{ex.StackTrace}");
+                        LogToRevit($"[CONN-{connId}] Hint: Client may be using HTTP instead of HTTPS, or TLS version mismatch");
+                        Interlocked.Increment(ref totalConnectionsFailed);
+                    }
+                    catch (System.IO.IOException ex)
+                    {
+                        var handshakeDuration = (DateTime.Now - startTime).TotalMilliseconds;
+                        LogToRevit($"[CONN-{connId}] I/O error after {handshakeDuration:F0}ms: {ex.Message}");
+                        LogToRevit($"[CONN-{connId}] Exception type: {ex.GetType().FullName}");
+
+                        if (ex.InnerException != null)
+                        {
+                            LogToRevit($"[CONN-{connId}] Inner exception: {ex.InnerException.GetType().FullName} - {ex.InnerException.Message}");
+
+                            // Common Windows socket errors
+                            var socketEx = ex.InnerException as SocketException;
+                            if (socketEx != null)
+                            {
+                                LogToRevit($"[CONN-{connId}] Socket error code: {socketEx.ErrorCode} (0x{socketEx.ErrorCode:X})");
+                                LogToRevit($"[CONN-{connId}] Socket error: {socketEx.SocketErrorCode}");
+                            }
+                        }
+
+                        LogToRevit($"[CONN-{connId}] Hint: Connection may have been reset by client or intermediary (named pipe relay?)");
+                        Interlocked.Increment(ref totalConnectionsFailed);
                     }
                     catch (System.Exception ex)
                     {
-                        LogToRevit($"[{DateTime.Now:HH:mm:ss}] Error in SSL stream: {ex.Message}");
-                        LogToRevit($"[{DateTime.Now:HH:mm:ss}] Exception type: {ex.GetType().FullName}");
-                        LogToRevit($"[{DateTime.Now:HH:mm:ss}] Stack trace:\n{ex.StackTrace}");
+                        var handshakeDuration = (DateTime.Now - startTime).TotalMilliseconds;
+                        LogToRevit($"[CONN-{connId}] Error in SSL stream after {handshakeDuration:F0}ms: {ex.Message}");
+                        LogToRevit($"[CONN-{connId}] Exception type: {ex.GetType().FullName}");
+                        LogToRevit($"[CONN-{connId}] Stack trace:\n{ex.StackTrace}");
                         if (ex.InnerException != null)
                         {
-                            LogToRevit($"[{DateTime.Now:HH:mm:ss}] Inner exception: {ex.InnerException.Message}");
-                            LogToRevit($"[{DateTime.Now:HH:mm:ss}] Inner stack trace:\n{ex.InnerException.StackTrace}");
+                            LogToRevit($"[CONN-{connId}] Inner exception: {ex.InnerException.Message}");
+                            LogToRevit($"[CONN-{connId}] Inner stack trace:\n{ex.InnerException.StackTrace}");
                         }
+                        Interlocked.Increment(ref totalConnectionsFailed);
                     }
                     finally
                     {
@@ -618,49 +701,65 @@ namespace RevitBallet.Commands
                             sslStream?.Dispose();
                         }
                         catch { }
+
+                        LogToRevit($"[CONN-{connId}] SSL stream disposed");
                     }
                 }
+
+                var totalDuration = (DateTime.Now - startTime).TotalMilliseconds;
+                LogToRevit($"[CONN-{connId}] Connection closed (Duration: {totalDuration:F0}ms, Handshake: {(handshakeSuccess ? "SUCCESS" : "FAILED")})");
             }
             catch (System.Exception ex)
             {
-                LogToRevit($"[{DateTime.Now:HH:mm:ss}] Error handling HTTPS request from {clientEndpoint}: {ex.Message}");
-                LogToRevit($"[{DateTime.Now:HH:mm:ss}] Exception type: {ex.GetType().FullName}");
-                LogToRevit($"[{DateTime.Now:HH:mm:ss}] Stack trace:\n{ex.StackTrace}");
+                var totalDuration = (DateTime.Now - startTime).TotalMilliseconds;
+                LogToRevit($"[CONN-{connId}] Error handling HTTPS request from {clientEndpoint} after {totalDuration:F0}ms: {ex.Message}");
+                LogToRevit($"[CONN-{connId}] Exception type: {ex.GetType().FullName}");
+                LogToRevit($"[CONN-{connId}] Stack trace:\n{ex.StackTrace}");
                 if (ex.InnerException != null)
                 {
-                    LogToRevit($"[{DateTime.Now:HH:mm:ss}] Inner exception: {ex.InnerException.Message}");
-                    LogToRevit($"[{DateTime.Now:HH:mm:ss}] Inner stack trace:\n{ex.InnerException.StackTrace}");
+                    LogToRevit($"[CONN-{connId}] Inner exception: {ex.InnerException.Message}");
+                    LogToRevit($"[CONN-{connId}] Inner stack trace:\n{ex.InnerException.StackTrace}");
                 }
+                Interlocked.Increment(ref totalConnectionsFailed);
+            }
+            finally
+            {
+                Interlocked.Decrement(ref activeConnections);
+                LogToRevit($"[CONN-{connId}] Connection cleanup complete (Active: {activeConnections}, Success: {totalConnectionsSuccessful}, Failed: {totalConnectionsFailed})");
             }
         }
 
-        private async Task HandleHttpRequest(Stream stream, string clientEndpoint, CancellationToken cancellationToken)
+        private async Task HandleHttpRequest(Stream stream, string connId, CancellationToken cancellationToken)
         {
             try
             {
-                LogToRevit($"[{DateTime.Now:HH:mm:ss}] Connection from {clientEndpoint}");
+                LogToRevit($"[CONN-{connId}] Reading HTTP request...");
+                var requestStart = DateTime.Now;
 
                 using (var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, bufferSize: 1024, leaveOpen: true))
                 {
                     var requestLine = await reader.ReadLineAsync();
                     if (string.IsNullOrEmpty(requestLine))
                     {
-                        LogToRevit($"[{DateTime.Now:HH:mm:ss}] Empty request line");
+                        LogToRevit($"[CONN-{connId}] Empty request line (client may have closed connection)");
                         return;
                     }
 
                     var parts = requestLine.Split(' ');
                     if (parts.Length < 2)
                     {
-                        LogToRevit($"[{DateTime.Now:HH:mm:ss}] Invalid request line: {requestLine}");
+                        LogToRevit($"[CONN-{connId}] Invalid request line: {requestLine}");
                         return;
                     }
 
+                    var method = parts[0];
                     var path = parts[1];
-                    LogToRevit($"[{DateTime.Now:HH:mm:ss}] Request path: {path}");
+                    var httpVersion = parts.Length >= 3 ? parts[2] : "HTTP/1.1";
+                    LogToRevit($"[CONN-{connId}] Request: {method} {path} {httpVersion}");
 
                     var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
                     string line;
+                    int headerCount = 0;
                     while ((line = await reader.ReadLineAsync()) != null && line.Length > 0)
                     {
                         var colonIndex = line.IndexOf(':');
@@ -669,28 +768,41 @@ namespace RevitBallet.Commands
                             var key = line.Substring(0, colonIndex).Trim();
                             var value = line.Substring(colonIndex + 1).Trim();
                             headers[key] = value;
+                            headerCount++;
                         }
                     }
+
+                    LogToRevit($"[CONN-{connId}] Received {headerCount} headers");
 
                     // Read body
                     string code = "";
                     if (headers.ContainsKey("Content-Length"))
                     {
                         var contentLength = int.Parse(headers["Content-Length"]);
-                        LogToRevit($"[{DateTime.Now:HH:mm:ss}] Content-Length: {contentLength}");
+                        LogToRevit($"[CONN-{connId}] Content-Length: {contentLength}");
 
                         var buffer = new char[contentLength];
                         var totalRead = 0;
+                        var bodyReadStart = DateTime.Now;
 
                         while (totalRead < contentLength)
                         {
                             var bytesRead = await reader.ReadAsync(buffer, totalRead, contentLength - totalRead);
-                            if (bytesRead == 0) break;
+                            if (bytesRead == 0)
+                            {
+                                LogToRevit($"[CONN-{connId}] WARNING: Stream ended before reading full body (expected {contentLength}, got {totalRead})");
+                                break;
+                            }
                             totalRead += bytesRead;
                         }
 
                         code = new string(buffer, 0, totalRead);
-                        LogToRevit($"[{DateTime.Now:HH:mm:ss}] Received {totalRead} bytes of code");
+                        var bodyReadDuration = (DateTime.Now - bodyReadStart).TotalMilliseconds;
+                        LogToRevit($"[CONN-{connId}] Received {totalRead}/{contentLength} bytes ({bodyReadDuration:F0}ms)");
+                    }
+                    else
+                    {
+                        LogToRevit($"[CONN-{connId}] No Content-Length header (body empty or chunked transfer)");
                     }
 
                     // Check authentication using shared token
@@ -698,6 +810,7 @@ namespace RevitBallet.Commands
                     if (headers.ContainsKey("X-Auth-Token"))
                     {
                         providedToken = headers["X-Auth-Token"];
+                        LogToRevit($"[CONN-{connId}] Auth method: X-Auth-Token header");
                     }
                     else if (headers.ContainsKey("Authorization"))
                     {
@@ -705,13 +818,22 @@ namespace RevitBallet.Commands
                         if (authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
                         {
                             providedToken = authHeader.Substring(7).Trim();
+                            LogToRevit($"[CONN-{connId}] Auth method: Authorization Bearer header");
                         }
+                        else
+                        {
+                            LogToRevit($"[CONN-{connId}] WARNING: Unrecognized Authorization header format: {authHeader.Substring(0, Math.Min(20, authHeader.Length))}...");
+                        }
+                    }
+                    else
+                    {
+                        LogToRevit($"[CONN-{connId}] WARNING: No authentication headers found");
                     }
 
                     var sharedToken = GetSharedAuthToken();
-                    if (string.IsNullOrEmpty(providedToken) || string.IsNullOrEmpty(sharedToken) || providedToken != sharedToken)
+                    if (string.IsNullOrEmpty(providedToken))
                     {
-                        LogToRevit($"[{DateTime.Now:HH:mm:ss}] Authentication failed");
+                        LogToRevit($"[CONN-{connId}] Authentication failed: No token provided");
                         var errorResponse = new ScriptResponse
                         {
                             Success = false,
@@ -720,57 +842,87 @@ namespace RevitBallet.Commands
                         await SendHttpResponse(stream, errorResponse, 401, "Unauthorized");
                         return;
                     }
+                    else if (string.IsNullOrEmpty(sharedToken))
+                    {
+                        LogToRevit($"[CONN-{connId}] Authentication failed: No shared token configured (server misconfiguration)");
+                        var errorResponse = new ScriptResponse
+                        {
+                            Success = false,
+                            Error = "Server authentication not configured."
+                        };
+                        await SendHttpResponse(stream, errorResponse, 500, "Internal Server Error");
+                        return;
+                    }
+                    else if (providedToken != sharedToken)
+                    {
+                        LogToRevit($"[CONN-{connId}] Authentication failed: Token mismatch");
+                        var errorResponse = new ScriptResponse
+                        {
+                            Success = false,
+                            Error = "Invalid authentication token."
+                        };
+                        await SendHttpResponse(stream, errorResponse, 401, "Unauthorized");
+                        return;
+                    }
 
-                    LogToRevit($"[{DateTime.Now:HH:mm:ss}] Authenticated request received");
+                    LogToRevit($"[CONN-{connId}] Authentication successful");
 
                     // Route request based on path
                     if (path.StartsWith("/roslyn", StringComparison.OrdinalIgnoreCase))
                     {
-                        LogToRevit($"[{DateTime.Now:HH:mm:ss}] Routing to /roslyn endpoint");
-                        await HandleRoslynRequest(stream, code);
+                        LogToRevit($"[CONN-{connId}] Routing to /roslyn endpoint");
+                        await HandleRoslynRequest(stream, code, connId);
                     }
                     else if (path.StartsWith("/screenshot", StringComparison.OrdinalIgnoreCase))
                     {
-                        LogToRevit($"[{DateTime.Now:HH:mm:ss}] Routing to /screenshot endpoint");
-                        await HandleScreenshotRequest(stream);
+                        LogToRevit($"[CONN-{connId}] Routing to /screenshot endpoint");
+                        await HandleScreenshotRequest(stream, connId);
                     }
                     else
                     {
-                        LogToRevit($"[{DateTime.Now:HH:mm:ss}] Unknown endpoint: {path}");
+                        LogToRevit($"[CONN-{connId}] Unknown endpoint: {path}");
                         await SendHttpResponse(stream, new ScriptResponse { Success = false, Error = "Unknown endpoint" }, 404, "Not Found");
                     }
+
+                    var requestDuration = (DateTime.Now - requestStart).TotalMilliseconds;
+                    LogToRevit($"[CONN-{connId}] Request processing complete ({requestDuration:F0}ms)");
                 }
             }
             catch (System.Exception ex)
             {
-                LogToRevit($"[{DateTime.Now:HH:mm:ss}] Error handling request: {ex.Message}");
-                LogToRevit($"[{DateTime.Now:HH:mm:ss}] Stack trace: {ex.StackTrace}");
+                LogToRevit($"[CONN-{connId}] Error handling request: {ex.Message}");
+                LogToRevit($"[CONN-{connId}] Exception type: {ex.GetType().FullName}");
+                LogToRevit($"[CONN-{connId}] Stack trace: {ex.StackTrace}");
             }
         }
 
-        private async Task HandleRoslynRequest(Stream stream, string code)
+        private async Task HandleRoslynRequest(Stream stream, string code, string connId)
         {
             if (string.IsNullOrWhiteSpace(code))
             {
-                LogToRevit($"[{DateTime.Now:HH:mm:ss}] Empty request body");
+                LogToRevit($"[CONN-{connId}] Empty request body");
                 await SendHttpResponse(stream, new ScriptResponse { Success = false, Error = "Empty request body" });
                 return;
             }
 
-            LogToRevit($"[{DateTime.Now:HH:mm:ss}] Compiling script ({code.Length} chars)...");
+            LogToRevit($"[CONN-{connId}] Compiling script ({code.Length} chars)...");
+            var compileStart = DateTime.Now;
             var compilationResult = await CompileScript(code);
+            var compileDuration = (DateTime.Now - compileStart).TotalMilliseconds;
 
             if (!compilationResult.Success)
             {
-                LogToRevit($"[{DateTime.Now:HH:mm:ss}] Compilation failed");
+                LogToRevit($"[CONN-{connId}] Compilation failed ({compileDuration:F0}ms)");
                 await SendHttpResponse(stream, compilationResult.ErrorResponse);
                 return;
             }
 
-            LogToRevit($"[{DateTime.Now:HH:mm:ss}] Script compiled successfully, executing via External Event...");
+            LogToRevit($"[CONN-{connId}] Compilation successful ({compileDuration:F0}ms), executing via External Event...");
+            var executeStart = DateTime.Now;
             var scriptResponse = await ExecuteScriptViaExternalEvent(compilationResult.CompiledScript);
+            var executeDuration = (DateTime.Now - executeStart).TotalMilliseconds;
 
-            LogToRevit($"[{DateTime.Now:HH:mm:ss}] Execution completed - Success: {scriptResponse.Success}");
+            LogToRevit($"[CONN-{connId}] Execution completed ({executeDuration:F0}ms) - Success: {scriptResponse.Success}");
             await SendHttpResponse(stream, scriptResponse);
         }
 
@@ -868,11 +1020,17 @@ namespace RevitBallet.Commands
             return tcs.Task;
         }
 
-        private async Task HandleScreenshotRequest(Stream stream)
+        private async Task HandleScreenshotRequest(Stream stream, string connId)
         {
             try
             {
+                LogToRevit($"[CONN-{connId}] Capturing screenshot...");
+                var screenshotStart = DateTime.Now;
                 var screenshotPath = await CaptureScreenshot();
+                var screenshotDuration = (DateTime.Now - screenshotStart).TotalMilliseconds;
+
+                LogToRevit($"[CONN-{connId}] Screenshot captured ({screenshotDuration:F0}ms): {screenshotPath}");
+
                 var response = new ScriptResponse
                 {
                     Success = true,
@@ -882,9 +1040,9 @@ namespace RevitBallet.Commands
             }
             catch (System.Exception ex)
             {
-                LogToRevit($"[{DateTime.Now:HH:mm:ss}] Screenshot request exception: {ex.Message}");
-                LogToRevit($"[{DateTime.Now:HH:mm:ss}] Exception type: {ex.GetType().FullName}");
-                LogToRevit($"[{DateTime.Now:HH:mm:ss}] Stack trace:\n{ex.StackTrace}");
+                LogToRevit($"[CONN-{connId}] Screenshot request exception: {ex.Message}");
+                LogToRevit($"[CONN-{connId}] Exception type: {ex.GetType().FullName}");
+                LogToRevit($"[CONN-{connId}] Stack trace:\n{ex.StackTrace}");
 
                 await SendHttpResponse(stream, new ScriptResponse
                 {
