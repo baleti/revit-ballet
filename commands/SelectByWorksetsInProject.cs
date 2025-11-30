@@ -98,7 +98,8 @@ public class SelectByWorksetsInProject : IExternalCommand
                     { "Elements", pair.Value.Count },
                     { "Editable", editable },
                     { "Opened", opened },
-                    { "Visibility", visibility }
+                    { "Visibility", visibility },
+                    { "WorksetId", pair.Key }  // Store WorksetId for reliable lookup after edits
                 });
 
                 nameToId[wsName] = pair.Key;
@@ -120,6 +121,12 @@ public class SelectByWorksetsInProject : IExternalCommand
                                     new List<string> { "Type", "Workset", "Elements", "Editable", "Opened", "Visibility" },
                                     false);
 
+            // Apply any pending edits to worksets (renames, visibility changes, etc.)
+            if (CustomGUIs.HasPendingEdits())
+            {
+                CustomGUIs.ApplyCellEditsToEntities();
+            }
+
             if (pickedRows == null || pickedRows.Count == 0)
                 return Result.Cancelled;   // user cancelled grid
 
@@ -130,13 +137,12 @@ public class SelectByWorksetsInProject : IExternalCommand
 
             foreach (var row in pickedRows)
             {
-                if (!row.TryGetValue("Workset", out var nameObj)) continue;
+                // Use WorksetId from row data instead of looking up by name
+                // This ensures that renamed worksets are still found correctly
+                if (!row.TryGetValue("WorksetId", out var wsIdObj)) continue;
+                if (!(wsIdObj is WorksetId wsId)) continue;
 
-                string wsName = nameObj as string;
-                if (string.IsNullOrEmpty(wsName)) continue;
-
-                if (nameToId.TryGetValue(wsName, out WorksetId wsId) &&
-                    worksetToElementIds.TryGetValue(wsId, out List<ElementId> ids))
+                if (worksetToElementIds.TryGetValue(wsId, out List<ElementId> ids))
                 {
                     foreach (ElementId id in ids)
                         finalSel.Add(id);
