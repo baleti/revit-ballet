@@ -3,6 +3,10 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.Attributes;
 using System.Collections.Generic;
 using System.Linq;
+using Autodesk.Revit.DB.Mechanical;
+using Autodesk.Revit.DB.Plumbing;
+using Autodesk.Revit.DB.Electrical;
+using Autodesk.Revit.DB.Architecture;
 
 [Transaction(TransactionMode.Manual)]
 public class SelectFamilyTypesInCurrentView : IExternalCommand
@@ -15,133 +19,216 @@ public class SelectFamilyTypesInCurrentView : IExternalCommand
         UIDocument uidoc = commandData.Application.ActiveUIDocument;
         Document doc = uidoc.Document;
 
-        // Step 1: Prepare a list of unique family types across all categories in the current view
         List<Dictionary<string, object>> typeEntries = new List<Dictionary<string, object>>();
-        Dictionary<string, FamilySymbol> typeElementMap = new Dictionary<string, FamilySymbol>(); // Map unique keys to FamilySymbols
+        Dictionary<string, Element> typeElementMap = new Dictionary<string, Element>();
 
-        // Get the current view's Id
         ElementId currentViewId = doc.ActiveView.Id;
 
-        // Collect all visible FamilyInstance elements in the current view
-        var familyInstancesInView = new FilteredElementCollector(doc, currentViewId)
-            .OfClass(typeof(FamilyInstance))
+        // Collect ALL elements in the current view without category restrictions
+        var elementsInView = new FilteredElementCollector(doc, currentViewId)
             .WhereElementIsNotElementType()
-            .Cast<FamilyInstance>()
-            .Where(fi => IsElementVisibleInView(fi, doc.ActiveView))
+            .Where(e => e.Category != null && IsElementVisibleInView(e, doc.ActiveView))
             .ToList();
 
-        // Get the unique FamilySymbols used by these instances
-        var familySymbolsInView = familyInstancesInView
-            .Select(fi => fi.Symbol)
-            .Distinct(new FamilySymbolComparer())
-            .ToList();
-
-        // Iterate through the unique FamilySymbols and collect their info
-        foreach (var familySymbol in familySymbolsInView)
+        // Process different types of elements
+        foreach (var element in elementsInView)
         {
-            Family family = familySymbol.Family;
+            Element typeElement = null;
+            string typeName = "";
+            string familyName = "";
 
-            var entry = new Dictionary<string, object>
+            if (element is FamilyInstance familyInstance)
             {
-                { "Type Name", familySymbol.Name },
-                { "Family", family.Name },
-                { "Category", familySymbol.Category.Name }
-            };
+                typeElement = familyInstance.Symbol;
+                typeName = familyInstance.Symbol.Name;
+                familyName = familyInstance.Symbol.FamilyName;
+            }
+            else if (element is MEPCurve mepCurve)
+            {
+                typeElement = doc.GetElement(mepCurve.GetTypeId());
+                if (typeElement != null)
+                {
+                    typeName = typeElement.Name;
+                    if (element is Pipe)
+                        familyName = "Pipe";
+                    else if (element is Duct)
+                        familyName = "Duct";
+                    else if (element is Conduit)
+                        familyName = "Conduit";
+                    else if (element is CableTray)
+                        familyName = "Cable Tray";
+                    else
+                        familyName = "MEP Curve";
+                }
+            }
+            else if (element is Wall wall)
+            {
+                typeElement = doc.GetElement(wall.GetTypeId());
+                if (typeElement != null)
+                {
+                    typeName = typeElement.Name;
+                    familyName = GetSystemFamilyName(typeElement) ?? "Wall";
+                }
+            }
+            else if (element is Floor floor)
+            {
+                typeElement = doc.GetElement(floor.GetTypeId());
+                if (typeElement != null)
+                {
+                    typeName = typeElement.Name;
+                    familyName = GetSystemFamilyName(typeElement) ?? "Floor";
+                }
+            }
+            else if (element is RoofBase roof)
+            {
+                typeElement = doc.GetElement(roof.GetTypeId());
+                if (typeElement != null)
+                {
+                    typeName = typeElement.Name;
+                    familyName = GetSystemFamilyName(typeElement) ?? "Roof";
+                }
+            }
+            else if (element is Ceiling ceiling)
+            {
+                typeElement = doc.GetElement(ceiling.GetTypeId());
+                if (typeElement != null)
+                {
+                    typeName = typeElement.Name;
+                    familyName = GetSystemFamilyName(typeElement) ?? "Ceiling";
+                }
+            }
+            else if (element is Grid grid)
+            {
+                typeElement = doc.GetElement(grid.GetTypeId());
+                if (typeElement != null)
+                {
+                    typeName = typeElement.Name;
+                    familyName = "Grid";
+                }
+            }
+            else if (element is Level level)
+            {
+                typeName = level.Name;
+                familyName = "Level";
+                typeElement = element;
+            }
+            else if (element is ReferencePlane refPlane)
+            {
+                typeName = refPlane.Name;
+                familyName = "Reference Plane";
+                typeElement = element;
+            }
+            else if (element is Room room)
+            {
+                typeName = room.Name;
+                familyName = "Room";
+                typeElement = element;
+            }
+            else if (element is Area area)
+            {
+                typeName = area.Name;
+                familyName = "Area";
+                typeElement = element;
+            }
+            else if (element is Space space)
+            {
+                typeName = space.Name;
+                familyName = "Space";
+                typeElement = element;
+            }
+            else
+            {
+                ElementId typeId = element.GetTypeId();
+                if (typeId != null && typeId != ElementId.InvalidElementId)
+                {
+                    typeElement = doc.GetElement(typeId);
+                    if (typeElement != null)
+                    {
+                        typeName = typeElement.Name;
+                        if (typeElement is FamilySymbol fs)
+                        {
+                            familyName = fs.FamilyName;
+                        }
+                        else
+                        {
+                            familyName = GetSystemFamilyName(typeElement) ?? element.GetType().Name;
+                        }
+                    }
+                }
+                else
+                {
+                    typeName = element.Name;
+                    familyName = element.GetType().Name;
+                    typeElement = element;
+                }
+            }
 
-            string uniqueKey = $"{family.Name}:{familySymbol.Name}";
-            typeElementMap[uniqueKey] = familySymbol;
+            if (typeElement != null && !string.IsNullOrEmpty(typeName))
+            {
+                string uniqueKey = $"{familyName}:{typeName}:{element.Category.Name}";
+                if (!typeElementMap.ContainsKey(uniqueKey))
+                {
+                    var entry = new Dictionary<string, object>
+                    {
+                        { "Type Name", typeName },
+                        { "Family", familyName },
+                        { "Category", element.Category.Name }
+                    };
 
-            typeEntries.Add(entry);
+                    typeElementMap[uniqueKey] = typeElement;
+                    typeEntries.Add(entry);
+                }
+            }
         }
 
-        // Step 2: Display the list of unique family types using CustomGUIs.DataGrid
-        var propertyNames = new List<string> { "Type Name", "Family", "Category" };
+        // Sort by Category, then Family, then Type Name
+        typeEntries = typeEntries
+            .OrderBy(e => e["Category"].ToString())
+            .ThenBy(e => e["Family"].ToString())
+            .ThenBy(e => e["Type Name"].ToString())
+            .ToList();
+
+        // Display the list of unique types
+        var propertyNames = new List<string> { "Category", "Family", "Type Name" };
         var selectedEntries = CustomGUIs.DataGrid(typeEntries, propertyNames, false);
 
         if (selectedEntries.Count == 0)
         {
-            return Result.Cancelled; // No selection made
+            return Result.Cancelled;
         }
 
-        // Step 3: Collect ElementIds of the selected family types using the typeElementMap
+        // Collect ElementIds of the selected types
         List<ElementId> selectedTypeIds = selectedEntries
             .Select(entry =>
             {
-                string uniqueKey = $"{entry["Family"]}:{entry["Type Name"]}";
+                string uniqueKey = $"{entry["Family"]}:{entry["Type Name"]}:{entry["Category"]}";
                 return typeElementMap[uniqueKey].Id;
             })
             .ToList();
 
-        // Step 4: Retrieve and display all available parameters for the selected family types
-        List<Dictionary<string, object>> parameterEntries = new List<Dictionary<string, object>>();
-
-        foreach (ElementId typeId in selectedTypeIds)
-        {
-            FamilySymbol familySymbol = doc.GetElement(typeId) as FamilySymbol;
-
-            if (familySymbol != null)
-            {
-                var entry = new Dictionary<string, object>
-                {
-                    { "Type Name", familySymbol.Name },
-                    { "Family", familySymbol.Family.Name },
-                    { "Category", familySymbol.Category.Name }
-                };
-
-                // Add all available parameters
-                foreach (Parameter param in familySymbol.Parameters)
-                {
-                    string paramName = param.Definition.Name;
-                    string paramValue = param.AsValueString() ?? param.AsString() ?? "None";
-                    entry[paramName] = paramValue;
-                }
-
-                parameterEntries.Add(entry);
-            }
-        }
-
-        // Step 5: Display the parameters of the selected family types in a second DataGrid
-        var paramPropertyNames = parameterEntries.FirstOrDefault()?.Keys.ToList();
-        var finalSelection = CustomGUIs.DataGrid(parameterEntries, paramPropertyNames, false);
-
-        if (finalSelection.Count == 0)
-        {
-            return Result.Cancelled; // No selection made
-        }
-
-        // Step 6: Select the family types in the project
-        List<ElementId> finalSelectedTypeIds = finalSelection
-            .Select(entry =>
-            {
-                string uniqueKey = $"{entry["Family"]}:{entry["Type Name"]}";
-                return typeElementMap[uniqueKey].Id;
-            })
-            .ToList();
-
-        // Add the selected family types to the current selection
-        uidoc.SetSelectionIds(finalSelectedTypeIds);
+        // Set the selection to the selected types
+        uidoc.SetSelectionIds(selectedTypeIds);
 
         return Result.Succeeded;
     }
 
-    // Custom comparer for FamilySymbol to handle duplicates
-    private class FamilySymbolComparer : IEqualityComparer<FamilySymbol>
+    private string GetSystemFamilyName(Element typeElement)
     {
-        public bool Equals(FamilySymbol x, FamilySymbol y)
-        {
-            return x.Id.AsLong() == y.Id.AsLong();
-        }
-
-        public int GetHashCode(FamilySymbol obj)
-        {
-            return obj.Id.AsLong().GetHashCode();
-        }
+        Parameter familyParam = typeElement.get_Parameter(BuiltInParameter.SYMBOL_FAMILY_NAME_PARAM);
+        return (familyParam != null && !string.IsNullOrEmpty(familyParam.AsString()))
+            ? familyParam.AsString()
+            : null;
     }
 
-    // Helper method to check if an element is visible in a given view
     private bool IsElementVisibleInView(Element element, View view)
     {
         BoundingBoxXYZ bbox = element.get_BoundingBox(view);
-        return bbox != null;
+
+        if (bbox == null && element.IsHidden(view))
+        {
+            return false;
+        }
+
+        return bbox != null || !element.IsHidden(view);
     }
 }
