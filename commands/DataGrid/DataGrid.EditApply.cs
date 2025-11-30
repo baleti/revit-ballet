@@ -89,8 +89,7 @@ public partial class CustomGUIs
                     }
 
                     // Check if this is a workset entry (from SelectByWorksetsIn* commands)
-                    bool isWorksetEntry = entry.ContainsKey("Workset") && entry.ContainsKey("Type") &&
-                                         !entry.ContainsKey("ElementId") && !entry.ContainsKey("ElementIdObject");
+                    bool isWorksetEntry = entry.ContainsKey("WorksetId") && entry.ContainsKey("Workset");
 
                     if (isWorksetEntry)
                     {
@@ -1116,18 +1115,19 @@ public partial class CustomGUIs
         if (!doc.IsWorkshared)
             return false;
 
-        // Get the original workset name from the entry
-        if (!entry.TryGetValue("Workset", out var worksetNameObj) || worksetNameObj == null)
+        // Get the WorksetId from the entry (stable identifier)
+        if (!entry.TryGetValue("WorksetId", out var worksetIdObj) || worksetIdObj == null)
             return false;
 
-        string originalWorksetName = worksetNameObj.ToString();
+        if (!(worksetIdObj is WorksetId worksetId))
+            return false;
+
         string strValue = newValue?.ToString() ?? "";
         string lowerColumnName = columnName.ToLowerInvariant();
 
-        // Find the workset by its current name in the entry
-        var worksets = new FilteredWorksetCollector(doc).ToWorksets();
-        Workset targetWorkset = worksets.FirstOrDefault(w =>
-            string.Equals(w.Name, originalWorksetName, StringComparison.OrdinalIgnoreCase));
+        // Get the workset by ID (not by name, since name may have been edited in the grid)
+        WorksetTable worksetTable = doc.GetWorksetTable();
+        Workset targetWorkset = worksetTable.GetWorkset(worksetId);
 
         if (targetWorkset == null)
             return false;
@@ -1140,7 +1140,6 @@ public partial class CustomGUIs
                 // Rename the workset
                 try
                 {
-                    WorksetTable worksetTable = doc.GetWorksetTable();
                     WorksetTable.RenameWorkset(doc, targetWorkset.Id, strValue);
                     return true;
                 }
@@ -1155,7 +1154,6 @@ public partial class CustomGUIs
                                        strValue.Equals("True", StringComparison.OrdinalIgnoreCase);
                 try
                 {
-                    WorksetTable worksetTable = doc.GetWorksetTable();
                     Workset ws = worksetTable.GetWorkset(targetWorkset.Id);
 
                     if (shouldBeEditable && !ws.IsEditable)

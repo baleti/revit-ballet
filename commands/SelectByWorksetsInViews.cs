@@ -120,7 +120,8 @@ public class SelectByWorksetsInViews : IExternalCommand
                     { "Workset",  wsName },
                     { "Elements", pair.Value.Count },
                     { "Editable", editable },
-                    { "Opened", opened }
+                    { "Opened", opened },
+                    { "WorksetId", pair.Key }  // Store WorksetId for reliable lookup after edits
                 };
 
                 // Only add visibility column for single-view mode
@@ -153,6 +154,12 @@ public class SelectByWorksetsInViews : IExternalCommand
             List<Dictionary<string, object>> pickedRows =
                 CustomGUIs.DataGrid(rows, columns, false);
 
+            // Apply any pending edits to worksets (renames, visibility changes, etc.)
+            if (CustomGUIs.HasPendingEdits())
+            {
+                CustomGUIs.ApplyCellEditsToEntities();
+            }
+
             if (pickedRows == null || pickedRows.Count == 0)
                 return Result.Cancelled;   // user cancelled grid
 
@@ -163,13 +170,12 @@ public class SelectByWorksetsInViews : IExternalCommand
 
             foreach (var row in pickedRows)
             {
-                if (!row.TryGetValue("Workset", out var nameObj)) continue;
+                // Use WorksetId from row data instead of looking up by name
+                // This ensures that renamed worksets are still found correctly
+                if (!row.TryGetValue("WorksetId", out var wsIdObj)) continue;
+                if (!(wsIdObj is WorksetId wsId)) continue;
 
-                string wsName = nameObj as string;
-                if (string.IsNullOrEmpty(wsName)) continue;
-
-                if (nameToId.TryGetValue(wsName, out WorksetId wsId) &&
-                    worksetToElementIds.TryGetValue(wsId, out List<ElementId> ids))
+                if (worksetToElementIds.TryGetValue(wsId, out List<ElementId> ids))
                 {
                     foreach (ElementId id in ids)
                         finalSel.Add(id);

@@ -1331,4 +1331,8 @@ testing showed that removing localized attributes (Paths and CommandName) didn't
 if that's correct moving forward I will need to decide how to make changes to shortcuts while keeping them synchronized with production revit
 likely via an xml file and then running installer to update them
 or by running a script that updates xml file after making changes to shortcuts in production revit
-
+*** 30
+**** =22:28= testing of ui in revit likely can't be done from addin directly
+instead a separate server should be created outside of revit running on windows host
+it should perform all the actions as if it was the user
+possibly through windows UI automation or other api
