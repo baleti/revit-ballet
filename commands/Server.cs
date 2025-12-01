@@ -549,29 +549,63 @@ namespace RevitBallet.Commands
 
         private async Task AcceptRequestsLoop(CancellationToken cancellationToken)
         {
+            LogToRevit($"[SERVER] Accept loop started, listening on port {serverPort}");
+
             while (!cancellationToken.IsCancellationRequested && isRunning)
             {
                 try
                 {
-                    if (listener.Pending())
-                    {
-                        var client = await listener.AcceptTcpClientAsync();
-                        var clientEndpoint = client.Client.RemoteEndPoint.ToString();
+                    // CRITICAL FIX: Don't use Pending() - it can miss connections
+                    // Use AcceptTcpClientAsync() directly
+#if NETFRAMEWORK
+                    // .NET Framework doesn't have AcceptTcpClientAsync(CancellationToken) overload
+                    // Use Task.WhenAny pattern for cancellation
+                    var acceptTask = listener.AcceptTcpClientAsync();
+                    var completedTask = await Task.WhenAny(acceptTask, Task.Delay(-1, cancellationToken));
 
-                        // Handle request in background thread
-                        _ = Task.Run(async () => await HandleHttpsRequest(client, clientEndpoint, cancellationToken));
-                    }
-                    else
+                    if (completedTask != acceptTask)
                     {
-                        await Task.Delay(100, cancellationToken);
+                        // Cancellation was requested
+                        break;
                     }
+
+                    var client = await acceptTask;
+#else
+                    // .NET 8.0+ has the CancellationToken overload
+                    var client = await listener.AcceptTcpClientAsync(cancellationToken);
+#endif
+                    var clientEndpoint = client.Client.RemoteEndPoint.ToString();
+
+                    LogToRevit($"[SERVER] Accepted TCP connection from {clientEndpoint}");
+
+                    // Handle request in background thread
+                    _ = Task.Run(async () => await HandleHttpsRequest(client, clientEndpoint, cancellationToken));
                 }
                 catch (OperationCanceledException)
                 {
+                    LogToRevit($"[SERVER] Accept loop cancelled");
                     break;
                 }
-                catch { }
+                catch (System.Exception ex)
+                {
+                    if (!cancellationToken.IsCancellationRequested && isRunning)
+                    {
+                        LogToRevit($"[SERVER] Error in accept loop: {ex.Message}");
+                        LogToRevit($"[SERVER] Exception type: {ex.GetType().FullName}");
+
+                        // Don't log stack trace for common errors
+                        if (!(ex is ObjectDisposedException))
+                        {
+                            LogToRevit($"[SERVER] Stack trace: {ex.StackTrace}");
+                        }
+
+                        // Small delay before retrying to prevent tight error loops
+                        await Task.Delay(1000, cancellationToken);
+                    }
+                }
             }
+
+            LogToRevit($"[SERVER] Accept loop exited");
         }
 
         private async Task HandleHttpsRequest(TcpClient client, string clientEndpoint, CancellationToken cancellationToken)
