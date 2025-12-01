@@ -1342,3 +1342,15 @@ i may have tried it before already and ended up reverting to modal (not sure)
 ***** openssh server on windows should be a perfect solution to drive ui automation
 i knew it, i knew it will be useful
 sounds like a more univeral and more robust solution
+** December
+*** 01
+**** =01:39= discovered that multi-document (aka InSession) scope commands work in revit api
+was able to rename sheet numbers and create walls in documents opened in a single revit process without switching active document
+this is very satisfying as it translates directly a lot of techniques developed in autocad-ballet where -in-document and -in-session commands wer heavily used
+***** on a less happy note tls messages in named pipe relay on my development envrionment started failing especially when i was testing this multi-write commands for some reason
+#+begin_src sh
+curl --insecure -X POST https://127.0.0.1:23717/roslyn  -H "X-Auth-Token: $(cat revit-ballet/runtime/network/token)" -d 'Console.WriteLine("Hello from Revit!");' | jq
+curl: (35) TLS connect error: error:0A000126:SSL routines::unexpected eof while reading
+#+end_src
+unlikely that I will be able to resolve it, possibly it's going to resolve itself or stop being noticable after I restart windows, but more likely it will require me to switch wsl networking from nat to mirrored
+hopefully it won't cause any problems with it admins

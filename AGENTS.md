@@ -421,6 +421,56 @@ This codebase was partially ported from AutoCAD Ballet which used kebab-case. Al
 
 **Note**: The project name `revit-ballet` itself uses kebab-case as it's a product name/brand identity, not a code identifier.
 
+## Command Scopes (View, Document, Session)
+
+Revit Ballet supports multiple command scopes, similar to AutoCAD Ballet's architecture:
+
+1. **View Scope** - Commands operate on the current active view
+2. **Document Scope** - Commands operate on the current active document/project
+3. **Session Scope** - Commands operate across **all open documents** in the Revit process
+
+### Multi-Document (Session Scope) Operations
+
+**VERIFIED**: Revit API fully supports reading and writing across multiple open documents without switching the active document.
+
+**Key Findings:**
+- `UIApp.Application.Documents` provides access to all open documents in the session
+- `FilteredElementCollector(doc)` can query any document, not just the active one
+- `Transaction(doc, "...")` can modify any document, not just the active one
+- No need to switch active document to perform operations
+- Linked documents (`doc.IsLinked == true`) should be skipped for modification operations
+
+**Example - Session Scope Pattern:**
+```csharp
+var app = commandData.Application.Application;
+var activeDoc = commandData.Application.ActiveUIDocument.Document;
+
+foreach (Document doc in app.Documents)
+{
+    // Skip linked documents (read-only references)
+    if (doc.IsLinked) continue;
+
+    // Read from any document
+    var collector = new FilteredElementCollector(doc);
+    var elements = collector.WhereElementIsNotElementType().ToElements();
+
+    // Write to any document
+    using (var trans = new Transaction(doc, "Session Scope Operation"))
+    {
+        trans.Start();
+        // Modify elements in this document
+        trans.Commit();
+    }
+}
+```
+
+**Use Cases:**
+- Batch operations across all open projects
+- Cross-project analysis and reporting
+- Synchronizing settings across documents
+- Quality checks spanning multiple models
+- Collecting elements by category from all open documents
+
 ## Selection Mode Manager
 
 **CRITICAL**: All commands that work with element selection MUST use `SelectionModeManager` extension methods instead of direct Revit UI selection APIs.
