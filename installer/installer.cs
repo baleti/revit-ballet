@@ -435,33 +435,52 @@ namespace RevitBalletInstaller
             catch { }
 
             // Fallback: Check for Revit executable in common installation paths
-            if (detectedYears.Count == 0)
+            // Always perform filesystem check to catch installations on non-C drives
+            string[] programFilesPaths = new[]
             {
-                string[] programFilesPaths = new[]
-                {
-                    Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
-                    Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86)
-                };
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86)
+            };
 
-                foreach (string programFiles in programFilesPaths)
+            // Also check other common drives (D:, E:, etc.)
+            var drivesToCheck = new List<string>();
+            try
+            {
+                var allDrives = DriveInfo.GetDrives()
+                    .Where(d => d.DriveType == DriveType.Fixed && d.IsReady)
+                    .Select(d => d.Name.TrimEnd('\\'))
+                    .ToList();
+
+                foreach (var drive in allDrives)
                 {
-                    string autodeskPath = Path.Combine(programFiles, "Autodesk");
-                    if (Directory.Exists(autodeskPath))
+                    drivesToCheck.Add(Path.Combine(drive, "Program Files"));
+                    drivesToCheck.Add(Path.Combine(drive, "Program Files (x86)"));
+                }
+            }
+            catch
+            {
+                // If drive enumeration fails, fall back to standard paths
+                drivesToCheck.AddRange(programFilesPaths);
+            }
+
+            foreach (string programFiles in drivesToCheck.Distinct())
+            {
+                string autodeskPath = Path.Combine(programFiles, "Autodesk");
+                if (Directory.Exists(autodeskPath))
+                {
+                    string[] revitDirs = Directory.GetDirectories(autodeskPath, "Revit*", SearchOption.TopDirectoryOnly);
+                    foreach (string revitDir in revitDirs)
                     {
-                        string[] revitDirs = Directory.GetDirectories(autodeskPath, "Revit*", SearchOption.TopDirectoryOnly);
-                        foreach (string revitDir in revitDirs)
+                        string dirName = Path.GetFileName(revitDir);
+                        // Extract year from directory name (e.g., "Revit 2024" -> "2024")
+                        string[] parts = dirName.Split(' ');
+                        if (parts.Length >= 2 && int.TryParse(parts[1], out int yearNum) && yearNum >= 2011 && yearNum <= 2030)
                         {
-                            string dirName = Path.GetFileName(revitDir);
-                            // Extract year from directory name (e.g., "Revit 2024" -> "2024")
-                            string[] parts = dirName.Split(' ');
-                            if (parts.Length >= 2 && int.TryParse(parts[1], out int yearNum) && yearNum >= 2011 && yearNum <= 2030)
+                            string year = parts[1];
+                            // Verify Revit.exe exists
+                            if (File.Exists(Path.Combine(revitDir, "Revit.exe")))
                             {
-                                string year = parts[1];
-                                // Verify Revit.exe exists
-                                if (File.Exists(Path.Combine(revitDir, "Revit.exe")))
-                                {
-                                    detectedYears.Add(year);
-                                }
+                                detectedYears.Add(year);
                             }
                         }
                     }
