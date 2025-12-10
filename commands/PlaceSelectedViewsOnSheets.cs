@@ -61,19 +61,17 @@ namespace RevitAddin.Commands
                 var sheetRows = allSheets.Select(s => new Dictionary<string, object>
                 {
                     {"Number", s.SheetNumber},
-                    {"Name",   s.Name}
+                    {"Name",   s.Name},
+                    {"__OriginalObject", s}  // Store original sheet for retrieval
                 }).ToList();
                 var columns = new List<string> { "Number", "Name" };
 
-                var sheetRowDicts = CustomGUIs.ConvertToDataGridFormat(sheetRows, columns);
-                var selectedDicts = CustomGUIs.DataGrid(sheetRowDicts, columns, false);
-                var selectedRows = CustomGUIs.ExtractOriginalObjects<Dictionary<string, object>>(selectedDicts);
+                var selectedDicts = CustomGUIs.DataGrid(sheetRows, columns, false);
+                var selectedRows = CustomGUIs.ExtractOriginalObjects<DB.ViewSheet>(selectedDicts);
                 if (selectedRows == null || selectedRows.Count == 0)
                     return Result.Cancelled;
 
-                IList<DB.ViewSheet> chosenSheets = selectedRows
-                    .Select(r => allSheets.First(s => s.SheetNumber == r["Number"].ToString()))
-                    .ToList();
+                IList<DB.ViewSheet> chosenSheets = selectedRows;
 
                 // ────────────────────────────────────────────────────────────────
                 // 3. Sort views & sheets in natural order, pair 1‑to‑1          
