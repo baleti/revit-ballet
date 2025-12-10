@@ -234,6 +234,39 @@ public static class ElementDataHelper
 
         data["ScopeBoxes"] = string.Join(", ", containingScopeBoxes.OrderBy(s => s));
 
+        // Add centroid coordinates (converted to display units)
+        try
+        {
+            var (xCentroid, yCentroid, zCentroid) = GetElementCentroid(element, linkInstance);
+
+            // Convert from internal units (feet) to display units
+#if REVIT2021 || REVIT2022 || REVIT2023 || REVIT2024 || REVIT2025 || REVIT2026
+            Units projectUnits = elementDoc.GetUnits();
+            FormatOptions lengthOpts = projectUnits.GetFormatOptions(SpecTypeId.Length);
+            ForgeTypeId unitTypeId = lengthOpts.GetUnitTypeId();
+
+            data["X Centroid"] = xCentroid.HasValue ? UnitUtils.ConvertFromInternalUnits(xCentroid.Value, unitTypeId) : (double?)null;
+            data["Y Centroid"] = yCentroid.HasValue ? UnitUtils.ConvertFromInternalUnits(yCentroid.Value, unitTypeId) : (double?)null;
+            data["Z Centroid"] = zCentroid.HasValue ? UnitUtils.ConvertFromInternalUnits(zCentroid.Value, unitTypeId) : (double?)null;
+#else
+            // Revit 2017-2020: Use DisplayUnitType
+            Units projectUnits = elementDoc.GetUnits();
+            FormatOptions lengthOpts = projectUnits.GetFormatOptions(UnitType.UT_Length);
+            DisplayUnitType unitType = lengthOpts.DisplayUnits;
+
+            data["X Centroid"] = xCentroid.HasValue ? UnitUtils.ConvertFromInternalUnits(xCentroid.Value, unitType) : (double?)null;
+            data["Y Centroid"] = yCentroid.HasValue ? UnitUtils.ConvertFromInternalUnits(yCentroid.Value, unitType) : (double?)null;
+            data["Z Centroid"] = zCentroid.HasValue ? UnitUtils.ConvertFromInternalUnits(zCentroid.Value, unitType) : (double?)null;
+#endif
+        }
+        catch
+        {
+            // If we can't get centroid, set to null
+            data["X Centroid"] = null;
+            data["Y Centroid"] = null;
+            data["Z Centroid"] = null;
+        }
+
         // Include parameters if requested
         if (includeParameters)
         {
@@ -319,8 +352,124 @@ public static class ElementDataHelper
         if (bb1.Max.X < bb2.Min.X || bb1.Min.X > bb2.Max.X) return false;
         if (bb1.Max.Y < bb2.Min.Y || bb1.Min.Y > bb2.Max.Y) return false;
         if (bb1.Max.Z < bb2.Min.Z || bb1.Min.Z > bb2.Max.Z) return false;
-        
+
         return true;
+    }
+
+    /// <summary>
+    /// Get centroid coordinates for an element
+    /// Returns (x, y, z) or (null, null, null) if not applicable
+    /// </summary>
+    private static (double?, double?, double?) GetElementCentroid(Element element, RevitLinkInstance linkInstance)
+    {
+        // Special case: Viewports on sheets
+        if (element is Viewport viewport)
+        {
+            XYZ center = viewport.GetBoxCenter();
+            if (linkInstance != null)
+            {
+                Transform transform = linkInstance.GetTotalTransform();
+                center = transform.OfPoint(center);
+            }
+            return (center.X, center.Y, null); // Viewports are 2D on sheets
+        }
+
+        // Get location point (for point-based elements like families)
+        LocationPoint locationPoint = element.Location as LocationPoint;
+        if (locationPoint != null)
+        {
+            XYZ point = locationPoint.Point;
+            if (linkInstance != null)
+            {
+                Transform transform = linkInstance.GetTotalTransform();
+                point = transform.OfPoint(point);
+            }
+
+            // Check if element is constrained vertically (like walls constrained by levels)
+            // Walls and other level-constrained elements should not allow Z editing
+            bool isLevelConstrained = IsLevelConstrained(element);
+
+            return (point.X, point.Y, isLevelConstrained ? (double?)null : point.Z);
+        }
+
+        // Get location curve (for curve-based elements like walls, beams)
+        LocationCurve locationCurve = element.Location as LocationCurve;
+        if (locationCurve != null)
+        {
+            Curve curve = locationCurve.Curve;
+            XYZ midpoint = (curve.GetEndPoint(0) + curve.GetEndPoint(1)) / 2.0;
+            if (linkInstance != null)
+            {
+                Transform transform = linkInstance.GetTotalTransform();
+                midpoint = transform.OfPoint(midpoint);
+            }
+
+            // Curve-based elements like walls are typically level-constrained
+            bool isLevelConstrained = IsLevelConstrained(element);
+
+            return (midpoint.X, midpoint.Y, isLevelConstrained ? (double?)null : midpoint.Z);
+        }
+
+        // For elements without location, use bounding box centroid
+        BoundingBoxXYZ bb = element.get_BoundingBox(null);
+        if (bb == null)
+        {
+            var options = new Options();
+            var geom = element.get_Geometry(options);
+            if (geom != null)
+            {
+                bb = geom.GetBoundingBox();
+            }
+        }
+
+        if (bb != null)
+        {
+            XYZ centroid = (bb.Min + bb.Max) / 2.0;
+            if (linkInstance != null)
+            {
+                Transform transform = linkInstance.GetTotalTransform();
+                centroid = transform.OfPoint(centroid);
+            }
+
+            // Bounding box elements - allow all 3D movement
+            return (centroid.X, centroid.Y, centroid.Z);
+        }
+
+        // No location or bounding box available
+        return (null, null, null);
+    }
+
+    /// <summary>
+    /// Check if element is constrained by levels (like walls)
+    /// </summary>
+    private static bool IsLevelConstrained(Element element)
+    {
+        // Walls are always level-constrained
+        if (element is Wall)
+            return true;
+
+        // Check for base/top constraint parameters
+        Parameter baseConstraint = element.get_Parameter(BuiltInParameter.WALL_BASE_CONSTRAINT);
+        Parameter topConstraint = element.get_Parameter(BuiltInParameter.WALL_HEIGHT_TYPE);
+
+        if (baseConstraint != null && baseConstraint.HasValue)
+            return true;
+        if (topConstraint != null && topConstraint.HasValue)
+            return true;
+
+        // Check for level parameter
+        Parameter levelParam = element.get_Parameter(BuiltInParameter.FAMILY_LEVEL_PARAM);
+        if (levelParam != null && levelParam.HasValue)
+        {
+            // Face-based or hosted families may be level-constrained
+            if (element is FamilyInstance famInst)
+            {
+                if (famInst.Host != null)
+                    return true; // Hosted elements on faces/walls
+            }
+        }
+
+        return false;
     }
 }
 
@@ -365,6 +514,12 @@ public abstract class FilterElementsBase : IExternalCommand
             if (hasLinkName) orderedProps.Add("LinkName");
             if (hasGroup) orderedProps.Add("Group");
             if (hasOwnerView) orderedProps.Add("OwnerView");
+
+            // Add centroid columns
+            orderedProps.Add("X Centroid");
+            orderedProps.Add("Y Centroid");
+            orderedProps.Add("Z Centroid");
+
             orderedProps.Add("Id");
 
             var remainingProps = propertyNames.Except(orderedProps).OrderBy(p => p);
@@ -626,6 +781,12 @@ public class FilterSelectedInViews : IExternalCommand
             if (hasLinkName) orderedProps.Add("LinkName");
             if (hasGroup) orderedProps.Add("Group");
             if (hasOwnerView) orderedProps.Add("OwnerView");
+
+            // Add centroid columns
+            orderedProps.Add("X Centroid");
+            orderedProps.Add("Y Centroid");
+            orderedProps.Add("Z Centroid");
+
             orderedProps.Add("Id");
 
             var remainingProps = propertyNames.Except(orderedProps).OrderBy(p => p);

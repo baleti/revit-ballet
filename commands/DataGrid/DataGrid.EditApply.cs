@@ -618,6 +618,19 @@ public partial class CustomGUIs
             case "subcategory":
                 return SetSubcategory(elem, strValue);
 
+            // Centroid coordinates
+            case "x centroid":
+            case "xcentroid":
+                return SetCentroidX(elem, strValue);
+
+            case "y centroid":
+            case "ycentroid":
+                return SetCentroidY(elem, strValue);
+
+            case "z centroid":
+            case "zcentroid":
+                return SetCentroidZ(elem, strValue);
+
             // Room/Space properties (handled via parameters)
             case "number":
                 return SetParameterValue(elem, "Number", strValue);
@@ -1105,6 +1118,198 @@ public partial class CustomGUIs
         {
             return false;
         }
+    }
+
+    /// <summary>
+    /// Set element's X centroid coordinate
+    /// </summary>
+    private static bool SetCentroidX(Element elem, string value)
+    {
+        if (!double.TryParse(value, out double newX))
+            return false;
+
+        // Convert from display units to internal units (feet)
+        double newXInternal = ConvertToInternalUnits(elem.Document, newX);
+        return MoveCentroid(elem, newXInternal, null, null);
+    }
+
+    /// <summary>
+    /// Set element's Y centroid coordinate
+    /// </summary>
+    private static bool SetCentroidY(Element elem, string value)
+    {
+        if (!double.TryParse(value, out double newY))
+            return false;
+
+        // Convert from display units to internal units (feet)
+        double newYInternal = ConvertToInternalUnits(elem.Document, newY);
+        return MoveCentroid(elem, null, newYInternal, null);
+    }
+
+    /// <summary>
+    /// Set element's Z centroid coordinate
+    /// </summary>
+    private static bool SetCentroidZ(Element elem, string value)
+    {
+        if (!double.TryParse(value, out double newZ))
+            return false;
+
+        // Convert from display units to internal units (feet)
+        double newZInternal = ConvertToInternalUnits(elem.Document, newZ);
+        return MoveCentroid(elem, null, null, newZInternal);
+    }
+
+    /// <summary>
+    /// Convert from display units to internal units (feet)
+    /// </summary>
+    private static double ConvertToInternalUnits(Document doc, double displayValue)
+    {
+#if REVIT2021 || REVIT2022 || REVIT2023 || REVIT2024 || REVIT2025 || REVIT2026
+        Units projectUnits = doc.GetUnits();
+        FormatOptions lengthOpts = projectUnits.GetFormatOptions(SpecTypeId.Length);
+        ForgeTypeId unitTypeId = lengthOpts.GetUnitTypeId();
+        return UnitUtils.ConvertToInternalUnits(displayValue, unitTypeId);
+#else
+        // Revit 2017-2020: Use DisplayUnitType
+        Units projectUnits = doc.GetUnits();
+        FormatOptions lengthOpts = projectUnits.GetFormatOptions(UnitType.UT_Length);
+        DisplayUnitType unitType = lengthOpts.DisplayUnits;
+        return UnitUtils.ConvertToInternalUnits(displayValue, unitType);
+#endif
+    }
+
+    /// <summary>
+    /// Move element by updating its centroid coordinates
+    /// </summary>
+    private static bool MoveCentroid(Element elem, double? newX, double? newY, double? newZ)
+    {
+        try
+        {
+            // Special case: Viewports on sheets
+            if (elem is Viewport viewport)
+            {
+                XYZ currentCenter = viewport.GetBoxCenter();
+                double targetX = newX ?? currentCenter.X;
+                double targetY = newY ?? currentCenter.Y;
+
+                // Viewports are 2D - no Z coordinate
+                if (newZ.HasValue)
+                    return false;
+
+                XYZ newCenter = new XYZ(targetX, targetY, currentCenter.Z);
+                viewport.SetBoxCenter(newCenter);
+                return true;
+            }
+
+            // Get location point (for point-based elements)
+            LocationPoint locationPoint = elem.Location as LocationPoint;
+            if (locationPoint != null)
+            {
+                XYZ currentPoint = locationPoint.Point;
+                double targetX = newX ?? currentPoint.X;
+                double targetY = newY ?? currentPoint.Y;
+                double targetZ = newZ ?? currentPoint.Z;
+
+                // Check if Z movement is allowed (not level-constrained)
+                if (newZ.HasValue && IsLevelConstrainedForEdit(elem))
+                    return false; // Cannot change Z for level-constrained elements
+
+                XYZ newPoint = new XYZ(targetX, targetY, targetZ);
+                XYZ translation = newPoint - currentPoint;
+
+                // Move the element
+                ElementTransformUtils.MoveElement(elem.Document, elem.Id, translation);
+                return true;
+            }
+
+            // Get location curve (for curve-based elements)
+            LocationCurve locationCurve = elem.Location as LocationCurve;
+            if (locationCurve != null)
+            {
+                Curve curve = locationCurve.Curve;
+                XYZ currentMidpoint = (curve.GetEndPoint(0) + curve.GetEndPoint(1)) / 2.0;
+
+                double targetX = newX ?? currentMidpoint.X;
+                double targetY = newY ?? currentMidpoint.Y;
+                double targetZ = newZ ?? currentMidpoint.Z;
+
+                // Check if Z movement is allowed
+                if (newZ.HasValue && IsLevelConstrainedForEdit(elem))
+                    return false;
+
+                XYZ newMidpoint = new XYZ(targetX, targetY, targetZ);
+                XYZ translation = newMidpoint - currentMidpoint;
+
+                // Move the element
+                ElementTransformUtils.MoveElement(elem.Document, elem.Id, translation);
+                return true;
+            }
+
+            // For other elements, try moving via bounding box
+            BoundingBoxXYZ bb = elem.get_BoundingBox(null);
+            if (bb == null)
+            {
+                var options = new Options();
+                var geom = elem.get_Geometry(options);
+                if (geom != null)
+                {
+                    bb = geom.GetBoundingBox();
+                }
+            }
+
+            if (bb != null)
+            {
+                XYZ currentCentroid = (bb.Min + bb.Max) / 2.0;
+                double targetX = newX ?? currentCentroid.X;
+                double targetY = newY ?? currentCentroid.Y;
+                double targetZ = newZ ?? currentCentroid.Z;
+
+                XYZ newCentroid = new XYZ(targetX, targetY, targetZ);
+                XYZ translation = newCentroid - currentCentroid;
+
+                // Move the element
+                ElementTransformUtils.MoveElement(elem.Document, elem.Id, translation);
+                return true;
+            }
+
+            return false;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Check if element is level-constrained (for editing purposes)
+    /// </summary>
+    private static bool IsLevelConstrainedForEdit(Element elem)
+    {
+        // Walls are always level-constrained
+        if (elem is Wall)
+            return true;
+
+        // Check for base/top constraint parameters
+        Parameter baseConstraint = elem.get_Parameter(BuiltInParameter.WALL_BASE_CONSTRAINT);
+        Parameter topConstraint = elem.get_Parameter(BuiltInParameter.WALL_HEIGHT_TYPE);
+
+        if (baseConstraint != null && baseConstraint.HasValue)
+            return true;
+        if (topConstraint != null && topConstraint.HasValue)
+            return true;
+
+        // Check for level parameter with host
+        Parameter levelParam = elem.get_Parameter(BuiltInParameter.FAMILY_LEVEL_PARAM);
+        if (levelParam != null && levelParam.HasValue)
+        {
+            if (elem is FamilyInstance famInst)
+            {
+                if (famInst.Host != null)
+                    return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>
