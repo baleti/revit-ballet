@@ -349,35 +349,23 @@ var levels = collector.OfClass(typeof(Level)).Cast<Level>();
   }
   ```
 
-### Parameter Setting and Unit Conversion
+### Unit Conversion (Coordinates and Parameters)
 
-**CRITICAL**: When setting numeric parameters (Double storage type), always use `SetValueString()` instead of `Set()` for user-facing values:
+**CRITICAL**: Revit stores ALL values internally in **imperial units** (feet, sq ft, cu ft) regardless of project settings.
+
+**Parameters:** Use `SetValueString()` for auto-conversion; `Set()` assumes feet.
+**Coordinates:** Use `UnitUtils.ConvertFromInternalUnits()` for display, `UnitUtils.ConvertToInternalUnits()` for input.
 
 ```csharp
-// CORRECT: Uses SetValueString - handles unit conversion automatically
-param.SetValueString("100");  // In metric project: 100mm, in imperial: 100 feet
+// Get project units
+Units units = Doc.GetUnits();
+ForgeTypeId unitTypeId = units.GetFormatOptions(SpecTypeId.Length).GetUnitTypeId();
 
-// WRONG: Uses Set directly - assumes internal units (feet)
-param.Set(100);  // Always 100 feet, regardless of project units
-```
+// Display: internal → user units
+double display = UnitUtils.ConvertFromInternalUnits(internalFeet, unitTypeId);
 
-**Why this matters:**
-- Revit stores all numeric values internally in **imperial units** (feet, square feet, cubic feet)
-- `SetValueString()` converts from display units to internal units based on project settings
-- `Set()` assumes the value is already in internal units, causing incorrect conversions in metric projects
-- Example: Setting "100" for a length in a metric project should be 100mm, not 30480mm (100 feet)
-
-**Implementation pattern:**
-```csharp
-try
-{
-    param.SetValueString(userInput);  // Prefer this for user-facing values
-}
-catch
-{
-    if (double.TryParse(userInput, out double val))
-        param.Set(val);  // Fallback for parameters that don't support SetValueString
-}
+// Input: user units → internal
+double internal = UnitUtils.ConvertToInternalUnits(userInput, unitTypeId);
 ```
 
 ## Integration with Claude Code
