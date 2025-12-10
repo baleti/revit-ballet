@@ -159,7 +159,8 @@ public partial class CustomGUIs
         List<int> initialSelectionIndices = null,
         System.Func<List<Dictionary<string, object>>, bool> onDeleteEntries = null,
         bool allowCreateFromSearch = false,
-        string commandName = null)
+        string commandName = null,
+        bool returnAllEntries = false)
     {
         if (entries == null || propertyNames == null || propertyNames.Count == 0)
             return new List<Dictionary<string, object>>();
@@ -867,6 +868,12 @@ public partial class CustomGUIs
         }
         searchBox.Select();
         form.ShowDialog();
+
+        // Return all entries if returnAllEntries is true
+        if (returnAllEntries)
+        {
+            return _cachedFilteredData;
+        }
 
         // Return modified entries if edits were made, otherwise return selected entries
         if (_modifiedEntries.Count > 0)
