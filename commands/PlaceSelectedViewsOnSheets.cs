@@ -1,5 +1,5 @@
-// PlaceSelectedViewsOnSheets.cs – Revit 2024, C# 7.3
-// Author: ChatGPT (o3)
+// PlaceSelectedViewsOnSheets.cs – Revit 2024, C# 7.3
+// Refactored to use DataGrid with editable Sheets and Views columns
 // Natural‑sort enabled (e.g. "1", "1A", "10" → 1, 1A, 10)
 
 using System;
@@ -7,17 +7,15 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.Attributes;
 using Autodesk.Revit.UI;
-using Autodesk.Revit.UI.Selection;
 using DB = Autodesk.Revit.DB;
-using WinForms = System.Windows.Forms;
 
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace RevitAddin.Commands
 {
     /// <summary>
-    /// Prompts the user to map the currently selected *views* (not sheets) to chosen sheets
-    /// and places each view at the centre of the title‑block on its target sheet, without
-    /// opening those sheets in the UI.
+    /// Prompts the user to map views to sheets using an editable DataGrid with two columns.
+    /// Validates that mappings are 1:1 (except for legends) and that all names exist.
+    /// Places each view at the centre of the title‑block on its target sheet.
     /// </summary>
     [Transaction(TransactionMode.Manual)]
     [Regeneration(RegenerationOption.Manual)]
@@ -32,76 +30,229 @@ namespace RevitAddin.Commands
             try
             {
                 // ────────────────────────────────────────────────────────────────
-                // 1. Collect *non‑sheet* views currently selected               
+                // 1. Collect views and sheets from current selection
                 // ────────────────────────────────────────────────────────────────
-                IList<DB.View> selViews = uidoc.GetSelectionIds()
-                    .Select(id => doc.GetElement(id) as DB.View)
-                    .Where(v => v != null &&
-                                 !(v is DB.ViewSheet) &&
-                                 !v.IsTemplate &&
-                                 v.ViewType != DB.ViewType.Schedule &&
-                                 v.ViewType != DB.ViewType.Legend)
-                    .ToList();
-                if (selViews.Count == 0)
+                var selViews = new List<DB.View>();
+                var selSheets = new List<DB.ViewSheet>();
+
+                foreach (var id in uidoc.GetSelectionIds())
+                {
+                    var elem = doc.GetElement(id);
+
+                    // Collect views (non-sheet, non-template, non-schedule)
+                    if (elem is DB.View view &&
+                        !(view is DB.ViewSheet) &&
+                        !view.IsTemplate &&
+                        view.ViewType != DB.ViewType.Schedule)
+                    {
+                        selViews.Add(view);
+                    }
+                    // Collect sheets
+                    else if (elem is DB.ViewSheet sheet)
+                    {
+                        selSheets.Add(sheet);
+                    }
+                    // Collect views from viewports
+                    else if (elem is DB.Viewport viewport)
+                    {
+                        var vpView = doc.GetElement(viewport.ViewId) as DB.View;
+                        if (vpView != null &&
+                            !vpView.IsTemplate &&
+                            vpView.ViewType != DB.ViewType.Schedule)
+                        {
+                            selViews.Add(vpView);
+                        }
+                    }
+                }
+
+                // Require at least one view or sheet selected
+                if (selViews.Count == 0 && selSheets.Count == 0)
                 {
                     TaskDialog.Show("Place Views on Sheets",
-                        "Please select one or more *non‑sheet* views in the Project Browser before running this command.");
+                        "Please select views and/or sheets in the Project Browser.\n\n" +
+                        "The dialog will let you map the selected views to the selected sheets.");
                     return Result.Cancelled;
                 }
 
                 // ────────────────────────────────────────────────────────────────
-                // 2. Pick sheets via CustomGUIs.DataGrid                         
+                // 2. Get all sheets and views for validation
                 // ────────────────────────────────────────────────────────────────
-                IList<DB.ViewSheet> allSheets = new DB.FilteredElementCollector(doc)
-                                                   .OfClass(typeof(DB.ViewSheet))
-                                                   .Cast<DB.ViewSheet>()
-                                                   .OrderBy(s => s.SheetNumber, NaturalSortComparer.Instance)
-                                                   .ToList();
+                var allSheets = new DB.FilteredElementCollector(doc)
+                    .OfClass(typeof(DB.ViewSheet))
+                    .Cast<DB.ViewSheet>()
+                    .OrderBy(s => s.SheetNumber, NaturalSortComparer.Instance)
+                    .ToList();
 
-                var sheetRows = allSheets.Select(s => new Dictionary<string, object>
-                {
-                    {"Number", s.SheetNumber},
-                    {"Name",   s.Name},
-                    {"__OriginalObject", s}  // Store original sheet for retrieval
-                }).ToList();
-                var columns = new List<string> { "Number", "Name" };
-
-                var selectedDicts = CustomGUIs.DataGrid(sheetRows, columns, false);
-                var selectedRows = CustomGUIs.ExtractOriginalObjects<DB.ViewSheet>(selectedDicts);
-                if (selectedRows == null || selectedRows.Count == 0)
-                    return Result.Cancelled;
-
-                IList<DB.ViewSheet> chosenSheets = selectedRows;
+                var allViews = new DB.FilteredElementCollector(doc)
+                    .OfClass(typeof(DB.View))
+                    .Cast<DB.View>()
+                    .Where(v => !(v is DB.ViewSheet) && !v.IsTemplate && v.ViewType != DB.ViewType.Schedule)
+                    .OrderBy(v => v.Name, NaturalSortComparer.Instance)
+                    .ToList();
 
                 // ────────────────────────────────────────────────────────────────
-                // 3. Sort views & sheets in natural order, pair 1‑to‑1          
+                // 3. Create mapping grid with editable Sheets and Views columns
                 // ────────────────────────────────────────────────────────────────
                 var sortedViews  = selViews.OrderBy(v => v.Name, NaturalSortComparer.Instance).ToList();
-                var sortedSheets = chosenSheets.OrderBy(s => s.SheetNumber, NaturalSortComparer.Instance).ToList();
+                var sortedSheets = selSheets.OrderBy(s => s.SheetNumber, NaturalSortComparer.Instance).ToList();
 
-                using (var mappingForm = new MappingForm(sortedViews, sortedSheets))
+                // Validation loop
+                List<Dictionary<string, object>> mappingRows = null;
+                string validationError = null;
+
+                do
                 {
-                    if (mappingForm.ShowDialog() != WinForms.DialogResult.OK)
+                    // Populate or repopulate the grid
+                    if (mappingRows == null)
+                    {
+                        // First time: create initial mappings
+                        mappingRows = new List<Dictionary<string, object>>();
+                        int count = Math.Max(sortedViews.Count, sortedSheets.Count);
+
+                        for (int i = 0; i < count; i++)
+                        {
+                            mappingRows.Add(new Dictionary<string, object>
+                            {
+                                {"Sheets", i < sortedSheets.Count ? sortedSheets[i].SheetNumber + " - " + sortedSheets[i].Name : ""},
+                                {"Views",  i < sortedViews.Count ? sortedViews[i].Name : ""}
+                            });
+                        }
+                    }
+
+                    // Show validation error if exists
+                    if (!string.IsNullOrEmpty(validationError))
+                    {
+                        TaskDialog.Show("Validation Error", validationError);
+                        validationError = null;
+                    }
+
+                    // Show DataGrid - returnAllEntries=true ensures we get all rows regardless of selection
+                    var columns = new List<string> { "Sheets", "Views" };
+                    var result = CustomGUIs.DataGrid(mappingRows, columns, spanAllScreens: false,
+                        initialSelectionIndices: null, onDeleteEntries: null,
+                        allowCreateFromSearch: false, commandName: null, returnAllEntries: true);
+
+                    if (result == null || result.Count == 0)
                         return Result.Cancelled;
 
-                    var map = mappingForm.Mappings;
-                    if (map.Count == 0)
+                    // Update mappingRows with user edits (DataGrid returns all entries)
+                    mappingRows = result;
+
+                    // ────────────────────────────────────────────────────────────
+                    // 4. Validate mappings
+                    // ────────────────────────────────────────────────────────────
+                    var mappings = new List<(DB.View view, DB.ViewSheet sheet)>();
+                    var sheetCounts = new Dictionary<string, int>();
+                    var viewCounts = new Dictionary<string, int>();
+                    var missingSheets = new List<string>();
+                    var missingViews = new List<string>();
+                    var legends = new HashSet<string>();
+
+                    foreach (var row in mappingRows)
+                    {
+                        string sheetText = row.ContainsKey("Sheets") && row["Sheets"] != null ? row["Sheets"].ToString().Trim() : "";
+                        string viewText = row.ContainsKey("Views") && row["Views"] != null ? row["Views"].ToString().Trim() : "";
+
+                        // Skip rows that don't have both values (user deleted one or both)
+                        if (string.IsNullOrEmpty(sheetText) || string.IsNullOrEmpty(viewText))
+                            continue;
+
+                        // Count occurrences for duplicate detection
+                        if (!sheetCounts.ContainsKey(sheetText))
+                            sheetCounts[sheetText] = 0;
+                        sheetCounts[sheetText]++;
+
+                        if (!viewCounts.ContainsKey(viewText))
+                            viewCounts[viewText] = 0;
+                        viewCounts[viewText]++;
+                    }
+
+                    // Build actual mappings and check for existence
+                    foreach (var row in mappingRows)
+                    {
+                        string sheetText = row.ContainsKey("Sheets") && row["Sheets"] != null ? row["Sheets"].ToString().Trim() : "";
+                        string viewText = row.ContainsKey("Views") && row["Views"] != null ? row["Views"].ToString().Trim() : "";
+
+                        // Skip rows that don't have both sheet and view (user deleted one or both)
+                        if (string.IsNullOrEmpty(sheetText) || string.IsNullOrEmpty(viewText))
+                            continue;
+
+                        // Find sheet (match by number or number+name)
+                        DB.ViewSheet sheet = allSheets.FirstOrDefault(s =>
+                            sheetText.Equals(s.SheetNumber, StringComparison.OrdinalIgnoreCase) ||
+                            sheetText.Equals(s.SheetNumber + " - " + s.Name, StringComparison.OrdinalIgnoreCase) ||
+                            sheetText.StartsWith(s.SheetNumber + " - ", StringComparison.OrdinalIgnoreCase));
+
+                        // Find view
+                        DB.View view = allViews.FirstOrDefault(v =>
+                            v.Name.Equals(viewText, StringComparison.OrdinalIgnoreCase));
+
+                        // Track missing elements
+                        if (sheet == null && !missingSheets.Contains(sheetText))
+                            missingSheets.Add(sheetText);
+
+                        if (view == null && !missingViews.Contains(viewText))
+                            missingViews.Add(viewText);
+
+                        // Track legends (can be placed on multiple sheets)
+                        if (view != null && view.ViewType == DB.ViewType.Legend)
+                            legends.Add(viewText);
+
+                        if (view != null && sheet != null)
+                            mappings.Add((view, sheet));
+                    }
+
+                    // Check for validation errors
+                    if (!string.IsNullOrEmpty(validationError))
+                        continue;
+
+                    if (missingSheets.Count > 0 || missingViews.Count > 0)
+                    {
+                        var errorMsg = "The following items do not exist:\n\n";
+                        if (missingSheets.Count > 0)
+                            errorMsg += "Sheets:\n  " + string.Join("\n  ", missingSheets) + "\n\n";
+                        if (missingViews.Count > 0)
+                            errorMsg += "Views:\n  " + string.Join("\n  ", missingViews) + "\n";
+                        validationError = errorMsg;
+                        continue;
+                    }
+
+                    // Check for duplicate mappings (sheets and non-legend views must be 1:1)
+                    var duplicateSheets = sheetCounts.Where(kvp => kvp.Value > 1).Select(kvp => kvp.Key).ToList();
+                    var duplicateViews = viewCounts.Where(kvp => kvp.Value > 1 && !legends.Contains(kvp.Key)).Select(kvp => kvp.Key).ToList();
+
+                    if (duplicateSheets.Count > 0 || duplicateViews.Count > 0)
+                    {
+                        var errorMsg = "The following items are mapped multiple times (only legends can be placed on multiple sheets):\n\n";
+                        if (duplicateSheets.Count > 0)
+                            errorMsg += "Sheets:\n  " + string.Join("\n  ", duplicateSheets) + "\n\n";
+                        if (duplicateViews.Count > 0)
+                            errorMsg += "Views:\n  " + string.Join("\n  ", duplicateViews) + "\n";
+                        validationError = errorMsg;
+                        continue;
+                    }
+
+                    // Validation passed - if no mappings, just return (user deleted everything)
+                    if (mappings.Count == 0)
                         return Result.Cancelled;
 
-                    // Remember current active view so we can restore it afterwards.
+                    // ────────────────────────────────────────────────────────────
+                    // 5. Place the views silently (no sheet activation)
+                    // ────────────────────────────────────────────────────────────
                     DB.View originalActive = uidoc.ActiveView;
 
-                    // ────────────────────────────────────────────────────────────
-                    // 4. Place the views silently (no sheet activation)          
-                    // ────────────────────────────────────────────────────────────
-                    using (var tx = new DB.Transaction(doc, "Place Selected Views on Sheets"))
+                    using (var tx = new DB.Transaction(doc, "Place Views on Sheets"))
                     {
                         tx.Start();
 
-                        foreach (var (view, sheet) in map)
+                        foreach (var (view, sheet) in mappings)
                         {
-                            if (view == null || sheet == null) continue;
-                            if (IsViewPlaced(doc, view))       continue;
+                            if (view == null || sheet == null)
+                                continue;
+
+                            // Legends can be placed multiple times, other views cannot
+                            if (view.ViewType != DB.ViewType.Legend && IsViewPlaced(doc, view))
+                                continue;
 
                             DB.XYZ pt = GetTitleBlockCenter(doc, sheet) ?? SheetCentre(sheet);
                             DB.Viewport.Create(doc, sheet.Id, view.Id, pt);
@@ -113,7 +264,10 @@ namespace RevitAddin.Commands
                     // Restore the user's original view (prevents UI from jumping).
                     if (originalActive != null && uidoc.ActiveView.Id != originalActive.Id)
                         uidoc.ActiveView = originalActive;
-                }
+
+                    return Result.Succeeded;
+
+                } while (!string.IsNullOrEmpty(validationError));
 
                 return Result.Succeeded;
             }
@@ -161,8 +315,8 @@ namespace RevitAddin.Commands
     }
 
     // ──────────────────────────────────────────────────────────────────────
-    // Natural‑sort comparer – splits digit/non‑digit runs and compares      
-    // numerically where possible                                            
+    // Natural‑sort comparer – splits digit/non‑digit runs and compares
+    // numerically where possible
     // ──────────────────────────────────────────────────────────────────────
     internal class NaturalSortComparer : IComparer<string>
     {
@@ -203,140 +357,5 @@ namespace RevitAddin.Commands
             }
             return a.Length - b.Length;
         }
-    }
-
-    // ──────────────────────────────────────────────────────────────────────
-    // Mapping dialog – lets user tweak view→sheet pairs; supports Enter/Esc
-    // and auto‑sized height to fit grid rows (unless > 90 % screen height)
-    // ──────────────────────────────────────────────────────────────────────
-    internal class MappingForm : WinForms.Form
-    {
-        private readonly WinForms.DataGridView _grid = new WinForms.DataGridView
-        {
-            Dock = WinForms.DockStyle.Fill,
-            AutoGenerateColumns = false,
-            AllowUserToAddRows = false,
-            AllowUserToDeleteRows = false,
-            RowHeadersVisible = false,
-            AutoSizeRowsMode = WinForms.DataGridViewAutoSizeRowsMode.AllCells
-        };
-
-        private readonly WinForms.Button _ok     = new WinForms.Button { Text = "OK",     Dock = WinForms.DockStyle.Right, DialogResult = WinForms.DialogResult.OK };
-        private readonly WinForms.Button _cancel = new WinForms.Button { Text = "Cancel", Dock = WinForms.DockStyle.Right, DialogResult = WinForms.DialogResult.Cancel };
-
-        private readonly IList<DB.View> _views;
-        private readonly IList<DB.ViewSheet> _sheets;
-        public IList<(DB.View View, DB.ViewSheet Sheet)> Mappings { get; } = new List<(DB.View, DB.ViewSheet)>();
-
-        public MappingForm(IList<DB.View> views, IList<DB.ViewSheet> sheets)
-        {
-            KeyPreview = true; // capture Enter/Esc before controls
-            _views  = views;
-            _sheets = sheets;
-
-            Text  = "Map Views → Sheets";
-            Width = 600;
-
-            BuildGrid();
-            AutoSizeAndLayout();
-        }
-
-        private void BuildGrid()
-        {
-            _grid.Columns.Add(new WinForms.DataGridViewTextBoxColumn
-            {
-                HeaderText   = "View",
-                ReadOnly     = true,
-                AutoSizeMode = WinForms.DataGridViewAutoSizeColumnMode.Fill
-            });
-
-            var sheetColumn = new WinForms.DataGridViewComboBoxColumn
-            {
-                HeaderText   = "Sheet",
-                AutoSizeMode = WinForms.DataGridViewAutoSizeColumnMode.Fill,
-                FlatStyle    = WinForms.FlatStyle.Flat,
-                DropDownWidth = 250
-            };
-            sheetColumn.Items.AddRange(_sheets.Select(SheetDisplay).Cast<object>().ToArray());
-            _grid.Columns.Add(sheetColumn);
-
-            int pairCount = Math.Min(_views.Count, _sheets.Count);
-            for (int i = 0; i < pairCount; ++i)
-                _grid.Rows.Add(_views[i].Name, SheetDisplay(_sheets[i]));
-            for (int i = pairCount; i < _views.Count; ++i)
-                _grid.Rows.Add(_views[i].Name, null);
-        }
-
-        private void AutoSizeAndLayout()
-        {
-            var buttons = new WinForms.Panel { Dock = WinForms.DockStyle.Bottom, Height = 40 };
-            buttons.Controls.AddRange(new WinForms.Control[] { _cancel, _ok });
-            Controls.AddRange(new WinForms.Control[] { _grid, buttons });
-
-            int desiredGridHeight = _grid.ColumnHeadersHeight + _grid.RowTemplate.Height * _grid.Rows.Count + 2;
-            int desiredFormHeight = desiredGridHeight + buttons.Height + 50; // padding
-            int screenHeight      = WinForms.Screen.PrimaryScreen.WorkingArea.Height;
-            Height = desiredFormHeight < screenHeight ? desiredFormHeight : (int)(screenHeight * 0.9);
-        }
-
-        protected override bool ProcessCmdKey(ref WinForms.Message msg, WinForms.Keys keyData)
-        {
-            if (keyData == WinForms.Keys.Enter)
-            {
-                CommitAndClose(WinForms.DialogResult.OK);
-                return true;
-            }
-            if (keyData == WinForms.Keys.Escape)
-            {
-                CommitAndClose(WinForms.DialogResult.Cancel);
-                return true;
-            }
-            return base.ProcessCmdKey(ref msg, keyData);
-        }
-
-        private void CommitAndClose(WinForms.DialogResult result)
-        {
-            if (result == WinForms.DialogResult.OK)
-                CollectMappings();
-
-            DialogResult = result;
-            Close();
-        }
-
-        private void CollectMappings()
-        {
-            Mappings.Clear();
-            var usedSheets = new HashSet<DB.ElementId>();
-            for (int i = 0; i < _grid.Rows.Count; ++i)
-            {
-                string viewName  = _grid.Rows[i].Cells[0].Value as string;
-                string sheetDisp = _grid.Rows[i].Cells[1].Value as string;
-                if (string.IsNullOrEmpty(viewName) || string.IsNullOrEmpty(sheetDisp))
-                    continue;
-
-                DB.View      view  = _views.FirstOrDefault(x => x.Name == viewName);
-                DB.ViewSheet sheet = _sheets.FirstOrDefault(x => SheetDisplay(x) == sheetDisp);
-                if (view == null || sheet == null)
-                    continue;
-
-                // If this sheet is already assigned earlier, drop the previous occurrence
-                if (usedSheets.Contains(sheet.Id))
-                {
-                    for (int j = 0; j < Mappings.Count; ++j)
-                    {
-                        if (Mappings[j].Sheet.Id == sheet.Id)
-                        {
-                            Mappings.RemoveAt(j);
-                            break;
-                        }
-                    }
-                }
-
-                usedSheets.Add(sheet.Id);
-                Mappings.Add((view, sheet));
-            }
-        }
-
-        private static string SheetDisplay(DB.ViewSheet s) => $"{s.SheetNumber} – {s.Name}";
     }
 }
