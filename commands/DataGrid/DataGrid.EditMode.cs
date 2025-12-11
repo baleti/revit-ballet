@@ -76,8 +76,7 @@ public partial class CustomGUIs
             case "linkinstanceobject":
             case "linkedelementidobject":
             case "category":
-            case "ownerview":
-            case "scopeboxes":
+            case "scopeboxes":  // Read-only: shows which scope boxes contain this element
             case "__datagrid_internal_id__":
             // Group membership (use Revit group commands instead)
             case "group":
@@ -148,6 +147,9 @@ public partial class CustomGUIs
             case "discipline":
             case "title":
             case "titleonsheet":
+            case "scope box":
+            case "scopebox":
+            case "ownerview":  // Rename the view that owns this element (e.g., sheet name for viewports)
 
             // Sheet properties
             case "sheetnumber":
