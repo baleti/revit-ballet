@@ -234,6 +234,36 @@ public static class ElementDataHelper
 
         data["ScopeBoxes"] = string.Join(", ", containingScopeBoxes.OrderBy(s => s));
 
+        // Add view-specific scope box property (assigned scope box, not containing)
+        if (element is View view)
+        {
+            try
+            {
+                Parameter scopeBoxParam = view.get_Parameter(BuiltInParameter.VIEWER_VOLUME_OF_INTEREST_CROP);
+                if (scopeBoxParam != null && scopeBoxParam.HasValue)
+                {
+                    ElementId scopeBoxId = scopeBoxParam.AsElementId();
+                    if (scopeBoxId != null && scopeBoxId != ElementId.InvalidElementId)
+                    {
+                        Element assignedScopeBox = elementDoc.GetElement(scopeBoxId);
+                        data["Scope Box"] = assignedScopeBox?.Name ?? "";
+                    }
+                    else
+                    {
+                        data["Scope Box"] = "";
+                    }
+                }
+                else
+                {
+                    data["Scope Box"] = "";
+                }
+            }
+            catch
+            {
+                data["Scope Box"] = "";
+            }
+        }
+
         // Add centroid coordinates (converted to display units)
         try
         {
@@ -503,13 +533,15 @@ public abstract class FilterElementsBase : IExternalCommand
 
             // Check which optional columns have any non-empty values
             bool hasScopeBoxes = elementData.Any(d => d.ContainsKey("ScopeBoxes") && !string.IsNullOrEmpty(d["ScopeBoxes"]?.ToString()));
+            bool hasScopeBox = elementData.Any(d => d.ContainsKey("Scope Box"));  // View scope box assignment
             bool hasLinkName = elementData.Any(d => d.ContainsKey("LinkName") && !string.IsNullOrEmpty(d["LinkName"]?.ToString()));
             bool hasGroup = elementData.Any(d => d.ContainsKey("Group") && !string.IsNullOrEmpty(d["Group"]?.ToString()));
             bool hasOwnerView = elementData.Any(d => d.ContainsKey("OwnerView") && !string.IsNullOrEmpty(d["OwnerView"]?.ToString()));
 
             // Build ordered list, only including columns that have values
             var orderedProps = new List<string> { "Name" };
-            if (hasScopeBoxes) orderedProps.Add("ScopeBoxes");
+            if (hasScopeBox) orderedProps.Add("Scope Box");  // View scope box (editable)
+            if (hasScopeBoxes) orderedProps.Add("ScopeBoxes");  // Element containment (read-only)
             orderedProps.Add("Category");
             if (hasLinkName) orderedProps.Add("LinkName");
             if (hasGroup) orderedProps.Add("Group");
@@ -770,13 +802,15 @@ public class FilterSelectedInViews : IExternalCommand
 
             // Check which optional columns have any non-empty values
             bool hasScopeBoxes = filteredData.Any(d => d.ContainsKey("ScopeBoxes") && !string.IsNullOrEmpty(d["ScopeBoxes"]?.ToString()));
+            bool hasScopeBox = filteredData.Any(d => d.ContainsKey("Scope Box"));  // View scope box assignment
             bool hasLinkName = filteredData.Any(d => d.ContainsKey("LinkName") && !string.IsNullOrEmpty(d["LinkName"]?.ToString()));
             bool hasGroup = filteredData.Any(d => d.ContainsKey("Group") && !string.IsNullOrEmpty(d["Group"]?.ToString()));
             bool hasOwnerView = filteredData.Any(d => d.ContainsKey("OwnerView") && !string.IsNullOrEmpty(d["OwnerView"]?.ToString()));
 
             // Build ordered list, only including columns that have values
             var orderedProps = new List<string> { "Name" };
-            if (hasScopeBoxes) orderedProps.Add("ScopeBoxes");
+            if (hasScopeBox) orderedProps.Add("Scope Box");  // View scope box (editable)
+            if (hasScopeBoxes) orderedProps.Add("ScopeBoxes");  // Element containment (read-only)
             orderedProps.Add("Category");
             if (hasLinkName) orderedProps.Add("LinkName");
             if (hasGroup) orderedProps.Add("Group");

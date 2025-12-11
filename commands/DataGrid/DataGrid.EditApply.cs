@@ -590,6 +590,135 @@ public partial class CustomGUIs
                 }
                 return false;
 
+            case "ownerview":
+                // When editing OwnerView, we rename the view that owns this element
+                // This is especially useful for Viewports - renaming the view placed on a sheet
+                if (elem.OwnerViewId != null && elem.OwnerViewId != ElementId.InvalidElementId)
+                {
+                    Element ownerViewElem = elem.Document.GetElement(elem.OwnerViewId);
+                    if (ownerViewElem is View ownerView)
+                    {
+                        try
+                        {
+                            ownerView.Name = strValue;
+                            return true;
+                        }
+                        catch { return false; }
+                    }
+                }
+                return false;
+
+            case "scope box":
+            case "scopebox":
+                if (elem is View vScopeBox)
+                {
+                    // Log diagnostics to runtime directory
+                    string diagnosticPath = System.IO.Path.Combine(
+                        RevitBallet.Commands.PathHelper.RuntimeDirectory,
+                        "ScopeBoxEditDiagnostics.txt");
+
+                    var diagnosticLines = new System.Collections.Generic.List<string>();
+                    diagnosticLines.Add($"=== Scope Box Edit Attempt at {System.DateTime.Now:yyyy-MM-dd HH:mm:ss} ===");
+                    diagnosticLines.Add($"View Name: {vScopeBox.Name}");
+                    diagnosticLines.Add($"View Title: {vScopeBox.Title}");
+                    diagnosticLines.Add($"View Type: {vScopeBox.ViewType}");
+                    diagnosticLines.Add($"Is Template: {vScopeBox.IsTemplate}");
+                    diagnosticLines.Add($"Requested Scope Box: '{strValue}'");
+
+                    Parameter scopeBoxParam = vScopeBox.get_Parameter(BuiltInParameter.VIEWER_VOLUME_OF_INTEREST_CROP);
+                    if (scopeBoxParam == null)
+                    {
+                        diagnosticLines.Add("ERROR: View does not have a scope box parameter");
+                        System.IO.File.AppendAllLines(diagnosticPath, diagnosticLines);
+                        return false;
+                    }
+
+                    diagnosticLines.Add($"Parameter Exists: Yes");
+                    diagnosticLines.Add($"Parameter IsReadOnly: {scopeBoxParam.IsReadOnly}");
+                    diagnosticLines.Add($"Parameter HasValue: {scopeBoxParam.HasValue}");
+
+                    if (scopeBoxParam.HasValue)
+                    {
+                        ElementId currentScopeId = scopeBoxParam.AsElementId();
+                        if (currentScopeId != null && currentScopeId != ElementId.InvalidElementId)
+                        {
+                            Element currentScope = elem.Document.GetElement(currentScopeId);
+                            diagnosticLines.Add($"Current Scope Box: '{currentScope?.Name ?? "ERROR"}'");
+                        }
+                        else
+                        {
+                            diagnosticLines.Add($"Current Scope Box: None");
+                        }
+                    }
+
+                    if (scopeBoxParam.IsReadOnly)
+                    {
+                        diagnosticLines.Add("ERROR: Parameter is read-only");
+                        System.IO.File.AppendAllLines(diagnosticPath, diagnosticLines);
+                        return false;
+                    }
+
+                    // Handle empty/none case - remove scope box
+                    if (string.IsNullOrEmpty(strValue) || strValue.Equals("none", StringComparison.OrdinalIgnoreCase))
+                    {
+                        try
+                        {
+                            scopeBoxParam.Set(ElementId.InvalidElementId);
+                            diagnosticLines.Add("SUCCESS: Cleared scope box");
+                            System.IO.File.AppendAllLines(diagnosticPath, diagnosticLines);
+                            return true;
+                        }
+                        catch (Exception ex)
+                        {
+                            diagnosticLines.Add($"ERROR: Failed to clear scope box: {ex.Message}");
+                            System.IO.File.AppendAllLines(diagnosticPath, diagnosticLines);
+                            return false;
+                        }
+                    }
+
+                    // Find scope box by name
+                    var scopeBoxes = new FilteredElementCollector(elem.Document)
+                        .OfCategory(BuiltInCategory.OST_VolumeOfInterest)
+                        .WhereElementIsNotElementType()
+                        .Cast<Element>()
+                        .ToList();
+
+                    diagnosticLines.Add($"Available Scope Boxes in Document: {scopeBoxes.Count}");
+                    foreach (var sb in scopeBoxes)
+                    {
+                        diagnosticLines.Add($"  - '{sb.Name}' (ID: {sb.Id.AsLong()})");
+                    }
+
+                    Element targetScopeBox = scopeBoxes.FirstOrDefault(sb =>
+                        string.Equals(sb.Name, strValue, StringComparison.OrdinalIgnoreCase));
+
+                    if (targetScopeBox != null)
+                    {
+                        diagnosticLines.Add($"Found matching scope box: '{targetScopeBox.Name}' (ID: {targetScopeBox.Id.AsLong()})");
+                        try
+                        {
+                            scopeBoxParam.Set(targetScopeBox.Id);
+                            diagnosticLines.Add($"SUCCESS: Set scope box to '{targetScopeBox.Name}'");
+                            System.IO.File.AppendAllLines(diagnosticPath, diagnosticLines);
+                            return true;
+                        }
+                        catch (Exception ex)
+                        {
+                            diagnosticLines.Add($"ERROR: Failed to set scope box: {ex.Message}");
+                            diagnosticLines.Add($"ERROR: Stack trace: {ex.StackTrace}");
+                            System.IO.File.AppendAllLines(diagnosticPath, diagnosticLines);
+                            return false;
+                        }
+                    }
+                    else
+                    {
+                        diagnosticLines.Add($"ERROR: No scope box named '{strValue}' found in document");
+                        System.IO.File.AppendAllLines(diagnosticPath, diagnosticLines);
+                        return false;
+                    }
+                }
+                return false;
+
             // Family properties
             case "familyname":
             case "family":
