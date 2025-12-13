@@ -251,9 +251,7 @@ namespace RevitBalletInstaller
                 {
                     messageText += $"  • Revit {result.Year}\n";
                 }
-                messageText += "\nNote: These versions had Revit running during installation.\n";
-                messageText += "New commands are available immediately via InvokeAddinCommand,\n";
-                messageText += "but you need to restart Revit to load the updated addin.\n";
+                messageText += "\nRestart Revit to load updates or use commands immediately via InvokeAddinCommand.\n";
             }
 
             if (installationResults.Count == 0)
@@ -333,9 +331,7 @@ namespace RevitBalletInstaller
                 {
                     Console.WriteLine($"  - Revit {result.Year}");
                 }
-                Console.WriteLine("Note: These versions had Revit running during installation.");
-                Console.WriteLine("New commands are available immediately via InvokeAddinCommand,");
-                Console.WriteLine("but you need to restart Revit to load the updated addin.");
+                Console.WriteLine("Restart Revit to load updates or use commands immediately via InvokeAddinCommand.");
             }
 
             if (installationResults.Count == 0)
@@ -361,10 +357,12 @@ namespace RevitBalletInstaller
         {
             // Detection strategy:
             // - Check Windows Registry to find actually installed Revit versions
+            // - Verify installations exist in Add/Remove Programs
             // - Install addins to AppData (current user) to avoid requiring admin privileges
             // - Revit loads addins from both ProgramData and AppData locations
 
             var detectedYears = new HashSet<string>();
+            var installedYears = GetInstalledRevitYearsFromUninstall();
 
             // Check registry for installed Revit versions
             // Revit registers itself in HKEY_LOCAL_MACHINE under Autodesk\Revit
@@ -466,12 +464,15 @@ namespace RevitBalletInstaller
             foreach (string programFiles in drivesToCheck.Distinct())
             {
                 string autodeskPath = Path.Combine(programFiles, "Autodesk");
+
                 if (Directory.Exists(autodeskPath))
                 {
                     string[] revitDirs = Directory.GetDirectories(autodeskPath, "Revit*", SearchOption.TopDirectoryOnly);
+
                     foreach (string revitDir in revitDirs)
                     {
                         string dirName = Path.GetFileName(revitDir);
+
                         // Extract year from directory name (e.g., "Revit 2024" -> "2024")
                         string[] parts = dirName.Split(' ');
                         if (parts.Length >= 2 && int.TryParse(parts[1], out int yearNum) && yearNum >= 2011 && yearNum <= 2030)
@@ -488,9 +489,12 @@ namespace RevitBalletInstaller
             }
 
             // Create installation entries - ALWAYS use AppData for installation (no admin required)
+            // Only create installation entries for years that are actually installed
+            var verifiedYears = detectedYears.Where(y => installedYears.Contains(y)).ToHashSet();
+
             string userAppData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
 
-            foreach (string year in detectedYears)
+            foreach (string year in verifiedYears.OrderBy(y => y))
             {
                 string userAddinsPath = Path.Combine(userAppData, "Autodesk", "Revit", "Addins", year);
                 string revitDataPath = Path.Combine(userAppData, "Autodesk", "Revit", $"Autodesk Revit {year}");
@@ -506,14 +510,131 @@ namespace RevitBalletInstaller
             }
         }
 
+        private HashSet<string> GetInstalledRevitYearsFromUninstall()
+        {
+            // Check Windows Uninstall registry to verify which Revit versions are actually installed
+            var installedYears = new HashSet<string>();
+
+            // Check both 32-bit and 64-bit uninstall keys
+            var uninstallPaths = new[]
+            {
+                @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+                @"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
+            };
+
+            foreach (var path in uninstallPaths)
+            {
+                try
+                {
+                    using (var baseKey = Registry.LocalMachine.OpenSubKey(path))
+                    {
+                        if (baseKey == null) continue;
+
+                        foreach (string subKeyName in baseKey.GetSubKeyNames())
+                        {
+                            try
+                            {
+                                using (var subKey = baseKey.OpenSubKey(subKeyName))
+                                {
+                                    if (subKey == null) continue;
+
+                                    string displayName = subKey.GetValue("DisplayName") as string;
+                                    if (string.IsNullOrEmpty(displayName)) continue;
+
+                                    // Look for "Autodesk Revit XXXX" or "Revit XXXX"
+                                    if (displayName.Contains("Revit") && displayName.Contains("Autodesk"))
+                                    {
+                                        // Extract year from display name
+                                        var words = displayName.Split(new[] { ' ', '-', '_' }, StringSplitOptions.RemoveEmptyEntries);
+                                        foreach (var word in words)
+                                        {
+                                            if (int.TryParse(word, out int year) && year >= 2011 && year <= 2030)
+                                            {
+                                                installedYears.Add(year.ToString());
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            catch
+                            {
+                                // Skip entries we can't read
+                            }
+                        }
+                    }
+                }
+                catch
+                {
+                    // Skip if registry path is inaccessible
+                }
+            }
+
+            // Also check HKEY_CURRENT_USER uninstall (for per-user installs)
+            try
+            {
+                using (var baseKey = Registry.CurrentUser.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"))
+                {
+                    if (baseKey != null)
+                    {
+                        foreach (string subKeyName in baseKey.GetSubKeyNames())
+                        {
+                            try
+                            {
+                                using (var subKey = baseKey.OpenSubKey(subKeyName))
+                                {
+                                    if (subKey == null) continue;
+
+                                    string displayName = subKey.GetValue("DisplayName") as string;
+                                    if (string.IsNullOrEmpty(displayName)) continue;
+
+                                    if (displayName.Contains("Revit") && displayName.Contains("Autodesk"))
+                                    {
+                                        var words = displayName.Split(new[] { ' ', '-', '_' }, StringSplitOptions.RemoveEmptyEntries);
+                                        foreach (var word in words)
+                                        {
+                                            if (int.TryParse(word, out int year) && year >= 2011 && year <= 2030)
+                                            {
+                                                installedYears.Add(year.ToString());
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            catch
+                            {
+                                // Skip entries we can't read
+                            }
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // Skip if registry path is inaccessible
+            }
+
+            return installedYears;
+        }
+
         private string ExtractYearFromVersion(string versionString)
         {
-            // Convert version strings like "24.0", "24.1", "19.0" to years like "2024", "2019"
-            // Revit versions typically use format: XX.Y where XX is year - 2000
+            // Convert version strings to 4-digit years
+            // Handles multiple formats:
+            // - "24.0", "24.1", "19.0" -> "2024", "2024", "2019"
+            // - "2024", "2025" -> "2024", "2025"
 
             if (string.IsNullOrEmpty(versionString))
                 return null;
 
+            // First check if it's already a 4-digit year (2011-2030)
+            if (int.TryParse(versionString, out int fullYear) && fullYear >= 2011 && fullYear <= 2030)
+            {
+                return fullYear.ToString();
+            }
+
+            // Otherwise try to extract from version format like "24.0"
             string[] parts = versionString.Split('.');
             if (parts.Length > 0 && int.TryParse(parts[0], out int versionNum))
             {

@@ -9,6 +9,11 @@ public static class ElementDataHelper
 {
     public static List<Dictionary<string, object>> GetElementData(UIDocument uiDoc, bool selectedOnly = false, bool includeParameters = false)
     {
+        return GetElementData(uiDoc, selectedOnly, includeParameters, null, null);
+    }
+
+    public static List<Dictionary<string, object>> GetElementData(UIDocument uiDoc, bool selectedOnly, bool includeParameters, Func<bool> checkCancellation, CancellableProgressDialog progressDialog = null)
+    {
         Document doc = uiDoc.Document;
         var elementData = new List<Dictionary<string, object>>();
 
@@ -63,12 +68,22 @@ public static class ElementDataHelper
             if (!selectedIds.Any() && !selectedRefs.Any())
                 throw new InvalidOperationException("No elements are selected.");
 
+            // Set total for progress tracking
+            progressDialog?.SetTotal(selectedIds.Count + selectedRefs.Count);
+
             // Keep track of processed elements to avoid duplicates
             var processedElements = new HashSet<ElementId>();
 
             // Process regular elements from current document
             foreach (var id in selectedIds)
             {
+                // Check and show progress dialog if needed
+                progressDialog?.CheckAndShow();
+
+                // Check for cancellation
+                if (checkCancellation != null && checkCancellation())
+                    throw new OperationCanceledException("Operation cancelled by user.");
+
                 Element element = doc.GetElement(id);
                 if (element != null)
                 {
@@ -76,11 +91,21 @@ public static class ElementDataHelper
                     var data = GetElementDataDictionary(element, doc, null, null, null, includeParameters, scopeBoxes, linkedScopeBoxes);
                     elementData.Add(data);
                 }
+
+                // Increment progress
+                progressDialog?.IncrementProgress();
             }
 
             // Process linked elements via References
             foreach (var reference in selectedRefs)
             {
+                // Check and show progress dialog if needed
+                progressDialog?.CheckAndShow();
+
+                // Check for cancellation
+                if (checkCancellation != null && checkCancellation())
+                    throw new OperationCanceledException("Operation cancelled by user.");
+
                 try
                 {
                     // Get the linked instance
@@ -121,20 +146,38 @@ public static class ElementDataHelper
                     }
                 }
                 catch { /* Skip problematic references */ }
+
+                // Increment progress
+                progressDialog?.IncrementProgress();
             }
         }
         else
         {
             // Get elements from active view (current document only)
             var elementIds = new FilteredElementCollector(doc, doc.ActiveView.Id).ToElementIds();
-            foreach (var id in elementIds)
+            var elementIdsList = elementIds.ToList();
+
+            // Set total for progress tracking
+            progressDialog?.SetTotal(elementIdsList.Count);
+
+            foreach (var id in elementIdsList)
             {
+                // Check and show progress dialog if needed
+                progressDialog?.CheckAndShow();
+
+                // Check for cancellation
+                if (checkCancellation != null && checkCancellation())
+                    throw new OperationCanceledException("Operation cancelled by user.");
+
                 Element element = doc.GetElement(id);
                 if (element != null)
                 {
                     var data = GetElementDataDictionary(element, doc, null, null, null, includeParameters, scopeBoxes, linkedScopeBoxes);
                     elementData.Add(data);
                 }
+
+                // Increment progress
+                progressDialog?.IncrementProgress();
             }
         }
 
@@ -393,15 +436,30 @@ public static class ElementDataHelper
     private static (double?, double?, double?) GetElementCentroid(Element element, RevitLinkInstance linkInstance)
     {
         // Special case: Viewports on sheets
+        // IMPORTANT: Do NOT use viewport.GetBoxCenter() as it triggers regeneration of inactive sheets
+        // Instead, use the viewport's label outline which is stored in the database
         if (element is Viewport viewport)
         {
-            XYZ center = viewport.GetBoxCenter();
-            if (linkInstance != null)
+            try
             {
-                Transform transform = linkInstance.GetTotalTransform();
-                center = transform.OfPoint(center);
+                // Use GetLabelOutline() which reads from database without triggering regeneration
+                Outline outline = viewport.GetLabelOutline();
+                XYZ min = outline.MinimumPoint;
+                XYZ max = outline.MaximumPoint;
+                XYZ center = (min + max) / 2.0;
+
+                if (linkInstance != null)
+                {
+                    Transform transform = linkInstance.GetTotalTransform();
+                    center = transform.OfPoint(center);
+                }
+                return (center.X, center.Y, null); // Viewports are 2D on sheets
             }
-            return (center.X, center.Y, null); // Viewports are 2D on sheets
+            catch
+            {
+                // If we can't get label outline, return null
+                return (null, null, null);
+            }
         }
 
         // Get location point (for point-based elements like families)
@@ -441,16 +499,11 @@ public static class ElementDataHelper
         }
 
         // For elements without location, use bounding box centroid
+        // IMPORTANT: Do NOT call get_Geometry() as it can trigger regeneration
+        // Only use get_BoundingBox(null) which reads from the database
         BoundingBoxXYZ bb = element.get_BoundingBox(null);
-        if (bb == null)
-        {
-            var options = new Options();
-            var geom = element.get_Geometry(options);
-            if (geom != null)
-            {
-                bb = geom.GetBoundingBox();
-            }
-        }
+        // Note: We intentionally do NOT fall back to get_Geometry() here to avoid
+        // triggering regeneration of inactive views/sheets
 
         if (bb != null)
         {
@@ -518,7 +571,22 @@ public abstract class FilterElementsBase : IExternalCommand
         try
         {
             var uiDoc = cData.Application.ActiveUIDocument;
-            var elementData = ElementDataHelper.GetElementData(uiDoc, UseSelectedElements, IncludeParameters);
+            List<Dictionary<string, object>> elementData;
+
+            // Use cancellable progress dialog for potentially long operations
+            using (var progress = new CancellableProgressDialog("Collecting element data"))
+            {
+                progress.Start();
+                try
+                {
+                    elementData = ElementDataHelper.GetElementData(uiDoc, UseSelectedElements, IncludeParameters, () => progress.IsCancelled, progress);
+                }
+                catch (OperationCanceledException)
+                {
+                    message = "Operation cancelled by user.";
+                    return Result.Cancelled;
+                }
+            }
 
             if (!elementData.Any())
             {
@@ -704,8 +772,21 @@ public class FilterSelectedInViews : IExternalCommand
             var uiDoc = cData.Application.ActiveUIDocument;
             var doc = uiDoc.Document;
 
-            // Get selected elements
-            var elementData = ElementDataHelper.GetElementData(uiDoc, selectedOnly: true, includeParameters: true);
+            // Get selected elements with cancellable progress dialog
+            List<Dictionary<string, object>> elementData;
+            using (var progress = new CancellableProgressDialog("Collecting element data"))
+            {
+                progress.Start();
+                try
+                {
+                    elementData = ElementDataHelper.GetElementData(uiDoc, selectedOnly: true, includeParameters: true, () => progress.IsCancelled, progress);
+                }
+                catch (OperationCanceledException)
+                {
+                    message = "Operation cancelled by user.";
+                    return Result.Cancelled;
+                }
+            }
 
             if (!elementData.Any())
             {
