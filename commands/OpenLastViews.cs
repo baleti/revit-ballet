@@ -52,9 +52,8 @@ public class OpenLastSessionViews : IExternalCommand
 
         // Display the saved views using CustomGUIs.DataGrid
         var propertyNames = new List<string> { "Title" };
-        var savedViewDicts = CustomGUIs.ConvertToDataGridFormat(savedViewTitles, propertyNames);
-        var selectedDicts = CustomGUIs.DataGrid(savedViewDicts, propertyNames, false);
-        var selectedViews = CustomGUIs.ExtractOriginalObjects<Dictionary<string, object>>(selectedDicts);
+        var selectedDicts = CustomGUIs.DataGrid(savedViewTitles, propertyNames, false);
+        var selectedViews = selectedDicts;
 
         // Open the selected views in Revit
         UIApplication uiapp = commandData.Application;
