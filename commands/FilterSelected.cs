@@ -436,17 +436,32 @@ public static class ElementDataHelper
     private static (double?, double?, double?) GetElementCentroid(Element element, RevitLinkInstance linkInstance)
     {
         // Special case: Viewports on sheets
-        // IMPORTANT: Do NOT use viewport.GetBoxCenter() as it triggers regeneration of inactive sheets
-        // Instead, use the viewport's label outline which is stored in the database
+        // Use GetBoxCenter() for consistency with SetBoxCenter() used during editing
+        // GetLabelOutline() uses a different coordinate reference and causes position mismatches
         if (element is Viewport viewport)
         {
             try
             {
-                // Use GetLabelOutline() which reads from database without triggering regeneration
-                Outline outline = viewport.GetLabelOutline();
-                XYZ min = outline.MinimumPoint;
-                XYZ max = outline.MaximumPoint;
-                XYZ center = (min + max) / 2.0;
+                XYZ center = viewport.GetBoxCenter();
+
+                // Check if coordinates are valid (not 0,0,0 which indicates unplaced viewport)
+                if (center.X == 0 && center.Y == 0)
+                {
+                    // Viewport might not be placed yet or is in invalid state
+                    // Try GetLabelOutline as fallback
+                    try
+                    {
+                        Outline outline = viewport.GetLabelOutline();
+                        XYZ min = outline.MinimumPoint;
+                        XYZ max = outline.MaximumPoint;
+                        center = (min + max) / 2.0;
+                    }
+                    catch
+                    {
+                        // Both methods failed, return null
+                        return (null, null, null);
+                    }
+                }
 
                 if (linkInstance != null)
                 {
@@ -457,7 +472,7 @@ public static class ElementDataHelper
             }
             catch
             {
-                // If we can't get label outline, return null
+                // If we can't get box center, return null
                 return (null, null, null);
             }
         }

@@ -1317,16 +1317,130 @@ public partial class CustomGUIs
             // Special case: Viewports on sheets
             if (elem is Viewport viewport)
             {
-                XYZ currentCenter = viewport.GetBoxCenter();
-                double targetX = newX ?? currentCenter.X;
-                double targetY = newY ?? currentCenter.Y;
+                // Log diagnostics to runtime/diagnostics directory
+                string diagnosticPath = System.IO.Path.Combine(
+                    RevitBallet.Commands.PathHelper.RuntimeDirectory,
+                    "diagnostics",
+                    $"ViewportCentroidEdit-{System.DateTime.Now:yyyyMMdd-HHmmss-fff}.txt");
+
+                var diagnosticLines = new System.Collections.Generic.List<string>();
+                diagnosticLines.Add($"=== Viewport Centroid Edit at {System.DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} ===");
+                diagnosticLines.Add($"Viewport ID: {viewport.Id.AsLong()}");
+
+                // Get owner view name
+                try
+                {
+                    View ownerView = viewport.Document.GetElement(viewport.ViewId) as View;
+                    diagnosticLines.Add($"Owner View: {ownerView?.Name ?? "Unknown"}");
+                }
+                catch
+                {
+                    diagnosticLines.Add($"Owner View: Error retrieving");
+                }
+
+                // Get current position using GetBoxCenter (what we use for editing)
+                XYZ currentCenterBoxCenter = viewport.GetBoxCenter();
+                diagnosticLines.Add($"Current Center (GetBoxCenter): X={currentCenterBoxCenter.X}, Y={currentCenterBoxCenter.Y}, Z={currentCenterBoxCenter.Z}");
+
+                // Get current position using GetLabelOutline (what we use for reading)
+                try
+                {
+                    Outline outline = viewport.GetLabelOutline();
+                    XYZ minOutline = outline.MinimumPoint;
+                    XYZ maxOutline = outline.MaximumPoint;
+                    XYZ centerOutline = (minOutline + maxOutline) / 2.0;
+                    diagnosticLines.Add($"Current Center (GetLabelOutline): X={centerOutline.X}, Y={centerOutline.Y}, Z={centerOutline.Z}");
+                    diagnosticLines.Add($"Difference: dX={centerOutline.X - currentCenterBoxCenter.X}, dY={centerOutline.Y - currentCenterBoxCenter.Y}");
+                }
+                catch (Exception ex)
+                {
+                    diagnosticLines.Add($"GetLabelOutline Error: {ex.Message}");
+                }
+
+                // Get project units
+                Document doc = viewport.Document;
+#if REVIT2021 || REVIT2022 || REVIT2023 || REVIT2024 || REVIT2025 || REVIT2026
+                Units projectUnits = doc.GetUnits();
+                FormatOptions lengthOpts = projectUnits.GetFormatOptions(SpecTypeId.Length);
+                ForgeTypeId unitTypeId = lengthOpts.GetUnitTypeId();
+                string unitName = unitTypeId.TypeId;
+
+                // Convert current position to display units for logging
+                double displayCurrentX = UnitUtils.ConvertFromInternalUnits(currentCenterBoxCenter.X, unitTypeId);
+                double displayCurrentY = UnitUtils.ConvertFromInternalUnits(currentCenterBoxCenter.Y, unitTypeId);
+#else
+                // Revit 2017-2020: Use DisplayUnitType
+                Units projectUnits = doc.GetUnits();
+                FormatOptions lengthOpts = projectUnits.GetFormatOptions(UnitType.UT_Length);
+                DisplayUnitType unitType = lengthOpts.DisplayUnits;
+                string unitName = unitType.ToString();
+
+                double displayCurrentX = UnitUtils.ConvertFromInternalUnits(currentCenterBoxCenter.X, unitType);
+                double displayCurrentY = UnitUtils.ConvertFromInternalUnits(currentCenterBoxCenter.Y, unitType);
+#endif
+                diagnosticLines.Add($"Project Units: {unitName}");
+                diagnosticLines.Add($"Current Position (Display Units): X={displayCurrentX}, Y={displayCurrentY}");
+
+                // Log the requested changes
+                diagnosticLines.Add($"Requested Changes (Internal Units): newX={newX?.ToString() ?? "null"}, newY={newY?.ToString() ?? "null"}, newZ={newZ?.ToString() ?? "null"}");
+
+                // Calculate target position
+                double targetX = newX ?? currentCenterBoxCenter.X;
+                double targetY = newY ?? currentCenterBoxCenter.Y;
+                diagnosticLines.Add($"Target Position (Internal Units): X={targetX}, Y={targetY}");
+
+#if REVIT2021 || REVIT2022 || REVIT2023 || REVIT2024 || REVIT2025 || REVIT2026
+                double displayTargetX = UnitUtils.ConvertFromInternalUnits(targetX, unitTypeId);
+                double displayTargetY = UnitUtils.ConvertFromInternalUnits(targetY, unitTypeId);
+#else
+                double displayTargetX = UnitUtils.ConvertFromInternalUnits(targetX, unitType);
+                double displayTargetY = UnitUtils.ConvertFromInternalUnits(targetY, unitType);
+#endif
+                diagnosticLines.Add($"Target Position (Display Units): X={displayTargetX}, Y={displayTargetY}");
 
                 // Viewports are 2D - no Z coordinate
                 if (newZ.HasValue)
+                {
+                    diagnosticLines.Add("ERROR: Cannot set Z coordinate for viewports (2D elements on sheets)");
+                    System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diagnosticPath));
+                    System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
                     return false;
+                }
 
-                XYZ newCenter = new XYZ(targetX, targetY, currentCenter.Z);
-                viewport.SetBoxCenter(newCenter);
+                XYZ newCenter = new XYZ(targetX, targetY, currentCenterBoxCenter.Z);
+                diagnosticLines.Add($"New Center to Apply: X={newCenter.X}, Y={newCenter.Y}, Z={newCenter.Z}");
+
+                try
+                {
+                    viewport.SetBoxCenter(newCenter);
+                    diagnosticLines.Add("SUCCESS: SetBoxCenter completed");
+
+                    // Verify the new position
+                    XYZ verifyCenter = viewport.GetBoxCenter();
+                    diagnosticLines.Add($"Verified Position (GetBoxCenter): X={verifyCenter.X}, Y={verifyCenter.Y}, Z={verifyCenter.Z}");
+
+#if REVIT2021 || REVIT2022 || REVIT2023 || REVIT2024 || REVIT2025 || REVIT2026
+                    double verifyDisplayX = UnitUtils.ConvertFromInternalUnits(verifyCenter.X, unitTypeId);
+                    double verifyDisplayY = UnitUtils.ConvertFromInternalUnits(verifyCenter.Y, unitTypeId);
+#else
+                    double verifyDisplayX = UnitUtils.ConvertFromInternalUnits(verifyCenter.X, unitType);
+                    double verifyDisplayY = UnitUtils.ConvertFromInternalUnits(verifyCenter.Y, unitType);
+#endif
+                    diagnosticLines.Add($"Verified Position (Display Units): X={verifyDisplayX}, Y={verifyDisplayY}");
+                }
+                catch (Exception ex)
+                {
+                    diagnosticLines.Add($"ERROR: SetBoxCenter failed: {ex.Message}");
+                    diagnosticLines.Add($"Stack Trace: {ex.StackTrace}");
+                    System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diagnosticPath));
+                    System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
+                    return false;
+                }
+
+                // Write diagnostics to file
+                System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diagnosticPath));
+                System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
+
                 return true;
             }
 
