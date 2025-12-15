@@ -16,7 +16,41 @@ Revit Ballet is a collection of custom commands for Revit that provides enhanced
 **IMPORTANT**: This codebase is located in the same directory as `%APPDATA%/revit-ballet`, which means:
 - The `runtime/` folder in this repository reflects **live usage** of the plugin
 - You can examine runtime logs and data to verify code behavior and debug issues
-- **ALL runtime data MUST be stored in `runtime/` subdirectory** - includes logs, network data, screenshots
+- **ALL runtime data MUST be stored in `runtime/` subdirectory** - includes logs, network data, screenshots, diagnostics
+
+### Diagnostic Logging Convention
+
+**When to add diagnostics:** For non-trivial operations where bugs could arise from unit conversion, coordinate transformations, or API behavioral differences.
+
+**Location:** All diagnostic files MUST be saved to `runtime/diagnostics/` directory.
+
+**Naming:** Use descriptive names with timestamps: `{OperationName}-{yyyyMMdd-HHmmss-fff}.txt`
+
+**Content Format:**
+```csharp
+// Create diagnostic file
+string diagnosticPath = System.IO.Path.Combine(
+    RevitBallet.Commands.PathHelper.RuntimeDirectory,
+    "diagnostics",
+    $"MyOperation-{System.DateTime.Now:yyyyMMdd-HHmmss-fff}.txt");
+
+var diagnosticLines = new List<string>();
+diagnosticLines.Add($"=== Operation Name at {System.DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} ===");
+diagnosticLines.Add($"Input Values: ...");
+diagnosticLines.Add($"Intermediate Results: ...");
+diagnosticLines.Add($"Final Results: ...");
+
+// Always create directory before writing
+System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diagnosticPath));
+System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
+```
+
+**Key principles:**
+- Include timestamps for correlation with user actions
+- Log both internal units (feet) AND display units (mm/m) for coordinates
+- Log intermediate calculation steps, not just final results
+- Include element IDs for traceability
+- Log both input values and verified output values
 
 ## Architecture
 
