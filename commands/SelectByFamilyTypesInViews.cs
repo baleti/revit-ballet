@@ -198,6 +198,11 @@ public class SelectByFamilyTypesInViews : IExternalCommand
 
                 if (typeElement != null && !string.IsNullOrEmpty(typeName))
                 {
+                    // Filter out DWG import symbols
+                    if (familyName.Contains("Import Symbol") ||
+                        (element.Category != null && element.Category.Name.Contains("Import Symbol")))
+                        continue;
+
                     string uniqueKey = $"{familyName}:{typeName}:{element.Category.Name}";
 
                     // Track which views this type appears in
@@ -239,7 +244,9 @@ public class SelectByFamilyTypesInViews : IExternalCommand
                 { "Type Name", typeName },
                 { "Family", familyName },
                 { "Category", categoryName },
-                { "Count", count }
+                { "Count", count },
+                { "_UniqueKey", uniqueKey },  // Store the original key for lookup after edits
+                { "ElementIdObject", kvp.Value.Id }  // Store ElementId for edit mode support
             };
 
             // Only add View column if multiple views are being queried
@@ -259,10 +266,19 @@ public class SelectByFamilyTypesInViews : IExternalCommand
             .ToList();
 
         // Display the list of unique types with counts
+        // Set UIDocument for edit mode support
+        CustomGUIs.SetCurrentUIDocument(uidoc);
+
         var propertyNames = hasSelectedViews
             ? new List<string> { "Category", "Family", "Type Name", "Count", "View" }
             : new List<string> { "Category", "Family", "Type Name", "Count" };
         var selectedEntries = CustomGUIs.DataGrid(typeEntries, propertyNames, false);
+
+        // Apply any pending edits (family/type renames)
+        if (CustomGUIs.HasPendingEdits())
+        {
+            CustomGUIs.ApplyCellEditsToEntities();
+        }
 
         if (selectedEntries.Count == 0)
         {
@@ -274,11 +290,15 @@ public class SelectByFamilyTypesInViews : IExternalCommand
 
         foreach (var entry in selectedEntries)
         {
-            string uniqueKey = $"{entry["Family"]}:{entry["Type Name"]}:{entry["Category"]}";
-
-            if (typeToElementsMap.ContainsKey(uniqueKey))
+            // Use the stored _UniqueKey to look up instances
+            if (entry.ContainsKey("_UniqueKey"))
             {
-                selectedInstances.AddRange(typeToElementsMap[uniqueKey]);
+                string uniqueKey = entry["_UniqueKey"].ToString();
+
+                if (typeToElementsMap.ContainsKey(uniqueKey))
+                {
+                    selectedInstances.AddRange(typeToElementsMap[uniqueKey]);
+                }
             }
         }
 

@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
 using System.Drawing;
+using RevitDB = Autodesk.Revit.DB;
 
 public partial class CustomGUIs
 {
@@ -61,6 +62,14 @@ public partial class CustomGUIs
 
     private static bool IsColumnEditable(string columnName)
     {
+        // AUTOMATIC SYSTEM: Check handler registry first
+        ColumnHandlerRegistry.EnsureInitialized();
+        if (ColumnHandlerRegistry.GetHandler(columnName) != null)
+        {
+            return ColumnHandlerRegistry.IsColumnEditable(columnName);
+        }
+
+        // FALLBACK: Legacy switch-based system for backward compatibility
         string lowerName = columnName.ToLowerInvariant();
 
         // System columns that should NOT be editable
@@ -118,7 +127,9 @@ public partial class CustomGUIs
             case "name":
             case "displayname":
             case "typename":
+            case "type name":
             case "familyname":
+            case "family name":
             case "family":
 
             // Basic properties
@@ -917,9 +928,39 @@ public partial class CustomGUIs
     /// </summary>
     private static bool ValidateEdit(ref string newValue, string originalValue, string columnName, Dictionary<string, object> dataRow)
     {
-        // Add Revit-specific validation here as needed
-        // For now, just return true (all edits valid)
+        // AUTOMATIC SYSTEM: Try handler validation first
+        ColumnHandlerRegistry.EnsureInitialized();
+        var handler = ColumnHandlerRegistry.GetHandler(columnName);
 
+        if (handler != null && handler.Validator != null)
+        {
+            // Get element from data row for validation
+            RevitDB.Element elem = null;
+            if (_currentUIDoc != null && dataRow != null)
+            {
+                elem = GetElementFromEntry(_currentUIDoc.Document, dataRow);
+            }
+
+            if (elem != null)
+            {
+                // Run handler's validator
+                var validationResult = handler.Validate(elem, _currentUIDoc.Document, originalValue, newValue);
+
+                if (!validationResult.IsValid)
+                {
+                    // Show validation error to user
+                    MessageBox.Show(
+                        $"Cannot set {columnName} to '{newValue}':\n\n{validationResult.ErrorMessage}",
+                        "Validation Error",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+
+                    return false;
+                }
+            }
+        }
+
+        // FALLBACK: Legacy validation for backward compatibility
         // Example: Validate sheet numbers have correct format
         if (columnName.Equals("SheetNumber", StringComparison.OrdinalIgnoreCase))
         {
