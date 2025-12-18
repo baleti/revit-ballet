@@ -272,17 +272,24 @@ public static class ElementDataHelper
         try
         {
             // Get element's bounding box
+            // IMPORTANT: Do NOT call get_Geometry() as it triggers regeneration for viewports (~1000ms each)
+            // Only use get_BoundingBox(null) which reads from the database
             BoundingBoxXYZ elementBB = element.get_BoundingBox(null);
-            if (elementBB == null)
+
+            // For viewports, use GetBoxOutline() if bounding box is not available
+            if (elementBB == null && element is Viewport vp)
             {
-                // Try to get bounding box from geometry
-                var options = new Options();
-                var geom = element.get_Geometry(options);
-                if (geom != null)
+                try
                 {
-                    elementBB = geom.GetBoundingBox();
+                    Outline outline = vp.GetBoxOutline();
+                    elementBB = new BoundingBoxXYZ();
+                    elementBB.Min = outline.MinimumPoint;
+                    elementBB.Max = outline.MaximumPoint;
                 }
+                catch { /* Skip if we can't get outline */ }
             }
+            // Note: We intentionally do NOT fall back to get_Geometry() here to avoid
+            // triggering regeneration of inactive views/sheets
 
             if (elementBB != null)
             {
@@ -489,32 +496,18 @@ public static class ElementDataHelper
     private static (double?, double?, double?) GetElementCentroid(Element element, RevitLinkInstance linkInstance)
     {
         // Special case: Viewports on sheets
-        // Use GetBoxCenter() for consistency with SetBoxCenter() used during editing
-        // GetLabelOutline() uses a different coordinate reference and causes position mismatches
+        // PERFORMANCE: Use GetBoxOutline() instead of GetBoxCenter() to avoid triggering regeneration
+        // GetBoxOutline() gets viewport box bounds (not label) and should be faster than GetBoxCenter()
+        // GetBoxCenter() triggers regeneration (~350ms), GetBoxOutline() should be database-only
+        // We manually calculate center from outline: (Min + Max) / 2
         if (element is Viewport viewport)
         {
             try
             {
-                XYZ center = viewport.GetBoxCenter();
-
-                // Check if coordinates are valid (not 0,0,0 which indicates unplaced viewport)
-                if (center.X == 0 && center.Y == 0)
-                {
-                    // Viewport might not be placed yet or is in invalid state
-                    // Try GetLabelOutline as fallback
-                    try
-                    {
-                        Outline outline = viewport.GetLabelOutline();
-                        XYZ min = outline.MinimumPoint;
-                        XYZ max = outline.MaximumPoint;
-                        center = (min + max) / 2.0;
-                    }
-                    catch
-                    {
-                        // Both methods failed, return null
-                        return (null, null, null);
-                    }
-                }
+                Outline outline = viewport.GetBoxOutline();
+                XYZ min = outline.MinimumPoint;
+                XYZ max = outline.MaximumPoint;
+                XYZ center = (min + max) / 2.0;
 
                 if (linkInstance != null)
                 {
@@ -525,7 +518,7 @@ public static class ElementDataHelper
             }
             catch
             {
-                // If we can't get box center, return null
+                // If we can't get box outline, return null
                 return (null, null, null);
             }
         }
