@@ -179,6 +179,9 @@ public partial class CustomGUIs
         // This ensures edits are correctly applied even when filters change row order
         AssignInternalIdsToEntries(entries);
 
+        // AUTOMATIC SYSTEM: Ensure ElementIdObject exists for edit support
+        EnsureElementIdObjectInRows(entries);
+
         // Clear any previous cached data
         _cachedOriginalData = entries;
         _cachedFilteredData = entries;
@@ -868,6 +871,22 @@ public partial class CustomGUIs
         }
         searchBox.Select();
         form.ShowDialog();
+
+        // AUTOMATIC SYSTEM: Apply any pending edits before returning
+        // This makes edit support fully automatic - commands don't need to call ApplyCellEditsToEntities
+        if (HasPendingEdits() && _currentUIDoc != null)
+        {
+            try
+            {
+                // Automatically apply edits using handlers or legacy system
+                ApplyCellEditsToEntities();
+            }
+            catch (Exception ex)
+            {
+                // Log error but don't fail - user can try manual apply if needed
+                System.Diagnostics.Debug.WriteLine($"Auto-apply edits failed: {ex.Message}");
+            }
+        }
 
         // Return all entries if returnAllEntries is true
         if (returnAllEntries)

@@ -572,6 +572,100 @@ public class MyCommand : IExternalCommand
 }
 ```
 
+## DataGrid Automatic Editable Columns
+
+**IMPORTANT**: DataGrid columns are automatically editable based on column NAME - commands just create dictionaries, editing happens automatically.
+
+### How It Works
+
+The DataGrid system uses a **column handler registry** that recognizes column names and automatically enables editing with validation:
+
+```csharp
+// Command just creates dictionaries with named columns
+var data = new Dictionary<string, object>
+{
+    ["Name"] = element.Name,
+    ["Type Name"] = typeElement?.Name,
+    ["Family"] = familySymbol?.FamilyName,
+    ["Comments"] = commentsParam?.AsString(),
+    ["Mark"] = markParam?.AsString()
+};
+
+// Set UIDocument once to enable automatic edit application
+CustomGUIs.SetCurrentUIDocument(uidoc);
+
+// Show grid - editing is AUTOMATIC
+var selected = CustomGUIs.DataGrid(gridData, propertyNames, false);
+
+// ✅ Edit detection: AUTOMATIC (based on column names)
+// ✅ Validation: AUTOMATIC (invalid values rejected)
+// ✅ ElementIdObject: AUTOMATIC (injected if missing)
+// ✅ Apply edits: AUTOMATIC (when grid closes)
+```
+
+### Standard Editable Columns (Pre-Registered)
+
+These column names are automatically editable with validation:
+
+| Column Name | Edits What | Validation | Works On |
+|-------------|------------|------------|----------|
+| **"Family"** | Family.Name | No empty, no special chars, trimmed | Instances or FamilySymbol types |
+| **"Type Name"** | ElementType.Name | No empty, no special chars, trimmed | Instances or ElementType objects |
+| **"Comments"** | ALL_MODEL_INSTANCE_COMMENTS | Max 1024 chars | Elements with parameter |
+| **"Mark"** | ALL_MODEL_MARK | No special chars, max 256 chars | Elements with parameter |
+
+**Key Point**: Column names are **case-insensitive** ("Family", "family", "FAMILY" all work).
+
+### Requirements for Automatic Editing
+
+1. **Column name must match** a registered handler (e.g., "Family", "Type Name")
+2. **`SetCurrentUIDocument(uidoc)` must be called** before showing DataGrid
+3. **Row must have `ElementIdObject`** or `Id` field (auto-injected if missing)
+
+That's it! No other code needed.
+
+### Adding Custom Editable Columns
+
+Register new handlers in `RevitBallet.cs` OnStartup or command initialization:
+
+```csharp
+CustomGUIs.ColumnHandlerRegistry.Register(new CustomGUIs.ColumnHandler
+{
+    ColumnName = "Level",
+    IsEditable = true,
+    Description = "Element level",
+
+    // Validation (optional)
+    Validator = CustomGUIs.ColumnValidators.NotEmpty,
+
+    // How to read value
+    Getter = (elem, doc) => {
+        Parameter levelParam = elem.get_Parameter(BuiltInParameter.LEVEL_PARAM);
+        return levelParam?.AsValueString() ?? "";
+    },
+
+    // How to write value
+    Setter = (elem, doc, newValue) => {
+        string levelName = newValue?.ToString() ?? "";
+        // Find level by name and set parameter
+        // ... implementation ...
+        return true; // or false if failed
+    }
+});
+```
+
+Now **ANY command** that creates a "Level" column gets automatic editing!
+
+### Implementation Files
+
+- `DataGrid.ColumnHandlers.cs` - Handler registry and standard handlers
+- `DataGrid.Validation.cs` - Validation infrastructure
+- `DataGrid.EditMode.cs` - Auto-detection integration
+- `DataGrid.EditApply.cs` - Handler-based application
+- `DataGrid.Main.cs` - Automatic edit application on close
+
+See `IMPLEMENTATION_SUMMARY.md` in `commands/DataGrid/` for full documentation.
+
 ## Build Limitations
 
 **IMPORTANT**: Do NOT attempt to build the installer using `cd installer && dotnet build -c Release`.

@@ -17,7 +17,6 @@ public class SelectByFamilyTypesInProject : IExternalCommand
 
         // Step 1: Collect all element types (both loaded family types and system types) in the current project
         List<Dictionary<string, object>> typeEntries = new List<Dictionary<string, object>>();
-        Dictionary<string, ElementType> typeElementMap = new Dictionary<string, ElementType>();
 
         var elementTypes = new FilteredElementCollector(doc)
             .OfClass(typeof(ElementType))
@@ -35,6 +34,10 @@ public class SelectByFamilyTypesInProject : IExternalCommand
             {
                 familyName = fs.Family.Name;
                 categoryName = fs.Category != null ? fs.Category.Name : "N/A";
+
+                // Filter out DWG import symbols
+                if (categoryName.Contains("Import Symbol") || familyName.Contains("Import Symbol"))
+                    continue;
             }
             else
             {
@@ -47,26 +50,10 @@ public class SelectByFamilyTypesInProject : IExternalCommand
             {
                 { "Type Name", typeName },
                 { "Family", familyName },
-                { "Category", categoryName }
+                { "Category", categoryName },
+                { "ElementIdObject", elementType.Id }  // Store ElementId for reliable lookup after edits
             };
 
-            // Build a unique key based on category, family and type name
-            string uniqueKey = $"{categoryName}:{familyName}:{typeName}";
-
-            // If duplicate keys exist, append an index
-            if (typeElementMap.ContainsKey(uniqueKey))
-            {
-                int duplicateIndex = 1;
-                string newKey = uniqueKey + "_" + duplicateIndex;
-                while (typeElementMap.ContainsKey(newKey))
-                {
-                    duplicateIndex++;
-                    newKey = uniqueKey + "_" + duplicateIndex;
-                }
-                uniqueKey = newKey;
-            }
-
-            typeElementMap[uniqueKey] = elementType;
             typeEntries.Add(entry);
         }
 
@@ -78,26 +65,27 @@ public class SelectByFamilyTypesInProject : IExternalCommand
             .ToList();
 
         // Step 2: Display a DataGrid for the user to select types
+        // Set UIDocument for edit mode support
+        CustomGUIs.SetCurrentUIDocument(uidoc);
+
         var propertyNames = new List<string> { "Category", "Family", "Type Name" };
         var selectedEntries = CustomGUIs.DataGrid(typeEntries, propertyNames, false);
+
+        // Apply any pending edits (family/type renames)
+        if (CustomGUIs.HasPendingEdits())
+        {
+            CustomGUIs.ApplyCellEditsToEntities();
+        }
 
         if (selectedEntries.Count == 0)
         {
             return Result.Cancelled;
         }
 
-        // Step 3: Retrieve the ElementIds from the selected entries using the typeElementMap
+        // Step 3: Retrieve the ElementIds from the selected entries using the stored ElementIdObject
         List<ElementId> selectedTypeIds = selectedEntries
-            .Select(entry =>
-            {
-                string uniqueKey = $"{entry["Category"]}:{entry["Family"]}:{entry["Type Name"]}";
-                if (!typeElementMap.ContainsKey(uniqueKey))
-                {
-                    uniqueKey = typeElementMap.Keys.FirstOrDefault(k => k.StartsWith($"{entry["Category"]}:{entry["Family"]}:{entry["Type Name"]}"));
-                }
-                return typeElementMap.ContainsKey(uniqueKey) ? typeElementMap[uniqueKey].Id : null;
-            })
-            .Where(id => id != null)
+            .Where(entry => entry.ContainsKey("ElementIdObject") && entry["ElementIdObject"] is ElementId)
+            .Select(entry => (ElementId)entry["ElementIdObject"])
             .ToList();
 
         // Step 4: Collect all instances of the selected types in the model

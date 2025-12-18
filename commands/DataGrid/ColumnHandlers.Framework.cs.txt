@@ -1,0 +1,707 @@
+using System;
+using System.Collections.Generic;
+using Autodesk.Revit.DB;
+using Autodesk.Revit.UI;
+
+/// <summary>
+/// PROPOSED UNIVERSAL COLUMN HANDLER FRAMEWORK
+///
+/// This is a design proposal for a more extensible column handling system.
+/// Instead of hardcoding column names in switch statements, this allows:
+///
+/// 1. Commands to REGISTER column handlers with metadata
+/// 2. Auto-determination of editability
+/// 3. Auto-application of edits via registered handlers
+/// 4. Helper methods for common column patterns (Family/Type, Location, etc.)
+///
+/// BENEFITS:
+/// - Adding new editable columns requires NO changes to DataGrid code
+/// - Column behavior is defined where columns are created
+/// - Easier to maintain and extend
+/// - Type-safe handlers with compile-time checking
+///
+/// MIGRATION PATH:
+/// - Keep existing switch-based system for backward compatibility
+/// - Gradually migrate to handler-based system
+/// - Both systems can coexist during transition
+/// </summary>
+
+namespace RevitBallet.DataGrid.Framework
+{
+    /// <summary>
+    /// Result of validation operation
+    /// </summary>
+    public class ValidationResult
+    {
+        public bool IsValid { get; set; }
+        public string ErrorMessage { get; set; }
+
+        public static ValidationResult Valid() => new ValidationResult { IsValid = true };
+
+        public static ValidationResult Invalid(string errorMessage) =>
+            new ValidationResult { IsValid = false, ErrorMessage = errorMessage };
+    }
+
+    /// <summary>
+    /// Represents a column handler that knows how to read, write, and validate a column value
+    /// FULLY AUTOMATIC: DataGrid uses handlers to automatically enable editing and validation
+    /// </summary>
+    public class ColumnHandler
+    {
+        public string ColumnName { get; set; }
+        public bool IsEditable { get; set; }
+
+        /// <summary>
+        /// Function to get column value from element
+        /// </summary>
+        public Func<Element, Document, object> Getter { get; set; }
+
+        /// <summary>
+        /// Function to set column value on element
+        /// Returns true if successful, false otherwise
+        /// </summary>
+        public Func<Element, Document, object, bool> Setter { get; set; }
+
+        /// <summary>
+        /// Function to validate new value before applying
+        /// Parameters: (element, document, oldValue, newValue)
+        /// Returns ValidationResult with IsValid and optional ErrorMessage
+        /// </summary>
+        public Func<Element, Document, object, object, ValidationResult> Validator { get; set; }
+
+        public string Description { get; set; }
+
+        /// <summary>
+        /// Validate an edit before applying
+        /// </summary>
+        public ValidationResult Validate(Element elem, Document doc, object oldValue, object newValue)
+        {
+            if (Validator == null)
+                return ValidationResult.Valid();
+
+            try
+            {
+                return Validator(elem, doc, oldValue, newValue);
+            }
+            catch (Exception ex)
+            {
+                return ValidationResult.Invalid($"Validation error: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Apply an edit to an element (after validation)
+        /// </summary>
+        public bool ApplyEdit(Element elem, Document doc, object newValue)
+        {
+            if (!IsEditable || Setter == null)
+                return false;
+
+            try
+            {
+                return Setter(elem, doc, newValue);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Built-in validators for common validation scenarios
+    /// </summary>
+    public static class ColumnValidators
+    {
+        /// <summary>
+        /// Validate that value is not empty
+        /// </summary>
+        public static ValidationResult NotEmpty(Element elem, Document doc, object oldValue, object newValue)
+        {
+            if (string.IsNullOrWhiteSpace(newValue?.ToString()))
+                return ValidationResult.Invalid("Value cannot be empty");
+            return ValidationResult.Valid();
+        }
+
+        /// <summary>
+        /// Validate that value doesn't contain invalid filename characters
+        /// </summary>
+        public static ValidationResult NoInvalidCharacters(Element elem, Document doc, object oldValue, object newValue)
+        {
+            string strValue = newValue?.ToString() ?? "";
+            char[] invalid = new[] { '/', '\\', ':', '*', '?', '"', '<', '>', '|' };
+
+            if (strValue.IndexOfAny(invalid) >= 0)
+                return ValidationResult.Invalid($"Value cannot contain: {string.Join(" ", invalid)}");
+
+            return ValidationResult.Valid();
+        }
+
+        /// <summary>
+        /// Validate numeric range
+        /// </summary>
+        public static Func<Element, Document, object, object, ValidationResult> InRange(double min, double max)
+        {
+            return (elem, doc, oldValue, newValue) =>
+            {
+                if (double.TryParse(newValue?.ToString(), out double value))
+                {
+                    if (value < min || value > max)
+                        return ValidationResult.Invalid($"Value must be between {min} and {max}");
+                    return ValidationResult.Valid();
+                }
+                return ValidationResult.Invalid("Value must be a number");
+            };
+        }
+
+        /// <summary>
+        /// Validate maximum length
+        /// </summary>
+        public static Func<Element, Document, object, object, ValidationResult> MaxLength(int maxLength)
+        {
+            return (elem, doc, oldValue, newValue) =>
+            {
+                string strValue = newValue?.ToString() ?? "";
+                if (strValue.Length > maxLength)
+                    return ValidationResult.Invalid($"Value cannot exceed {maxLength} characters");
+                return ValidationResult.Valid();
+            };
+        }
+
+        /// <summary>
+        /// Combine multiple validators - ALL must pass
+        /// </summary>
+        public static Func<Element, Document, object, object, ValidationResult> All(
+            params Func<Element, Document, object, object, ValidationResult>[] validators)
+        {
+            return (elem, doc, oldValue, newValue) =>
+            {
+                foreach (var validator in validators)
+                {
+                    var result = validator(elem, doc, oldValue, newValue);
+                    if (!result.IsValid)
+                        return result;
+                }
+                return ValidationResult.Valid();
+            };
+        }
+    }
+
+    /// <summary>
+    /// Registry of column handlers
+    /// </summary>
+    public static class ColumnHandlerRegistry
+    {
+        private static Dictionary<string, ColumnHandler> _handlers = new Dictionary<string, ColumnHandler>(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// Register a column handler
+        /// </summary>
+        public static void Register(ColumnHandler handler)
+        {
+            _handlers[handler.ColumnName] = handler;
+        }
+
+        /// <summary>
+        /// Get handler for a column name
+        /// </summary>
+        public static ColumnHandler GetHandler(string columnName)
+        {
+            _handlers.TryGetValue(columnName, out var handler);
+            return handler;
+        }
+
+        /// <summary>
+        /// Check if a column is editable
+        /// </summary>
+        public static bool IsColumnEditable(string columnName)
+        {
+            var handler = GetHandler(columnName);
+            return handler != null && handler.IsEditable;
+        }
+
+        /// <summary>
+        /// Apply an edit using the registered handler
+        /// </summary>
+        public static bool ApplyEdit(Element elem, Document doc, string columnName, object newValue)
+        {
+            var handler = GetHandler(columnName);
+            if (handler == null)
+                return false;
+
+            return handler.ApplyEdit(elem, doc, newValue);
+        }
+
+        /// <summary>
+        /// Clear all registered handlers (useful for testing)
+        /// </summary>
+        public static void Clear()
+        {
+            _handlers.Clear();
+        }
+
+        /// <summary>
+        /// Get all registered column names
+        /// </summary>
+        public static IEnumerable<string> GetAllColumnNames()
+        {
+            return _handlers.Keys;
+        }
+
+        /// <summary>
+        /// Register standard Revit column handlers (Family, Type Name, etc.)
+        /// This would be called once at startup
+        /// </summary>
+        public static void RegisterStandardHandlers()
+        {
+            // Family Name
+            Register(new ColumnHandler
+            {
+                ColumnName = "Family",
+                IsEditable = true,
+                Description = "Family name for family instances",
+                Getter = (elem, doc) =>
+                {
+                    ElementId typeId = elem.GetTypeId();
+                    if (typeId == null || typeId == ElementId.InvalidElementId)
+                        return null;
+
+                    Element typeElement = doc.GetElement(typeId);
+                    if (typeElement is FamilySymbol familySymbol)
+                        return familySymbol.FamilyName;
+
+                    Parameter familyParam = typeElement?.get_Parameter(BuiltInParameter.SYMBOL_FAMILY_NAME_PARAM);
+                    return familyParam?.AsString() ?? "System Type";
+                },
+                Setter = (elem, doc, newValue) =>
+                {
+                    string strValue = newValue?.ToString() ?? "";
+                    ElementId typeId = elem.GetTypeId();
+                    if (typeId == null || typeId == ElementId.InvalidElementId)
+                        return false;
+
+                    Element typeElement = doc.GetElement(typeId);
+                    if (typeElement is FamilySymbol familySymbol)
+                    {
+                        try
+                        {
+                            Family family = familySymbol.Family;
+                            family.Name = strValue;
+                            return true;
+                        }
+                        catch { return false; }
+                    }
+                    return false;
+                }
+            });
+
+            // Type Name
+            Register(new ColumnHandler
+            {
+                ColumnName = "Type Name",
+                IsEditable = true,
+                Description = "Type name for elements with types",
+
+                // VALIDATION: Check for invalid characters and duplicates
+                Validator = ColumnValidators.All(
+                    ColumnValidators.NotEmpty,
+                    ColumnValidators.NoInvalidCharacters,
+                    (elem, doc, oldValue, newValue) =>
+                    {
+                        // Custom validation: Check for duplicate type names
+                        string strValue = newValue?.ToString() ?? "";
+
+                        var existingTypes = new FilteredElementCollector(doc)
+                            .OfClass(typeof(ElementType))
+                            .Cast<ElementType>()
+                            .Where(t => t.Name.Equals(strValue, StringComparison.OrdinalIgnoreCase))
+                            .ToList();
+
+                        if (existingTypes.Any())
+                        {
+                            // Allow if it's the same element we're editing
+                            ElementId typeId = elem.GetTypeId();
+                            if (typeId != null && existingTypes.Any(t => t.Id == typeId))
+                                return ValidationResult.Valid();
+
+                            return ValidationResult.Invalid($"Type name '{strValue}' already exists");
+                        }
+
+                        return ValidationResult.Valid();
+                    }
+                ),
+
+                Getter = (elem, doc) =>
+                {
+                    ElementId typeId = elem.GetTypeId();
+                    if (typeId == null || typeId == ElementId.InvalidElementId)
+                        return null;
+
+                    Element typeElement = doc.GetElement(typeId);
+                    return typeElement?.Name;
+                },
+
+                Setter = (elem, doc, newValue) =>
+                {
+                    string strValue = newValue?.ToString() ?? "";
+                    ElementId typeId = elem.GetTypeId();
+                    if (typeId == null || typeId == ElementId.InvalidElementId)
+                        return false;
+
+                    Element typeElement = doc.GetElement(typeId);
+                    if (typeElement != null)
+                    {
+                        try
+                        {
+                            typeElement.Name = strValue;
+                            return true;
+                        }
+                        catch { return false; }
+                    }
+                    return false;
+                }
+            });
+
+            // Comments
+            Register(new ColumnHandler
+            {
+                ColumnName = "Comments",
+                IsEditable = true,
+                Description = "Element comments parameter",
+                Getter = (elem, doc) =>
+                {
+                    Parameter param = elem.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS);
+                    return param?.AsString() ?? "";
+                },
+                Setter = (elem, doc, newValue) =>
+                {
+                    string strValue = newValue?.ToString() ?? "";
+                    Parameter param = elem.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS);
+                    if (param != null && !param.IsReadOnly)
+                    {
+                        try
+                        {
+                            param.Set(strValue);
+                            return true;
+                        }
+                        catch { return false; }
+                    }
+                    return false;
+                }
+            });
+
+            // Mark
+            Register(new ColumnHandler
+            {
+                ColumnName = "Mark",
+                IsEditable = true,
+                Description = "Element mark parameter",
+                Getter = (elem, doc) =>
+                {
+                    Parameter param = elem.get_Parameter(BuiltInParameter.ALL_MODEL_MARK);
+                    return param?.AsString() ?? "";
+                },
+                Setter = (elem, doc, newValue) =>
+                {
+                    string strValue = newValue?.ToString() ?? "";
+                    Parameter param = elem.get_Parameter(BuiltInParameter.ALL_MODEL_MARK);
+                    if (param != null && !param.IsReadOnly)
+                    {
+                        try
+                        {
+                            param.Set(strValue);
+                            return true;
+                        }
+                        catch { return false; }
+                    }
+                    return false;
+                }
+            });
+
+            // Category (read-only)
+            Register(new ColumnHandler
+            {
+                ColumnName = "Category",
+                IsEditable = false,
+                Description = "Element category (read-only)",
+                Getter = (elem, doc) => elem.Category?.Name ?? "",
+                Setter = null
+            });
+
+            // Id (read-only)
+            Register(new ColumnHandler
+            {
+                ColumnName = "Id",
+                IsEditable = false,
+                Description = "Element ID (read-only)",
+                Getter = (elem, doc) => elem.Id.AsLong(),
+                Setter = null
+            });
+
+            // Add more standard handlers here...
+        }
+    }
+
+    /// <summary>
+    /// Helper methods for adding columns to dictionaries - UNIVERSAL approach
+    /// Just specify column NAMES, handlers do everything automatically!
+    /// </summary>
+    public static class ColumnHelpers
+    {
+        /// <summary>
+        /// Add a single column using its registered handler
+        /// </summary>
+        /// <param name="data">Dictionary to add column to</param>
+        /// <param name="element">Element to get data from</param>
+        /// <param name="doc">Document containing the element</param>
+        /// <param name="columnName">Name of column (e.g., "Family", "Type Name", "Comments")</param>
+        /// <param name="skipIfNull">If true, don't add column if value is null/empty</param>
+        /// <returns>True if column was added, false if handler not found or value was null</returns>
+        public static bool AddColumn(Dictionary<string, object> data, Element element, Document doc, string columnName, bool skipIfNull = false)
+        {
+            var handler = ColumnHandlerRegistry.GetHandler(columnName);
+            if (handler == null)
+                return false;
+
+            var value = handler.Getter?.Invoke(element, doc);
+
+            // Skip if null and skipIfNull is true
+            if (skipIfNull && (value == null || string.IsNullOrEmpty(value?.ToString())))
+                return false;
+
+            data[columnName] = value;
+
+            // Special handling for DWG import detection
+            if (columnName.Equals("Family", StringComparison.OrdinalIgnoreCase) &&
+                value?.ToString().Contains("Import Symbol") == true)
+            {
+                data["_IsImportSymbol"] = true;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Add multiple columns by name - UNIVERSAL METHOD
+        /// This is the main method commands should use!
+        /// </summary>
+        /// <param name="data">Dictionary to add columns to</param>
+        /// <param name="element">Element to get data from</param>
+        /// <param name="doc">Document containing the element</param>
+        /// <param name="columnNames">Array of column names to add</param>
+        /// <param name="skipNulls">If true, don't add columns with null/empty values</param>
+        public static void AddColumns(Dictionary<string, object> data, Element element, Document doc, string[] columnNames, bool skipNulls = false)
+        {
+            // Always add ElementIdObject for edit support (not displayed, used internally)
+            data["ElementIdObject"] = element.Id;
+
+            foreach (var columnName in columnNames)
+            {
+                AddColumn(data, element, doc, columnName, skipNulls);
+            }
+        }
+
+        /// <summary>
+        /// Add all registered columns that return non-null values for this element
+        /// Use this for "dump all data" commands
+        /// </summary>
+        public static void AddAllApplicableColumns(Dictionary<string, object> data, Element element, Document doc)
+        {
+            // Always add ElementIdObject for edit support
+            data["ElementIdObject"] = element.Id;
+
+            // Get all registered handlers and try to add each one
+            var allColumnNames = ColumnHandlerRegistry.GetAllColumnNames();
+            foreach (var columnName in allColumnNames)
+            {
+                AddColumn(data, element, doc, columnName, skipIfNull: true);
+            }
+        }
+
+        // Convenience constants for common column sets
+        public static readonly string[] BasicColumns = { "Name", "Category", "Id" };
+        public static readonly string[] FamilyColumns = { "Type Name", "Family" };
+        public static readonly string[] LocationColumns = { "X Centroid", "Y Centroid", "Z Centroid" };
+        public static readonly string[] CommentColumns = { "Comments", "Mark", "Description" };
+        public static readonly string[] StandardColumns = BasicColumns.Concat(FamilyColumns).ToArray();
+    }
+
+    /// <summary>
+    /// EXAMPLE USAGE IN A COMMAND - TRULY UNIVERSAL APPROACH
+    /// Just specify column NAMES, everything else is automatic!
+    /// </summary>
+    public class ExampleCommand_UniversalColumns : IExternalCommand
+    {
+        public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
+        {
+            UIDocument uidoc = commandData.Application.ActiveUIDocument;
+            Document doc = uidoc.Document;
+
+            // Get selected elements
+            var selectedElements = new FilteredElementCollector(doc, uidoc.GetSelectionIds())
+                .WhereElementIsNotElementType()
+                .ToList();
+
+            // ============================================================
+            // OPTION 1: Specify exactly which columns you want
+            // ============================================================
+            var gridData = new List<Dictionary<string, object>>();
+            foreach (var elem in selectedElements)
+            {
+                var data = new Dictionary<string, object>();
+
+                // Just list the columns you want by NAME!
+                // Handlers figure out how to get/set them automatically
+                ColumnHelpers.AddColumns(data, elem, doc, new[]
+                {
+                    "Name",          // Element name
+                    "Category",      // Category name
+                    "Type Name",     // Type name (editable!)
+                    "Family",        // Family name (editable!)
+                    "Comments",      // Comments parameter (editable!)
+                    "Mark",          // Mark parameter (editable!)
+                    "X Centroid",    // X coordinate
+                    "Y Centroid",    // Y coordinate
+                    "Z Centroid"     // Z coordinate
+                });
+
+                gridData.Add(data);
+            }
+
+            // ============================================================
+            // OPTION 2: Use convenience constants for common column sets
+            // ============================================================
+            foreach (var elem in selectedElements)
+            {
+                var data = new Dictionary<string, object>();
+
+                // Combine predefined column sets
+                ColumnHelpers.AddColumns(data, elem, doc,
+                    ColumnHelpers.BasicColumns           // Name, Category, Id
+                    .Concat(ColumnHelpers.FamilyColumns) // Type Name, Family
+                    .Concat(ColumnHelpers.CommentColumns) // Comments, Mark, Description
+                    .ToArray()
+                );
+
+                gridData.Add(data);
+            }
+
+            // ============================================================
+            // OPTION 3: Add ALL applicable columns (dump everything)
+            // ============================================================
+            foreach (var elem in selectedElements)
+            {
+                var data = new Dictionary<string, object>();
+
+                // Tries every registered handler, includes columns that return non-null
+                ColumnHelpers.AddAllApplicableColumns(data, elem, doc);
+
+                gridData.Add(data);
+            }
+
+            // ============================================================
+            // OPTION 4: Mix and match - add specific columns individually
+            // ============================================================
+            foreach (var elem in selectedElements)
+            {
+                var data = new Dictionary<string, object>();
+
+                // Add specific columns one by one
+                ColumnHelpers.AddColumn(data, elem, doc, "Name");
+                ColumnHelpers.AddColumn(data, elem, doc, "Type Name");
+
+                // Add a column only if it has a value (skipIfNull: true)
+                ColumnHelpers.AddColumn(data, elem, doc, "Comments", skipIfNull: true);
+
+                // Check if column was added successfully
+                bool hasFamily = ColumnHelpers.AddColumn(data, elem, doc, "Family");
+                if (!hasFamily)
+                {
+                    data["Family"] = "N/A"; // Fallback value
+                }
+
+                gridData.Add(data);
+            }
+
+            // ============================================================
+            // Show grid and handle edits - SAME AS ALWAYS
+            // ============================================================
+            CustomGUIs.SetCurrentUIDocument(uidoc);
+
+            // Determine which columns to display (from first element)
+            var propertyNames = gridData.First().Keys
+                .Where(k => !k.EndsWith("Object")) // Exclude internal fields
+                .ToList();
+
+            var selected = CustomGUIs.DataGrid(gridData, propertyNames, false);
+
+            // Apply edits - handlers automatically apply changes!
+            if (CustomGUIs.HasPendingEdits())
+            {
+                CustomGUIs.ApplyCellEditsToEntities();
+            }
+
+            return Result.Succeeded;
+        }
+    }
+
+    /// <summary>
+    /// ADDING A NEW COLUMN - SINGLE REGISTRATION, WORKS EVERYWHERE
+    /// </summary>
+    public class RegisterCustomColumn_Example
+    {
+        public static void RegisterMyCustomColumn()
+        {
+            // Register once (e.g., in extension application startup)
+            ColumnHandlerRegistry.Register(new ColumnHandler
+            {
+                ColumnName = "Room Number",
+                IsEditable = true,
+                Description = "Room number for room-based elements",
+                Getter = (elem, doc) =>
+                {
+                    // How to READ this column
+                    if (elem is Room room)
+                        return room.Number;
+
+                    // For elements in rooms, find the containing room
+                    var rooms = new FilteredElementCollector(doc)
+                        .OfCategory(BuiltInCategory.OST_Rooms)
+                        .Cast<Room>()
+                        .Where(r => r.IsPointInRoom(GetElementLocation(elem)))
+                        .FirstOrDefault();
+
+                    return rooms?.Number ?? "";
+                },
+                Setter = (elem, doc, newValue) =>
+                {
+                    // How to WRITE this column
+                    string strValue = newValue?.ToString() ?? "";
+
+                    if (elem is Room room)
+                    {
+                        room.Number = strValue;
+                        return true;
+                    }
+
+                    return false; // Can't set room number on non-room elements
+                }
+            });
+
+            // That's it! Now ANY command can use "Room Number" column:
+            // ColumnHelpers.AddColumn(data, elem, doc, "Room Number");
+            //
+            // Edit support is automatic - no DataGrid code changes needed!
+        }
+
+        private static XYZ GetElementLocation(Element elem)
+        {
+            // Helper to get element location
+            if (elem.Location is LocationPoint lp)
+                return lp.Point;
+            if (elem.Location is LocationCurve lc)
+                return lc.Curve.Evaluate(0.5, true);
+            return null;
+        }
+    }
+}

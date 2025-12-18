@@ -52,6 +52,48 @@ public partial class CustomGUIs
     }
 
     /// <summary>
+    /// AUTOMATIC SYSTEM: Ensure ElementIdObject exists in all rows for edit support
+    /// If missing but Id exists, try to reconstruct ElementId from long Id
+    /// </summary>
+    private static void EnsureElementIdObjectInRows(List<Dictionary<string, object>> entries)
+    {
+        foreach (var entry in entries)
+        {
+            // If ElementIdObject already exists, nothing to do
+            if (entry.ContainsKey("ElementIdObject"))
+                continue;
+
+            // Try to reconstruct from Id field
+            if (entry.ContainsKey("Id"))
+            {
+                try
+                {
+                    object idValue = entry["Id"];
+
+                    // Handle different ID types
+                    if (idValue is long longId)
+                    {
+                        entry["ElementIdObject"] = longId.ToElementId();
+                    }
+                    else if (idValue is int intId)
+                    {
+                        entry["ElementIdObject"] = intId.ToElementId();
+                    }
+                    else if (idValue is string strId && long.TryParse(strId, out long parsedId))
+                    {
+                        entry["ElementIdObject"] = parsedId.ToElementId();
+                    }
+                }
+                catch
+                {
+                    // If reconstruction fails, entry won't be editable (no ElementId to look up)
+                    // This is OK - not all grid entries need to be editable
+                }
+            }
+        }
+    }
+
+    /// <summary>
     /// Gets the internal ID for an entry, or creates one if it doesn't exist
     /// </summary>
     public static long GetInternalId(Dictionary<string, object> entry)

@@ -28,6 +28,16 @@ namespace RevitBallet
                 // Silently fail - don't interrupt Revit startup
             }
 
+            // Initialize DataGrid column handler registry for automatic editing
+            try
+            {
+                CustomGUIs.ColumnHandlerRegistry.RegisterStandardHandlers();
+            }
+            catch
+            {
+                // Silently fail - don't interrupt Revit startup
+            }
+
             return Result.Succeeded;
         }
 

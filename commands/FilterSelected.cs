@@ -184,6 +184,26 @@ public static class ElementDataHelper
         return elementData;
     }
 
+    /// <summary>
+    /// Creates a data dictionary for an element with standard columns including Family and Type Name.
+    ///
+    /// FRAMEWORK NOTE: This method provides automatic family/type editing support for all commands.
+    /// Any command using ElementDataHelper.GetElementData() will automatically get:
+    /// - "Family" column - Editable family name (FamilySymbol.FamilyName or system type family name)
+    /// - "Type Name" column - Editable type name (ElementType.Name)
+    /// - "ElementIdObject" - Stored ElementId for reliable element lookup after edits
+    /// - "_IsImportSymbol" flag - Marks DWG import symbols for optional filtering
+    ///
+    /// To enable editing in your command:
+    /// 1. Call CustomGUIs.SetCurrentUIDocument(uidoc) before showing DataGrid
+    /// 2. Check CustomGUIs.HasPendingEdits() after DataGrid closes
+    /// 3. Call CustomGUIs.ApplyCellEditsToEntities() to apply edits
+    ///
+    /// The edit system automatically handles:
+    /// - Renaming families (via Family.Name property)
+    /// - Renaming types (via ElementType.Name property)
+    /// - Validation and transactions
+    /// </summary>
     private static Dictionary<string, object> GetElementDataDictionary(Element element, Document elementDoc, string linkName, RevitLinkInstance linkInstance, ElementId linkedElementId, bool includeParameters, List<Element> scopeBoxes, List<Tuple<Element, RevitLinkInstance>> linkedScopeBoxes)
     {
         string groupName = string.Empty;
@@ -213,6 +233,39 @@ public static class ElementDataHelper
             ["LinkInstanceObject"] = linkInstance, // Store link instance for reference creation
             ["LinkedElementIdObject"] = linkedElementId // Store linked element ID for reference creation
         };
+
+        // Add Type Name and Family columns for elements with types
+        ElementId typeId = element.GetTypeId();
+        if (typeId != null && typeId != ElementId.InvalidElementId)
+        {
+            Element typeElement = elementDoc.GetElement(typeId);
+            if (typeElement != null)
+            {
+                data["Type Name"] = typeElement.Name;
+
+                // For family symbols, get the family name
+                if (typeElement is FamilySymbol familySymbol)
+                {
+                    data["Family"] = familySymbol.FamilyName;
+
+                    // Filter out DWG import symbols
+                    if (data["Family"].ToString().Contains("Import Symbol") ||
+                        (element.Category != null && element.Category.Name.Contains("Import Symbol")))
+                    {
+                        // Mark as import symbol so it can be filtered if needed
+                        data["_IsImportSymbol"] = true;
+                    }
+                }
+                else
+                {
+                    // For system types, try to get family name from parameter
+                    Parameter familyParam = typeElement.get_Parameter(BuiltInParameter.SYMBOL_FAMILY_NAME_PARAM);
+                    data["Family"] = (familyParam != null && !string.IsNullOrEmpty(familyParam.AsString()))
+                        ? familyParam.AsString()
+                        : "System Type";
+                }
+            }
+        }
 
         // Add scope box information
         var containingScopeBoxes = new List<string>();
@@ -620,9 +673,13 @@ public abstract class FilterElementsBase : IExternalCommand
             bool hasLinkName = elementData.Any(d => d.ContainsKey("LinkName") && !string.IsNullOrEmpty(d["LinkName"]?.ToString()));
             bool hasGroup = elementData.Any(d => d.ContainsKey("Group") && !string.IsNullOrEmpty(d["Group"]?.ToString()));
             bool hasOwnerView = elementData.Any(d => d.ContainsKey("OwnerView") && !string.IsNullOrEmpty(d["OwnerView"]?.ToString()));
+            bool hasFamily = elementData.Any(d => d.ContainsKey("Family") && !string.IsNullOrEmpty(d["Family"]?.ToString()));
+            bool hasTypeName = elementData.Any(d => d.ContainsKey("Type Name") && !string.IsNullOrEmpty(d["Type Name"]?.ToString()));
 
             // Build ordered list, only including columns that have values
             var orderedProps = new List<string> { "Name" };
+            if (hasTypeName) orderedProps.Add("Type Name");  // Editable
+            if (hasFamily) orderedProps.Add("Family");  // Editable
             if (hasScopeBox) orderedProps.Add("Scope Box");  // View scope box (editable)
             if (hasScopeBoxes) orderedProps.Add("ScopeBoxes");  // Element containment (read-only)
             orderedProps.Add("Category");
@@ -902,9 +959,13 @@ public class FilterSelectedInViews : IExternalCommand
             bool hasLinkName = filteredData.Any(d => d.ContainsKey("LinkName") && !string.IsNullOrEmpty(d["LinkName"]?.ToString()));
             bool hasGroup = filteredData.Any(d => d.ContainsKey("Group") && !string.IsNullOrEmpty(d["Group"]?.ToString()));
             bool hasOwnerView = filteredData.Any(d => d.ContainsKey("OwnerView") && !string.IsNullOrEmpty(d["OwnerView"]?.ToString()));
+            bool hasFamily = filteredData.Any(d => d.ContainsKey("Family") && !string.IsNullOrEmpty(d["Family"]?.ToString()));
+            bool hasTypeName = filteredData.Any(d => d.ContainsKey("Type Name") && !string.IsNullOrEmpty(d["Type Name"]?.ToString()));
 
             // Build ordered list, only including columns that have values
             var orderedProps = new List<string> { "Name" };
+            if (hasTypeName) orderedProps.Add("Type Name");  // Editable
+            if (hasFamily) orderedProps.Add("Family");  // Editable
             if (hasScopeBox) orderedProps.Add("Scope Box");  // View scope box (editable)
             if (hasScopeBoxes) orderedProps.Add("ScopeBoxes");  // Element containment (read-only)
             orderedProps.Add("Category");

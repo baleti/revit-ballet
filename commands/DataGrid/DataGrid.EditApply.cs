@@ -250,6 +250,26 @@ public partial class CustomGUIs
     /// </summary>
     private static bool ApplyPropertyEdit(Element elem, string columnName, object newValue, Dictionary<string, object> entry)
     {
+        // AUTOMATIC SYSTEM: Try handler registry first
+        ColumnHandlerRegistry.EnsureInitialized();
+        var handler = ColumnHandlerRegistry.GetHandler(columnName);
+
+        if (handler != null && handler.IsEditable && handler.Setter != null)
+        {
+            try
+            {
+                // Use handler to apply edit
+                bool success = handler.ApplyEdit(elem, _currentUIDoc.Document, newValue);
+                return success;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Handler for '{columnName}' failed: {ex.Message}");
+                return false;
+            }
+        }
+
+        // FALLBACK: Legacy switch-based system for backward compatibility
         string lowerName = columnName.ToLowerInvariant();
         string strValue = newValue?.ToString() ?? "";
 
@@ -260,6 +280,7 @@ public partial class CustomGUIs
             case "displayname":
             case "type":
             case "typename":
+            case "type name":
                 // SPECIAL CASE: ViewSheets use SHEET_NAME built-in parameter
                 if (elem is ViewSheet viewSheet)
                 {
@@ -721,6 +742,7 @@ public partial class CustomGUIs
 
             // Family properties
             case "familyname":
+            case "family name":
             case "family":
                 ElementId famTypeId = elem.GetTypeId();
                 if (famTypeId != null && famTypeId != ElementId.InvalidElementId)
