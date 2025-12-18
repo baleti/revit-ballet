@@ -63,6 +63,10 @@ public class SelectByFamilyTypesInProject : IExternalCommand
                 // For system types (like WallType, FloorType), try to extract the family name
                 familyName = GetSystemFamilyName(elementType) ?? "System Type";
                 categoryName = elementType.Category != null ? elementType.Category.Name : "N/A";
+
+                // Filter out DWG import symbols for system types too
+                if (categoryName.Contains("Import Symbol") || familyName.Contains("Import Symbol"))
+                    continue;
             }
 
             // Get the instance count for this type
