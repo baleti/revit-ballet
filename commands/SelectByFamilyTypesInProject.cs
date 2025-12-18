@@ -23,6 +23,25 @@ public class SelectByFamilyTypesInProject : IExternalCommand
             .Cast<ElementType>()
             .ToList();
 
+        // Create a map to count instances of each type
+        Dictionary<ElementId, int> typeInstanceCounts = new Dictionary<ElementId, int>();
+
+        // Collect all instances and count them by type
+        var allInstances = new FilteredElementCollector(doc)
+            .WhereElementIsNotElementType()
+            .Where(x => x.GetTypeId() != null && x.GetTypeId() != ElementId.InvalidElementId)
+            .ToList();
+
+        foreach (var instance in allInstances)
+        {
+            ElementId typeId = instance.GetTypeId();
+            if (!typeInstanceCounts.ContainsKey(typeId))
+            {
+                typeInstanceCounts[typeId] = 0;
+            }
+            typeInstanceCounts[typeId]++;
+        }
+
         foreach (var elementType in elementTypes)
         {
             string typeName = elementType.Name;
@@ -46,11 +65,15 @@ public class SelectByFamilyTypesInProject : IExternalCommand
                 categoryName = elementType.Category != null ? elementType.Category.Name : "N/A";
             }
 
+            // Get the instance count for this type
+            int count = typeInstanceCounts.ContainsKey(elementType.Id) ? typeInstanceCounts[elementType.Id] : 0;
+
             var entry = new Dictionary<string, object>
             {
                 { "Type Name", typeName },
                 { "Family", familyName },
                 { "Category", categoryName },
+                { "Count", count },
                 { "ElementIdObject", elementType.Id }  // Store ElementId for reliable lookup after edits
             };
 
@@ -68,7 +91,7 @@ public class SelectByFamilyTypesInProject : IExternalCommand
         // Set UIDocument for edit mode support
         CustomGUIs.SetCurrentUIDocument(uidoc);
 
-        var propertyNames = new List<string> { "Category", "Family", "Type Name" };
+        var propertyNames = new List<string> { "Category", "Family", "Type Name", "Count" };
         var selectedEntries = CustomGUIs.DataGrid(typeEntries, propertyNames, false);
 
         // Apply any pending edits (family/type renames)
