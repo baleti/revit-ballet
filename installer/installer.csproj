@@ -29,7 +29,8 @@
     <EmbeddedResource Include="bin\keyboard-shortcuts-merged\KeyboardShortcuts-2026.xml"/>
 
     <!-- Embed all deduplicated resources from bin/resources directory -->
-    <EmbeddedResource Include="bin\resources\*" Condition="Exists('bin\resources')"/>
+    <!-- IMPORTANT: Use WithCulture=false to prevent MSBuild from stripping ".Metadata" from resource names -->
+    <EmbeddedResource Include="bin\resources\*" Condition="Exists('bin\resources')" WithCulture="false"/>
   </ItemGroup>
 
   <!-- Run Python script to prepare resources before build -->
@@ -47,7 +48,7 @@
   <Target Name="IncludeGeneratedResources" BeforeTargets="AssignTargetPaths" DependsOnTargets="PrepareDeduplicatedResources">
     <ItemGroup>
       <EmbeddedResource Include="bin\keyboard-shortcuts-merged\*.xml" Exclude="@(EmbeddedResource)" />
-      <EmbeddedResource Include="bin\resources\*" Exclude="@(EmbeddedResource)" Condition="Exists('bin\resources')" />
+      <EmbeddedResource Include="bin\resources\*" Exclude="@(EmbeddedResource)" Condition="Exists('bin\resources')" WithCulture="false" />
     </ItemGroup>
   </Target>
 </Project>
