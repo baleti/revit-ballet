@@ -973,11 +973,27 @@ namespace RevitBallet.Commands
 
             try
             {
+                // Use MetadataReference.CreateFromFile to explicitly load from our bin directory
+                // This bypasses AppDomain assembly loading and avoids conflicts with pyRevit
+                string binDirectory = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+
                 var scriptOptions = ScriptOptions.Default
-                    .AddReferences(typeof(ScriptGlobals).Assembly)
-                    .AddReferences(typeof(Document).Assembly)
-                    .AddReferences(typeof(UIDocument).Assembly)
-                    .AddReferences(typeof(System.Linq.Enumerable).Assembly)
+                    .AddReferences(Microsoft.CodeAnalysis.MetadataReference.CreateFromFile(typeof(ScriptGlobals).Assembly.Location))
+                    .AddReferences(Microsoft.CodeAnalysis.MetadataReference.CreateFromFile(typeof(Document).Assembly.Location))
+                    .AddReferences(Microsoft.CodeAnalysis.MetadataReference.CreateFromFile(typeof(UIDocument).Assembly.Location))
+                    .AddReferences(Microsoft.CodeAnalysis.MetadataReference.CreateFromFile(typeof(System.Linq.Enumerable).Assembly.Location));
+
+                // Explicitly add Roslyn dependency DLLs from bin directory (all Revit versions)
+                // This avoids conflicts with incompatible versions loaded by other addins (e.g., pyRevit)
+                string immutablePath = Path.Combine(binDirectory, "System.Collections.Immutable.dll");
+                string metadataPath = Path.Combine(binDirectory, "System.Reflection.Metadata.dll");
+
+                if (File.Exists(immutablePath))
+                    scriptOptions = scriptOptions.AddReferences(Microsoft.CodeAnalysis.MetadataReference.CreateFromFile(immutablePath));
+                if (File.Exists(metadataPath))
+                    scriptOptions = scriptOptions.AddReferences(Microsoft.CodeAnalysis.MetadataReference.CreateFromFile(metadataPath));
+
+                scriptOptions = scriptOptions
                     .AddImports("System")
                     .AddImports("System.Linq")
                     .AddImports("System.Collections.Generic")
