@@ -13,15 +13,17 @@
   <ShortcutItem CommandId="7c2e91a4-8f3d-4b2e-9a7c-1d8f4e6b3a2f" Shortcuts="P["/>
   <ShortcutItem CommandId="4a9e6f2b-7d3c-4e8a-9b6f-2c7d4a9e1b3f" Shortcuts="PP"/>
   <ShortcutItem CommandId="8b3f7e2a-9c4d-4f1b-8a6e-3d7f2b9a1c4e" Shortcuts="WE"/>
+  <ShortcutItem CommandId="7d4e9b2a-6c3f-4e8a-9d7f-3e1c4a8b2d9f" Shortcuts="WS"/>
   <ShortcutItem CommandId="2f6a9d3e-4b7c-4e2a-9d6f-1c8e4a7b2d9f" Shortcuts="WR"/>
   <ShortcutItem CommandId="5e8b2f7a-3c9d-4a1e-8b7f-2d9a1c6e4b3f" Shortcuts="WW"/>
+  <ShortcutItem CommandId="4a9e7c2d-5f3b-4e1a-8c7f-2d9e1a4b6c3f" Shortcuts="WD"/>
   <ShortcutItem CommandId="9a4f7c2e-6b3d-4e9a-7c2f-1d8b4e9a6c3f" Shortcuts="WC"/>
   <ShortcutItem CommandId="3c7e9a2d-4f6b-4a8e-9c7f-2d1b4a8e9c6f" Shortcuts="WQ"/>
-  <ShortcutItem CommandId="1e8a3f7b-9d4c-4a2e-7e9f-4c1d3a8b2e7f" Shortcuts="SCS"/>
+  <ShortcutItem CommandId="1e8a3f7b-9d4c-4a2e-7e9f-4c1d3a8b2e7f" Shortcuts="SCD"/>
   <ShortcutItem CommandId="7f3a9d2c-6e4b-4f8a-9d3e-2c7f1b4a8e9f" Shortcuts="SCV"/>
   <ShortcutItem CommandId="4b9e7a3f-2d6c-4e1a-8b9e-3f7d2a4c1e8f" Shortcuts="SCC"/>
-  <ShortcutItem CommandId="8e2f9a4b-7c3d-4a6e-9f8e-1d2c4b7a9e3f" Shortcuts="WS"/>
-  <ShortcutItem CommandId="2a7e4f9b-3d6c-4e8a-7f2e-9c4d1a8b3e6f" Shortcuts="FS"/>
+  <ShortcutItem CommandId="8e2f9a4b-7c3d-4a6e-9f8e-1d2c4b7a9e3f" Shortcuts="WV"/>
+  <ShortcutItem CommandId="2a7e4f9b-3d6c-4e8a-7f2e-9c4d1a8b3e6f" Shortcuts="FD"/>
   <ShortcutItem CommandId="9f3a7e2b-6d4c-4a1e-8f9e-3c2d4a7b1e9f" Shortcuts="EA"/>
   <ShortcutItem CommandId="5c8e2a7f-9b3d-4e6a-7c8f-2d9a1b4e6c9f" Shortcuts="ZS"/>
   <ShortcutItem CommandId="1d9f3a6e-7c4b-4e2a-9f8e-4c1d2a7b3e8f" Shortcuts="Q`"/>
@@ -30,11 +32,11 @@
   <ShortcutItem CommandId="9a6f3e7b-2d4c-4a1e-8f9e-3c7d1a2b4e8f" Shortcuts="VS"/>
   <ShortcutItem CommandId="7c2e4a9f-3d6b-4e1a-8c7f-2d9a1e4b7c3f" Shortcuts="ES"/>
   <ShortcutItem CommandId="8a9f2e3b-6d4c-4a7e-9a8f-3c1d2e7b4a9f" Shortcuts="TS"/>
-  <ShortcutItem CommandId="2d913236-a8c2-4c95-9bb9-7138082361da" Shortcuts="SFS"/>
+  <ShortcutItem CommandId="2d913236-a8c2-4c95-9bb9-7138082361da" Shortcuts="SFD"/>
   <ShortcutItem CommandId="6f3e9a2b-7d4c-4a8e-9f6e-1c3d4a2b8e9f" Shortcuts="SFV"/>
-  <ShortcutItem CommandId="656068a0-9453-499a-9ec6-0a2e9844d0ea" Shortcuts="SGS"/>
+  <ShortcutItem CommandId="656068a0-9453-499a-9ec6-0a2e9844d0ea" Shortcuts="SGD"/>
   <ShortcutItem CommandId="98b59470-fc5f-4a4d-9315-db387e8c89a2" Shortcuts="SGV"/>
-  <ShortcutItem CommandId="9bf19ae6-4594-4ab1-b3aa-e5b85a11983e" Shortcuts="SWS"/>
+  <ShortcutItem CommandId="9bf19ae6-4594-4ab1-b3aa-e5b85a11983e" Shortcuts="SWD"/>
   <ShortcutItem CommandId="82941f8e-8c09-4da3-a849-e84a7ac1dfa8" Shortcuts="SWV"/>
   <ShortcutItem CommandId="CustomCtrl_%CustomCtrl_%Add-Ins%Align%alignLeftButton" Shortcuts="AAL"/>
   <ShortcutItem CommandId="CustomCtrl_%CustomCtrl_%Add-Ins%Align%alignCenterButton" Shortcuts="AAC"/>

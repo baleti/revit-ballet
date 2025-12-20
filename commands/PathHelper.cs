@@ -81,14 +81,5 @@ namespace RevitBallet.Commands
             }
         }
 
-        /// <summary>
-        /// Gets the LogViewChanges directory path for a specific project.
-        /// </summary>
-        /// <param name="projectName">The project name.</param>
-        /// <returns>The full path to the project's log directory.</returns>
-        public static string GetLogViewChangesPath(string projectName)
-        {
-            return GetRuntimeSubdirectoryFilePath("LogViewChanges", projectName);
-        }
     }
 }

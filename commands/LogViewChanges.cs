@@ -3,21 +3,24 @@ using Autodesk.Revit.UI;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Events;
 using Autodesk.Revit.UI.Events;
-using System.IO;
 using System;
-using System.Linq;
 using System.Collections.Generic;
 using RevitBallet.Commands;
 
 namespace RevitBallet
 {
     /// <summary>
-    /// Logs view changes and maintains view history for each project.
+    /// Logs view changes and maintains view history using SQLite database.
     /// </summary>
     public static class LogViewChanges
     {
-        private static string logFilePath;
         private static bool serverInitialized = false;
+
+        /// <summary>
+        /// When true, view activation events are not logged.
+        /// Used to suppress logging of intermediate views during document switches.
+        /// </summary>
+        private static bool suppressLogging = false;
 
         /// <summary>
         /// Initializes view change logging by registering event handlers.
@@ -26,6 +29,7 @@ namespace RevitBallet
         {
             application.ViewActivated += OnViewActivated;
             application.ControlledApplication.DocumentOpened += OnDocumentOpened;
+            application.ControlledApplication.DocumentClosing += OnDocumentClosing;
         }
 
         /// <summary>
@@ -35,6 +39,59 @@ namespace RevitBallet
         {
             application.ViewActivated -= OnViewActivated;
             application.ControlledApplication.DocumentOpened -= OnDocumentOpened;
+            application.ControlledApplication.DocumentClosing -= OnDocumentClosing;
+        }
+
+        /// <summary>
+        /// Gets the SessionId for the current Revit process (ProcessId as string).
+        /// Works in both main addin and InvokeAddinCommand scenarios.
+        /// </summary>
+        public static string GetSessionId()
+        {
+            return System.Diagnostics.Process.GetCurrentProcess().Id.ToString();
+        }
+
+        /// <summary>
+        /// Gets the DocumentSessionId for a specific document.
+        /// DocumentSessionId is the same as SessionId (ProcessId) - uniqueness is achieved via (SessionId, DocumentTitle).
+        /// </summary>
+        public static string GetDocumentSessionId(Document doc)
+        {
+            if (doc == null)
+                return null;
+
+            return GetSessionId();
+        }
+
+        /// <summary>
+        /// Gets or creates a DocumentSessionId for a specific document.
+        /// DocumentSessionId is the same as SessionId (ProcessId) - uniqueness is achieved via (SessionId, DocumentTitle).
+        /// </summary>
+        public static string GetOrCreateDocumentSessionId(Document doc)
+        {
+            if (doc == null)
+                return null;
+
+            return GetSessionId();
+        }
+
+        /// <summary>
+        /// Temporarily suppresses view activation logging.
+        /// Use this before cross-document switches to avoid logging intermediate views.
+        /// Must be paired with ResumeLogging().
+        /// </summary>
+        public static void SuppressLogging()
+        {
+            suppressLogging = true;
+        }
+
+        /// <summary>
+        /// Resumes view activation logging after suppression.
+        /// Must be called after SuppressLogging() to re-enable logging.
+        /// </summary>
+        public static void ResumeLogging()
+        {
+            suppressLogging = false;
         }
 
         private static void OnViewActivated(object sender, ViewActivatedEventArgs e)
@@ -54,124 +111,50 @@ namespace RevitBallet
                 return; // Exit if it's a family document
             }
 
-            string projectName = doc != null ? doc.Title : "UnknownProject";
-
-            // Get the log file path using PathHelper (ensures directory exists)
-            logFilePath = PathHelper.GetLogViewChangesPath(projectName);
-
-            List<string> logEntries = File.Exists(logFilePath) ? File.ReadAllLines(logFilePath).ToList() : new List<string>();
-
-            // Add the new entry
-            logEntries.Add($"{e.CurrentActiveView.Id} {e.CurrentActiveView.Title}");
-
-            // Remove duplicates, preserving the order (keeping the first entry from the bottom)
-            HashSet<string> seen = new HashSet<string>();
-            int insertIndex = logEntries.Count;
-            for (int i = logEntries.Count - 1; i >= 0; i--)
+            // Skip logging if suppressed (during cross-document switches)
+            if (suppressLogging)
             {
-                if (seen.Add(logEntries[i]))
-                {
-                    logEntries[--insertIndex] = logEntries[i];
-                }
+                return;
             }
-            logEntries = logEntries.Skip(insertIndex).ToList();
 
-            File.WriteAllLines(logFilePath, logEntries);
+            string sessionId = GetSessionId();
+            string documentSessionId = sessionId; // DocumentSessionId is same as SessionId (ProcessId)
+
+            // Validate ViewId before logging
+            ElementId viewId = e.CurrentActiveView?.Id;
+            if (viewId == null || viewId == ElementId.InvalidElementId)
+            {
+                return; // Don't log invalid views
+            }
+
+            // Log view activation to database
+            try
+            {
+                LogViewChangesDatabase.LogViewActivation(
+                    sessionId: sessionId,
+                    documentSessionId: documentSessionId,
+                    documentTitle: doc.Title,
+                    documentPath: doc.PathName ?? "",
+                    viewId: viewId,
+                    viewTitle: e.CurrentActiveView.Title,
+                    viewType: e.CurrentActiveView.ViewType.ToString(),
+                    timestamp: DateTime.Now
+                );
+            }
+            catch
+            {
+                // Silently fail - don't interrupt Revit operations
+            }
         }
 
         private static void OnDocumentOpened(object sender, DocumentOpenedEventArgs e)
         {
-            Document doc = e.Document;
-            string projectName = doc != null ? doc.Title : "UnknownProject";
-
-            // Check if the document is a family document
-            if (doc.IsFamilyDocument)
-            {
-                return; // Exit if it's a family document
-            }
-
-            // Get the log file path using PathHelper (ensures directory exists)
-            logFilePath = PathHelper.GetLogViewChangesPath(projectName);
-
-            // Handle reopening: restore from .last backup if it exists
-            if (File.Exists(logFilePath))
-            {
-                // Create a backup copy with a .last suffix
-                string backupFilePath = logFilePath + ".last";
-                File.Copy(logFilePath, backupFilePath, true);
-
-                // Update element IDs in case they changed (detachment, copying)
-                UpdateElementIdsInLog(doc, logFilePath);
-            }
-            else
-            {
-                // New document - try to restore from .last backup
-                string backupFilePath = logFilePath + ".last";
-                if (File.Exists(backupFilePath))
-                {
-                    File.Copy(backupFilePath, logFilePath, false);
-                    UpdateElementIdsInLog(doc, logFilePath);
-                }
-                else
-                {
-                    // Create new empty log
-                    File.WriteAllText(logFilePath, string.Empty);
-                }
-            }
+            // No action needed - DocumentSessionId is derived from ProcessId
         }
 
-        /// <summary>
-        /// Updates element IDs in the log file to match current document IDs.
-        /// This handles cases where IDs change due to detachment or copying.
-        /// </summary>
-        private static void UpdateElementIdsInLog(Document doc, string logFilePath)
+        private static void OnDocumentClosing(object sender, DocumentClosingEventArgs e)
         {
-            if (!File.Exists(logFilePath))
-                return;
-
-            var logEntries = File.ReadAllLines(logFilePath).ToList();
-            bool modified = false;
-
-            // Build a lookup of all views by title
-            var viewsByTitle = new FilteredElementCollector(doc)
-                .OfClass(typeof(View))
-                .Cast<View>()
-                .GroupBy(v => v.Title)
-                .ToDictionary(g => g.Key, g => g.First());
-
-            // Update each entry with current element ID
-            for (int i = 0; i < logEntries.Count; i++)
-            {
-                string entry = logEntries[i].Trim();
-                if (string.IsNullOrEmpty(entry))
-                    continue;
-
-                // Parse: "ElementId Title"
-                var parts = entry.Split(new[] { ' ' }, 2);
-                if (parts.Length != 2)
-                    continue;
-
-                string title = parts[1];
-
-                // Find view by title
-                if (viewsByTitle.TryGetValue(title, out View view))
-                {
-                    // Update with current element ID
-                    string newEntry = $"{view.Id} {title}";
-                    if (newEntry != entry)
-                    {
-                        logEntries[i] = newEntry;
-                        modified = true;
-                    }
-                }
-                // If view not found by title, keep the old entry (might have been deleted/renamed)
-            }
-
-            // Write back if modified
-            if (modified)
-            {
-                File.WriteAllLines(logFilePath, logEntries);
-            }
+            // No action needed - no in-memory state to clean up
         }
     }
 }

@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
@@ -15,7 +14,9 @@ public class CloseViews : IExternalCommand
     {
         UIDocument uidoc = commandData.Application.ActiveUIDocument;
         Document doc = uidoc.Document;
-        string projectName = doc != null ? doc.Title : "UnknownProject";
+
+        // Get SessionId for database operations
+        string sessionId = RevitBallet.LogViewChanges.GetSessionId();
 
         IList<UIView> UIViews = uidoc.GetOpenUIViews();
         List<View> Views = new List<View>();
@@ -24,6 +25,7 @@ public class CloseViews : IExternalCommand
             View view = doc.GetElement(UIview.ViewId) as View;
             Views.Add(view);
         }
+
         List<string> properties = new List<string> { "Title", "ViewType" };
         var viewDicts = CustomGUIs.ConvertToDataGridFormat(Views, properties);
         var selectedDicts = CustomGUIs.DataGrid(viewDicts, properties, false);
@@ -38,24 +40,21 @@ public class CloseViews : IExternalCommand
             {
                 if (openedUIView.ViewId.Equals(view.Id))
                 {
-                    RemoveViewFromLog(view.Title, projectName); // Remove the closed view from the log file
+                    // Remove the closed view from history
+                    try
+                    {
+                        LogViewChangesDatabase.RemoveViewFromHistory(sessionId, doc.Title, view.Title);
+                    }
+                    catch
+                    {
+                        // Silently fail - don't interrupt the close operation
+                    }
+
                     openedUIView.Close();
                 }
             }
+        }
 
-        }
         return Result.Succeeded;
-    }
-    private void RemoveViewFromLog(string viewTitle, string projectName)
-    {
-        string logFilePath = PathHelper.GetLogViewChangesPath(projectName);
-        if (File.Exists(logFilePath))
-        {
-            List<string> logEntries = File.ReadAllLines(logFilePath).ToList();
-            logEntries = logEntries
-                .Where(entry => !entry.Contains($" {viewTitle}"))
-                .ToList();
-            File.WriteAllLines(logFilePath, logEntries);
-        }
     }
 }
