@@ -385,11 +385,11 @@ public partial class CustomGUIs
         grid.RowCount = workingSet.Count;
 
         // Initial selection
+        int firstSelectedIndex = -1;
         if (initialSelectionIndices != null && initialSelectionIndices.Count > 0)
         {
             int firstVisible = GetFirstVisibleColumnIndex();
             bool currentCellSet = false;
-            int firstSelectedIndex = -1;
 
             foreach (int idx in initialSelectionIndices)
             {
@@ -406,13 +406,21 @@ public partial class CustomGUIs
                     }
                 }
             }
+        }
 
-            // Scroll to make the first selected row visible
+        // Scroll to center the first selected row after form is shown
+        // (must be done after form is shown so grid knows its dimensions)
+        form.Shown += delegate
+        {
             if (firstSelectedIndex >= 0)
             {
-                grid.FirstDisplayedScrollingRowIndex = firstSelectedIndex;
+                // Calculate visible rows count to center the selection
+                int visibleRows = grid.DisplayedRowCount(false);
+                int centerOffset = visibleRows / 2;
+                int targetIndex = Math.Max(0, firstSelectedIndex - centerOffset);
+                grid.FirstDisplayedScrollingRowIndex = targetIndex;
             }
-        }
+        };
 
         // Setup delay timer for large datasets
         bool useDelay = entries.Count > 200;

@@ -1,6 +1,4 @@
 using System;
-using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
@@ -15,21 +13,19 @@ public class CloseCurrentView : IExternalCommand
     {
         UIDocument uidoc = commandData.Application.ActiveUIDocument;
         Document doc = uidoc.Document;
-        string projectName = doc != null ? doc.Title : "UnknownProject";
 
-        // Remove the closed view from the log file
-        string logFilePath = PathHelper.GetLogViewChangesPath(projectName);
-        if (File.Exists(logFilePath))
+        // Get SessionId for database operations
+        string sessionId = RevitBallet.LogViewChanges.GetSessionId();
+
+        // Remove the current view from history
+        string activeViewTitle = uidoc.ActiveView.Title;
+        try
         {
-            List<string> logEntries = File.ReadAllLines(logFilePath).ToList();
-            string activeViewTitle = uidoc.ActiveView.Title;
-
-            // Filter out the entry with the current active view's title
-            logEntries = logEntries
-                .Where(entry => !entry.Contains($" {activeViewTitle}"))
-                .ToList();
-
-            File.WriteAllLines(logFilePath, logEntries);
+            LogViewChangesDatabase.RemoveViewFromHistory(sessionId, doc.Title, activeViewTitle);
+        }
+        catch
+        {
+            // Silently fail - don't interrupt the close operation
         }
 
         UIView activeUIView = uidoc.GetOpenUIViews().FirstOrDefault(u => u.ViewId == uidoc.ActiveView.Id);

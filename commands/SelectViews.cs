@@ -4,6 +4,7 @@ using Autodesk.Revit.Attributes;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using RevitBallet.Commands;
 
 [TransactionAttribute(TransactionMode.Manual)]
 public class SelectViews : IExternalCommand
@@ -34,23 +35,26 @@ public class SelectViews : IExternalCommand
         }
 
         // Get all views in the project, including view sheets.
-        FilteredElementCollector viewCollector = new FilteredElementCollector(doc)
-            .OfClass(typeof(View));
+        List<View> allViews = new FilteredElementCollector(doc)
+            .OfClass(typeof(View))
+            .Cast<View>()
+            .Where(v => !v.IsTemplate &&
+                        v.ViewType != ViewType.Legend &&
+                        v.ViewType != ViewType.Schedule &&
+                        v.ViewType != ViewType.ProjectBrowser &&
+                        v.ViewType != ViewType.SystemBrowser)
+            .ToList();
+
+        // Get browser organization columns (pass views so it can detect sheets vs views)
+        List<BrowserOrganizationHelper.BrowserColumn> browserColumns =
+            BrowserOrganizationHelper.GetBrowserColumnsForViews(doc, allViews);
 
         // Prepare data for the data grid and map view titles to view objects.
         List<Dictionary<string, object>> viewData = new List<Dictionary<string, object>>();
         Dictionary<string, View> titleToViewMap = new Dictionary<string, View>();
 
-        foreach (View view in viewCollector.Cast<View>())
+        foreach (View view in allViews)
         {
-            // Skip view templates, legends, schedules, project browser, and system browser.
-            if (view.IsTemplate || 
-                view.ViewType == ViewType.Legend || 
-                view.ViewType == ViewType.Schedule ||
-                view.ViewType == ViewType.ProjectBrowser ||
-                view.ViewType == ViewType.SystemBrowser)
-                continue;
-
             string sheetInfo = string.Empty;
             if (view is ViewSheet)
             {
@@ -70,16 +74,27 @@ public class SelectViews : IExternalCommand
 
             // Assuming titles are unique; otherwise, you might need to use a different key.
             titleToViewMap[view.Title] = view;
-            Dictionary<string, object> viewInfo = new Dictionary<string, object>
-            {
-                { "Title", view.Title },
-                { "Sheet", sheetInfo }
-            };
+            Dictionary<string, object> viewInfo = new Dictionary<string, object>();
+
+            // Add browser organization columns first
+            BrowserOrganizationHelper.AddBrowserColumnsToDict(viewInfo, view, doc, browserColumns);
+
+            // Then add standard columns
+            viewInfo["Title"] = view.Title;
+            viewInfo["Sheet"] = sheetInfo;
+
             viewData.Add(viewInfo);
         }
 
-        // Sort the viewData by Title
-        viewData = viewData.OrderBy(v => v["Title"].ToString()).ToList();
+        // Sort by browser organization columns (if any), otherwise by Title
+        if (browserColumns != null && browserColumns.Count > 0)
+        {
+            viewData = BrowserOrganizationHelper.SortByBrowserColumns(viewData, browserColumns);
+        }
+        else
+        {
+            viewData = viewData.OrderBy(v => v["Title"].ToString()).ToList();
+        }
 
         // Find the index of the active view after sorting
         int sortedActiveViewIndex = -1;
@@ -95,8 +110,11 @@ public class SelectViews : IExternalCommand
             }
         }
 
-        // Define the column headers.
-        List<string> columns = new List<string> { "Title", "Sheet" };
+        // Define the column headers - browser columns first, then standard columns.
+        List<string> columns = new List<string>();
+        columns.AddRange(browserColumns.Select(bc => bc.Name));
+        columns.Add("Title");
+        columns.Add("Sheet");
 
         // Prepare initial selection indices (if active view was found)
         List<int> initialSelection = null;

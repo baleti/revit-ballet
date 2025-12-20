@@ -121,7 +121,7 @@ namespace RevitBallet.Commands
             if (isRunning)
                 return;
 
-            sessionId = Guid.NewGuid().ToString();
+            sessionId = System.Diagnostics.Process.GetCurrentProcess().Id.ToString();
 
             // Load or generate self-signed certificate for HTTPS
             try
@@ -343,7 +343,11 @@ namespace RevitBallet.Commands
                 {
                     foreach (Document doc in uiApp.Application.Documents)
                     {
-                        docs.Add(doc.Title);
+                        // Skip linked documents - only include actively opened documents
+                        if (!doc.IsLinked)
+                        {
+                            docs.Add(doc.Title);
+                        }
                     }
                 }
             }
