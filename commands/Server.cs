@@ -1195,14 +1195,8 @@ namespace RevitBallet.Commands
                 var uidoc = app.ActiveUIDocument;
                 var doc = uidoc?.Document;
 
-                if (doc == null)
-                {
-                    response.Success = false;
-                    response.Error = "No active Revit document";
-                    tcs.SetResult(response);
-                    return;
-                }
-
+                // Allow scripts to run even without an active document
+                // UIDoc and Doc will be null, but UIApp is always available
                 var globals = new ScriptGlobals
                 {
                     UIApp = app,
