@@ -834,6 +834,23 @@ dotnet build installer/installer.csproj
 - `commands/Server.cs` - Auto-started Roslyn server for AI agents and network queries
 - `commands/PathHelper.cs` - Runtime path management
 
+## Command Registration Policy
+
+**IMPORTANT**: When creating new commands, DO NOT automatically register them in configuration files.
+
+**Files NOT to modify automatically:**
+- `installer/revit-ballet.addin` - Command manifest registration
+- `KeyboardShortcuts-custom.xml` - Keyboard shortcut assignments
+
+**Why:** The user decides which commands to expose and register. Only modify these files when:
+1. User explicitly requests registration
+2. User asks you to add keyboard shortcuts
+
+**When creating new commands:**
+- Create the `.cs` file in `commands/` directory
+- Let the user know the command is ready but not registered
+- If registration is needed, ask the user or wait for explicit instruction
+
 ## File Naming Conventions
 
 - **Command Files**: PascalCase matching class name (e.g., `DataGrid2EditMode.cs`)
