@@ -174,10 +174,39 @@ namespace HideLevelBubbles
     }
 
     [Transaction(TransactionMode.Manual)]
-    public class ToggleLevelBubblesInSelectedViews : IExternalCommand
+    public class ToggleBubblesOfSelectedLevels : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
         {
+            // Get the active document and view.
+            UIDocument uiDoc = commandData.Application.ActiveUIDocument;
+            if (uiDoc == null)
+            {
+                message = "No active document.";
+                return Result.Failed;
+            }
+            Document doc = uiDoc.Document;
+            Autodesk.Revit.DB.View activeView = doc.ActiveView;
+
+            // Retrieve the currently selected elements (levels).
+            ICollection<ElementId> selIds = uiDoc.GetSelectionIds();
+            List<Level> selectedLevels = new List<Level>();
+
+            foreach (ElementId id in selIds)
+            {
+                Element elem = doc.GetElement(id);
+                if (elem is Level level)
+                {
+                    selectedLevels.Add(level);
+                }
+            }
+
+            if (selectedLevels.Count == 0)
+            {
+                message = "Please select one or more level elements.";
+                return Result.Failed;
+            }
+
             // Display the dialog to capture user choices.
             BubbleOperation chosenOperation;
             BubbleOption chosenBubbleOption;
@@ -192,93 +221,50 @@ namespace HideLevelBubbles
                 chosenBubbleOption = dialog.SelectedBubbleOption;
             }
 
-            // Get the active document.
-            UIDocument uiDoc = commandData.Application.ActiveUIDocument;
-            if (uiDoc == null)
-            {
-                message = "No active document.";
-                return Result.Failed;
-            }
-            Document doc = uiDoc.Document;
-
-            // Retrieve the currently selected elements (views or viewports).
-            ICollection<ElementId> selIds = uiDoc.GetSelectionIds();
-            List<Autodesk.Revit.DB.View> selectedViews = new List<Autodesk.Revit.DB.View>();
-
-            foreach (ElementId id in selIds)
-            {
-                Element elem = doc.GetElement(id);
-                if (elem is Autodesk.Revit.DB.View view)
-                {
-                    if (!selectedViews.Contains(view))
-                        selectedViews.Add(view);
-                }
-                else if (elem is Viewport vp)
-                {
-                    Element viewElem = doc.GetElement(vp.ViewId);
-                    if (viewElem is Autodesk.Revit.DB.View vpView && !selectedViews.Contains(vpView))
-                        selectedViews.Add(vpView);
-                }
-            }
-
-            if (selectedViews.Count == 0)
-            {
-                message = "Please select one or more views or viewports.";
-                return Result.Failed;
-            }
-
-            // Collect all Level elements (levels derive from DatumPlane).
-            IList<Element> levels = new FilteredElementCollector(doc)
-                                        .OfClass(typeof(Level))
-                                        .ToElements();
-
             // Start a transaction.
             using (Transaction trans = new Transaction(doc, "Hide/Show Level Bubbles"))
             {
                 trans.Start();
 
-                foreach (Autodesk.Revit.DB.View view in selectedViews)
+                foreach (Level level in selectedLevels)
                 {
-                    foreach (Element levelElem in levels)
+                    DatumPlane dp = level as DatumPlane;
+                    if (dp != null)
                     {
-                        DatumPlane dp = levelElem as DatumPlane;
-                        if (dp != null)
+                        try
                         {
-                            try
+                            // Process based on the chosen bubble option and operation.
+                            switch (chosenBubbleOption)
                             {
-                                // Process based on the chosen bubble option and operation.
-                                switch (chosenBubbleOption)
-                                {
-                                    case BubbleOption.End0:
-                                        if (chosenOperation == BubbleOperation.Hide)
-                                            dp.HideBubbleInView(DatumEnds.End0, view);
-                                        else
-                                            dp.ShowBubbleInView(DatumEnds.End0, view);
-                                        break;
-                                    case BubbleOption.End1:
-                                        if (chosenOperation == BubbleOperation.Hide)
-                                            dp.HideBubbleInView(DatumEnds.End1, view);
-                                        else
-                                            dp.ShowBubbleInView(DatumEnds.End1, view);
-                                        break;
-                                    case BubbleOption.Both:
-                                        if (chosenOperation == BubbleOperation.Hide)
-                                        {
-                                            dp.HideBubbleInView(DatumEnds.End0, view);
-                                            dp.HideBubbleInView(DatumEnds.End1, view);
-                                        }
-                                        else
-                                        {
-                                            dp.ShowBubbleInView(DatumEnds.End0, view);
-                                            dp.ShowBubbleInView(DatumEnds.End1, view);
-                                        }
-                                        break;
-                                }
+                                case BubbleOption.End0:
+                                    if (chosenOperation == BubbleOperation.Hide)
+                                        dp.HideBubbleInView(DatumEnds.End0, activeView);
+                                    else
+                                        dp.ShowBubbleInView(DatumEnds.End0, activeView);
+                                    break;
+                                case BubbleOption.End1:
+                                    if (chosenOperation == BubbleOperation.Hide)
+                                        dp.HideBubbleInView(DatumEnds.End1, activeView);
+                                    else
+                                        dp.ShowBubbleInView(DatumEnds.End1, activeView);
+                                    break;
+                                case BubbleOption.Both:
+                                    if (chosenOperation == BubbleOperation.Hide)
+                                    {
+                                        dp.HideBubbleInView(DatumEnds.End0, activeView);
+                                        dp.HideBubbleInView(DatumEnds.End1, activeView);
+                                    }
+                                    else
+                                    {
+                                        dp.ShowBubbleInView(DatumEnds.End0, activeView);
+                                        dp.ShowBubbleInView(DatumEnds.End1, activeView);
+                                    }
+                                    break;
                             }
-                            catch (Autodesk.Revit.Exceptions.ArgumentException)
-                            {
-                                // If the datum plane is not visible in this view, ignore the error.
-                            }
+                        }
+                        catch (Autodesk.Revit.Exceptions.ArgumentException)
+                        {
+                            // If the datum plane is not visible in this view, ignore the error.
                         }
                     }
                 }
