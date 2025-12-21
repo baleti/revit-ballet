@@ -8,7 +8,7 @@ using RevitBallet.Commands;
 
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
-public class OpenViews : IExternalCommand
+public class OpenViewsInDocument : IExternalCommand
 {
     public Result Execute(
         ExternalCommandData commandData,
@@ -53,11 +53,28 @@ public class OpenViews : IExternalCommand
             {
                 dict["SheetNumber"] = sheet.SheetNumber;
                 dict["Name"] = sheet.Name;
+                dict["Sheet"] = ""; // Empty for sheets
             }
             else
             {
                 dict["SheetNumber"] = ""; // Empty for non-sheet views
                 dict["Name"] = v.Name;
+
+                // Check if view is placed on a sheet
+                var viewport = new FilteredElementCollector(doc)
+                    .OfClass(typeof(Viewport))
+                    .Cast<Viewport>()
+                    .FirstOrDefault(vp => vp.ViewId == v.Id);
+
+                if (viewport != null)
+                {
+                    ViewSheet containingSheet = doc.GetElement(viewport.SheetId) as ViewSheet;
+                    dict["Sheet"] = containingSheet != null ? containingSheet.Title : "";
+                }
+                else
+                {
+                    dict["Sheet"] = ""; // Empty for views not on sheets
+                }
             }
 
             dict["ElementIdObject"] = v.Id; // Required for edit functionality
@@ -87,6 +104,7 @@ public class OpenViews : IExternalCommand
         columns.AddRange(browserColumns.Select(bc => bc.Name));
         columns.Add("SheetNumber");
         columns.Add("Name");
+        columns.Add("Sheet");
 
         // ─────────────────────────────────────────────────────────────
         // 3. Figure out which row should be pre-selected (after sorting)

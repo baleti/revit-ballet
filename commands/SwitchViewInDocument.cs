@@ -7,7 +7,7 @@ using System.Linq;
 using RevitBallet.Commands;
 
 [Transaction(TransactionMode.Manual)]
-public class SwitchView : IExternalCommand
+public class SwitchViewInDocument : IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
     {
@@ -137,11 +137,28 @@ public class SwitchView : IExternalCommand
             {
                 dict["SheetNumber"] = sheet.SheetNumber;
                 dict["Name"] = sheet.Name;
+                dict["Sheet"] = ""; // Empty for sheets
             }
             else
             {
                 dict["SheetNumber"] = "";
                 dict["Name"] = view.Name;
+
+                // Check if view is placed on a sheet
+                var viewport = new FilteredElementCollector(doc)
+                    .OfClass(typeof(Viewport))
+                    .Cast<Viewport>()
+                    .FirstOrDefault(vp => vp.ViewId == view.Id);
+
+                if (viewport != null)
+                {
+                    ViewSheet containingSheet = doc.GetElement(viewport.SheetId) as ViewSheet;
+                    dict["Sheet"] = containingSheet != null ? containingSheet.Title : "";
+                }
+                else
+                {
+                    dict["Sheet"] = ""; // Empty for views not on sheets
+                }
             }
 
             dict["ViewType"] = view.ViewType;
@@ -204,6 +221,7 @@ public class SwitchView : IExternalCommand
         propertyNames.Add("SheetNumber");
         propertyNames.Add("Name");
         propertyNames.Add("ViewType");
+        propertyNames.Add("Sheet");
 
         // Show picker & handle result
         CustomGUIs.SetCurrentUIDocument(uidoc);
