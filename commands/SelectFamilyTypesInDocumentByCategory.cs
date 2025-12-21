@@ -1,5 +1,5 @@
 #if REVIT2021 || REVIT2022 || REVIT2023 || REVIT2024 || REVIT2025 || REVIT2026
-// SelectFamilyTypesInProjectByCategory.cs
+// SelectFamilyTypesInDocumentByCategory.cs
 // C# 7.3 – Revit API 2024
 
 using Autodesk.Revit.Attributes;
@@ -12,7 +12,7 @@ using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace YourCompany.YourAddIn
 {
     [Transaction(TransactionMode.Manual)]
-    public class SelectFamilyTypesInProjectByCategory : IExternalCommand
+    public class SelectFamilyTypesInDocumentByCategory : IExternalCommand
     {
         public Result Execute(
             ExternalCommandData commandData,

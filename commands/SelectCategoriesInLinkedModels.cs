@@ -521,7 +521,7 @@ public class SelectCategoriesInViewOfSelectedLinkedModels : SelectCategoriesInSe
 
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
-public class SelectCategoriesInProjectOfSelectedLinkedModels : SelectCategoriesInSelectedLinkedModelsBase
+public class SelectCategoriesInDocumentOfSelectedLinkedModels : SelectCategoriesInSelectedLinkedModelsBase
 {
     public override bool selectInView => false;
 }

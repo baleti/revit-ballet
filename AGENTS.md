@@ -443,13 +443,19 @@ This codebase was partially ported from AutoCAD Ballet which used kebab-case. Al
 
 **Note**: The project name `revit-ballet` itself uses kebab-case as it's a product name/brand identity, not a code identifier.
 
-## Command Scopes (View, Document, Session)
+## Command Scopes (View, Document, Session, Network)
 
-Revit Ballet supports multiple command scopes, similar to AutoCAD Ballet's architecture:
+Revit Ballet supports multiple command scopes, similar to AutoCAD Ballet's architecture. Commands use suffix naming to indicate their scope:
 
-1. **View Scope** - Commands operate on the current active view
-2. **Document Scope** - Commands operate on the current active document/project
-3. **Session Scope** - Commands operate across **all open documents** in the Revit process
+1. **View Scope (`InViews`)** - Commands operate on the current active view
+   - Example: `FilterSelectedInViews`, `SelectByCategoriesInViews`
+2. **Document Scope (`InDocument`)** - Commands operate on the current active document/project
+   - Example: `FilterSelectedInDocument`, `SelectByCategoriesInDocument`
+   - **Note**: Previously used `InProject` suffix, renamed to `InDocument` for consistency with AutoCAD Ballet
+3. **Session Scope (`InSession`)** - Commands operate across **all open documents** in the Revit process
+   - To be implemented for cross-document workflows
+4. **Network Scope (`InNetwork`)** - Commands operate across **all Revit sessions** in the peer-to-peer network
+   - To be implemented for multi-session coordination
 
 ### Multi-Document (Session Scope) Operations
 

@@ -820,7 +820,7 @@ public abstract class FilterElementsBase : IExternalCommand
 #region Concrete commands
 
 [Transaction(TransactionMode.Manual)]
-public class FilterSelectedInProject : FilterElementsBase
+public class FilterSelectedInDocument : FilterElementsBase
 {
     public override bool SpanAllScreens      => false;
     public override bool UseSelectedElements => true;

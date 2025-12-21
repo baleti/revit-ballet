@@ -1,5 +1,5 @@
 //
-//  SelectByWorksetsInProject.cs
+//  SelectByWorksetsInDocument.cs
 //  Revit Ballet
 //
 //  Selects every element in the entire project that belongs to
@@ -20,7 +20,7 @@ using Autodesk.Revit.UI.Selection;
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 
 [Transaction(TransactionMode.Manual)]
-public class SelectByWorksetsInProject : IExternalCommand
+public class SelectByWorksetsInDocument : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData,
                               ref string message,

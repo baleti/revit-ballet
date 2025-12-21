@@ -5,7 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 [Transaction(TransactionMode.Manual)]
-public class SelectByModelGroupsInProject : IExternalCommand
+public class SelectByModelGroupsInDocument : IExternalCommand
 {
     public Result Execute(
         ExternalCommandData commandData,
