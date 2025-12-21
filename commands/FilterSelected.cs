@@ -655,40 +655,39 @@ public abstract class FilterElementsBase : IExternalCommand
                 return Result.Cancelled;
             }
 
-            // Get property names, excluding internal object fields
-            var propertyNames = elementData.First().Keys
-                .Where(k => !k.EndsWith("Object"))
-                .ToList();
+            // Get ALL property names from ALL elements (union, not intersection)
+            var allPropertyNames = new HashSet<string>();
+            foreach (var data in elementData)
+            {
+                foreach (var key in data.Keys)
+                {
+                    if (!key.EndsWith("Object"))  // Exclude internal object fields
+                    {
+                        allPropertyNames.Add(key);
+                    }
+                }
+            }
 
-            // Check which optional columns have any non-empty values
-            bool hasScopeBoxes = elementData.Any(d => d.ContainsKey("ScopeBoxes") && !string.IsNullOrEmpty(d["ScopeBoxes"]?.ToString()));
-            bool hasScopeBox = elementData.Any(d => d.ContainsKey("Scope Box"));  // View scope box assignment
-            bool hasLinkName = elementData.Any(d => d.ContainsKey("LinkName") && !string.IsNullOrEmpty(d["LinkName"]?.ToString()));
-            bool hasGroup = elementData.Any(d => d.ContainsKey("Group") && !string.IsNullOrEmpty(d["Group"]?.ToString()));
-            bool hasOwnerView = elementData.Any(d => d.ContainsKey("OwnerView") && !string.IsNullOrEmpty(d["OwnerView"]?.ToString()));
-            bool hasFamily = elementData.Any(d => d.ContainsKey("Family") && !string.IsNullOrEmpty(d["Family"]?.ToString()));
-            bool hasTypeName = elementData.Any(d => d.ContainsKey("Type Name") && !string.IsNullOrEmpty(d["Type Name"]?.ToString()));
-
-            // Build ordered list, only including columns that have values
+            // Build ordered list with standard columns in preferred order
             var orderedProps = new List<string> { "Name" };
-            if (hasTypeName) orderedProps.Add("Type Name");  // Editable
-            if (hasFamily) orderedProps.Add("Family");  // Editable
-            if (hasScopeBox) orderedProps.Add("Scope Box");  // View scope box (editable)
-            if (hasScopeBoxes) orderedProps.Add("ScopeBoxes");  // Element containment (read-only)
+            if (allPropertyNames.Contains("Type Name")) orderedProps.Add("Type Name");  // Editable
+            if (allPropertyNames.Contains("Family")) orderedProps.Add("Family");  // Editable
+            if (allPropertyNames.Contains("Scope Box")) orderedProps.Add("Scope Box");  // View scope box (editable)
+            if (allPropertyNames.Contains("ScopeBoxes")) orderedProps.Add("ScopeBoxes");  // Element containment (read-only)
             orderedProps.Add("Category");
-            if (hasLinkName) orderedProps.Add("LinkName");
-            if (hasGroup) orderedProps.Add("Group");
-            if (hasOwnerView) orderedProps.Add("OwnerView");
+            if (allPropertyNames.Contains("LinkName")) orderedProps.Add("LinkName");
+            if (allPropertyNames.Contains("Group")) orderedProps.Add("Group");
+            if (allPropertyNames.Contains("OwnerView")) orderedProps.Add("OwnerView");
 
             // Add centroid columns
-            orderedProps.Add("X Centroid");
-            orderedProps.Add("Y Centroid");
-            orderedProps.Add("Z Centroid");
+            if (allPropertyNames.Contains("X Centroid")) orderedProps.Add("X Centroid");
+            if (allPropertyNames.Contains("Y Centroid")) orderedProps.Add("Y Centroid");
+            if (allPropertyNames.Contains("Z Centroid")) orderedProps.Add("Z Centroid");
 
             orderedProps.Add("Id");
 
-            var remainingProps = propertyNames.Except(orderedProps).OrderBy(p => p);
-            propertyNames = orderedProps.Where(p => propertyNames.Contains(p))
+            var remainingProps = allPropertyNames.Except(orderedProps).OrderBy(p => p);
+            var propertyNames = orderedProps.Where(p => allPropertyNames.Contains(p))
                 .Concat(remainingProps)
                 .ToList();
 
@@ -941,40 +940,39 @@ public class FilterSelectedInViews : IExternalCommand
                 return Result.Cancelled;
             }
 
-            // Get property names, excluding internal object fields
-            var propertyNames = filteredData.First().Keys
-                .Where(k => !k.EndsWith("Object"))
-                .ToList();
+            // Get ALL property names from ALL elements (union, not intersection)
+            var allPropertyNames = new HashSet<string>();
+            foreach (var data in filteredData)
+            {
+                foreach (var key in data.Keys)
+                {
+                    if (!key.EndsWith("Object"))  // Exclude internal object fields
+                    {
+                        allPropertyNames.Add(key);
+                    }
+                }
+            }
 
-            // Check which optional columns have any non-empty values
-            bool hasScopeBoxes = filteredData.Any(d => d.ContainsKey("ScopeBoxes") && !string.IsNullOrEmpty(d["ScopeBoxes"]?.ToString()));
-            bool hasScopeBox = filteredData.Any(d => d.ContainsKey("Scope Box"));  // View scope box assignment
-            bool hasLinkName = filteredData.Any(d => d.ContainsKey("LinkName") && !string.IsNullOrEmpty(d["LinkName"]?.ToString()));
-            bool hasGroup = filteredData.Any(d => d.ContainsKey("Group") && !string.IsNullOrEmpty(d["Group"]?.ToString()));
-            bool hasOwnerView = filteredData.Any(d => d.ContainsKey("OwnerView") && !string.IsNullOrEmpty(d["OwnerView"]?.ToString()));
-            bool hasFamily = filteredData.Any(d => d.ContainsKey("Family") && !string.IsNullOrEmpty(d["Family"]?.ToString()));
-            bool hasTypeName = filteredData.Any(d => d.ContainsKey("Type Name") && !string.IsNullOrEmpty(d["Type Name"]?.ToString()));
-
-            // Build ordered list, only including columns that have values
+            // Build ordered list with standard columns in preferred order
             var orderedProps = new List<string> { "Name" };
-            if (hasTypeName) orderedProps.Add("Type Name");  // Editable
-            if (hasFamily) orderedProps.Add("Family");  // Editable
-            if (hasScopeBox) orderedProps.Add("Scope Box");  // View scope box (editable)
-            if (hasScopeBoxes) orderedProps.Add("ScopeBoxes");  // Element containment (read-only)
+            if (allPropertyNames.Contains("Type Name")) orderedProps.Add("Type Name");  // Editable
+            if (allPropertyNames.Contains("Family")) orderedProps.Add("Family");  // Editable
+            if (allPropertyNames.Contains("Scope Box")) orderedProps.Add("Scope Box");  // View scope box (editable)
+            if (allPropertyNames.Contains("ScopeBoxes")) orderedProps.Add("ScopeBoxes");  // Element containment (read-only)
             orderedProps.Add("Category");
-            if (hasLinkName) orderedProps.Add("LinkName");
-            if (hasGroup) orderedProps.Add("Group");
-            if (hasOwnerView) orderedProps.Add("OwnerView");
+            if (allPropertyNames.Contains("LinkName")) orderedProps.Add("LinkName");
+            if (allPropertyNames.Contains("Group")) orderedProps.Add("Group");
+            if (allPropertyNames.Contains("OwnerView")) orderedProps.Add("OwnerView");
 
             // Add centroid columns
-            orderedProps.Add("X Centroid");
-            orderedProps.Add("Y Centroid");
-            orderedProps.Add("Z Centroid");
+            if (allPropertyNames.Contains("X Centroid")) orderedProps.Add("X Centroid");
+            if (allPropertyNames.Contains("Y Centroid")) orderedProps.Add("Y Centroid");
+            if (allPropertyNames.Contains("Z Centroid")) orderedProps.Add("Z Centroid");
 
             orderedProps.Add("Id");
 
-            var remainingProps = propertyNames.Except(orderedProps).OrderBy(p => p);
-            propertyNames = orderedProps.Where(p => propertyNames.Contains(p))
+            var remainingProps = allPropertyNames.Except(orderedProps).OrderBy(p => p);
+            var propertyNames = orderedProps.Where(p => allPropertyNames.Contains(p))
                 .Concat(remainingProps)
                 .ToList();
 
