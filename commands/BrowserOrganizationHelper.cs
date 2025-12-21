@@ -439,6 +439,7 @@ namespace RevitBallet.Commands
         /// <summary>
         /// Sorts view data by browser organization columns in order.
         /// Uses natural sorting to handle numeric prefixes correctly (e.g., "100 -" before "500 -").
+        /// Falls back to sorting by "Name" column when browser columns are empty or identical.
         /// </summary>
         /// <param name="viewData">The list of view dictionaries to sort</param>
         /// <param name="browserColumns">The browser columns to sort by</param>
@@ -475,6 +476,17 @@ namespace RevitBallet.Commands
                         return value;
                     }, new NaturalStringComparer());
                 }
+            }
+
+            // Always add final sort by "Name" column as tiebreaker
+            // This handles cases where browser organization parameters are empty or identical
+            if (sorted != null)
+            {
+                sorted = sorted.ThenBy(v =>
+                {
+                    string value = v.ContainsKey("Name") ? v["Name"]?.ToString() ?? "" : "";
+                    return value;
+                }, new NaturalStringComparer());
             }
 
             return sorted != null ? sorted.ToList() : viewData;
