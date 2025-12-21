@@ -16,7 +16,7 @@ namespace MyRevitCommands
     /// Target framework: .NET 4.8 · C# 7.3 · Revit API 2024.
     /// </summary>
     [Transaction(TransactionMode.Manual)]
-    public class SelectAllVisibleRevisionCloudsInProject : IExternalCommand
+    public class SelectAllVisibleRevisionCloudsInDocument : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData,
                               ref string message,

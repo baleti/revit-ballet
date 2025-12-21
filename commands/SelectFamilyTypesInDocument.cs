@@ -5,7 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 [Transaction(TransactionMode.Manual)]
-public class SelectByFamilyTypesInProject : IExternalCommand
+public class SelectFamilyTypesInDocument : IExternalCommand
 {
     public Result Execute(
         ExternalCommandData commandData,
@@ -115,28 +115,8 @@ public class SelectByFamilyTypesInProject : IExternalCommand
             .Select(entry => (ElementId)entry["ElementIdObject"])
             .ToList();
 
-        // Step 4: Collect all instances of the selected types in the model
-        var selectedInstances = new FilteredElementCollector(doc)
-            .WhereElementIsNotElementType()
-            .Where(x => x.GetTypeId() != null && x.GetTypeId() != ElementId.InvalidElementId && selectedTypeIds.Contains(x.GetTypeId()))
-            .Select(x => x.Id)
-            .ToList();
-
-        // Step 5: Add the new selection to the existing selection
-        ICollection<ElementId> currentSelection = uidoc.GetSelectionIds();
-        List<ElementId> combinedSelection = new List<ElementId>(currentSelection);
-
-        // Add new instances to the combined selection without duplicates
-        foreach (var instanceId in selectedInstances)
-        {
-            if (!combinedSelection.Contains(instanceId))
-            {
-                combinedSelection.Add(instanceId);
-            }
-        }
-
-        // Update the selection with both previous and newly selected elements
-        uidoc.SetSelectionIds(combinedSelection);
+        // Step 4: Set the selected ElementIds in the UIDocument, which selects them in the Revit UI
+        uidoc.SetSelectionIds(selectedTypeIds);
 
         return Result.Succeeded;
     }
