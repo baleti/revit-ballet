@@ -77,17 +77,13 @@
     <PackageReference Include="Microsoft.WindowsAPICodePack-Shell" Version="1.1.0" />
   </ItemGroup>
 
-  <!-- SQLite for LogViewChanges database - version depends on .NET Framework version -->
-  <ItemGroup Condition="'$(TargetFramework)' == 'net46'">
-    <!-- Revit 2017-2018: Use System.Data.SQLite (compatible with .NET Framework 4.6) -->
+  <!-- SQLite for LogViewChanges database and SelectionStorage - version depends on .NET Framework version -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net46' OR '$(TargetFramework)' == 'net47' OR '$(TargetFramework)' == 'net48'">
+    <!-- Revit 2017-2024: Use System.Data.SQLite (compatible with .NET Framework) -->
     <PackageReference Include="System.Data.SQLite.Core" Version="1.0.118" />
   </ItemGroup>
-  <ItemGroup Condition="'$(TargetFramework)' == 'net47' OR '$(TargetFramework)' == 'net48'">
-    <!-- Revit 2019-2024: Microsoft.Data.Sqlite automatically includes the correct bundle -->
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.0" />
-  </ItemGroup>
   <ItemGroup Condition="$(TargetFramework.StartsWith('net8'))">
-    <!-- Revit 2025+: Microsoft.Data.Sqlite automatically includes the correct bundle -->
+    <!-- Revit 2025+: Use Microsoft.Data.Sqlite for .NET 8 -->
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.0" />
   </ItemGroup>
 
@@ -139,10 +135,11 @@
       <RoslynDependencies Include="$(OutputPath)System.Reflection.Metadata.dll" />
       <RoslynDependencies Include="$(OutputPath)System.Runtime.CompilerServices.Unsafe.dll" />
       <RoslynDependencies Include="$(OutputPath)Microsoft.CodeAnalysis*.dll" />
-      <!-- Exclude SQLite dependencies (needed for LogViewChanges database) -->
+      <!-- Exclude SQLite dependencies (needed for LogViewChanges and SelectionStorage) -->
       <RoslynDependencies Include="$(OutputPath)Microsoft.Data.Sqlite.dll" />
       <RoslynDependencies Include="$(OutputPath)System.Data.SQLite.dll" />
       <RoslynDependencies Include="$(OutputPath)SQLitePCLRaw*.dll" />
+      <RoslynDependencies Include="$(OutputPath)SQLite.Interop.dll" />
       <!-- Remove only non-essential DLLs -->
       <UnnecessaryDlls Include="@(AllSystemDlls)" Exclude="@(RoslynDependencies)" />
       <UnnecessaryDlls Include="@(AllMicrosoftDlls)" Exclude="@(RoslynDependencies)" />
@@ -153,9 +150,9 @@
   </Target>
 
   <!-- Post-build: Ensure SQLite native libraries are in the output directory -->
-  <Target Name="CopySQLiteNativeLibs" AfterTargets="Build" Condition="'$(TargetFramework)' != 'net46'">
-    <!-- For Microsoft.Data.Sqlite (Revit 2019+): e_sqlite3.dll -->
 
+  <!-- For Microsoft.Data.Sqlite (Revit 2025-2026 only): Copy e_sqlite3.dll -->
+  <Target Name="CopySQLiteNativeLibs" AfterTargets="Build" Condition="$(TargetFramework.StartsWith('net8'))">
     <!-- Try copying from output runtimes folder first (works for .NET 8) -->
     <PropertyGroup>
       <RuntimesSqlitePath>$(OutputPath)runtimes\win-x64\native\e_sqlite3.dll</RuntimesSqlitePath>
@@ -167,7 +164,7 @@
           Condition="Exists('$(RuntimesSqlitePath)')" />
     <Message Text="Copied e_sqlite3.dll from runtimes folder" Importance="high" Condition="Exists('$(RuntimesSqlitePath)')" />
 
-    <!-- Fallback: Copy from NuGet package cache (needed for .NET Framework) -->
+    <!-- Fallback: Copy from NuGet package cache -->
     <PropertyGroup Condition="!Exists('$(RuntimesSqlitePath)')">
       <NuGetPackageRoot Condition="'$(NuGetPackageRoot)' == ''">$(USERPROFILE)\.nuget\packages</NuGetPackageRoot>
       <NuGetPackageRoot Condition="'$(NuGetPackageRoot)' == '' AND '$(OS)' != 'Windows_NT'">$(HOME)/.nuget/packages</NuGetPackageRoot>
@@ -184,8 +181,8 @@
              Condition="!Exists('$(RuntimesSqlitePath)') AND !Exists('$(NuGetSqlitePath)')" />
   </Target>
 
-  <!-- For System.Data.SQLite (Revit 2017-2018): Copy SQLite.Interop.dll -->
-  <Target Name="CopySQLiteInterop" AfterTargets="Build" Condition="'$(TargetFramework)' == 'net46'">
+  <!-- For System.Data.SQLite (Revit 2017-2024): Copy SQLite.Interop.dll -->
+  <Target Name="CopySQLiteInterop" AfterTargets="Build" Condition="'$(TargetFramework)' == 'net46' OR '$(TargetFramework)' == 'net47' OR '$(TargetFramework)' == 'net48'">
     <PropertyGroup>
       <SqliteInteropPath>$(OutputPath)x64\SQLite.Interop.dll</SqliteInteropPath>
     </PropertyGroup>

@@ -3,8 +3,8 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
+using RevitBallet.Commands;
 
 [Transaction(TransactionMode.Manual)]
 public class SelectOpenedViews : IExternalCommand
@@ -19,52 +19,32 @@ public class SelectOpenedViews : IExternalCommand
         UIDocument uidoc = commandData.Application.ActiveUIDocument;
         Document   doc   = uidoc.Document;
 
-        string projectName = doc?.Title ?? "UnknownProject";
-
-        string logFilePath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "revit-ballet",
-            "runtime",
-            "LogViewChanges",
-            projectName);
+        // Get SessionId (ProcessId) and DocumentTitle for querying history
+        string sessionId = RevitBallet.LogViewChanges.GetSessionId();
+        string documentTitle = doc.Title;
 
         /* ───────────────────────────────────────
-           Validate the log
+           Load view history from database
            ───────────────────────────────────── */
-        if (!File.Exists(logFilePath))
+        var history = LogViewChangesDatabase.GetViewHistoryForDocument(sessionId, documentTitle, limit: 1000);
+
+        if (history.Count == 0)
         {
             TaskDialog.Show("Select Opened Views",
-                            "No log file was found for this project.");
+                            "No view history was found for this document.");
             return Result.Failed;
         }
 
         /* ───────────────────────────────────────
-           Load & parse log entries
-           Each line:  "<ElementId> <Title>"
-           newest entry is last in the file
+           Collect unique view IDs and titles from history
            ───────────────────────────────────── */
         HashSet<ElementId> loggedIds   = new HashSet<ElementId>();
         HashSet<string>    loggedTitles = new HashSet<string>();
 
-        foreach (string raw in File.ReadAllLines(logFilePath).AsEnumerable().Reverse()) // newest first
+        foreach (var entry in history)
         {
-            string line = raw.Trim();
-            if (line.Length == 0) continue;
-
-            string[] parts = line.Split(new[] { ' ' }, 2);
-            if (parts.Length != 2) continue;
-
-            if (int.TryParse(parts[0], out int idInt))
-                loggedIds.Add(idInt.ToElementId());
-
-            loggedTitles.Add(parts[1]);
-        }
-
-        if (loggedIds.Count == 0)
-        {
-            TaskDialog.Show("Select Opened Views",
-                            "The log is empty – nothing to pick.");
-            return Result.Failed;
+            loggedIds.Add(entry.ViewId.ToElementId());
+            loggedTitles.Add(entry.ViewTitle);
         }
 
         /* ───────────────────────────────────────

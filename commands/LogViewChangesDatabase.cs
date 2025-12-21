@@ -4,14 +4,14 @@ using System.Data;
 using System.IO;
 using Autodesk.Revit.DB;
 
-#if REVIT2017 || REVIT2018
+#if REVIT2025 || REVIT2026
+using Microsoft.Data.Sqlite;
+using SQLitePCL;
+#else
 using System.Data.SQLite;
 using SqliteConnection = System.Data.SQLite.SQLiteConnection;
 using SqliteCommand = System.Data.SQLite.SQLiteCommand;
 using SqliteDataReader = System.Data.SQLite.SQLiteDataReader;
-#else
-using Microsoft.Data.Sqlite;
-using SQLitePCL;
 #endif
 
 namespace RevitBallet.Commands
@@ -29,7 +29,7 @@ namespace RevitBallet.Commands
         /// </summary>
         public static void InitializeDatabase()
         {
-#if !REVIT2017 && !REVIT2018
+#if REVIT2025 || REVIT2026
             // Initialize SQLitePCL for Microsoft.Data.Sqlite
             SQLitePCL.Batteries.Init();
 #endif

@@ -453,7 +453,8 @@ Revit Ballet supports multiple command scopes, similar to AutoCAD Ballet's archi
    - Example: `FilterSelectedInDocument`, `SelectByCategoriesInDocument`
    - **Note**: Previously used `InProject` suffix, renamed to `InDocument` for consistency with AutoCAD Ballet
 3. **Session Scope (`InSession`)** - Commands operate across **all open documents** in the Revit process
-   - To be implemented for cross-document workflows
+   - Example: `SelectByCategoriesInSession`
+   - Uses SQLite-based SelectionStorage for cross-document selections (see Cross-Document Selection Storage section)
 4. **Network Scope (`InNetwork`)** - Commands operate across **all Revit sessions** in the peer-to-peer network
    - To be implemented for multi-session coordination
 
@@ -498,6 +499,123 @@ foreach (Document doc in app.Documents)
 - Synchronizing settings across documents
 - Quality checks spanning multiple models
 - Collecting elements by category from all open documents
+
+### Cross-Document Selection Storage
+
+**CRITICAL LIMITATION**: Revit's native `UIDocument.Selection` API **cannot select elements from non-active documents**.
+
+**Tested Behavior:**
+- `Selection.SetElementIds()` silently fails when given element IDs from a different document
+- No exception is thrown - the call succeeds but selection remains empty
+- This is by design: Revit's selection system is tied to the active UIDocument only
+
+**Solution: SQLite-based Selection Storage**
+
+For Session and Network scope commands, we use an external SQLite database (`runtime/selection.sqlite`) to store cross-document selections:
+
+**Key Design Decisions:**
+- **UniqueId vs ElementId**: Store element's `UniqueId` (stable across sessions) instead of `ElementId` (changes between sessions)
+- **Document identification**: Store both `DocumentTitle` and `DocumentPath` to match elements to documents
+- **Session tracking**: Optional `SessionId` for multi-session coordination (Network scope)
+- **Database location**: `%appdata%/revit-ballet/runtime/selection.sqlite`
+
+**Using SelectionStorage API:**
+
+```csharp
+using RevitBallet.Commands;
+
+// Save selection (replaces existing)
+var items = new List<SelectionItem>
+{
+    new SelectionItem
+    {
+        DocumentTitle = doc.Title,
+        DocumentPath = doc.PathName,
+        UniqueId = element.UniqueId,
+        ElementIdValue = element.Id.AsInteger(),
+        SessionId = null // Auto-generated
+    }
+};
+SelectionStorage.SaveSelection(items);
+
+// Add to existing selection
+SelectionStorage.AddToSelection(newItems);
+
+// Load all selections
+var allSelections = SelectionStorage.LoadSelection();
+
+// Load only for currently open documents
+var openDocSelections = SelectionStorage.LoadSelectionForOpenDocuments(app);
+
+// Clear selection
+SelectionStorage.ClearSelection();
+```
+
+**Example: SelectByCategoriesInSession**
+
+```csharp
+// Collect elements from ALL open documents
+foreach (Document doc in app.Documents)
+{
+    if (doc.IsLinked) continue;
+
+    var collector = new FilteredElementCollector(doc);
+    foreach (Element elem in collector.WhereElementIsNotElementType())
+    {
+        selectionItems.Add(new SelectionItem
+        {
+            DocumentTitle = doc.Title,
+            DocumentPath = doc.PathName,
+            UniqueId = elem.UniqueId,
+            ElementIdValue = elem.Id.AsInteger()
+        });
+    }
+}
+
+// Save to database
+SelectionStorage.SaveSelection(selectionItems);
+```
+
+**Retrieving Elements from UniqueId:**
+
+```csharp
+// Load selection from database
+var selections = SelectionStorage.LoadSelection();
+
+// Group by document and retrieve elements
+foreach (var docGroup in selections.GroupBy(s => s.DocumentTitle))
+{
+    // Find matching document
+    Document doc = FindDocumentByTitle(app, docGroup.Key);
+    if (doc == null) continue;
+
+    foreach (var item in docGroup)
+    {
+        // Get element by UniqueId
+        Element elem = doc.GetElement(item.UniqueId);
+        if (elem != null)
+        {
+            // Process element
+        }
+    }
+}
+```
+
+**Implementation Files:**
+- `commands/SelectionStorage.cs` - SQLite storage with conditional compilation for .NET Framework 4.6 / 4.7+ / .NET 8
+- `commands/SelectByCategoriesInSession.cs` - Reference implementation for Session scope
+
+**Why Not Use SelectionModeManager?**
+
+SelectionModeManager (with SelectionSet mode) also stores selections externally, but it's designed for:
+- Single-document workflows with view-switching
+- Linked model element references
+- Persistent selection in the active document context
+
+For cross-document workflows, SelectionStorage provides:
+- Multi-document awareness (DocumentTitle + DocumentPath)
+- UniqueId-based tracking (survives document close/reopen)
+- Session and Network scope support
 
 ## Selection Mode Manager
 
