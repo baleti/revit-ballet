@@ -58,8 +58,15 @@
     <AddIn Type="Command">
         <Name>revit-ballet</Name>
         <Assembly>revit-ballet.dll</Assembly>
-        <FullClassName>SwitchViewByHistory</FullClassName>
+        <FullClassName>SwitchViewByHistoryInDocument</FullClassName>
         <AddInId>2F6A9D3E-4B7C-4E2A-9D6F-1C8E4A7B2D9F</AddInId>
+        <VendorId>revit-ballet</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>revit-ballet</Name>
+        <Assembly>revit-ballet.dll</Assembly>
+        <FullClassName>SwitchViewByHistoryInSession</FullClassName>
+        <AddInId>0B343B93-5DD1-4428-80FF-CA8BFFE183BE</AddInId>
         <VendorId>revit-ballet</VendorId>
     </AddIn>
     <AddIn Type="Command">
