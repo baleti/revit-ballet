@@ -13,7 +13,8 @@
   <ShortcutItem CommandId="7c2e91a4-8f3d-4b2e-9a7c-1d8f4e6b3a2f" Shortcuts="P["/>
   <ShortcutItem CommandId="4a9e6f2b-7d3c-4e8a-9b6f-2c7d4a9e1b3f" Shortcuts="PP"/>
   <ShortcutItem CommandId="8b3f7e2a-9c4d-4f1b-8a6e-3d7f2b9a1c4e" Shortcuts="WE"/>
-  <ShortcutItem CommandId="2f6a9d3e-4b7c-4e2a-9d6f-1c8e4a7b2d9f" Shortcuts="WR#WRV"/>
+  <ShortcutItem CommandId="2f6a9d3e-4b7c-4e2a-9d6f-1c8e4a7b2d9f" Shortcuts="WRV"/>
+  <ShortcutItem CommandId="0b343b93-5dd1-4428-80ff-ca8bffe183be" Shortcuts="WRS"/>
   <ShortcutItem CommandId="5e8b2f7a-3c9d-4a1e-8b7f-2d9a1c6e4b3f" Shortcuts="WV"/>
   <ShortcutItem CommandId="4a9e7c2d-5f3b-4e1a-8c7f-2d9e1a4b6c3f" Shortcuts="WD"/>
   <ShortcutItem CommandId="7d4e9b2a-6c3f-4e8a-9d7f-3e1c4a8b2d9f" Shortcuts="WS"/>

@@ -7,7 +7,7 @@ using System.Linq;
 using RevitBallet.Commands;
 
 [Transaction(TransactionMode.Manual)]
-public class SwitchViewByHistory : IExternalCommand
+public class SwitchViewByHistoryInSession : IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
     {
