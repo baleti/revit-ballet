@@ -189,6 +189,7 @@ public partial class CustomGUIs
         _searchIndexAllColumns = null;
         _lastVisibleColumns.Clear();
         _lastColumnVisibilityFilter = "";
+        _selectionSetCache.Clear(); // Clear selection set cache
 
         // Reset sizing and edit mode state
         _initialSizingDone = false;
