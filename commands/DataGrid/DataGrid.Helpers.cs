@@ -26,6 +26,9 @@ public partial class CustomGUIs
     // Column ordering cache
     private static string _lastColumnOrderingFilter = "";
 
+    // Selection set cache (name -> ElementId set)
+    private static Dictionary<string, HashSet<long>> _selectionSetCache = new Dictionary<string, HashSet<long>>();
+
     // ──────────────────────────────────────────────────────────────
     //  Internal ID tracking for stable edit tracking
     // ──────────────────────────────────────────────────────────────
@@ -137,6 +140,12 @@ public partial class CustomGUIs
         public bool IsExclusion;               // true ⇒ "must NOT match comparison"
     }
 
+    private struct SelectionSetFilter
+    {
+        public string SelectionSetName;        // exact name of the selection set
+        public bool IsExclusion;               // true ⇒ "must NOT be in selection set"
+    }
+
     /// <summary>
     /// Represents column ordering information
     /// </summary>
@@ -161,6 +170,7 @@ public partial class CustomGUIs
         public List<ColumnOrderInfo> ColumnOrdering { get; set; } // New field for column ordering
         public List<bool> ColVisibilityExactMatch { get; set; } // Track exact match for visibility
         public List<string> GeneralExactFilters { get; set; } // Exact match general filters
+        public List<SelectionSetFilter> SelectionSetFilters { get; set; } // Selection set filters
 
         public FilterGroup()
         {
@@ -172,6 +182,7 @@ public partial class CustomGUIs
             ColumnOrdering = new List<ColumnOrderInfo>(); // Initialize column ordering
             ColVisibilityExactMatch = new List<bool>(); // Initialize exact match tracking
             GeneralExactFilters = new List<string>(); // Initialize exact match filters
+            SelectionSetFilters = new List<SelectionSetFilter>(); // Initialize selection set filters
         }
     }
 
@@ -250,6 +261,52 @@ public partial class CustomGUIs
         // Convert glob to regex and match
         string regexPattern = GlobToRegexPattern(pattern);
         return Regex.IsMatch(value, regexPattern);
+    }
+
+    /// <summary>Get element IDs from a selection set by exact name</summary>
+    private static HashSet<long> GetSelectionSetElementIds(string selectionSetName)
+    {
+        // Check cache first
+        if (_selectionSetCache.ContainsKey(selectionSetName))
+            return _selectionSetCache[selectionSetName];
+
+        // Return empty set if no UIDocument is available
+        if (_currentUIDoc == null || _currentUIDoc.Document == null)
+            return new HashSet<long>();
+
+        var doc = _currentUIDoc.Document;
+        var result = new HashSet<long>();
+
+        try
+        {
+            // Find selection set by exact name
+            var collector = new Autodesk.Revit.DB.FilteredElementCollector(doc)
+                .OfClass(typeof(Autodesk.Revit.DB.SelectionFilterElement));
+
+            var selectionSet = collector
+                .Cast<Autodesk.Revit.DB.SelectionFilterElement>()
+                .FirstOrDefault(s => s.Name.Equals(selectionSetName, System.StringComparison.Ordinal));
+
+            if (selectionSet != null)
+            {
+                // Get element IDs and convert to long values (compatible with all Revit versions)
+                foreach (var id in selectionSet.GetElementIds())
+                {
+                    result.Add(id.AsLong());
+                }
+            }
+
+            // Cache the result (even if empty, to avoid repeated queries)
+            _selectionSetCache[selectionSetName] = result;
+        }
+        catch
+        {
+            // If any error occurs, return empty set
+            // Cache empty result to avoid repeated failures
+            _selectionSetCache[selectionSetName] = result;
+        }
+
+        return result;
     }
 
     /// <summary>Build search index for fast filtering</summary>

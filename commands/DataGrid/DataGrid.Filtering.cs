@@ -342,6 +342,70 @@ public partial class CustomGUIs
             if (f.IsExclusion && matchFound) return false;
         }
 
+        // Check selection set filters
+        foreach (SelectionSetFilter f in group.SelectionSetFilters)
+        {
+            // Get element ID from entry
+            long elementIdLong = 0;
+
+            // Try to get from ElementID column first (as long)
+            object elemIdObj;
+            if (entry.TryGetValue("ElementID", out elemIdObj) && elemIdObj != null)
+            {
+                if (elemIdObj is long)
+                {
+                    elementIdLong = (long)elemIdObj;
+                }
+                else if (elemIdObj is int)
+                {
+                    elementIdLong = (int)elemIdObj;
+                }
+                else if (elemIdObj is Autodesk.Revit.DB.ElementId)
+                {
+                    elementIdLong = ((Autodesk.Revit.DB.ElementId)elemIdObj).AsLong();
+                }
+                else if (long.TryParse(elemIdObj.ToString(), out long parsed))
+                {
+                    elementIdLong = parsed;
+                }
+            }
+
+            // Try to get from Id column (fallback)
+            if (elementIdLong == 0 && entry.TryGetValue("Id", out elemIdObj) && elemIdObj != null)
+            {
+                if (elemIdObj is long)
+                {
+                    elementIdLong = (long)elemIdObj;
+                }
+                else if (elemIdObj is int)
+                {
+                    elementIdLong = (int)elemIdObj;
+                }
+                else if (elemIdObj is Autodesk.Revit.DB.ElementId)
+                {
+                    elementIdLong = ((Autodesk.Revit.DB.ElementId)elemIdObj).AsLong();
+                }
+                else if (long.TryParse(elemIdObj.ToString(), out long parsed))
+                {
+                    elementIdLong = parsed;
+                }
+            }
+
+            // If no valid element ID found, treat as not in set
+            if (elementIdLong == 0)
+            {
+                if (!f.IsExclusion) return false; // Required to be in set, but no ID found
+                continue; // Excluded from set, no ID means it's not in set (which is what we want)
+            }
+
+            // Get element IDs from selection set
+            HashSet<long> selectionSetIds = GetSelectionSetElementIds(f.SelectionSetName);
+            bool isInSet = selectionSetIds.Contains(elementIdLong);
+
+            if (!f.IsExclusion && !isInSet) return false; // Required to be in set, but it's not
+            if (f.IsExclusion && isInSet) return false;   // Required NOT to be in set, but it is
+        }
+
         // Check general include/exclude filters using index
         if (group.GeneralFilters.Count > 0 || group.GeneralGlobPatterns.Count > 0 || group.GeneralExactFilters.Count > 0)
         {
@@ -492,10 +556,10 @@ public partial class CustomGUIs
     {
         FilterGroup group = new FilterGroup();
 
-        // Split into tokens - updated regex to handle 'e' prefix for exact matching
+        // Split into tokens - updated regex to handle 'e' prefix for exact matching and #"selection set" syntax
         List<string> tokens = Regex.Matches(
                 groupText,
-                @"(!\d+\$e""[^""]+?""::e""[^""]+?""|!\d+\$e""[^""]+?""::[^ ]+|!\d+\$[^ ]+?::e""[^""]+?""|!\d+\$e""[^""]+?""::""[^""]+?""|!\d+\$""[^""]+?""::e""[^""]+?""|!\d+\$e""[^""]+?""|!\d+\$""[^""]+?""::""[^""]+?""|!\d+\$""[^""]+?""\:\:[^ ]+|!\d+\$[^ ]+?::""[^""]+?""|!\d+\$[^ ]+?::[^ ]+|!\d+\$""[^""]+?""\:[^ ]+|!\d+\$[^ ]+?:[^ ]+|!\d+\$""[^""]+?""|!\d+\$[^ ]+|\d+\$e""[^""]+?""::e""[^""]+?""|\d+\$e""[^""]+?""::[^ ]+|\d+\$[^ ]+?::e""[^""]+?""|\d+\$e""[^""]+?""::""[^""]+?""|\d+\$""[^""]+?""::e""[^""]+?""|\d+\$e""[^""]+?""|\d+\$""[^""]+?""::""[^""]+?""|\d+\$""[^""]+?""\:\:[^ ]+|\d+\$[^ ]+?::""[^""]+?""|\d+\$[^ ]+?::[^ ]+|\d+\$""[^""]+?""\:[^ ]+|\d+\$[^ ]+?:[^ ]+|\d+\$""[^""]+?""|\d+\$[^ ]+|!\$e""[^""]+?""::e""[^""]+?""|!\$e""[^""]+?""::[^ ]+|!\$[^ ]+?::e""[^""]+?""|!\$e""[^""]+?""::""[^""]+?""|!\$""[^""]+?""::e""[^""]+?""|!\$e""[^""]+?""|!\$""[^""]+?""::""[^""]+?""|!\$""[^""]+?""\:\:[^ ]+|!\$[^ ]+?::""[^""]+?""|!\$[^ ]+?::[^ ]+|!\$""[^""]+?""\:[^ ]+|!\$[^ ]+?:[^ ]+|!\$""[^""]+?""|!\$[^ ]+|\$e""[^""]+?""::e""[^""]+?""|\$e""[^""]+?""::[^ ]+|\$[^ ]+?::e""[^""]+?""|\$e""[^""]+?""::""[^""]+?""|\$""[^""]+?""::e""[^""]+?""|\$e""[^""]+?""|\$""[^""]+?""::""[^""]+?""|\$""[^""]+?""\:\:[^ ]+|\$[^ ]+?::""[^""]+?""|\$[^ ]+?::[^ ]+|\$""[^""]+?""\:[^ ]+|\$[^ ]+?:[^ ]+|\$""[^""]+?""|\$[^ ]+|[<>]\d+\.?\d*|e""[^""]+?""|""[^""]+""|\S+)")
+                @"(!?#""[^""]+?""|!\d+\$e""[^""]+?""::e""[^""]+?""|!\d+\$e""[^""]+?""::[^ ]+|!\d+\$[^ ]+?::e""[^""]+?""|!\d+\$e""[^""]+?""::""[^""]+?""|!\d+\$""[^""]+?""::e""[^""]+?""|!\d+\$e""[^""]+?""|!\d+\$""[^""]+?""::""[^""]+?""|!\d+\$""[^""]+?""\:\:[^ ]+|!\d+\$[^ ]+?::""[^""]+?""|!\d+\$[^ ]+?::[^ ]+|!\d+\$""[^""]+?""\:[^ ]+|!\d+\$[^ ]+?:[^ ]+|!\d+\$""[^""]+?""|!\d+\$[^ ]+|\d+\$e""[^""]+?""::e""[^""]+?""|\d+\$e""[^""]+?""::[^ ]+|\d+\$[^ ]+?::e""[^""]+?""|\d+\$e""[^""]+?""::""[^""]+?""|\d+\$""[^""]+?""::e""[^""]+?""|\d+\$e""[^""]+?""|\d+\$""[^""]+?""::""[^""]+?""|\d+\$""[^""]+?""\:\:[^ ]+|\d+\$[^ ]+?::""[^""]+?""|\d+\$[^ ]+?::[^ ]+|\d+\$""[^""]+?""\:[^ ]+|\d+\$[^ ]+?:[^ ]+|\d+\$""[^""]+?""|\d+\$[^ ]+|!\$e""[^""]+?""::e""[^""]+?""|!\$e""[^""]+?""::[^ ]+|!\$[^ ]+?::e""[^""]+?""|!\$e""[^""]+?""::""[^""]+?""|!\$""[^""]+?""::e""[^""]+?""|!\$e""[^""]+?""|!\$""[^""]+?""::""[^""]+?""|!\$""[^""]+?""\:\:[^ ]+|!\$[^ ]+?::""[^""]+?""|!\$[^ ]+?::[^ ]+|!\$""[^""]+?""\:[^ ]+|!\$[^ ]+?:[^ ]+|!\$""[^""]+?""|!\$[^ ]+|\$e""[^""]+?""::e""[^""]+?""|\$e""[^""]+?""::[^ ]+|\$[^ ]+?::e""[^""]+?""|\$e""[^""]+?""::""[^""]+?""|\$""[^""]+?""::e""[^""]+?""|\$e""[^""]+?""|\$""[^""]+?""::""[^""]+?""|\$""[^""]+?""\:\:[^ ]+|\$[^ ]+?::""[^""]+?""|\$[^ ]+?::[^ ]+|\$""[^""]+?""\:[^ ]+|\$[^ ]+?:[^ ]+|\$""[^""]+?""|\$[^ ]+|[<>]\d+\.?\d*|e""[^""]+?""|""[^""]+""|\S+)")
             .Cast<Match>()
             .Select(m => m.Value.Trim())
             .Where(t => t.Length > 0)
@@ -506,6 +570,18 @@ public partial class CustomGUIs
         {
             bool isExcl = rawToken.StartsWith("!");
             string token = isExcl ? rawToken.Substring(1) : rawToken;
+
+            // Check for selection set filter (#"selection set name")
+            if (token.StartsWith("#\"") && token.EndsWith("\"") && token.Length > 3)
+            {
+                string selectionSetName = StripQuotes(token.Substring(1)); // Remove # and quotes
+                group.SelectionSetFilters.Add(new SelectionSetFilter
+                {
+                    SelectionSetName = selectionSetName,
+                    IsExclusion = isExcl
+                });
+                continue;
+            }
 
             // Check for standalone comparison operators (>50, <50)
             var compMatch = Regex.Match(token, @"^([<>])(\d+\.?\d*)$");
