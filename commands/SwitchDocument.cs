@@ -41,17 +41,17 @@ public class SwitchDocument : IExternalCommand
 
             string projectName = doc.Title;
 
-            // Get the last viewed view from the database
-            string lastViewName = "";
+            // Get the last viewed view from the database for switching
             ElementId lastViewId = ElementId.InvalidElementId;
+            string lastViewName = "";
 
             var history = LogViewChangesDatabase.GetViewHistoryForDocument(sessionId, doc.Title, limit: 1);
             if (history.Count > 0)
             {
-                lastViewName = history[0].ViewTitle;
                 try
                 {
                     lastViewId = history[0].ViewId.ToElementId();
+                    lastViewName = history[0].ViewTitle;
                 }
                 catch (Exception)
                 {
@@ -70,7 +70,6 @@ public class SwitchDocument : IExternalCommand
             var dict = new Dictionary<string, object>
             {
                 ["Document"] = projectName,
-                ["LastView"] = lastViewName,
                 ["__Document"] = doc,
                 ["__LastViewId"] = lastViewId,
                 ["__LastViewName"] = lastViewName
@@ -97,7 +96,7 @@ public class SwitchDocument : IExternalCommand
         });
 
         // Build property names
-        var propertyNames = new List<string> { "Document", "LastView" };
+        var propertyNames = new List<string> { "Document" };
 
         // Set initial selection
         List<int> initialSelectionIndices = currentDocIndex >= 0

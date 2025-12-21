@@ -44,7 +44,7 @@
     <AddIn Type="Command">
         <Name>revit-ballet</Name>
         <Assembly>revit-ballet.dll</Assembly>
-        <FullClassName>SwitchView</FullClassName>
+        <FullClassName>SwitchViewInDocument</FullClassName>
         <AddInId>5E8B2F7A-3C9D-4A1E-8B7F-2D9A1C6E4B3F</AddInId>
         <VendorId>revit-ballet</VendorId>
     </AddIn>
@@ -79,8 +79,15 @@
     <AddIn Type="Command">
         <Name>revit-ballet</Name>
         <Assembly>revit-ballet.dll</Assembly>
-        <FullClassName>OpenViews</FullClassName>
+        <FullClassName>OpenViewsInDocument</FullClassName>
         <AddInId>8E2F9A4B-7C3D-4A6E-9F8E-1D2C4B7A9E3F</AddInId>
+        <VendorId>revit-ballet</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>revit-ballet</Name>
+        <Assembly>revit-ballet.dll</Assembly>
+        <FullClassName>OpenViewsInSession</FullClassName>
+        <AddInId>BA55743A-9C5C-4911-BECB-0BAC54B6BDE3</AddInId>
         <VendorId>revit-ballet</VendorId>
     </AddIn>
     <AddIn Type="Command">
@@ -93,8 +100,15 @@
     <AddIn Type="Command">
         <Name>revit-ballet</Name>
         <Assembly>revit-ballet.dll</Assembly>
-        <FullClassName>CloseViews</FullClassName>
+        <FullClassName>CloseViewsInDocument</FullClassName>
         <AddInId>3C7E9A2D-4F6B-4A8E-9C7F-2D1B4A8E9C6F</AddInId>
+        <VendorId>revit-ballet</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>revit-ballet</Name>
+        <Assembly>revit-ballet.dll</Assembly>
+        <FullClassName>CloseViewsInSession</FullClassName>
+        <AddInId>DB3FB0D8-3FC6-4D08-9B64-876EEDD09260</AddInId>
         <VendorId>revit-ballet</VendorId>
     </AddIn>
     <AddIn Type="Command">

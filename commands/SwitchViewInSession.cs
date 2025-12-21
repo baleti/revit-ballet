@@ -108,11 +108,28 @@ public class SwitchViewInSession : IExternalCommand
                 {
                     dict["SheetNumber"] = sheet.SheetNumber;
                     dict["Name"] = sheet.Name;
+                    dict["Sheet"] = ""; // Empty for sheets
                 }
                 else
                 {
                     dict["SheetNumber"] = "";
                     dict["Name"] = view.Name;
+
+                    // Check if view is placed on a sheet
+                    var viewport = new FilteredElementCollector(doc)
+                        .OfClass(typeof(Viewport))
+                        .Cast<Viewport>()
+                        .FirstOrDefault(vp => vp.ViewId == view.Id);
+
+                    if (viewport != null)
+                    {
+                        ViewSheet containingSheet = doc.GetElement(viewport.SheetId) as ViewSheet;
+                        dict["Sheet"] = containingSheet != null ? containingSheet.Title : "";
+                    }
+                    else
+                    {
+                        dict["Sheet"] = ""; // Empty for views not on sheets
+                    }
                 }
 
                 dict["ViewType"] = view.ViewType;
@@ -145,11 +162,28 @@ public class SwitchViewInSession : IExternalCommand
             {
                 dict["SheetNumber"] = sheet.SheetNumber;
                 dict["Name"] = sheet.Name;
+                dict["Sheet"] = ""; // Empty for sheets
             }
             else
             {
                 dict["SheetNumber"] = "";
                 dict["Name"] = fallbackView.Name;
+
+                // Check if view is placed on a sheet
+                var viewport = new FilteredElementCollector(activeDoc)
+                    .OfClass(typeof(Viewport))
+                    .Cast<Viewport>()
+                    .FirstOrDefault(vp => vp.ViewId == fallbackView.Id);
+
+                if (viewport != null)
+                {
+                    ViewSheet containingSheet = activeDoc.GetElement(viewport.SheetId) as ViewSheet;
+                    dict["Sheet"] = containingSheet != null ? containingSheet.Title : "";
+                }
+                else
+                {
+                    dict["Sheet"] = ""; // Empty for views not on sheets
+                }
             }
 
             dict["ViewType"] = fallbackView.ViewType;
@@ -227,6 +261,7 @@ public class SwitchViewInSession : IExternalCommand
         propertyNames.Add("SheetNumber");
         propertyNames.Add("Name");
         propertyNames.Add("ViewType");
+        propertyNames.Add("Sheet");
 
         // Set initial selection
         List<int> initialSelectionIndices = currentViewIndex >= 0
