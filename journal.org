@@ -1354,3 +1354,10 @@ curl: (35) TLS connect error: error:0A000126:SSL routines::unexpected eof while 
 #+end_src
 unlikely that I will be able to resolve it, possibly it's going to resolve itself or stop being noticable after I restart windows, but more likely it will require me to switch wsl networking from nat to mirrored
 hopefully it won't cause any problems with it admins
+*** 21
+**** =16:39= finished initial refectoring of commands into InDocument and InSession scopes
+amazed that this is supported in almost exactly the same way as in autocad
+fitting all shortcuts becomes an issue, may need to redesign it later
+***** consider your own shortcuts mechanism like emacs with a modifier key starting sequence
+another interface to InvokeAddinCommand effectively
+if performance will be acceptable
