@@ -55,23 +55,6 @@ public class SelectViews : IExternalCommand
 
         foreach (View view in allViews)
         {
-            string sheetInfo = string.Empty;
-            if (view is ViewSheet)
-            {
-                // For a sheet, show its own sheet number and name.
-                ViewSheet viewSheet = view as ViewSheet;
-                sheetInfo = $"{viewSheet.SheetNumber} - {viewSheet.Name}";
-            }
-            else if (viewToSheetMap.TryGetValue(view.Id, out ViewSheet sheet))
-            {
-                // For non-sheet views placed on a sheet, display the sheet info.
-                sheetInfo = $"{sheet.SheetNumber} - {sheet.Name}";
-            }
-            else
-            {
-                sheetInfo = "Not Placed";
-            }
-
             // Assuming titles are unique; otherwise, you might need to use a different key.
             titleToViewMap[view.Title] = view;
             Dictionary<string, object> viewInfo = new Dictionary<string, object>();
@@ -79,41 +62,63 @@ public class SelectViews : IExternalCommand
             // Add browser organization columns first
             BrowserOrganizationHelper.AddBrowserColumnsToDict(viewInfo, view, doc, browserColumns);
 
-            // Then add standard columns
-            viewInfo["Title"] = view.Title;
-            viewInfo["Sheet"] = sheetInfo;
+            // Then add standard columns - differentiate between ViewSheet and regular views
+            if (view is ViewSheet viewSheet)
+            {
+                // For a sheet, show its sheet number and name separately
+                viewInfo["SheetNumber"] = viewSheet.SheetNumber;
+                viewInfo["Name"] = viewSheet.Name;
+                viewInfo["Sheet"] = ""; // Empty for sheets
+            }
+            else
+            {
+                viewInfo["SheetNumber"] = ""; // Empty for non-sheet views
+                viewInfo["Name"] = view.Name;
+
+                // Check if view is placed on a sheet
+                if (viewToSheetMap.TryGetValue(view.Id, out ViewSheet sheet))
+                {
+                    // For non-sheet views placed on a sheet, display the sheet info.
+                    viewInfo["Sheet"] = $"{sheet.SheetNumber} - {sheet.Name}";
+                }
+                else
+                {
+                    viewInfo["Sheet"] = "Not Placed";
+                }
+            }
+
+            viewInfo["__OriginalObject"] = view; // Store original object for comparison
 
             viewData.Add(viewInfo);
         }
 
-        // Sort by browser organization columns (if any), otherwise by Title
+        // Sort by browser organization columns (if any), otherwise by Name
         if (browserColumns != null && browserColumns.Count > 0)
         {
             viewData = BrowserOrganizationHelper.SortByBrowserColumns(viewData, browserColumns);
         }
         else
         {
-            viewData = viewData.OrderBy(v => v["Title"].ToString()).ToList();
+            viewData = viewData.OrderBy(v => v["Name"].ToString()).ToList();
         }
 
         // Find the index of the active view after sorting
         int sortedActiveViewIndex = -1;
         if (activeView != null)
         {
-            for (int i = 0; i < viewData.Count; i++)
+            sortedActiveViewIndex = viewData.FindIndex(row =>
             {
-                if (viewData[i]["Title"].ToString() == activeView.Title)
-                {
-                    sortedActiveViewIndex = i;
-                    break;
-                }
-            }
+                if (row.ContainsKey("__OriginalObject") && row["__OriginalObject"] is View v)
+                    return v.Id == activeView.Id;
+                return false;
+            });
         }
 
         // Define the column headers - browser columns first, then standard columns.
         List<string> columns = new List<string>();
         columns.AddRange(browserColumns.Select(bc => bc.Name));
-        columns.Add("Title");
+        columns.Add("SheetNumber");
+        columns.Add("Name");
         columns.Add("Sheet");
 
         // Prepare initial selection indices (if active view was found)
@@ -136,12 +141,13 @@ public class SelectViews : IExternalCommand
         {
             // Get the current selection
             ICollection<ElementId> currentSelectionIds = uidoc.GetSelectionIds();
-            
-            // Get the ElementIds of the views selected in the dialog
+
+            // Get the ElementIds of the views selected in the dialog using __OriginalObject
             List<ElementId> newViewIds = selectedViews
-                .Select(v => titleToViewMap[v["Title"].ToString()].Id)
+                .Where(v => v.ContainsKey("__OriginalObject") && v["__OriginalObject"] is View)
+                .Select(v => (v["__OriginalObject"] as View).Id)
                 .ToList();
-                
+
             // Add the new views to the current selection
             foreach (ElementId id in newViewIds)
             {
@@ -150,10 +156,10 @@ public class SelectViews : IExternalCommand
                     currentSelectionIds.Add(id);
                 }
             }
-            
+
             // Update the selection with the combined set of elements
             uidoc.SetSelectionIds(currentSelectionIds);
-            
+
             return Result.Succeeded;
         }
 
