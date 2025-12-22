@@ -1,6 +1,8 @@
 using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
+using RevitBallet.Commands;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows.Forms;
@@ -19,7 +21,7 @@ public class ImportViewTemplatesFromRvt : IExternalCommand
         OpenFileDialog openFileDialog = new OpenFileDialog();
         openFileDialog.Filter = "Revit File (*.rvt)|*.rvt";
         openFileDialog.Title = "Select .rvt File";
-        openFileDialog.ShowDialog();
+        openFileDialog.ShowDialog(new RevitWindow(Helpers.GetMainWindowHandle(commandData.Application)));
 
         // Check if the user cancelled the operation
         if (openFileDialog.FileName == "")

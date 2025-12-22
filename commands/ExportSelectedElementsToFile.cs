@@ -5,6 +5,7 @@ using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using Autodesk.Revit.ApplicationServices;
+using RevitBallet.Commands;
 
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace RevitCommands
@@ -66,7 +67,7 @@ namespace RevitCommands
                     FileName = $"ExportedElements_{DateTime.Now:yyyyMMdd_HHmmss}.rvt"
                 };
 
-                if (saveFileDialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
+                if (saveFileDialog.ShowDialog(new RevitWindow(Helpers.GetMainWindowHandle(commandData.Application))) != System.Windows.Forms.DialogResult.OK)
                 {
                     return Result.Cancelled;
                 }

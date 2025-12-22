@@ -1,6 +1,7 @@
 using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
+using RevitBallet.Commands;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -72,7 +73,7 @@ public class ExportSchedule : IExternalCommand
                     saveFileDialog.FileName = $"{selectedSchedule.Name}.txt";
                     saveFileDialog.Filter = "Text files (*.txt)|*.txt|All files (*.*)|*.*";
 
-                    if (saveFileDialog.ShowDialog() == DialogResult.OK)
+                    if (saveFileDialog.ShowDialog(new RevitWindow(Helpers.GetMainWindowHandle(commandData.Application))) == DialogResult.OK)
                     {
                         exportPath = saveFileDialog.FileName;
 
