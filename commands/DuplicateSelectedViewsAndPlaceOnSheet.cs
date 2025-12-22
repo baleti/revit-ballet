@@ -220,10 +220,38 @@ namespace RevitAddin
                 columns.Add("SheetNumber");
                 columns.Add("Name");
 
-                // Show the grid
+                // Find sheets where selected views are currently placed
+                List<int> initialSelectionIndices = new List<int>();
+                HashSet<ElementId> sheetsWithSelectedViews = new HashSet<ElementId>();
+
+                foreach (RevitView view in selectedViews)
+                {
+                    var viewport = new FilteredElementCollector(doc)
+                        .OfClass(typeof(RevitViewport))
+                        .Cast<RevitViewport>()
+                        .FirstOrDefault(vp => vp.ViewId == view.Id);
+
+                    if (viewport != null)
+                    {
+                        sheetsWithSelectedViews.Add(viewport.SheetId);
+                    }
+                }
+
+                // Find indices of these sheets in gridData
+                for (int i = 0; i < gridData.Count; i++)
+                {
+                    if (gridData[i].ContainsKey("ElementIdObject") &&
+                        gridData[i]["ElementIdObject"] is ElementId sheetId &&
+                        sheetsWithSelectedViews.Contains(sheetId))
+                    {
+                        initialSelectionIndices.Add(i);
+                    }
+                }
+
+                // Show the grid with initial selection
                 CustomGUIs.SetCurrentUIDocument(uidoc);
                 List<Dictionary<string, object>> selectedRows =
-                    CustomGUIs.DataGrid(gridData, columns, false);
+                    CustomGUIs.DataGrid(gridData, columns, false, initialSelectionIndices);
 
                 if (selectedRows == null || selectedRows.Count == 0)
                 {
