@@ -28,39 +28,69 @@ public class OpenPreviousViewsInSession : IExternalCommand
         View activeView = uidoc.ActiveView;
 
         // Get SessionId for querying history
-        string sessionId = RevitBallet.LogViewChanges.GetSessionId();
+        string currentSessionId = RevitBallet.LogViewChanges.GetSessionId();
 
         // ─────────────────────────────────────────────────────────────
-        // 1. Collect previously opened views from ALL open documents in the session
+        // 1. Get ALL view history from database (all sessions, all documents)
+        // ─────────────────────────────────────────────────────────────
+        var allHistory = LogViewChangesDatabase.GetAllViewHistoryForAllDocuments(limit: 1000);
+
+        if (allHistory.Count == 0)
+        {
+            TaskDialog.Show("Info", "No previously opened views found in database.");
+            return Result.Failed;
+        }
+
+        // ─────────────────────────────────────────────────────────────
+        // 2. Build grid data from history entries - match to currently open documents
         // ─────────────────────────────────────────────────────────────
         List<Dictionary<string, object>> gridData = new List<Dictionary<string, object>>();
         Dictionary<Document, List<BrowserOrganizationHelper.BrowserColumn>> browserColumnsByDoc
             = new Dictionary<Document, List<BrowserOrganizationHelper.BrowserColumn>>();
 
-        foreach (Document doc in uiApp.Application.Documents)
+        // Group history by document title for efficient lookup
+        var historyByDocument = allHistory.GroupBy(h => h.DocumentTitle);
+
+        foreach (var docGroup in historyByDocument)
         {
-            // Skip linked documents (read-only references)
-            if (doc.IsLinked)
+            string documentTitle = docGroup.Key;
+
+            // Try to find matching open document
+            Document doc = null;
+            foreach (Document openDoc in uiApp.Application.Documents)
+            {
+                if (openDoc.IsLinked || openDoc.IsFamilyDocument)
+                    continue;
+
+                if (openDoc.Title == documentTitle)
+                {
+                    doc = openDoc;
+                    break;
+                }
+            }
+
+            // Skip if document is not currently open
+            if (doc == null)
                 continue;
 
-            // Skip family documents
-            if (doc.IsFamilyDocument)
-                continue;
+            // Get browser organization columns for this document (only once)
+            if (!browserColumnsByDoc.ContainsKey(doc))
+            {
+                var allViewsInDoc = new FilteredElementCollector(doc)
+                    .OfClass(typeof(View))
+                    .Cast<View>()
+                    .Where(v => !v.IsTemplate &&
+                                v.ViewType != ViewType.ProjectBrowser &&
+                                v.ViewType != ViewType.SystemBrowser)
+                    .ToList();
 
-            string documentTitle = doc.Title;
+                browserColumnsByDoc[doc] = BrowserOrganizationHelper.GetBrowserColumnsForViews(doc, allViewsInDoc);
+            }
 
-            // Get view history from database for this document (sorted by timestamp DESC)
-            var history = LogViewChangesDatabase.GetViewHistoryForDocument(sessionId, documentTitle, limit: 1000);
+            List<BrowserOrganizationHelper.BrowserColumn> browserColumns = browserColumnsByDoc[doc];
 
-            if (history.Count == 0)
-                continue;
-
-            // Build list of views from history
-            var previousViews = new List<View>();
-            var seenViewIds = new HashSet<ElementId>();
-            var viewTimestamps = new Dictionary<ElementId, DateTime>();
-
-            foreach (var entry in history)
+            // Process each history entry (DO NOT deduplicate - keep all session records)
+            foreach (var entry in docGroup)
             {
                 ElementId viewId;
                 try
@@ -69,13 +99,9 @@ public class OpenPreviousViewsInSession : IExternalCommand
                 }
                 catch (Exception)
                 {
-                    // Skip invalid ViewId entries (e.g., 0, -1, or corrupted data)
+                    // Skip invalid ViewId entries
                     continue;
                 }
-
-                // Skip duplicates
-                if (seenViewIds.Contains(viewId))
-                    continue;
 
                 Element viewElement = doc.GetElement(viewId);
 
@@ -93,77 +119,57 @@ public class OpenPreviousViewsInSession : IExternalCommand
                     view.ViewType != ViewType.ProjectBrowser &&
                     view.ViewType != ViewType.SystemBrowser)
                 {
-                    previousViews.Add(view);
-                    seenViewIds.Add(view.Id);
-                    viewTimestamps[view.Id] = entry.Timestamp;
-                }
-            }
+                    var dict = new Dictionary<string, object>();
 
-            if (previousViews.Count == 0)
-                continue;
+                    // Add document name first
+                    dict["Document"] = documentTitle;
 
-            // Get browser organization columns for this document's views
-            List<BrowserOrganizationHelper.BrowserColumn> browserColumns =
-                BrowserOrganizationHelper.GetBrowserColumnsForViews(doc, previousViews);
-            browserColumnsByDoc[doc] = browserColumns;
+                    // Add browser organization columns
+                    BrowserOrganizationHelper.AddBrowserColumnsToDict(dict, view, doc, browserColumns);
 
-            // Add each view to the grid data
-            foreach (View v in previousViews)
-            {
-                var dict = new Dictionary<string, object>();
+                    // Add session tracking column
+                    bool isCurrentSession = entry.SessionId == currentSessionId;
+                    dict["Session"] = isCurrentSession ? "Current" : entry.SessionId.Substring(0, Math.Min(8, entry.SessionId.Length));
 
-                // Add document name first
-                dict["Document"] = documentTitle;
+                    // Add timestamp column
+                    dict["Last Opened"] = entry.Timestamp.ToString("yyyy-MM-dd HH:mm:ss");
+                    dict["__Timestamp"] = entry.Timestamp;
 
-                // Add browser organization columns
-                BrowserOrganizationHelper.AddBrowserColumnsToDict(dict, v, doc, browserColumns);
-
-                // Add timestamp column
-                if (viewTimestamps.TryGetValue(v.Id, out DateTime timestamp))
-                {
-                    dict["Last Opened"] = timestamp.ToString("yyyy-MM-dd HH:mm:ss");
-                    dict["__Timestamp"] = timestamp; // Store for sorting
-                }
-                else
-                {
-                    dict["Last Opened"] = "";
-                    dict["__Timestamp"] = DateTime.MinValue;
-                }
-
-                // Add standard columns
-                if (v is ViewSheet sheet)
-                {
-                    dict["SheetNumber"] = sheet.SheetNumber;
-                    dict["Name"] = sheet.Name;
-                    dict["Sheet"] = ""; // Empty for sheets
-                }
-                else
-                {
-                    dict["SheetNumber"] = ""; // Empty for non-sheet views
-                    dict["Name"] = v.Name;
-
-                    // Check if view is placed on a sheet
-                    var viewport = new FilteredElementCollector(doc)
-                        .OfClass(typeof(Viewport))
-                        .Cast<Viewport>()
-                        .FirstOrDefault(vp => vp.ViewId == v.Id);
-
-                    if (viewport != null)
+                    // Add standard columns
+                    if (view is ViewSheet sheet)
                     {
-                        ViewSheet containingSheet = doc.GetElement(viewport.SheetId) as ViewSheet;
-                        dict["Sheet"] = containingSheet != null ? containingSheet.Title : "";
+                        dict["SheetNumber"] = sheet.SheetNumber;
+                        dict["Name"] = sheet.Name;
+                        dict["Sheet"] = ""; // Empty for sheets
                     }
                     else
                     {
-                        dict["Sheet"] = ""; // Empty for views not on sheets
+                        dict["SheetNumber"] = ""; // Empty for non-sheet views
+                        dict["Name"] = view.Name;
+
+                        // Check if view is placed on a sheet
+                        var viewport = new FilteredElementCollector(doc)
+                            .OfClass(typeof(Viewport))
+                            .Cast<Viewport>()
+                            .FirstOrDefault(vp => vp.ViewId == view.Id);
+
+                        if (viewport != null)
+                        {
+                            ViewSheet containingSheet = doc.GetElement(viewport.SheetId) as ViewSheet;
+                            dict["Sheet"] = containingSheet != null ? containingSheet.Title : "";
+                        }
+                        else
+                        {
+                            dict["Sheet"] = ""; // Empty for views not on sheets
+                        }
                     }
+
+                    dict["ElementIdObject"] = view.Id; // Required for edit functionality
+                    dict["__OriginalObject"] = view; // Store original object for extraction
+                    dict["__Document"] = doc; // Store document reference for switching
+
+                    gridData.Add(dict);
                 }
-
-                dict["ElementIdObject"] = v.Id; // Required for edit functionality
-                dict["__OriginalObject"] = v; // Store original object for extraction
-                dict["__Document"] = doc; // Store document reference for switching
-
-                gridData.Add(dict);
             }
         }
 
@@ -184,7 +190,7 @@ public class OpenPreviousViewsInSession : IExternalCommand
         }).ToList();
 
         // ─────────────────────────────────────────────────────────────
-        // 3. Build column headers (Document first, then browser columns, then timestamp, then standard)
+        // 3. Build column headers (Document first, then browser columns, then Session, then timestamp, then standard)
         // ─────────────────────────────────────────────────────────────
         List<string> columns = new List<string>();
         columns.Add("Document");
@@ -203,6 +209,7 @@ public class OpenPreviousViewsInSession : IExternalCommand
         }
         columns.AddRange(allBrowserColumnNames.OrderBy(n => n));
 
+        columns.Add("Session");
         columns.Add("Last Opened");
         columns.Add("SheetNumber");
         columns.Add("Name");
