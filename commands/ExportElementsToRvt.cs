@@ -3,6 +3,8 @@
 using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
+using RevitBallet.Commands;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows.Forms;
@@ -29,7 +31,7 @@ public class ExportElementsToRvt : IExternalCommand
         SaveFileDialog saveFileDialog = new SaveFileDialog();
         saveFileDialog.Filter = "Revit File (*.rvt)|*.rvt";
         saveFileDialog.Title = "Save As";
-        saveFileDialog.ShowDialog();
+        saveFileDialog.ShowDialog(new RevitWindow(Helpers.GetMainWindowHandle(commandData.Application)));
 
         // Check if the user cancelled the operation
         if (saveFileDialog.FileName == "")

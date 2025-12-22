@@ -1,9 +1,43 @@
 using System;
 using System.IO;
+using System.Windows.Forms;
+using Autodesk.Revit.UI;
 
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace RevitBallet.Commands
 {
+    /// <summary>
+    /// Wrapper for Revit's main window handle to use with Windows Forms dialogs.
+    /// This allows proper modal dialog behavior by setting Revit as the parent window.
+    /// </summary>
+    public class RevitWindow : IWin32Window
+    {
+        public IntPtr Handle { get; private set; }
+
+        public RevitWindow(IntPtr handle)
+        {
+            Handle = handle;
+        }
+    }
+
+    /// <summary>
+    /// General utilities for Revit Ballet commands.
+    /// </summary>
+    public static class Helpers
+    {
+        /// <summary>
+        /// Gets the main window handle for Revit, handling API differences across versions.
+        /// Uses Process.GetCurrentProcess().MainWindowHandle for cross-version compatibility.
+        /// </summary>
+        public static IntPtr GetMainWindowHandle(UIApplication uiApp)
+        {
+            // Use Process.GetCurrentProcess() for compatibility across all Revit versions
+            // MainWindowHandle API location varies: UIApplication (2019+) vs Application (2017-2018)
+            // but Process approach works universally
+            return System.Diagnostics.Process.GetCurrentProcess().MainWindowHandle;
+        }
+    }
+
     /// <summary>
     /// Centralized helper for managing application data paths and ensuring required directories exist.
     /// </summary>

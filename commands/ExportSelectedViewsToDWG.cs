@@ -1,6 +1,7 @@
 using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
+using RevitBallet.Commands;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -50,7 +51,7 @@ public class ExportSelectedViewsToDWG : IExternalCommand
         // Show naming configuration dialog
         using (var dialog = new DWGNamingDialog(doc, viewsAndSheets))
         {
-            if (dialog.ShowDialog() != DialogResult.OK)
+            if (dialog.ShowDialog(new RevitWindow(Helpers.GetMainWindowHandle(commandData.Application))) != DialogResult.OK)
                 return Result.Cancelled;
             
             // Get folder location using CommonOpenFileDialog
@@ -66,7 +67,7 @@ public class ExportSelectedViewsToDWG : IExternalCommand
                 EnsureFileExists = false
             };
 
-            if (folderDialog.ShowDialog() == CommonFileDialogResult.Ok)
+            if (folderDialog.ShowDialog(Helpers.GetMainWindowHandle(commandData.Application)) == CommonFileDialogResult.Ok)
             {
                 exportFolder = folderDialog.FileName;
             }
@@ -158,15 +159,6 @@ public class ExportSelectedViewsToDWG : IExternalCommand
         }
         
         return Result.Succeeded;
-    }
-}
-
-public class RevitWindow : IWin32Window
-{
-    public IntPtr Handle { get; private set; }
-    public RevitWindow(IntPtr handle)
-    {
-        Handle = handle;
     }
 }
 
