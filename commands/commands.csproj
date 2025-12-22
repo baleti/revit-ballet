@@ -43,6 +43,7 @@
 
     <!-- .NET SDK options -->
     <UseWindowsForms>true</UseWindowsForms>
+    <UseWPF>true</UseWPF>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <Nullable>disable</Nullable>
     <GenerateDependencyFile>false</GenerateDependencyFile>
@@ -121,8 +122,8 @@
     <Reference Include="UIAutomationTypes" />
   </ItemGroup>
 
-  <!-- For .NET 8 builds (Revit 2025-2026): these are provided by the SDK automatically via UseWindowsForms=true -->
-  <!-- No additional references needed - System.Drawing, WindowsBase, etc. come from the SDK -->
+  <!-- For .NET 8 builds (Revit 2025-2026): these are provided by the SDK automatically via UseWindowsForms=true and UseWPF=true -->
+  <!-- No additional references needed - System.Drawing, WindowsBase, PresentationFramework, etc. come from the SDK -->
 
   <!-- Post-build: Remove unnecessary .NET facade DLLs -->
   <Target Name="CleanupUnnecessaryDlls" AfterTargets="Build">
