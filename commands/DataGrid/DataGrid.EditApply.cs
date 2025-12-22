@@ -23,15 +23,33 @@ public partial class CustomGUIs
     /// </summary>
     public static bool ApplyCellEditsToEntities()
     {
+        // DIAGNOSTICS: Create log file
+        string diagnosticPath = System.IO.Path.Combine(
+            RevitBallet.Commands.PathHelper.RuntimeDirectory,
+            "diagnostics",
+            $"DataGridEditApply-{System.DateTime.Now:yyyyMMdd-HHmmss-fff}.txt");
+        var diagnosticLines = new List<string>();
+        diagnosticLines.Add($"=== DataGrid Edit Application at {System.DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} ===");
+
         if (_pendingCellEdits.Count == 0)
         {
+            diagnosticLines.Add("No pending edits to apply");
+            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diagnosticPath));
+            System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
+
             System.Windows.Forms.MessageBox.Show("No edits to apply.", "Apply Edits",
                 System.Windows.Forms.MessageBoxButtons.OK, System.Windows.Forms.MessageBoxIcon.Information);
             return false;
         }
 
+        diagnosticLines.Add($"Total pending edits: {_pendingCellEdits.Count}");
+
         if (_currentUIDoc == null)
         {
+            diagnosticLines.Add("ERROR: _currentUIDoc is null");
+            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diagnosticPath));
+            System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
+
             System.Windows.Forms.MessageBox.Show(
                 "Cannot apply edits: No active Revit document.\n\n" +
                 "Make sure to call CustomGUIs.SetCurrentUIDocument(uidoc) before showing the DataGrid.",
@@ -41,7 +59,9 @@ public partial class CustomGUIs
             return false;
         }
 
-        Document doc = _currentUIDoc.Document;
+        diagnosticLines.Add($"Active document: {_currentUIDoc.Document.Title}");
+        diagnosticLines.Add($"Active document path: {_currentUIDoc.Document.PathName ?? "(unsaved)"}");
+
         int successCount = 0;
         int errorCount = 0;
         var errorMessages = new List<string>();
@@ -67,99 +87,208 @@ public partial class CustomGUIs
             editsByEntry[internalId].Add((columnName, newValue));
         }
 
-        // Find the entries and apply edits
-        using (Transaction trans = new Transaction(doc, "Apply DataGrid Edits"))
+        // Group entries by document for cross-document edit support
+        var entriesByDocument = new Dictionary<Document, List<(long internalId, Dictionary<string, object> entry, List<(string, object)> edits)>>();
+
+        diagnosticLines.Add($"\n--- Grouping {editsByEntry.Count} entries by document ---");
+
+        foreach (var entryGroup in editsByEntry)
         {
-            trans.Start();
+            long internalId = entryGroup.Key;
+            var edits = entryGroup.Value;
 
-            try
+            diagnosticLines.Add($"\nProcessing entry with InternalId={internalId}, {edits.Count} edits");
+
+            // Find the entry with this internal ID
+            var entry = _modifiedEntries.FirstOrDefault(e => GetInternalId(e) == internalId);
+            if (entry == null)
             {
-                foreach (var entryGroup in editsByEntry)
-                {
-                    long internalId = entryGroup.Key;
-                    var edits = entryGroup.Value;
-
-                    // Find the entry with this internal ID
-                    var entry = _modifiedEntries.FirstOrDefault(e => GetInternalId(e) == internalId);
-                    if (entry == null)
-                    {
-                        errorMessages.Add($"Could not find entry with internal ID {internalId}");
-                        errorCount++;
-                        continue;
-                    }
-
-                    // Check if this is a workset entry (from SelectByWorksetsIn* commands)
-                    bool isWorksetEntry = entry.ContainsKey("WorksetId") && entry.ContainsKey("Workset");
-
-                    if (isWorksetEntry)
-                    {
-                        // Apply workset-specific edits
-                        foreach (var (columnName, newValue) in edits)
-                        {
-                            try
-                            {
-                                if (ApplyWorksetEdit(doc, entry, columnName, newValue))
-                                    successCount++;
-                                else
-                                {
-                                    errorMessages.Add($"{GetEntryDisplayName(entry)}.{columnName}: Failed to apply");
-                                    errorCount++;
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                errorMessages.Add($"{GetEntryDisplayName(entry)}.{columnName}: {ex.Message}");
-                                errorCount++;
-                            }
-                        }
-                    }
-                    else
-                    {
-                        // Get the Revit element
-                        Element elem = GetElementFromEntry(doc, entry);
-                        if (elem == null)
-                        {
-                            errorMessages.Add($"Could not find Revit element for entry: {GetEntryDisplayName(entry)}");
-                            errorCount++;
-                            continue;
-                        }
-
-                        // Apply each edit for this element
-                        foreach (var (columnName, newValue) in edits)
-                        {
-                            try
-                            {
-                                if (ApplyPropertyEdit(elem, columnName, newValue, entry))
-                                    successCount++;
-                                else
-                                {
-                                    errorMessages.Add($"{GetEntryDisplayName(entry)}.{columnName}: Failed to apply");
-                                    errorCount++;
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                errorMessages.Add($"{GetEntryDisplayName(entry)}.{columnName}: {ex.Message}");
-                                errorCount++;
-                            }
-                        }
-                    }
-                }
-
-                trans.Commit();
-                _editsWereApplied = true;
+                diagnosticLines.Add($"  ERROR: Could not find entry in _modifiedEntries");
+                errorMessages.Add($"Could not find entry with internal ID {internalId}");
+                errorCount++;
+                continue;
             }
-            catch (Exception ex)
+
+            // Log entry info
+            string entryName = entry.ContainsKey("Name") ? entry["Name"]?.ToString() : "(no name)";
+            diagnosticLines.Add($"  Entry name: {entryName}");
+
+            // Determine which document this entry belongs to
+            Document entryDoc = null;
+
+            // First, check if entry has __Document field (Session scope commands)
+            if (entry.ContainsKey("__Document") && entry["__Document"] is Document doc)
             {
-                trans.RollBack();
-                System.Windows.Forms.MessageBox.Show(
-                    $"Transaction failed: {ex.Message}\n\nAll edits have been rolled back.",
-                    "Apply Edits Error",
-                    System.Windows.Forms.MessageBoxButtons.OK,
-                    System.Windows.Forms.MessageBoxIcon.Error);
-                return false;
+                entryDoc = doc;
+                diagnosticLines.Add($"  Found __Document field: {doc.Title}");
+                diagnosticLines.Add($"  Document path: {doc.PathName ?? "(unsaved)"}");
+                diagnosticLines.Add($"  Is same as active doc: {doc.Equals(_currentUIDoc.Document)}");
+            }
+            else
+            {
+                // Fall back to active document
+                entryDoc = _currentUIDoc.Document;
+                diagnosticLines.Add($"  No __Document field, using active document: {entryDoc.Title}");
+            }
+
+            // Group by document
+            if (!entriesByDocument.ContainsKey(entryDoc))
+            {
+                entriesByDocument[entryDoc] = new List<(long, Dictionary<string, object>, List<(string, object)>)>();
+                diagnosticLines.Add($"  Created new document group for: {entryDoc.Title}");
+            }
+
+            entriesByDocument[entryDoc].Add((internalId, entry, edits));
+        }
+
+        diagnosticLines.Add($"\n--- Grouped into {entriesByDocument.Count} document(s) ---");
+        foreach (var docGroup in entriesByDocument)
+        {
+            diagnosticLines.Add($"  Document: {docGroup.Key.Title}, Entries: {docGroup.Value.Count}");
+        }
+
+        // Process edits for each document separately with its own transaction
+        diagnosticLines.Add($"\n--- Processing edits for {entriesByDocument.Count} document(s) ---");
+
+        // CRITICAL: Only process edits for the ACTIVE document
+        // Revit does not allow creating transactions on non-active documents
+        // For cross-document edits, we should only edit elements in the currently active document
+        Document activeDoc = _currentUIDoc.Document;
+        diagnosticLines.Add($"Active document for transaction: {activeDoc.Title}");
+
+        foreach (var docGroup in entriesByDocument)
+        {
+            Document doc = docGroup.Key;
+            var entries = docGroup.Value;
+
+            diagnosticLines.Add($"\n=== Document: {doc.Title} ===");
+            diagnosticLines.Add($"  Path: {doc.PathName ?? "(unsaved)"}");
+            diagnosticLines.Add($"  Entries to process: {entries.Count}");
+            diagnosticLines.Add($"  Is active document: {doc.Equals(activeDoc)}");
+
+            // CRITICAL: Skip non-active documents
+            if (!doc.Equals(activeDoc))
+            {
+                diagnosticLines.Add($"  SKIPPING: Cannot create transaction on non-active document");
+                diagnosticLines.Add($"  To edit elements in '{doc.Title}', it must be the active document");
+                errorMessages.Add($"Cannot edit elements in non-active document '{doc.Title}'. Please switch to that document first.");
+                errorCount += entries.Count;
+                continue;
+            }
+
+            diagnosticLines.Add($"  Creating transaction...");
+
+            using (Transaction trans = new Transaction(doc, "Apply DataGrid Edits"))
+            {
+                try
+                {
+                    diagnosticLines.Add($"  Transaction.Start()...");
+                    trans.Start();
+                    diagnosticLines.Add($"  Transaction started successfully");
+
+                    foreach (var (internalId, entry, edits) in entries)
+                    {
+                        diagnosticLines.Add($"\n  Processing entry InternalId={internalId}");
+                        string entryName = entry.ContainsKey("Name") ? entry["Name"]?.ToString() : "(no name)";
+                        diagnosticLines.Add($"    Entry name: {entryName}");
+
+                        // Check if this is a workset entry (from SelectByWorksetsIn* commands)
+                        bool isWorksetEntry = entry.ContainsKey("WorksetId") && entry.ContainsKey("Workset");
+                        diagnosticLines.Add($"    Is workset entry: {isWorksetEntry}");
+
+                        if (isWorksetEntry)
+                        {
+                            // Apply workset-specific edits
+                            foreach (var (columnName, newValue) in edits)
+                            {
+                                try
+                                {
+                                    if (ApplyWorksetEdit(doc, entry, columnName, newValue))
+                                        successCount++;
+                                    else
+                                    {
+                                        errorMessages.Add($"{GetEntryDisplayName(entry)}.{columnName}: Failed to apply");
+                                        errorCount++;
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    errorMessages.Add($"{GetEntryDisplayName(entry)}.{columnName}: {ex.Message}");
+                                    errorCount++;
+                                }
+                            }
+                        }
+                        else
+                        {
+                            // Get the Revit element
+                            Element elem = GetElementFromEntry(doc, entry);
+                            if (elem == null)
+                            {
+                                errorMessages.Add($"Could not find Revit element for entry: {GetEntryDisplayName(entry)}");
+                                errorCount++;
+                                continue;
+                            }
+
+                            // Apply each edit for this element
+                            foreach (var (columnName, newValue) in edits)
+                            {
+                                try
+                                {
+                                    if (ApplyPropertyEdit(elem, columnName, newValue, entry))
+                                        successCount++;
+                                    else
+                                    {
+                                        errorMessages.Add($"{GetEntryDisplayName(entry)}.{columnName}: Failed to apply");
+                                        errorCount++;
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    errorMessages.Add($"{GetEntryDisplayName(entry)}.{columnName}: {ex.Message}");
+                                    errorCount++;
+                                }
+                            }
+                        }
+                    }
+
+                    diagnosticLines.Add($"\n  All entries processed for {doc.Title}, committing transaction...");
+                    trans.Commit();
+                    diagnosticLines.Add($"  Transaction committed successfully for {doc.Title}");
+                    _editsWereApplied = true;
+                }
+                catch (Exception ex)
+                {
+                    diagnosticLines.Add($"\n  ERROR: Exception during transaction for {doc.Title}");
+                    diagnosticLines.Add($"    Exception type: {ex.GetType().Name}");
+                    diagnosticLines.Add($"    Exception message: {ex.Message}");
+                    diagnosticLines.Add($"    Stack trace: {ex.StackTrace}");
+                    diagnosticLines.Add($"  Rolling back transaction...");
+
+                    trans.RollBack();
+                    diagnosticLines.Add($"  Transaction rolled back");
+
+                    // Write diagnostics before showing error
+                    System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diagnosticPath));
+                    System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
+
+                    System.Windows.Forms.MessageBox.Show(
+                        $"Transaction failed: {ex.Message}\n\nAll edits have been rolled back.\n\nDiagnostics saved to:\n{diagnosticPath}",
+                        "Apply Edits Error",
+                        System.Windows.Forms.MessageBoxButtons.OK,
+                        System.Windows.Forms.MessageBoxIcon.Error);
+                    return false;
+                }
             }
         }
+
+        // Write final diagnostics
+        diagnosticLines.Add($"\n=== Summary ===");
+        diagnosticLines.Add($"Total successes: {successCount}");
+        diagnosticLines.Add($"Total errors: {errorCount}");
+        diagnosticLines.Add($"Edits were applied: {_editsWereApplied}");
+
+        System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diagnosticPath));
+        System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
 
         // Show results only if there were errors
         if (errorCount > 0)
@@ -169,6 +298,7 @@ public partial class CustomGUIs
             resultMessage += "\n" + string.Join("\n", errorMessages.Take(10));
             if (errorMessages.Count > 10)
                 resultMessage += $"\n... and {errorMessages.Count - 10} more";
+            resultMessage += $"\n\nDiagnostics saved to:\n{diagnosticPath}";
 
             System.Windows.Forms.MessageBox.Show(
                 resultMessage,
