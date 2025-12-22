@@ -319,6 +319,96 @@ namespace RevitBallet.Commands
         }
 
         /// <summary>
+        /// Gets ALL view history entries for a specific document across ALL sessions.
+        /// Returns each view activation as a separate entry (views can repeat across sessions).
+        /// Used by OpenPreviousViewsIn commands to show complete history.
+        /// </summary>
+        public static List<ViewHistoryEntry> GetAllViewHistoryForDocument(string documentTitle, int limit = 1000)
+        {
+            var entries = new List<ViewHistoryEntry>();
+
+            using (var connection = new SqliteConnection($"Data Source={DatabasePath}"))
+            {
+                connection.Open();
+
+                var command = connection.CreateCommand();
+                command.CommandText = @"
+                    SELECT SessionId, DocumentTitle, DocumentPath, ViewId, ViewTitle, ViewType, Timestamp
+                    FROM ViewHistory
+                    WHERE DocumentTitle = @DocumentTitle
+                    ORDER BY Timestamp DESC
+                    LIMIT @Limit
+                ";
+
+                command.Parameters.AddWithValue("@DocumentTitle", documentTitle);
+                command.Parameters.AddWithValue("@Limit", limit);
+
+                using (var reader = command.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        entries.Add(new ViewHistoryEntry
+                        {
+                            SessionId = reader.GetString(0),
+                            DocumentTitle = reader.GetString(1),
+                            DocumentPath = reader.GetString(2),
+                            ViewId = reader.GetInt64(3),
+                            ViewTitle = reader.GetString(4),
+                            ViewType = reader.GetString(5),
+                            Timestamp = DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(6)).LocalDateTime
+                        });
+                    }
+                }
+            }
+
+            return entries;
+        }
+
+        /// <summary>
+        /// Gets ALL view history entries across ALL sessions and ALL documents.
+        /// Returns each view activation as a separate entry (views can repeat across sessions).
+        /// Used by OpenPreviousViewsInSession to show complete cross-document history.
+        /// </summary>
+        public static List<ViewHistoryEntry> GetAllViewHistoryForAllDocuments(int limit = 1000)
+        {
+            var entries = new List<ViewHistoryEntry>();
+
+            using (var connection = new SqliteConnection($"Data Source={DatabasePath}"))
+            {
+                connection.Open();
+
+                var command = connection.CreateCommand();
+                command.CommandText = @"
+                    SELECT SessionId, DocumentTitle, DocumentPath, ViewId, ViewTitle, ViewType, Timestamp
+                    FROM ViewHistory
+                    ORDER BY Timestamp DESC
+                    LIMIT @Limit
+                ";
+
+                command.Parameters.AddWithValue("@Limit", limit);
+
+                using (var reader = command.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        entries.Add(new ViewHistoryEntry
+                        {
+                            SessionId = reader.GetString(0),
+                            DocumentTitle = reader.GetString(1),
+                            DocumentPath = reader.GetString(2),
+                            ViewId = reader.GetInt64(3),
+                            ViewTitle = reader.GetString(4),
+                            ViewType = reader.GetString(5),
+                            Timestamp = DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(6)).LocalDateTime
+                        });
+                    }
+                }
+            }
+
+            return entries;
+        }
+
+        /// <summary>
         /// Removes a view from the current document session history.
         /// Used when closing views.
         /// </summary>
