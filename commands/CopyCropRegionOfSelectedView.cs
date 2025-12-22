@@ -159,6 +159,7 @@ public class CopyCropRegionOfSelectedView : IExternalCommand
             titleToViewMap[view.Title] = view;
             Dictionary<string, object> viewInfo = new Dictionary<string, object>
             {
+                { "ElementID", view.Id.AsLong() },
                 { "Title", view.Title },
                 { "View Type", view.ViewType.ToString() },
                 { "Sheet", sheetInfo }
@@ -167,7 +168,11 @@ public class CopyCropRegionOfSelectedView : IExternalCommand
         }
 
         // Define the column headers
+        // Note: ElementID is included in data for selection set filtering (#"name" syntax) but not shown by default
         List<string> columns = new List<string> { "Title", "View Type", "Sheet" };
+
+        // Set UIDocument for selection set support
+        CustomGUIs.SetCurrentUIDocument(uidoc);
 
         // Show the selection dialog using CustomGUIs.DataGrid
         List<Dictionary<string, object>> selectedViews = CustomGUIs.DataGrid(

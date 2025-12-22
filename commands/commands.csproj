@@ -140,6 +140,8 @@
       <RoslynDependencies Include="$(OutputPath)System.Data.SQLite.dll" />
       <RoslynDependencies Include="$(OutputPath)SQLitePCLRaw*.dll" />
       <RoslynDependencies Include="$(OutputPath)SQLite.Interop.dll" />
+      <!-- Exclude WindowsAPICodePack (needed for ExportSelectedViewsToPDF folder picker) -->
+      <RoslynDependencies Include="$(OutputPath)Microsoft.WindowsAPICodePack*.dll" />
       <!-- Remove only non-essential DLLs -->
       <UnnecessaryDlls Include="@(AllSystemDlls)" Exclude="@(RoslynDependencies)" />
       <UnnecessaryDlls Include="@(AllMicrosoftDlls)" Exclude="@(RoslynDependencies)" />
