@@ -20,91 +20,107 @@ public class OpenViewsInDocument : IExternalCommand
         View       activeView = uidoc.ActiveView;
 
         // ─────────────────────────────────────────────────────────────
-        // 1. Collect every non-template, non-browser view (incl. sheets)
+        // 1. Try to get cached view data (if document state hasn't changed)
         // ─────────────────────────────────────────────────────────────
-        List<View> allViews = new FilteredElementCollector(doc)
-            .OfClass(typeof(View))
-            .Cast<View>()
-            .Where(v =>
-                   !v.IsTemplate &&
-                   v.ViewType != ViewType.ProjectBrowser &&
-                   v.ViewType != ViewType.SystemBrowser)
-            .ToList();
+        List<Dictionary<string, object>> gridData;
+        List<string> columns;
 
-        // Get browser organization columns (pass views so it can detect sheets vs views)
-        List<BrowserOrganizationHelper.BrowserColumn> browserColumns =
-            BrowserOrganizationHelper.GetBrowserColumnsForViews(doc, allViews);
-
-        // ─────────────────────────────────────────────────────────────
-        // 2. Prepare data for the grid with SheetNumber, Name, ViewType
-        // ─────────────────────────────────────────────────────────────
-        List<Dictionary<string, object>> gridData =
-            new List<Dictionary<string, object>>();
-
-        foreach (View v in allViews)
+        if (ViewDataCache.TryGetDocumentCache(doc, out gridData, out columns))
         {
-            var dict = new Dictionary<string, object>();
-
-            // Add browser organization columns first
-            BrowserOrganizationHelper.AddBrowserColumnsToDict(dict, v, doc, browserColumns);
-
-            // Then add standard columns
-            if (v is ViewSheet sheet)
-            {
-                dict["SheetNumber"] = sheet.SheetNumber;
-                dict["Name"] = sheet.Name;
-                dict["Sheet"] = ""; // Empty for sheets
-            }
-            else
-            {
-                dict["SheetNumber"] = ""; // Empty for non-sheet views
-                dict["Name"] = v.Name;
-
-                // Check if view is placed on a sheet
-                var viewport = new FilteredElementCollector(doc)
-                    .OfClass(typeof(Viewport))
-                    .Cast<Viewport>()
-                    .FirstOrDefault(vp => vp.ViewId == v.Id);
-
-                if (viewport != null)
-                {
-                    ViewSheet containingSheet = doc.GetElement(viewport.SheetId) as ViewSheet;
-                    dict["Sheet"] = containingSheet != null ? containingSheet.Title : "";
-                }
-                else
-                {
-                    dict["Sheet"] = ""; // Empty for views not on sheets
-                }
-            }
-
-            dict["ElementIdObject"] = v.Id; // Required for edit functionality
-            dict["__OriginalObject"] = v; // Store original object for extraction
-
-            gridData.Add(dict);
-        }
-
-        // Sort by browser organization columns (if any), otherwise by Title
-        if (browserColumns != null && browserColumns.Count > 0)
-        {
-            gridData = BrowserOrganizationHelper.SortByBrowserColumns(gridData, browserColumns);
+            // Cache hit! Skip expensive data collection
+            // Note: gridData still contains __OriginalObject references from cache
         }
         else
         {
-            gridData = gridData.OrderBy(row =>
-            {
-                // Extract view to get Title for sorting
-                if (row.ContainsKey("__OriginalObject") && row["__OriginalObject"] is View v)
-                    return v.Title;
-                return "";
-            }).ToList();
-        }
+            // Cache miss - rebuild view data
 
-        // Column headers (order determines column order) - browser columns first
-        List<string> columns = new List<string>();
-        columns.AddRange(browserColumns.Select(bc => bc.Name));
-        columns.Add("SheetNumber");
-        columns.Add("Name");
-        columns.Add("Sheet");
+            // Collect every non-template, non-browser view (incl. sheets)
+            List<View> allViews = new FilteredElementCollector(doc)
+                .OfClass(typeof(View))
+                .Cast<View>()
+                .Where(v =>
+                       !v.IsTemplate &&
+                       v.ViewType != ViewType.ProjectBrowser &&
+                       v.ViewType != ViewType.SystemBrowser)
+                .ToList();
+
+            // Get browser organization columns (pass views so it can detect sheets vs views)
+            List<BrowserOrganizationHelper.BrowserColumn> browserColumns =
+                BrowserOrganizationHelper.GetBrowserColumnsForViews(doc, allViews);
+
+            // ─────────────────────────────────────────────────────────────
+            // 2. Prepare data for the grid with SheetNumber, Name, ViewType
+            // ─────────────────────────────────────────────────────────────
+            gridData = new List<Dictionary<string, object>>();
+
+            foreach (View v in allViews)
+            {
+                var dict = new Dictionary<string, object>();
+
+                // Add browser organization columns first
+                BrowserOrganizationHelper.AddBrowserColumnsToDict(dict, v, doc, browserColumns);
+
+                // Then add standard columns
+                if (v is ViewSheet sheet)
+                {
+                    dict["SheetNumber"] = sheet.SheetNumber;
+                    dict["Name"] = sheet.Name;
+                    dict["Sheet"] = ""; // Empty for sheets
+                }
+                else
+                {
+                    dict["SheetNumber"] = ""; // Empty for non-sheet views
+                    dict["Name"] = v.Name;
+
+                    // Check if view is placed on a sheet
+                    var viewport = new FilteredElementCollector(doc)
+                        .OfClass(typeof(Viewport))
+                        .Cast<Viewport>()
+                        .FirstOrDefault(vp => vp.ViewId == v.Id);
+
+                    if (viewport != null)
+                    {
+                        ViewSheet containingSheet = doc.GetElement(viewport.SheetId) as ViewSheet;
+                        dict["Sheet"] = containingSheet != null ? containingSheet.Title : "";
+                    }
+                    else
+                    {
+                        dict["Sheet"] = ""; // Empty for views not on sheets
+                    }
+                }
+
+                dict["ElementIdObject"] = v.Id; // Required for edit functionality
+                dict["__OriginalObject"] = v; // Store original object for extraction
+
+                gridData.Add(dict);
+            }
+
+            // Sort by browser organization columns (if any), otherwise by Title
+            if (browserColumns != null && browserColumns.Count > 0)
+            {
+                gridData = BrowserOrganizationHelper.SortByBrowserColumns(gridData, browserColumns);
+            }
+            else
+            {
+                gridData = gridData.OrderBy(row =>
+                {
+                    // Extract view to get Title for sorting
+                    if (row.ContainsKey("__OriginalObject") && row["__OriginalObject"] is View v)
+                        return v.Title;
+                    return "";
+                }).ToList();
+            }
+
+            // Column headers (order determines column order) - browser columns first
+            columns = new List<string>();
+            columns.AddRange(browserColumns.Select(bc => bc.Name));
+            columns.Add("SheetNumber");
+            columns.Add("Name");
+            columns.Add("Sheet");
+
+            // Save to cache for next time
+            ViewDataCache.SaveDocumentCache(doc, gridData, columns);
+        }
 
         // ─────────────────────────────────────────────────────────────
         // 3. Figure out which row should be pre-selected (after sorting)
@@ -164,6 +180,9 @@ public class OpenViewsInDocument : IExternalCommand
         {
             CustomGUIs.ApplyCellEditsToEntities();
             editsWereApplied = true;
+
+            // Invalidate cache since edits may have changed view names
+            ViewDataCache.InvalidateDocument(doc);
         }
 
         // ─────────────────────────────────────────────────────────────

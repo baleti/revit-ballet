@@ -27,149 +27,165 @@ public class OpenViewsInSession : IExternalCommand
         View activeView = uidoc.ActiveView;
 
         // ─────────────────────────────────────────────────────────────
-        // 1. Collect views from ALL open documents in the session
+        // 1. Try to get cached session data (if no documents have changed)
         // ─────────────────────────────────────────────────────────────
-        List<Dictionary<string, object>> gridData = new List<Dictionary<string, object>>();
-        Dictionary<Document, List<BrowserOrganizationHelper.BrowserColumn>> browserColumnsByDoc
-            = new Dictionary<Document, List<BrowserOrganizationHelper.BrowserColumn>>();
+        List<Dictionary<string, object>> gridData;
+        List<string> columns;
 
-        foreach (Document doc in uiApp.Application.Documents)
+        if (ViewDataCache.TryGetSessionCache(uiApp.Application, out gridData, out columns))
         {
-            // Skip linked documents (read-only references)
-            if (doc.IsLinked)
-                continue;
+            // Cache hit! Skip expensive data collection from all documents
+            // Note: gridData still contains __OriginalObject and __Document references
+        }
+        else
+        {
+            // Cache miss - rebuild view data from all documents
 
-            // Skip family documents
-            if (doc.IsFamilyDocument)
-                continue;
+            gridData = new List<Dictionary<string, object>>();
+            Dictionary<Document, List<BrowserOrganizationHelper.BrowserColumn>> browserColumnsByDoc
+                = new Dictionary<Document, List<BrowserOrganizationHelper.BrowserColumn>>();
 
-            // Collect all non-template, non-browser views in this document
-            List<View> views = new FilteredElementCollector(doc)
-                .OfClass(typeof(View))
-                .Cast<View>()
-                .Where(v =>
-                       !v.IsTemplate &&
-                       v.ViewType != ViewType.ProjectBrowser &&
-                       v.ViewType != ViewType.SystemBrowser)
-                .ToList();
-
-            // Get browser organization columns for this document's views
-            List<BrowserOrganizationHelper.BrowserColumn> browserColumns =
-                BrowserOrganizationHelper.GetBrowserColumnsForViews(doc, views);
-            browserColumnsByDoc[doc] = browserColumns;
-
-            // Add each view to the grid data
-            foreach (View v in views)
+            foreach (Document doc in uiApp.Application.Documents)
             {
-                var dict = new Dictionary<string, object>();
+                // Skip linked documents (read-only references)
+                if (doc.IsLinked)
+                    continue;
 
-                // Add document name first
-                dict["Document"] = doc.Title;
+                // Skip family documents
+                if (doc.IsFamilyDocument)
+                    continue;
 
-                // Add browser organization columns
-                BrowserOrganizationHelper.AddBrowserColumnsToDict(dict, v, doc, browserColumns);
+                // Collect all non-template, non-browser views in this document
+                List<View> views = new FilteredElementCollector(doc)
+                    .OfClass(typeof(View))
+                    .Cast<View>()
+                    .Where(v =>
+                           !v.IsTemplate &&
+                           v.ViewType != ViewType.ProjectBrowser &&
+                           v.ViewType != ViewType.SystemBrowser)
+                    .ToList();
 
-                // Add standard columns
-                if (v is ViewSheet sheet)
+                // Get browser organization columns for this document's views
+                List<BrowserOrganizationHelper.BrowserColumn> browserColumns =
+                    BrowserOrganizationHelper.GetBrowserColumnsForViews(doc, views);
+                browserColumnsByDoc[doc] = browserColumns;
+
+                // Add each view to the grid data
+                foreach (View v in views)
                 {
-                    dict["SheetNumber"] = sheet.SheetNumber;
-                    dict["Name"] = sheet.Name;
-                    dict["Sheet"] = ""; // Empty for sheets
-                }
-                else
-                {
-                    dict["SheetNumber"] = ""; // Empty for non-sheet views
-                    dict["Name"] = v.Name;
+                    var dict = new Dictionary<string, object>();
 
-                    // Check if view is placed on a sheet
-                    var viewport = new FilteredElementCollector(doc)
-                        .OfClass(typeof(Viewport))
-                        .Cast<Viewport>()
-                        .FirstOrDefault(vp => vp.ViewId == v.Id);
+                    // Add document name first
+                    dict["Document"] = doc.Title;
 
-                    if (viewport != null)
+                    // Add browser organization columns
+                    BrowserOrganizationHelper.AddBrowserColumnsToDict(dict, v, doc, browserColumns);
+
+                    // Add standard columns
+                    if (v is ViewSheet sheet)
                     {
-                        ViewSheet containingSheet = doc.GetElement(viewport.SheetId) as ViewSheet;
-                        dict["Sheet"] = containingSheet != null ? containingSheet.Title : "";
+                        dict["SheetNumber"] = sheet.SheetNumber;
+                        dict["Name"] = sheet.Name;
+                        dict["Sheet"] = ""; // Empty for sheets
                     }
                     else
                     {
-                        dict["Sheet"] = ""; // Empty for views not on sheets
+                        dict["SheetNumber"] = ""; // Empty for non-sheet views
+                        dict["Name"] = v.Name;
+
+                        // Check if view is placed on a sheet
+                        var viewport = new FilteredElementCollector(doc)
+                            .OfClass(typeof(Viewport))
+                            .Cast<Viewport>()
+                            .FirstOrDefault(vp => vp.ViewId == v.Id);
+
+                        if (viewport != null)
+                        {
+                            ViewSheet containingSheet = doc.GetElement(viewport.SheetId) as ViewSheet;
+                            dict["Sheet"] = containingSheet != null ? containingSheet.Title : "";
+                        }
+                        else
+                        {
+                            dict["Sheet"] = ""; // Empty for views not on sheets
+                        }
+                    }
+
+                    dict["ElementIdObject"] = v.Id; // Required for edit functionality
+                    dict["__OriginalObject"] = v; // Store original object for extraction
+                    dict["__Document"] = doc; // Store document reference for switching
+
+                    gridData.Add(dict);
+                }
+            }
+
+            if (gridData.Count == 0)
+            {
+                TaskDialog.Show("Info", "No views found in any open documents.");
+                return Result.Failed;
+            }
+
+            // ─────────────────────────────────────────────────────────────
+            // 2. Sort by Document first, then by browser columns or Title
+            //    (same approach as OpenViewsInDocument - using the helper method)
+            // ─────────────────────────────────────────────────────────────
+            // Group by document and sort each group separately
+            var groupedByDocument = gridData.GroupBy(row => row["Document"]?.ToString() ?? "").ToList();
+            gridData.Clear();
+
+            foreach (var docGroup in groupedByDocument.OrderBy(g => g.Key))
+            {
+                var viewsInDoc = docGroup.ToList();
+
+                // Get the document from the first row to retrieve browser columns
+                Document doc = viewsInDoc.First()["__Document"] as Document;
+
+                if (doc != null && browserColumnsByDoc.TryGetValue(doc, out var browserColumns) &&
+                    browserColumns != null && browserColumns.Count > 0)
+                {
+                    // Sort by browser columns using the helper method (same as OpenViewsInDocument)
+                    viewsInDoc = BrowserOrganizationHelper.SortByBrowserColumns(viewsInDoc, browserColumns);
+                }
+                else
+                {
+                    // Fallback: sort by view Title
+                    viewsInDoc = viewsInDoc.OrderBy(row =>
+                    {
+                        if (row.ContainsKey("__OriginalObject") && row["__OriginalObject"] is View v)
+                            return v.Title;
+                        return "";
+                    }).ToList();
+                }
+
+                gridData.AddRange(viewsInDoc);
+            }
+
+            // ─────────────────────────────────────────────────────────────
+            // 3. Build column headers (Document first, then browser columns, then standard)
+            // ─────────────────────────────────────────────────────────────
+            columns = new List<string>();
+            columns.Add("Document");
+
+            // Add browser columns (union of all documents' browser columns)
+            HashSet<string> allBrowserColumnNames = new HashSet<string>();
+            foreach (var browserColumns in browserColumnsByDoc.Values)
+            {
+                if (browserColumns != null)
+                {
+                    foreach (var bc in browserColumns)
+                    {
+                        allBrowserColumnNames.Add(bc.Name);
                     }
                 }
-
-                dict["ElementIdObject"] = v.Id; // Required for edit functionality
-                dict["__OriginalObject"] = v; // Store original object for extraction
-                dict["__Document"] = doc; // Store document reference for switching
-
-                gridData.Add(dict);
             }
+            columns.AddRange(allBrowserColumnNames.OrderBy(n => n));
+
+            columns.Add("SheetNumber");
+            columns.Add("Name");
+            columns.Add("Sheet");
+
+            // Save to session cache for next time
+            ViewDataCache.SaveSessionCache(uiApp.Application, gridData, columns);
         }
-
-        if (gridData.Count == 0)
-        {
-            TaskDialog.Show("Info", "No views found in any open documents.");
-            return Result.Failed;
-        }
-
-        // ─────────────────────────────────────────────────────────────
-        // 2. Sort by Document first, then by browser columns or Title
-        //    (same approach as OpenViewsInDocument - using the helper method)
-        // ─────────────────────────────────────────────────────────────
-        // Group by document and sort each group separately
-        var groupedByDocument = gridData.GroupBy(row => row["Document"]?.ToString() ?? "").ToList();
-        gridData.Clear();
-
-        foreach (var docGroup in groupedByDocument.OrderBy(g => g.Key))
-        {
-            var viewsInDoc = docGroup.ToList();
-
-            // Get the document from the first row to retrieve browser columns
-            Document doc = viewsInDoc.First()["__Document"] as Document;
-
-            if (doc != null && browserColumnsByDoc.TryGetValue(doc, out var browserColumns) &&
-                browserColumns != null && browserColumns.Count > 0)
-            {
-                // Sort by browser columns using the helper method (same as OpenViewsInDocument)
-                viewsInDoc = BrowserOrganizationHelper.SortByBrowserColumns(viewsInDoc, browserColumns);
-            }
-            else
-            {
-                // Fallback: sort by view Title
-                viewsInDoc = viewsInDoc.OrderBy(row =>
-                {
-                    if (row.ContainsKey("__OriginalObject") && row["__OriginalObject"] is View v)
-                        return v.Title;
-                    return "";
-                }).ToList();
-            }
-
-            gridData.AddRange(viewsInDoc);
-        }
-
-        // ─────────────────────────────────────────────────────────────
-        // 3. Build column headers (Document first, then browser columns, then standard)
-        // ─────────────────────────────────────────────────────────────
-        List<string> columns = new List<string>();
-        columns.Add("Document");
-
-        // Add browser columns (union of all documents' browser columns)
-        HashSet<string> allBrowserColumnNames = new HashSet<string>();
-        foreach (var browserColumns in browserColumnsByDoc.Values)
-        {
-            if (browserColumns != null)
-            {
-                foreach (var bc in browserColumns)
-                {
-                    allBrowserColumnNames.Add(bc.Name);
-                }
-            }
-        }
-        columns.AddRange(allBrowserColumnNames.OrderBy(n => n));
-
-        columns.Add("SheetNumber");
-        columns.Add("Name");
-        columns.Add("Sheet");
 
         // ─────────────────────────────────────────────────────────────
         // 4. Figure out which row should be pre-selected (active view in active doc)
@@ -207,7 +223,7 @@ public class OpenViewsInSession : IExternalCommand
                 if (row.ContainsKey("__OriginalObject") && row["__OriginalObject"] is View view &&
                     row.ContainsKey("__Document") && row["__Document"] is Document doc)
                 {
-                    return view.Id == targetViewId && doc == activeDoc;
+                    return view.Id == targetViewId && doc.Equals(activeDoc);
                 }
                 return false;
             });
@@ -232,6 +248,9 @@ public class OpenViewsInSession : IExternalCommand
         {
             CustomGUIs.ApplyCellEditsToEntities();
             editsWereApplied = true;
+
+            // Invalidate session cache since edits may have changed view names
+            ViewDataCache.InvalidateAll();
         }
 
         // ─────────────────────────────────────────────────────────────
@@ -252,7 +271,7 @@ public class OpenViewsInSession : IExternalCommand
                     continue;
 
                 // Switch document if needed
-                if (viewDoc != currentDoc)
+                if (!viewDoc.Equals(currentDoc))
                 {
                     // Check if document is saved (required for programmatic switching)
                     if (string.IsNullOrEmpty(viewDoc.PathName))
