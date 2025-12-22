@@ -19,7 +19,6 @@ namespace RevitBallet.Commands
             public string Fingerprint { get; set; }
             public List<Dictionary<string, object>> GridData { get; set; }
             public List<string> Columns { get; set; }
-            public DateTime CachedAt { get; set; }
         }
 
         private class SessionCacheData
@@ -27,7 +26,6 @@ namespace RevitBallet.Commands
             public string SessionFingerprint { get; set; }
             public List<Dictionary<string, object>> GridData { get; set; }
             public List<string> Columns { get; set; }
-            public DateTime CachedAt { get; set; }
         }
 
         // Cache storage: key is document PathName (or Title for unsaved docs)
@@ -36,9 +34,6 @@ namespace RevitBallet.Commands
 
         // Session cache (for OpenViewsInSession)
         private static SessionCacheData sessionCache = null;
-
-        // Maximum cache age (5 minutes) - safety mechanism
-        private static readonly TimeSpan MaxCacheAge = TimeSpan.FromMinutes(5);
 
         /// <summary>
         /// Generates a fingerprint for a document's view state.
@@ -167,9 +162,8 @@ namespace RevitBallet.Commands
             // Check if we have cached data
             if (documentCache.TryGetValue(docKey, out var cached))
             {
-                // Validate fingerprint and age
-                if (cached.Fingerprint == currentFingerprint &&
-                    DateTime.Now - cached.CachedAt < MaxCacheAge)
+                // Validate fingerprint only - no time-based expiration
+                if (cached.Fingerprint == currentFingerprint)
                 {
                     gridData = cached.GridData;
                     columns = cached.Columns;
@@ -195,8 +189,7 @@ namespace RevitBallet.Commands
             {
                 Fingerprint = fingerprint,
                 GridData = gridData,
-                Columns = columns,
-                CachedAt = DateTime.Now
+                Columns = columns
             };
         }
 
@@ -216,9 +209,8 @@ namespace RevitBallet.Commands
 
             if (sessionCache != null)
             {
-                // Validate fingerprint and age
-                if (sessionCache.SessionFingerprint == currentFingerprint &&
-                    DateTime.Now - sessionCache.CachedAt < MaxCacheAge)
+                // Validate fingerprint only - no time-based expiration
+                if (sessionCache.SessionFingerprint == currentFingerprint)
                 {
                     gridData = sessionCache.GridData;
                     columns = sessionCache.Columns;
@@ -243,8 +235,7 @@ namespace RevitBallet.Commands
             {
                 SessionFingerprint = fingerprint,
                 GridData = gridData,
-                Columns = columns,
-                CachedAt = DateTime.Now
+                Columns = columns
             };
         }
 
@@ -271,28 +262,6 @@ namespace RevitBallet.Commands
         }
 
         /// <summary>
-        /// Removes expired cache entries (older than MaxCacheAge).
-        /// </summary>
-        public static void CleanExpired()
-        {
-            var expiredKeys = documentCache
-                .Where(kvp => DateTime.Now - kvp.Value.CachedAt >= MaxCacheAge)
-                .Select(kvp => kvp.Key)
-                .ToList();
-
-            foreach (var key in expiredKeys)
-            {
-                documentCache.Remove(key);
-            }
-
-            if (sessionCache != null &&
-                DateTime.Now - sessionCache.CachedAt >= MaxCacheAge)
-            {
-                sessionCache = null;
-            }
-        }
-
-        /// <summary>
         /// Gets cache statistics for diagnostics.
         /// </summary>
         public static string GetCacheStats()
@@ -306,8 +275,7 @@ namespace RevitBallet.Commands
                 sb.AppendLine("\nDocument Cache Details:");
                 foreach (var kvp in documentCache.OrderBy(k => k.Key))
                 {
-                    var age = DateTime.Now - kvp.Value.CachedAt;
-                    sb.AppendLine($"  {kvp.Key}: {kvp.Value.GridData.Count} rows, {age.TotalSeconds:F1}s old");
+                    sb.AppendLine($"  {kvp.Key}: {kvp.Value.GridData.Count} rows (fingerprint: {kvp.Value.Fingerprint.Substring(0, 40)}...)");
                 }
             }
 

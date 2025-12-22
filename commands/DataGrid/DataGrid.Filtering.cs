@@ -402,6 +402,33 @@ public partial class CustomGUIs
             HashSet<long> selectionSetIds = GetSelectionSetElementIds(f.SelectionSetName);
             bool isInSet = selectionSetIds.Contains(elementIdLong);
 
+            // Also check ViewportID field (if present) - allows view rows to match when viewport is in selection set
+            if (!isInSet && entry.TryGetValue("ViewportID", out object viewportIdObj) && viewportIdObj != null)
+            {
+                long viewportIdLong = 0;
+                if (viewportIdObj is long)
+                {
+                    viewportIdLong = (long)viewportIdObj;
+                }
+                else if (viewportIdObj is int)
+                {
+                    viewportIdLong = (int)viewportIdObj;
+                }
+                else if (viewportIdObj is Autodesk.Revit.DB.ElementId)
+                {
+                    viewportIdLong = ((Autodesk.Revit.DB.ElementId)viewportIdObj).AsLong();
+                }
+                else if (long.TryParse(viewportIdObj.ToString(), out long parsed))
+                {
+                    viewportIdLong = parsed;
+                }
+
+                if (viewportIdLong != 0)
+                {
+                    isInSet = selectionSetIds.Contains(viewportIdLong);
+                }
+            }
+
             if (!f.IsExclusion && !isInSet) return false; // Required to be in set, but it's not
             if (f.IsExclusion && isInSet) return false;   // Required NOT to be in set, but it is
         }
