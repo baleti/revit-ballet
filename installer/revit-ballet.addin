@@ -198,7 +198,7 @@
     <AddIn Type="Command">
         <Name>revit-ballet</Name>
         <Assembly>revit-ballet.dll</Assembly>
-        <FullClassName>ListSelectionSetsInDocument</FullClassName>
+        <FullClassName>SelectionSetsInDocument</FullClassName>
         <AddInId>7C2E4A9F-3D6B-4E1A-8C7F-2D9A1E4B7C3F</AddInId>
         <VendorId>revit-ballet</VendorId>
     </AddIn>
