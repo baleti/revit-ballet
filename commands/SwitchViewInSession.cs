@@ -124,7 +124,7 @@ public class SwitchViewInSession : IExternalCommand
                     if (viewport != null)
                     {
                         ViewSheet containingSheet = doc.GetElement(viewport.SheetId) as ViewSheet;
-                        dict["Sheet"] = containingSheet != null ? containingSheet.Title : "";
+                        dict["Sheet"] = containingSheet != null ? $"{containingSheet.SheetNumber} - {containingSheet.Name}" : "";
                     }
                     else
                     {
@@ -178,7 +178,7 @@ public class SwitchViewInSession : IExternalCommand
                 if (viewport != null)
                 {
                     ViewSheet containingSheet = activeDoc.GetElement(viewport.SheetId) as ViewSheet;
-                    dict["Sheet"] = containingSheet != null ? containingSheet.Title : "";
+                    dict["Sheet"] = containingSheet != null ? $"{containingSheet.SheetNumber} - {containingSheet.Name}" : "";
                 }
                 else
                 {
