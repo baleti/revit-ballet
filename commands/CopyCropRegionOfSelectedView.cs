@@ -98,8 +98,9 @@ public class CopyCropRegionOfSelectedView : IExternalCommand
             return Result.Failed;
         }
 
-        // Create a mapping for views that are placed on sheets
+        // Create mappings for views that are placed on sheets
         Dictionary<ElementId, ViewSheet> viewToSheetMap = new Dictionary<ElementId, ViewSheet>();
+        Dictionary<ElementId, ElementId> viewToViewportMap = new Dictionary<ElementId, ElementId>();
         FilteredElementCollector sheetCollector = new FilteredElementCollector(doc)
             .OfClass(typeof(ViewSheet));
         foreach (ViewSheet sheet in sheetCollector)
@@ -110,6 +111,7 @@ public class CopyCropRegionOfSelectedView : IExternalCommand
                 if (viewport != null)
                 {
                     viewToSheetMap[viewport.ViewId] = sheet;
+                    viewToViewportMap[viewport.ViewId] = viewportId;
                 }
             }
         }
@@ -164,6 +166,13 @@ public class CopyCropRegionOfSelectedView : IExternalCommand
                 { "View Type", view.ViewType.ToString() },
                 { "Sheet", sheetInfo }
             };
+
+            // Add ViewportID if view has a corresponding viewport (for # selection set filtering)
+            if (viewToViewportMap.TryGetValue(view.Id, out ElementId viewportId))
+            {
+                viewInfo["ViewportID"] = viewportId.AsLong();
+            }
+
             viewData.Add(viewInfo);
         }
 
