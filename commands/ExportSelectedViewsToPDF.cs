@@ -41,34 +41,47 @@ public class ExportSelectedViewsToPDF : IExternalCommand
 
         // Get current selection
         var selectedIds = uidoc.GetSelectionIds();
+        var viewsAndSheets = new List<Autodesk.Revit.DB.View>();
+
         if (!selectedIds.Any())
         {
-            Autodesk.Revit.UI.TaskDialog.Show("No Selection", "Please select sheets or views to export.");
-            return Result.Cancelled;
-        }
-        
-        // Filter for sheets and views
-        var viewsAndSheets = new List<Autodesk.Revit.DB.View>();
-        foreach (var id in selectedIds)
-        {
-            var elem = doc.GetElement(id);
-            if (elem is Autodesk.Revit.DB.View view && view.CanBePrinted && 
-                !(view.ViewType == ViewType.Internal || view.IsTemplate))
+            // No selection - use current active view
+            var currentView = uidoc.ActiveView;
+            if (currentView != null && currentView.CanBePrinted &&
+                !(currentView.ViewType == ViewType.Internal || currentView.IsTemplate))
             {
-                viewsAndSheets.Add(view);
+                viewsAndSheets.Add(currentView);
+            }
+            else
+            {
+                Autodesk.Revit.UI.TaskDialog.Show("Invalid View", "The current view cannot be exported to PDF.");
+                return Result.Cancelled;
             }
         }
-        
-        if (!viewsAndSheets.Any())
+        else
         {
-            Autodesk.Revit.UI.TaskDialog.Show("Invalid Selection", "No exportable views or sheets were selected.");
-            return Result.Cancelled;
+            // Filter selection for sheets and views
+            foreach (var id in selectedIds)
+            {
+                var elem = doc.GetElement(id);
+                if (elem is Autodesk.Revit.DB.View view && view.CanBePrinted &&
+                    !(view.ViewType == ViewType.Internal || view.IsTemplate))
+                {
+                    viewsAndSheets.Add(view);
+                }
+            }
+
+            if (!viewsAndSheets.Any())
+            {
+                Autodesk.Revit.UI.TaskDialog.Show("Invalid Selection", "No exportable views or sheets were selected.");
+                return Result.Cancelled;
+            }
         }
         
         // Show naming configuration dialog
         using (var dialog = new PDFNamingDialog(doc, viewsAndSheets))
         {
-            if (dialog.ShowDialog() != DialogResult.OK)
+            if (dialog.ShowDialog(new PDFRevitWindow(commandData.Application.MainWindowHandle)) != DialogResult.OK)
                 return Result.Cancelled;
             
             // Get folder location
@@ -84,7 +97,7 @@ public class ExportSelectedViewsToPDF : IExternalCommand
                 EnsureFileExists = false
             };
 
-            if (folderDialog.ShowDialog() == CommonFileDialogResult.Ok)
+            if (folderDialog.ShowDialog(commandData.Application.MainWindowHandle) == CommonFileDialogResult.Ok)
             {
                 exportFolder = folderDialog.FileName;
             }
@@ -110,92 +123,82 @@ public class ExportSelectedViewsToPDF : IExternalCommand
             using (var progressDialog = new PDFExportProgressDialog(viewsAndSheets.Count))
             {
                 progressDialog.Show(new PDFRevitWindow(commandData.Application.MainWindowHandle));
-                
-                using (var tx = new Transaction(doc, "Export Views to PDF"))
+
+                for (int i = 0; i < viewsAndSheets.Count; i++)
                 {
-                    tx.Start();
-                    
-                    for (int i = 0; i < viewsAndSheets.Count; i++)
+                    if (progressDialog.IsCancelled)
                     {
-                        if (progressDialog.IsCancelled)
-                        {
-                            cancelled = true;
-                            break;
-                        }
-                        
-                        var view = viewsAndSheets[i];
-                        var fileName = dialog.GetFileName(view);
-                        progressDialog.UpdateProgress(i, $"Exporting: {fileName}.pdf");
-                        Application.DoEvents();
-                        
-                        try
-                        {
-                            var viewIds = new List<ElementId> { view.Id };
-
-                            if (useNativePDF)
-                            {
-                                Type pdfOptionsType = Type.GetType("Autodesk.Revit.DB.PDFExportOptions, RevitAPI");
-                                dynamic options = Activator.CreateInstance(pdfOptionsType);
-
-                                if (baseSettings != null)
-                                {
-                                    options = baseSettings.GetOptions();
-                                }
-
-                                options.FileName = fileName;
-                                options.Combine = true;
-
-                                MethodInfo exportMethod = typeof(Document).GetMethod("Export", new Type[] { typeof(string), typeof(IList<ElementId>), pdfOptionsType });
-                                exportMethod.Invoke(doc, new object[] { exportFolder, viewIds, options });
-                            }
-                            else
-                            {
-                                // Fallback to printing
-                                PrintManager pm = doc.PrintManager;
-                                pm.PrintToFile = true;
-                                string fullPath = Path.Combine(exportFolder, fileName + ".pdf");
-                                pm.PrintToFileName = fullPath;
-                                pm.SelectNewPrintDriver(selectedPrinter ?? "Microsoft Print to PDF");
-                                pm.Apply();
-                                pm.SubmitPrint(view);
-
-                                // Automate the save dialog
-                                IntPtr dlg = IntPtr.Zero;
-                                int attempts = 0;
-                                while (dlg == IntPtr.Zero && attempts < 50)
-                                {
-                                    dlg = FindWindow("#32770", "Save Print Output As");
-                                    Thread.Sleep(100);
-                                    attempts++;
-                                }
-
-                                if (dlg != IntPtr.Zero)
-                                {
-                                    IntPtr edit = FindWindowEx(dlg, IntPtr.Zero, "Edit", null);
-                                    if (edit != IntPtr.Zero)
-                                    {
-                                        SetWindowText(edit, fullPath);
-                                    }
-
-                                    IntPtr saveBtn = FindWindowEx(dlg, IntPtr.Zero, "Button", "&Save");
-                                    if (saveBtn != IntPtr.Zero)
-                                    {
-                                        SendMessage(saveBtn, BM_CLICK, IntPtr.Zero, IntPtr.Zero);
-                                    }
-                                }
-                            }
-                            successCount++;
-                        }
-                        catch (Exception ex)
-                        {
-                            failedExports.Add($"{view.Name}: {ex.Message}");
-                        }
+                        cancelled = true;
+                        break;
                     }
-                    
-                    if (cancelled)
-                        tx.RollBack();
-                    else
-                        tx.Commit();
+
+                    var view = viewsAndSheets[i];
+                    var fileName = dialog.GetFileName(view);
+                    progressDialog.UpdateProgress(i, $"Exporting: {fileName}.pdf");
+                    Application.DoEvents();
+
+                    try
+                    {
+                        var viewIds = new List<ElementId> { view.Id };
+
+                        if (useNativePDF)
+                        {
+                            Type pdfOptionsType = Type.GetType("Autodesk.Revit.DB.PDFExportOptions, RevitAPI");
+                            dynamic options = Activator.CreateInstance(pdfOptionsType);
+
+                            if (baseSettings != null)
+                            {
+                                options = baseSettings.GetOptions();
+                            }
+
+                            options.FileName = fileName;
+                            options.Combine = true;
+
+                            MethodInfo exportMethod = typeof(Document).GetMethod("Export", new Type[] { typeof(string), typeof(IList<ElementId>), pdfOptionsType });
+                            exportMethod.Invoke(doc, new object[] { exportFolder, viewIds, options });
+                        }
+                        else
+                        {
+                            // Fallback to printing
+                            PrintManager pm = doc.PrintManager;
+                            pm.PrintToFile = true;
+                            string fullPath = Path.Combine(exportFolder, fileName + ".pdf");
+                            pm.PrintToFileName = fullPath;
+                            pm.SelectNewPrintDriver(selectedPrinter ?? "Microsoft Print to PDF");
+                            pm.Apply();
+                            pm.SubmitPrint(view);
+
+                            // Automate the save dialog
+                            IntPtr dlg = IntPtr.Zero;
+                            int attempts = 0;
+                            while (dlg == IntPtr.Zero && attempts < 50)
+                            {
+                                dlg = FindWindow("#32770", "Save Print Output As");
+                                Thread.Sleep(100);
+                                attempts++;
+                            }
+
+                            if (dlg != IntPtr.Zero)
+                            {
+                                IntPtr edit = FindWindowEx(dlg, IntPtr.Zero, "Edit", null);
+                                if (edit != IntPtr.Zero)
+                                {
+                                    SetWindowText(edit, fullPath);
+                                }
+
+                                IntPtr saveBtn = FindWindowEx(dlg, IntPtr.Zero, "Button", "&Save");
+                                if (saveBtn != IntPtr.Zero)
+                                {
+                                    SendMessage(saveBtn, BM_CLICK, IntPtr.Zero, IntPtr.Zero);
+                                }
+                            }
+                        }
+                        successCount++;
+                    }
+                    catch (Exception ex)
+                    {
+                        failedExports.Add($"{view.Name}: {ex.Message}");
+                    }
                 }
             }
             
