@@ -7,10 +7,10 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 
 [Transaction(TransactionMode.Manual)]
-public class ListSelectionSetsInDocument : IExternalCommand
+public class SelectionSetsInDocument : IExternalCommand
 {
     // Static initializer to register the Name column handler for SelectionFilterElement
-    static ListSelectionSetsInDocument()
+    static SelectionSetsInDocument()
     {
         RegisterSelectionSetNameHandler();
     }
@@ -74,7 +74,7 @@ public class ListSelectionSetsInDocument : IExternalCommand
 
         if (selectionSets.Count == 0)
         {
-            TaskDialog.Show("List Selection Sets",
+            TaskDialog.Show("Selection Sets",
                 "No selection sets found in the current document.");
             return Result.Cancelled;
         }
@@ -138,6 +138,45 @@ public class ListSelectionSetsInDocument : IExternalCommand
                 }
             }
         );
+
+        // If user selected rows and pressed Enter, select the elements from those selection sets
+        if (selected != null && selected.Count > 0)
+        {
+            var combinedElementIds = new HashSet<ElementId>();
+
+            foreach (var entry in selected)
+            {
+                // Get the SelectionFilterElement ID
+                ElementId selectionSetId = null;
+                if (entry.ContainsKey("ElementIdObject") &&
+                    entry["ElementIdObject"] is ElementId elemId)
+                {
+                    selectionSetId = elemId;
+                }
+                else if (entry.ContainsKey("Id"))
+                {
+                    long id = Convert.ToInt64(entry["Id"]);
+                    selectionSetId = id.ToElementId();
+                }
+
+                if (selectionSetId != null)
+                {
+                    // Get the SelectionFilterElement
+                    var selectionSet = doc.GetElement(selectionSetId) as SelectionFilterElement;
+                    if (selectionSet != null)
+                    {
+                        // Add all element IDs from this selection set
+                        foreach (var id in selectionSet.GetElementIds())
+                        {
+                            combinedElementIds.Add(id);
+                        }
+                    }
+                }
+            }
+
+            // Select the combined elements using SelectionModeManager
+            uidoc.SetSelectionIds(combinedElementIds);
+        }
 
         return Result.Succeeded;
     }
