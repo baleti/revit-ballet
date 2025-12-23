@@ -23,6 +23,8 @@
   <ShortcutItem CommandId="ba55743a-9c5c-4911-becb-0bac54b6bde3" Shortcuts="WWS"/>
   <ShortcutItem CommandId="3c7e9a2d-4f6b-4a8e-9c7f-2d1b4a8e9c6f" Shortcuts="WQV"/>
   <ShortcutItem CommandId="db3fb0d8-3fc6-4d08-9b64-876eedd09260" Shortcuts="WQS"/>
+  <ShortcutItem CommandId="3e7a9d4f-8c2b-4e6a-9f7e-1d3c4a8b2e9f" Shortcuts="WSD"/>
+  <ShortcutItem CommandId="6b4e9a2c-7f3d-4a8e-9c6f-2d1a4b7e8c9f" Shortcuts="WSS"/>
   <ShortcutItem CommandId="1e8a3f7b-9d4c-4a2e-7e9f-4c1d3a8b2e7f" Shortcuts="SCD"/>
   <ShortcutItem CommandId="7f3a9d2c-6e4b-4f8a-9d3e-2c7f1b4a8e9f" Shortcuts="SCV"/>
   <ShortcutItem CommandId="4b9e7a3f-2d6c-4e1a-8b9e-3f7d2a4c1e8f" Shortcuts="SCC"/>
@@ -155,7 +157,7 @@
   <ShortcutItem CommandId="IDC_RADIO_COPY_CURVE" Shortcuts="PL"/>
   <ShortcutItem CommandId="IDC_RADIO_RECT" Shortcuts="RR"/>
   <ShortcutItem CommandId="ID_SEL_ALL_IN_VIEW" Shortcuts="SV"/>
-  <ShortcutItem CommandId="ID_SEL_ALL_IN_PRJ" Shortcuts="SS"/>
+  <ShortcutItem CommandId="ID_SEL_ALL_IN_PRJ" Shortcuts="SSD"/>
   <ShortcutItem CommandId="ID_OBJECTS_CURVE_RECT" Shortcuts="RR"/>
   <ShortcutItem CommandId="ID_EDIT_SELECT_PREVIOUS" Shortcuts="ZZ"/>
   <ShortcutItem CommandId="ID_DUPLICATE_SHEET_WITH_VIEWS" Shortcuts="DWV"/>

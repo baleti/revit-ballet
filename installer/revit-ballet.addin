@@ -223,4 +223,18 @@
         <AddInId>4A9E6F2B-7D3C-4E8A-9B6F-2C7D4A9E1B3F</AddInId>
         <VendorId>revit-ballet</VendorId>
     </AddIn>
+    <AddIn Type="Command">
+        <Name>revit-ballet</Name>
+        <Assembly>revit-ballet.dll</Assembly>
+        <FullClassName>OpenSheetsInDocument</FullClassName>
+        <AddInId>3E7A9D4F-8C2B-4E6A-9F7E-1D3C4A8B2E9F</AddInId>
+        <VendorId>revit-ballet</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>revit-ballet</Name>
+        <Assembly>revit-ballet.dll</Assembly>
+        <FullClassName>OpenSheetsInSession</FullClassName>
+        <AddInId>6B4E9A2C-7F3D-4A8E-9C6F-2D1A4B7E8C9F</AddInId>
+        <VendorId>revit-ballet</VendorId>
+    </AddIn>
 </RevitAddIns>
