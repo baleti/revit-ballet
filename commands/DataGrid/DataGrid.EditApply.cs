@@ -156,6 +156,10 @@ public partial class CustomGUIs
         Document activeDoc = _currentUIDoc.Document;
         diagnosticLines.Add($"Active document for transaction: {activeDoc.Title}");
 
+        // Track transaction errors to show AFTER using block exits
+        string transactionErrorMessage = null;
+        string transactionErrorDiagnosticPath = null;
+
         foreach (var docGroup in entriesByDocument)
         {
             Document doc = docGroup.Key;
@@ -271,13 +275,23 @@ public partial class CustomGUIs
                     System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diagnosticPath));
                     System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
 
-                    System.Windows.Forms.MessageBox.Show(
-                        $"Transaction failed: {ex.Message}\n\nAll edits have been rolled back.\n\nDiagnostics saved to:\n{diagnosticPath}",
-                        "Apply Edits Error",
-                        System.Windows.Forms.MessageBoxButtons.OK,
-                        System.Windows.Forms.MessageBoxIcon.Error);
-                    return false;
+                    // CRITICAL: Store error message to show AFTER using block exits
+                    // Showing MessageBox inside the using block interferes with transaction disposal
+                    transactionErrorMessage = $"Transaction failed: {ex.Message}\n\nAll edits have been rolled back.\n\nDiagnostics saved to:\n{diagnosticPath}";
+                    transactionErrorDiagnosticPath = diagnosticPath;
                 }
+            }
+            // using block has exited - transaction is now properly disposed
+
+            // Show error message AFTER transaction disposal to prevent nested message pump interference
+            if (transactionErrorMessage != null)
+            {
+                System.Windows.Forms.MessageBox.Show(
+                    transactionErrorMessage,
+                    "Apply Edits Error",
+                    System.Windows.Forms.MessageBoxButtons.OK,
+                    System.Windows.Forms.MessageBoxIcon.Error);
+                return false;
             }
         }
 
