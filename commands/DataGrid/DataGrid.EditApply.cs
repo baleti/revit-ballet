@@ -156,10 +156,6 @@ public partial class CustomGUIs
         Document activeDoc = _currentUIDoc.Document;
         diagnosticLines.Add($"Active document for transaction: {activeDoc.Title}");
 
-        // Track transaction errors to show AFTER using block exits
-        string transactionErrorMessage = null;
-        string transactionErrorDiagnosticPath = null;
-
         foreach (var docGroup in entriesByDocument)
         {
             Document doc = docGroup.Key;
@@ -184,15 +180,13 @@ public partial class CustomGUIs
 
             using (Transaction trans = new Transaction(doc, "Apply DataGrid Edits"))
             {
-                try
-                {
-                    diagnosticLines.Add($"  Transaction.Start()...");
-                    trans.Start();
-                    diagnosticLines.Add($"  Transaction started successfully");
+                diagnosticLines.Add($"  Transaction.Start()...");
+                trans.Start();
+                diagnosticLines.Add($"  Transaction started successfully");
 
-                    // CRITICAL: Two-phase rename for columns with uniqueness constraints
-                    // Group edits by column name to detect if we need two-phase rename
-                    var editsByColumn = new Dictionary<string, List<(long internalId, Dictionary<string, object> entry, object newValue)>>();
+                // CRITICAL: Two-phase rename for columns with uniqueness constraints
+                // Group edits by column name to detect if we need two-phase rename
+                var editsByColumn = new Dictionary<string, List<(long internalId, Dictionary<string, object> entry, object newValue)>>();
                     foreach (var (internalId, entry, edits) in entries)
                     {
                         foreach (var (columnName, newValue) in edits)
@@ -212,6 +206,45 @@ public partial class CustomGUIs
                         {
                             uniqueNameColumns.Add(columnName);
                             diagnosticLines.Add($"  Column '{columnName}' requires two-phase rename ({editsByColumn[columnName].Count} edits)");
+                        }
+                    }
+
+                    // DUPLICATE DETECTION: Check for duplicate target names before starting two-phase rename
+                    if (uniqueNameColumns.Any())
+                    {
+                        diagnosticLines.Add($"\n  === DUPLICATE DETECTION ===");
+                        var duplicateInfo = DetectDuplicateNames(editsByColumn, uniqueNameColumns, doc, diagnosticLines);
+
+                        if (duplicateInfo.HasDuplicates)
+                        {
+                            diagnosticLines.Add($"  Found {duplicateInfo.DuplicateCount} duplicate name(s) across {duplicateInfo.DuplicateColumns.Count} column(s)");
+
+                            // Show dialog to user
+                            var dialogResult = ShowDuplicateNameDialog(duplicateInfo);
+
+                            if (dialogResult == System.Windows.Forms.DialogResult.Cancel)
+                            {
+                                diagnosticLines.Add($"  User cancelled operation due to duplicates");
+                                trans.RollBack();
+
+                                // Write diagnostics
+                                System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diagnosticPath));
+                                System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
+
+                                // Clear pending edits
+                                _pendingCellEdits.Clear();
+                                return false;
+                            }
+                            else if (dialogResult == System.Windows.Forms.DialogResult.Yes)
+                            {
+                                diagnosticLines.Add($"  User chose to append unique suffixes");
+                                AppendUniqueSuffixes(editsByColumn, duplicateInfo, diagnosticLines);
+                            }
+                            // DialogResult.No means "proceed with duplicates" - no action needed
+                        }
+                        else
+                        {
+                            diagnosticLines.Add($"  No duplicate names detected");
                         }
                     }
 
@@ -346,18 +379,30 @@ public partial class CustomGUIs
                                     continue;
                                 }
 
+                                diagnosticLines.Add($"      Applying workset edit to column '{columnName}':");
+                                string worksetName = entry.ContainsKey("Workset") ? entry["Workset"]?.ToString() : "(unknown)";
+                                diagnosticLines.Add($"        Workset: {worksetName}");
+                                diagnosticLines.Add($"        New value: '{newValue}'");
+
                                 try
                                 {
-                                    if (ApplyWorksetEdit(doc, entry, columnName, newValue))
+                                    if (ApplyWorksetEdit(doc, entry, columnName, newValue, diagnosticLines))
+                                    {
+                                        diagnosticLines.Add($"        Result: SUCCESS");
                                         successCount++;
+                                    }
                                     else
                                     {
+                                        diagnosticLines.Add($"        Result: FAILED");
                                         errorMessages.Add($"{GetEntryDisplayName(entry)}.{columnName}: Failed to apply");
                                         errorCount++;
                                     }
                                 }
                                 catch (Exception ex)
                                 {
+                                    diagnosticLines.Add($"        Result: EXCEPTION");
+                                    diagnosticLines.Add($"        Exception type: {ex.GetType().Name}");
+                                    diagnosticLines.Add($"        Exception message: {ex.Message}");
                                     errorMessages.Add($"{GetEntryDisplayName(entry)}.{columnName}: {ex.Message}");
                                     errorCount++;
                                 }
@@ -384,18 +429,30 @@ public partial class CustomGUIs
                                     continue;
                                 }
 
+                                diagnosticLines.Add($"      Applying edit to column '{columnName}':");
+                                diagnosticLines.Add($"        Element ID: {elem.Id.AsLong()}");
+                                diagnosticLines.Add($"        Element type: {elem.GetType().Name}");
+                                diagnosticLines.Add($"        New value: '{newValue}'");
+
                                 try
                                 {
-                                    if (ApplyPropertyEdit(elem, columnName, newValue, entry))
+                                    if (ApplyPropertyEdit(elem, columnName, newValue, entry, diagnosticLines))
+                                    {
+                                        diagnosticLines.Add($"        Result: SUCCESS");
                                         successCount++;
+                                    }
                                     else
                                     {
+                                        diagnosticLines.Add($"        Result: FAILED (setter returned false)");
                                         errorMessages.Add($"{GetEntryDisplayName(entry)}.{columnName}: Failed to apply");
                                         errorCount++;
                                     }
                                 }
                                 catch (Exception ex)
                                 {
+                                    diagnosticLines.Add($"        Result: EXCEPTION");
+                                    diagnosticLines.Add($"        Exception type: {ex.GetType().Name}");
+                                    diagnosticLines.Add($"        Exception message: {ex.Message}");
                                     errorMessages.Add($"{GetEntryDisplayName(entry)}.{columnName}: {ex.Message}");
                                     errorCount++;
                                 }
@@ -404,43 +461,46 @@ public partial class CustomGUIs
                     }
 
                     diagnosticLines.Add($"\n  All entries processed for {doc.Title}, committing transaction...");
-                    trans.Commit();
-                    diagnosticLines.Add($"  Transaction committed successfully for {doc.Title}");
-                    _editsWereApplied = true;
-                }
-                catch (Exception ex)
-                {
-                    diagnosticLines.Add($"\n  ERROR: Exception during transaction for {doc.Title}");
-                    diagnosticLines.Add($"    Exception type: {ex.GetType().Name}");
-                    diagnosticLines.Add($"    Exception message: {ex.Message}");
-                    diagnosticLines.Add($"    Stack trace: {ex.StackTrace}");
-                    diagnosticLines.Add($"  Rolling back transaction...");
 
-                    trans.RollBack();
-                    diagnosticLines.Add($"  Transaction rolled back");
+                    // RESILIENT COMMIT: Try to commit even if some individual edits failed
+                    // The transaction contains all successful edits from try-catch blocks above
+                    try
+                    {
+                        trans.Commit();
+                        diagnosticLines.Add($"  Transaction committed successfully for {doc.Title}");
+                        _editsWereApplied = true;
+                    }
+                    catch (Exception commitEx)
+                    {
+                        // CRITICAL: Only catch commit-specific failures here
+                        // Individual edit failures are already caught and tracked above
+                        diagnosticLines.Add($"\n  ERROR: Transaction commit failed for {doc.Title}");
+                        diagnosticLines.Add($"    Exception type: {commitEx.GetType().Name}");
+                        diagnosticLines.Add($"    Exception message: {commitEx.Message}");
+                        diagnosticLines.Add($"    Stack trace: {commitEx.StackTrace}");
+                        diagnosticLines.Add($"  Rolling back transaction...");
 
-                    // Write diagnostics before showing error
-                    System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diagnosticPath));
-                    System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
+                        try
+                        {
+                            trans.RollBack();
+                            diagnosticLines.Add($"  Transaction rolled back");
+                        }
+                        catch (Exception rollbackEx)
+                        {
+                            diagnosticLines.Add($"  Failed to rollback: {rollbackEx.Message}");
+                        }
 
-                    // CRITICAL: Store error message to show AFTER using block exits
-                    // Showing MessageBox inside the using block interferes with transaction disposal
-                    transactionErrorMessage = $"Transaction failed: {ex.Message}\n\nAll edits have been rolled back.\n\nDiagnostics saved to:\n{diagnosticPath}";
-                    transactionErrorDiagnosticPath = diagnosticPath;
-                }
+                        // Write diagnostics immediately
+                        System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diagnosticPath));
+                        System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
+
+                        // Add commit failure to error messages for summary
+                        errorMessages.Add($"CRITICAL: Transaction commit failed - {commitEx.Message}. All edits rolled back.");
+                        // Count all pending edits as failed
+                        errorCount += editsByEntry.Count;
+                    }
             }
             // using block has exited - transaction is now properly disposed
-
-            // Show error message AFTER transaction disposal to prevent nested message pump interference
-            if (transactionErrorMessage != null)
-            {
-                System.Windows.Forms.MessageBox.Show(
-                    transactionErrorMessage,
-                    "Apply Edits Error",
-                    System.Windows.Forms.MessageBoxButtons.OK,
-                    System.Windows.Forms.MessageBoxIcon.Error);
-                return false;
-            }
         }
 
         // Write final diagnostics
@@ -545,7 +605,7 @@ public partial class CustomGUIs
     /// <summary>
     /// Apply a property edit to a Revit element
     /// </summary>
-    private static bool ApplyPropertyEdit(Element elem, string columnName, object newValue, Dictionary<string, object> entry)
+    private static bool ApplyPropertyEdit(Element elem, string columnName, object newValue, Dictionary<string, object> entry, List<string> diagnosticLines = null)
     {
         // AUTOMATIC SYSTEM: Try handler registry first, with fallback to dynamic parameter detection
         ColumnHandlerRegistry.EnsureInitialized();
@@ -555,12 +615,29 @@ public partial class CustomGUIs
         {
             try
             {
+                if (diagnosticLines != null)
+                {
+                    diagnosticLines.Add($"          Using handler: {handler.ColumnName}");
+                    diagnosticLines.Add($"          Handler description: {handler.Description ?? "(none)"}");
+                }
+
                 // Use handler to apply edit (includes both explicit and dynamic parameter handlers)
                 bool success = handler.ApplyEdit(elem, _currentUIDoc.Document, newValue);
+
+                if (diagnosticLines != null)
+                {
+                    diagnosticLines.Add($"          Handler returned: {success}");
+                }
+
                 return success;
             }
             catch (Exception ex)
             {
+                if (diagnosticLines != null)
+                {
+                    diagnosticLines.Add($"          Handler threw exception: {ex.GetType().Name}");
+                    diagnosticLines.Add($"          Exception message: {ex.Message}");
+                }
                 System.Diagnostics.Debug.WriteLine($"Handler for '{columnName}' failed: {ex.Message}");
                 return false;
             }
@@ -935,25 +1012,25 @@ public partial class CustomGUIs
                         RevitBallet.Commands.PathHelper.RuntimeDirectory,
                         "ScopeBoxEditDiagnostics.txt");
 
-                    var diagnosticLines = new System.Collections.Generic.List<string>();
-                    diagnosticLines.Add($"=== Scope Box Edit Attempt at {System.DateTime.Now:yyyy-MM-dd HH:mm:ss} ===");
-                    diagnosticLines.Add($"View Name: {vScopeBox.Name}");
-                    diagnosticLines.Add($"View Title: {vScopeBox.Title}");
-                    diagnosticLines.Add($"View Type: {vScopeBox.ViewType}");
-                    diagnosticLines.Add($"Is Template: {vScopeBox.IsTemplate}");
-                    diagnosticLines.Add($"Requested Scope Box: '{strValue}'");
+                    var scopeBoxDiagnostics = new System.Collections.Generic.List<string>();
+                    scopeBoxDiagnostics.Add($"=== Scope Box Edit Attempt at {System.DateTime.Now:yyyy-MM-dd HH:mm:ss} ===");
+                    scopeBoxDiagnostics.Add($"View Name: {vScopeBox.Name}");
+                    scopeBoxDiagnostics.Add($"View Title: {vScopeBox.Title}");
+                    scopeBoxDiagnostics.Add($"View Type: {vScopeBox.ViewType}");
+                    scopeBoxDiagnostics.Add($"Is Template: {vScopeBox.IsTemplate}");
+                    scopeBoxDiagnostics.Add($"Requested Scope Box: '{strValue}'");
 
                     Parameter scopeBoxParam = vScopeBox.get_Parameter(BuiltInParameter.VIEWER_VOLUME_OF_INTEREST_CROP);
                     if (scopeBoxParam == null)
                     {
-                        diagnosticLines.Add("ERROR: View does not have a scope box parameter");
-                        System.IO.File.AppendAllLines(diagnosticPath, diagnosticLines);
+                        scopeBoxDiagnostics.Add("ERROR: View does not have a scope box parameter");
+                        System.IO.File.AppendAllLines(diagnosticPath, scopeBoxDiagnostics);
                         return false;
                     }
 
-                    diagnosticLines.Add($"Parameter Exists: Yes");
-                    diagnosticLines.Add($"Parameter IsReadOnly: {scopeBoxParam.IsReadOnly}");
-                    diagnosticLines.Add($"Parameter HasValue: {scopeBoxParam.HasValue}");
+                    scopeBoxDiagnostics.Add($"Parameter Exists: Yes");
+                    scopeBoxDiagnostics.Add($"Parameter IsReadOnly: {scopeBoxParam.IsReadOnly}");
+                    scopeBoxDiagnostics.Add($"Parameter HasValue: {scopeBoxParam.HasValue}");
 
                     if (scopeBoxParam.HasValue)
                     {
@@ -961,18 +1038,18 @@ public partial class CustomGUIs
                         if (currentScopeId != null && currentScopeId != ElementId.InvalidElementId)
                         {
                             Element currentScope = elem.Document.GetElement(currentScopeId);
-                            diagnosticLines.Add($"Current Scope Box: '{currentScope?.Name ?? "ERROR"}'");
+                            scopeBoxDiagnostics.Add($"Current Scope Box: '{currentScope?.Name ?? "ERROR"}'");
                         }
                         else
                         {
-                            diagnosticLines.Add($"Current Scope Box: None");
+                            scopeBoxDiagnostics.Add($"Current Scope Box: None");
                         }
                     }
 
                     if (scopeBoxParam.IsReadOnly)
                     {
-                        diagnosticLines.Add("ERROR: Parameter is read-only");
-                        System.IO.File.AppendAllLines(diagnosticPath, diagnosticLines);
+                        scopeBoxDiagnostics.Add("ERROR: Parameter is read-only");
+                        System.IO.File.AppendAllLines(diagnosticPath, scopeBoxDiagnostics);
                         return false;
                     }
 
@@ -982,14 +1059,14 @@ public partial class CustomGUIs
                         try
                         {
                             scopeBoxParam.Set(ElementId.InvalidElementId);
-                            diagnosticLines.Add("SUCCESS: Cleared scope box");
-                            System.IO.File.AppendAllLines(diagnosticPath, diagnosticLines);
+                            scopeBoxDiagnostics.Add("SUCCESS: Cleared scope box");
+                            System.IO.File.AppendAllLines(diagnosticPath, scopeBoxDiagnostics);
                             return true;
                         }
                         catch (Exception ex)
                         {
-                            diagnosticLines.Add($"ERROR: Failed to clear scope box: {ex.Message}");
-                            System.IO.File.AppendAllLines(diagnosticPath, diagnosticLines);
+                            scopeBoxDiagnostics.Add($"ERROR: Failed to clear scope box: {ex.Message}");
+                            System.IO.File.AppendAllLines(diagnosticPath, scopeBoxDiagnostics);
                             return false;
                         }
                     }
@@ -1001,10 +1078,10 @@ public partial class CustomGUIs
                         .Cast<Element>()
                         .ToList();
 
-                    diagnosticLines.Add($"Available Scope Boxes in Document: {scopeBoxes.Count}");
+                    scopeBoxDiagnostics.Add($"Available Scope Boxes in Document: {scopeBoxes.Count}");
                     foreach (var sb in scopeBoxes)
                     {
-                        diagnosticLines.Add($"  - '{sb.Name}' (ID: {sb.Id.AsLong()})");
+                        scopeBoxDiagnostics.Add($"  - '{sb.Name}' (ID: {sb.Id.AsLong()})");
                     }
 
                     Element targetScopeBox = scopeBoxes.FirstOrDefault(sb =>
@@ -1012,12 +1089,12 @@ public partial class CustomGUIs
 
                     if (targetScopeBox != null)
                     {
-                        diagnosticLines.Add($"Found matching scope box: '{targetScopeBox.Name}' (ID: {targetScopeBox.Id.AsLong()})");
+                        scopeBoxDiagnostics.Add($"Found matching scope box: '{targetScopeBox.Name}' (ID: {targetScopeBox.Id.AsLong()})");
                         try
                         {
                             scopeBoxParam.Set(targetScopeBox.Id);
-                            diagnosticLines.Add($"SUCCESS: Set scope box to '{targetScopeBox.Name}'");
-                            System.IO.File.AppendAllLines(diagnosticPath, diagnosticLines);
+                            scopeBoxDiagnostics.Add($"SUCCESS: Set scope box to '{targetScopeBox.Name}'");
+                            System.IO.File.AppendAllLines(diagnosticPath, scopeBoxDiagnostics);
                             return true;
                         }
                         catch (Exception ex)
@@ -1775,17 +1852,29 @@ public partial class CustomGUIs
     /// <summary>
     /// Apply edits to workset entries (from SelectByWorksetsIn* commands)
     /// </summary>
-    private static bool ApplyWorksetEdit(Document doc, Dictionary<string, object> entry, string columnName, object newValue)
+    private static bool ApplyWorksetEdit(Document doc, Dictionary<string, object> entry, string columnName, object newValue, List<string> diagnosticLines = null)
     {
         if (!doc.IsWorkshared)
+        {
+            if (diagnosticLines != null)
+                diagnosticLines.Add($"          Document is not workshared");
             return false;
+        }
 
         // Get the WorksetId from the entry (stable identifier)
         if (!entry.TryGetValue("WorksetId", out var worksetIdObj) || worksetIdObj == null)
+        {
+            if (diagnosticLines != null)
+                diagnosticLines.Add($"          WorksetId not found in entry");
             return false;
+        }
 
         if (!(worksetIdObj is WorksetId worksetId))
+        {
+            if (diagnosticLines != null)
+                diagnosticLines.Add($"          WorksetId is not a valid WorksetId type");
             return false;
+        }
 
         string strValue = newValue?.ToString() ?? "";
         string lowerColumnName = columnName.ToLowerInvariant();
@@ -1894,6 +1983,269 @@ public partial class CustomGUIs
 
             default:
                 return false;
+        }
+    }
+
+    /// <summary>
+    /// Data structure to hold duplicate name detection results
+    /// </summary>
+    private class DuplicateNameInfo
+    {
+        public bool HasDuplicates { get; set; }
+        public int DuplicateCount { get; set; }
+        public Dictionary<string, Dictionary<string, List<long>>> DuplicateColumns { get; set; }
+
+        public DuplicateNameInfo()
+        {
+            DuplicateColumns = new Dictionary<string, Dictionary<string, List<long>>>();
+        }
+    }
+
+    /// <summary>
+    /// Detect duplicate target names in edit operations
+    /// </summary>
+    private static DuplicateNameInfo DetectDuplicateNames(
+        Dictionary<string, List<(long internalId, Dictionary<string, object> entry, object newValue)>> editsByColumn,
+        HashSet<string> uniqueNameColumns,
+        Document doc,
+        List<string> diagnosticLines)
+    {
+        var result = new DuplicateNameInfo();
+
+        foreach (var columnName in uniqueNameColumns)
+        {
+            var columnEdits = editsByColumn[columnName];
+
+            // SPECIAL CASE: Detail Number is only unique per sheet, not globally
+            bool isDetailNumber = columnName.Equals("Detail Number", StringComparison.OrdinalIgnoreCase);
+
+            // SPECIAL CASE: "Name" column can apply to both Views (unique) and Sheets (not unique)
+            // Only check duplicates for Views, skip ViewSheets
+            bool isNameColumn = columnName.Equals("Name", StringComparison.OrdinalIgnoreCase);
+
+            if (isDetailNumber)
+            {
+                diagnosticLines?.Add($"    Column '{columnName}': Checking for duplicates per sheet (scoped uniqueness)");
+
+                // Group by parent sheet first
+                var editsBySheet = new Dictionary<ElementId, List<(long internalId, Dictionary<string, object> entry, object newValue)>>();
+
+                foreach (var edit in columnEdits)
+                {
+                    // Get the element to find its parent sheet
+                    Element elem = GetElementFromEntry(doc, edit.entry);
+                    if (elem == null) continue;
+
+                    // For viewports, the OwnerViewId is the sheet
+                    ElementId sheetId = elem.OwnerViewId ?? ElementId.InvalidElementId;
+
+                    if (!editsBySheet.ContainsKey(sheetId))
+                        editsBySheet[sheetId] = new List<(long, Dictionary<string, object>, object)>();
+
+                    editsBySheet[sheetId].Add(edit);
+                }
+
+                // Now check for duplicates within each sheet
+                foreach (var sheetGroup in editsBySheet)
+                {
+                    ElementId sheetId = sheetGroup.Key;
+                    var editsOnSheet = sheetGroup.Value;
+
+                    string sheetName = sheetId != ElementId.InvalidElementId
+                        ? doc.GetElement(sheetId)?.Name ?? $"Sheet ID {sheetId.AsLong()}"
+                        : "No Sheet";
+
+                    var nameGroups = editsOnSheet
+                        .GroupBy(e => e.newValue?.ToString()?.Trim() ?? "")
+                        .Where(g => g.Count() > 1) // Only duplicates
+                        .ToList();
+
+                    if (nameGroups.Any())
+                    {
+                        var duplicatesInColumn = result.DuplicateColumns.ContainsKey(columnName)
+                            ? result.DuplicateColumns[columnName]
+                            : new Dictionary<string, List<long>>();
+
+                        foreach (var group in nameGroups)
+                        {
+                            string targetName = group.Key;
+                            var elementIds = group.Select(e => e.internalId).ToList();
+
+                            // Use a unique key that includes the sheet context
+                            string duplicateKey = $"{targetName} (on {sheetName})";
+                            duplicatesInColumn[duplicateKey] = elementIds;
+                            result.DuplicateCount += group.Count() - 1; // Count extras as duplicates
+
+                            diagnosticLines?.Add($"    Column '{columnName}': Value '{targetName}' appears {group.Count()} times on sheet '{sheetName}'");
+                            diagnosticLines?.Add($"      Element IDs: {string.Join(", ", elementIds)}");
+                        }
+
+                        result.DuplicateColumns[columnName] = duplicatesInColumn;
+                    }
+                }
+            }
+            else if (isNameColumn)
+            {
+                // For "Name" column: only check duplicates for regular Views, skip ViewSheets
+                // (ViewSheets can have duplicate names, regular Views cannot)
+                diagnosticLines?.Add($"    Column '{columnName}': Filtering out ViewSheets (only Views need unique names)");
+
+                // Filter to only include regular Views (exclude ViewSheets)
+                var viewEdits = new List<(long internalId, Dictionary<string, object> entry, object newValue)>();
+                foreach (var edit in columnEdits)
+                {
+                    Element elem = GetElementFromEntry(doc, edit.entry);
+                    if (elem != null && elem is Autodesk.Revit.DB.View && !(elem is ViewSheet))
+                    {
+                        viewEdits.Add(edit);
+                    }
+                }
+
+                // Now check for duplicates only among regular views
+                var nameGroups = viewEdits
+                    .GroupBy(e => e.newValue?.ToString()?.Trim() ?? "")
+                    .Where(g => g.Count() > 1) // Only duplicates
+                    .ToList();
+
+                if (nameGroups.Any())
+                {
+                    var duplicatesInColumn = new Dictionary<string, List<long>>();
+
+                    foreach (var group in nameGroups)
+                    {
+                        string targetName = group.Key;
+                        var elementIds = group.Select(e => e.internalId).ToList();
+
+                        duplicatesInColumn[targetName] = elementIds;
+                        result.DuplicateCount += group.Count() - 1; // Count extras as duplicates
+
+                        diagnosticLines?.Add($"    Column '{columnName}': View name '{targetName}' appears {group.Count()} times");
+                        diagnosticLines?.Add($"      Element IDs: {string.Join(", ", elementIds)}");
+                    }
+
+                    result.DuplicateColumns[columnName] = duplicatesInColumn;
+                }
+            }
+            else
+            {
+                // Global uniqueness check (original logic for View Name, Sheet Number, etc.)
+                var nameGroups = columnEdits
+                    .GroupBy(e => e.newValue?.ToString()?.Trim() ?? "")
+                    .Where(g => g.Count() > 1) // Only duplicates
+                    .ToList();
+
+                if (nameGroups.Any())
+                {
+                    var duplicatesInColumn = new Dictionary<string, List<long>>();
+
+                    foreach (var group in nameGroups)
+                    {
+                        string targetName = group.Key;
+                        var elementIds = group.Select(e => e.internalId).ToList();
+
+                        duplicatesInColumn[targetName] = elementIds;
+                        result.DuplicateCount += group.Count() - 1; // Count extras as duplicates
+
+                        diagnosticLines?.Add($"    Column '{columnName}': Name '{targetName}' appears {group.Count()} times");
+                        diagnosticLines?.Add($"      Element IDs: {string.Join(", ", elementIds)}");
+                    }
+
+                    result.DuplicateColumns[columnName] = duplicatesInColumn;
+                }
+            }
+        }
+
+        result.HasDuplicates = result.DuplicateColumns.Any();
+        return result;
+    }
+
+    /// <summary>
+    /// Show dialog to user when duplicate names are detected
+    /// </summary>
+    private static System.Windows.Forms.DialogResult ShowDuplicateNameDialog(DuplicateNameInfo duplicateInfo)
+    {
+        // Build message
+        var message = new System.Text.StringBuilder();
+        message.AppendLine("Duplicate names detected!");
+        message.AppendLine();
+        message.AppendLine($"Found {duplicateInfo.DuplicateCount} duplicate name(s):");
+        message.AppendLine();
+
+        foreach (var column in duplicateInfo.DuplicateColumns)
+        {
+            message.AppendLine($"Column: {column.Key}");
+            foreach (var dup in column.Value.Take(5)) // Show first 5
+            {
+                message.AppendLine($"  • '{dup.Key}' ({dup.Value.Count} elements)");
+            }
+            if (column.Value.Count > 5)
+            {
+                message.AppendLine($"  ... and {column.Value.Count - 5} more");
+            }
+            message.AppendLine();
+        }
+
+        message.AppendLine("What would you like to do?");
+        message.AppendLine();
+        message.AppendLine("YES: Append unique suffixes (e.g. ' - a3f8e2')");
+        message.AppendLine("NO: Proceed anyway (some renames may fail)");
+        message.AppendLine("CANCEL: Cancel all edits");
+
+        // Show dialog
+        var result = System.Windows.Forms.MessageBox.Show(
+            message.ToString(),
+            "Duplicate Names Detected",
+            System.Windows.Forms.MessageBoxButtons.YesNoCancel,
+            System.Windows.Forms.MessageBoxIcon.Warning,
+            System.Windows.Forms.MessageBoxDefaultButton.Button1);
+
+        return result;
+    }
+
+    /// <summary>
+    /// Append unique suffixes to duplicate names
+    /// </summary>
+    private static void AppendUniqueSuffixes(
+        Dictionary<string, List<(long internalId, Dictionary<string, object> entry, object newValue)>> editsByColumn,
+        DuplicateNameInfo duplicateInfo,
+        List<string> diagnosticLines)
+    {
+        var random = new System.Random();
+
+        foreach (var columnInfo in duplicateInfo.DuplicateColumns)
+        {
+            string columnName = columnInfo.Key;
+            var duplicates = columnInfo.Value;
+
+            diagnosticLines?.Add($"  Appending suffixes to column '{columnName}'");
+
+            foreach (var duplicateGroup in duplicates)
+            {
+                string baseName = duplicateGroup.Key;
+                var elementIds = duplicateGroup.Value;
+
+                // Generate unique suffix for this group
+                string suffix = $" - {random.Next(100000, 999999):x6}";
+
+                diagnosticLines?.Add($"    Group '{baseName}' ({elementIds.Count} elements) -> suffix '{suffix}'");
+
+                // Find and update all edits for these elements
+                var columnEdits = editsByColumn[columnName];
+                for (int i = 0; i < columnEdits.Count; i++)
+                {
+                    var edit = columnEdits[i];
+                    if (elementIds.Contains(edit.internalId))
+                    {
+                        string originalName = edit.newValue?.ToString() ?? "";
+                        string newName = originalName + suffix;
+
+                        // Replace the edit with updated name
+                        columnEdits[i] = (edit.internalId, edit.entry, newName);
+
+                        diagnosticLines?.Add($"      Element {edit.internalId}: '{originalName}' -> '{newName}'");
+                    }
+                }
+            }
         }
     }
 }

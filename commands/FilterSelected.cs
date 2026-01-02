@@ -821,7 +821,8 @@ public abstract class FilterElementsBase : IExternalCommand
             var chosenRows = CustomGUIs.DataGrid(elementData, propertyNames, SpanAllScreens);
 
             // Apply any pending edits to Revit elements
-            if (CustomGUIs.HasPendingEdits())
+            // CRITICAL: Only apply edits if user pressed Enter (not Escape)
+            if (CustomGUIs.HasPendingEdits() && !CustomGUIs.WasCancelled())
             {
                 CustomGUIs.ApplyCellEditsToEntities();
             }
@@ -1112,7 +1113,8 @@ public class FilterSelectedInViews : IExternalCommand
             var chosenRows = CustomGUIs.DataGrid(filteredData, propertyNames, false);
 
             // Apply any pending edits to Revit elements
-            if (CustomGUIs.HasPendingEdits())
+            // CRITICAL: Only apply edits if user pressed Enter (not Escape)
+            if (CustomGUIs.HasPendingEdits() && !CustomGUIs.WasCancelled())
             {
                 CustomGUIs.ApplyCellEditsToEntities();
             }

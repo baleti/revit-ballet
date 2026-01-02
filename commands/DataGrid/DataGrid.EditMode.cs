@@ -20,6 +20,9 @@ public partial class CustomGUIs
     // Track if edits were applied in the current session
     private static bool _editsWereApplied = false;
 
+    // Track if the DataGrid was cancelled (Escape pressed in main mode)
+    private static bool _wasCancelled = false;
+
     // Cache validation results to avoid showing the same dialog multiple times per operation
     // Key: new value, Value: tuple of (approved, sanitized value)
     private static Dictionary<string, (bool approved, string sanitizedValue)> _validationCache = new Dictionary<string, (bool, string)>();
@@ -32,6 +35,9 @@ public partial class CustomGUIs
 
     /// <summary>Check if edits were applied in the current session</summary>
     public static bool WereEditsApplied() => _editsWereApplied;
+
+    /// <summary>Check if the DataGrid was cancelled (Escape pressed)</summary>
+    public static bool WasCancelled() => _wasCancelled;
 
     /// <summary>Reset the edits applied flag (called at start of new DataGrid session)</summary>
     public static void ResetEditsAppliedFlag() => _editsWereApplied = false;
@@ -48,6 +54,7 @@ public partial class CustomGUIs
         _modifiedEntries.Clear();
         _selectionAnchor = null;
         _validationCache.Clear();
+        _wasCancelled = false;
         // _globalValidationDecision = null; // TODO: Uncomment when implementing global validation
     }
 
@@ -601,6 +608,14 @@ public partial class CustomGUIs
         if (!_isEditMode || grid.CurrentCell == null)
             return;
 
+        // DIAGNOSTICS: Create log file for paste operation
+        string diagnosticPath = System.IO.Path.Combine(
+            RevitBallet.Commands.PathHelper.RuntimeDirectory,
+            "diagnostics",
+            $"DataGridPaste-{System.DateTime.Now:yyyyMMdd-HHmmss-fff}.txt");
+        var diagnosticLines = new List<string>();
+        diagnosticLines.Add($"=== DataGrid Paste Operation at {System.DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} ===");
+
         // Clear validation cache at the start of this paste operation
         _validationCache.Clear();
         // _globalValidationDecision = null; // TODO: Uncomment when implementing global validation
@@ -610,6 +625,9 @@ public partial class CustomGUIs
             // Get clipboard text
             if (!Clipboard.ContainsText())
             {
+                diagnosticLines.Add("ERROR: Clipboard does not contain text");
+                System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diagnosticPath));
+                System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
                 MessageBox.Show("Clipboard does not contain text data.", "Paste",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
@@ -618,26 +636,42 @@ public partial class CustomGUIs
             string clipboardText = Clipboard.GetText();
             if (string.IsNullOrEmpty(clipboardText))
             {
+                diagnosticLines.Add("ERROR: Clipboard text is empty");
+                System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diagnosticPath));
+                System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
                 MessageBox.Show("Clipboard is empty.", "Paste",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
+            diagnosticLines.Add($"Clipboard text length: {clipboardText.Length} characters");
+            diagnosticLines.Add($"Clipboard text preview: {(clipboardText.Length > 200 ? clipboardText.Substring(0, 200) + "..." : clipboardText)}");
+            diagnosticLines.Add($"Selected cells count: {_selectedEditCells.Count}");
+            diagnosticLines.Add($"Current cell: Row={grid.CurrentCell.RowIndex}, Col={grid.CurrentCell.ColumnIndex}");
+
             // Parse clipboard data into 2D array (tab-separated columns, newline-separated rows)
             var rows = clipboardText.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
             var clipboardData = new List<List<string>>();
 
+            diagnosticLines.Add($"\n--- Parsing clipboard data ---");
             foreach (var row in rows)
             {
                 if (string.IsNullOrEmpty(row) && clipboardData.Count > 0)
+                {
+                    diagnosticLines.Add($"  Skipped empty trailing row");
                     continue; // Skip trailing empty lines
+                }
 
                 var columns = row.Split('\t');
                 clipboardData.Add(new List<string>(columns));
+                diagnosticLines.Add($"  Row {clipboardData.Count - 1}: {columns.Length} column(s) - [{string.Join("] [", columns)}]");
             }
 
             if (clipboardData.Count == 0)
             {
+                diagnosticLines.Add("ERROR: No data parsed from clipboard");
+                System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diagnosticPath));
+                System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
                 MessageBox.Show("No data to paste.", "Paste",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
@@ -645,40 +679,59 @@ public partial class CustomGUIs
 
             // Check if clipboard contains a single value (1 row, 1 column)
             bool isSingleValue = clipboardData.Count == 1 && clipboardData[0].Count == 1;
+            diagnosticLines.Add($"\nParsed clipboard: {clipboardData.Count} row(s), max {clipboardData.Max(r => r.Count)} column(s)");
+            diagnosticLines.Add($"Is single value: {isSingleValue}");
 
             int pastedCells = 0;
             int skippedCells = 0;
+            var skipReasons = new List<string>();
 
             // Special case: Single value pasted to multiple selected cells
             if (isSingleValue && _selectedEditCells.Count > 1)
             {
                 string singleValue = clipboardData[0][0];
+                diagnosticLines.Add($"\n--- Single value paste to {_selectedEditCells.Count} selected cells ---");
+                diagnosticLines.Add($"Value to paste: '{singleValue}'");
 
                 // Paste the single value to all selected editable cells
+                int cellIndex = 0;
                 foreach (var cell in _selectedEditCells)
                 {
-                    if (!IsColumnEditable(grid.Columns[cell.ColumnIndex].Name))
+                    cellIndex++;
+                    string columnName = grid.Columns[cell.ColumnIndex].Name;
+                    diagnosticLines.Add($"\n  Cell {cellIndex}: Row={cell.RowIndex}, Col={cell.ColumnIndex}, Column='{columnName}'");
+
+                    if (!IsColumnEditable(columnName))
                     {
+                        diagnosticLines.Add($"    SKIPPED: Column '{columnName}' is not editable");
+                        skipReasons.Add($"Cell {cellIndex} ({columnName}): Not editable");
                         skippedCells++;
                         continue;
                     }
 
                     if (cell.RowIndex < _cachedFilteredData.Count)
                     {
-                        string columnName = grid.Columns[cell.ColumnIndex].Name;
                         var entry = _cachedFilteredData[cell.RowIndex];
+                        string entryName = entry.ContainsKey("Name") ? entry["Name"]?.ToString() : "(no name)";
                         string editKey = GetEditKey(entry, columnName);
 
                         string valueToApply = singleValue;
+                        string originalValue = entry.ContainsKey(columnName) && entry[columnName] != null ? entry[columnName].ToString() : "";
+
+                        diagnosticLines.Add($"    Entry: {entryName}");
+                        diagnosticLines.Add($"    Original value: '{originalValue}'");
+                        diagnosticLines.Add($"    New value: '{valueToApply}'");
 
                         // Validate before applying
-                        string originalValue = entry.ContainsKey(columnName) && entry[columnName] != null ? entry[columnName].ToString() : "";
                         if (!ValidateEdit(ref valueToApply, originalValue, columnName, entry))
                         {
+                            diagnosticLines.Add($"    SKIPPED: Validation failed");
+                            skipReasons.Add($"Cell {cellIndex} ({columnName} in {entryName}): Validation failed");
                             skippedCells++;
                             continue;
                         }
 
+                        diagnosticLines.Add($"    APPLIED: Edit key='{editKey}'");
                         _pendingCellEdits[editKey] = valueToApply;
                         entry[columnName] = valueToApply;
                         _modifiedEntries.Add(entry);
@@ -687,6 +740,8 @@ public partial class CustomGUIs
                     }
                     else
                     {
+                        diagnosticLines.Add($"    SKIPPED: Row index out of range");
+                        skipReasons.Add($"Cell {cellIndex}: Row out of range");
                         skippedCells++;
                     }
                 }
@@ -694,6 +749,7 @@ public partial class CustomGUIs
             else
             {
                 // Multi-cell paste: Use top-left cell of selection as starting point
+                diagnosticLines.Add($"\n--- Multi-cell paste ---");
                 int startRow = grid.CurrentCell.RowIndex;
                 int startCol = grid.CurrentCell.ColumnIndex;
 
@@ -702,30 +758,46 @@ public partial class CustomGUIs
                 {
                     startRow = _selectedEditCells.Min(cell => cell.RowIndex);
                     startCol = _selectedEditCells.Min(cell => cell.ColumnIndex);
+                    diagnosticLines.Add($"Using top-left of selection: Row={startRow}, Col={startCol}");
+                }
+                else
+                {
+                    diagnosticLines.Add($"Using current cell: Row={startRow}, Col={startCol}");
                 }
 
                 // Find the first editable column at or after startCol
                 while (startCol < grid.Columns.Count && !IsColumnEditable(grid.Columns[startCol].Name))
                 {
+                    diagnosticLines.Add($"  Skipping non-editable column at index {startCol}: '{grid.Columns[startCol].Name}'");
                     startCol++;
                 }
 
                 if (startCol >= grid.Columns.Count)
                 {
+                    diagnosticLines.Add($"ERROR: No editable column found starting from column {grid.CurrentCell.ColumnIndex}");
+                    System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diagnosticPath));
+                    System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
                     MessageBox.Show("No editable column found at cursor position.", "Paste",
                         MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
                 }
+
+                diagnosticLines.Add($"Starting paste at Row={startRow}, Col={startCol} ('{grid.Columns[startCol].Name}')");
 
                 // Paste data starting from top-left cell
                 for (int clipRow = 0; clipRow < clipboardData.Count; clipRow++)
                 {
                     int targetRow = startRow + clipRow;
                     if (targetRow >= grid.Rows.Count)
+                    {
+                        diagnosticLines.Add($"\n  ClipRow {clipRow}: Target row {targetRow} is beyond grid bounds, stopping");
                         break; // Don't paste beyond available rows
+                    }
 
                     var clipboardRow = clipboardData[clipRow];
                     int targetCol = startCol;
+
+                    diagnosticLines.Add($"\n  ClipRow {clipRow} → GridRow {targetRow}:");
 
                     for (int clipCol = 0; clipCol < clipboardRow.Count; clipCol++)
                     {
@@ -736,15 +808,21 @@ public partial class CustomGUIs
                         }
 
                         if (targetCol >= grid.Columns.Count)
+                        {
+                            diagnosticLines.Add($"    ClipCol {clipCol}: No more editable columns, stopping row");
                             break; // No more editable columns
+                        }
 
                         string columnName = grid.Columns[targetCol].Name;
                         string newValue = clipboardRow[clipCol];
+
+                        diagnosticLines.Add($"    ClipCol {clipCol} → GridCol {targetCol} ('{columnName}'): Value='{newValue}'");
 
                         // Apply the paste
                         if (targetRow < _cachedFilteredData.Count)
                         {
                             var entry = _cachedFilteredData[targetRow];
+                            string entryName = entry.ContainsKey("Name") ? entry["Name"]?.ToString() : "(no name)";
                             string editKey = GetEditKey(entry, columnName);
 
                             string valueToApply = newValue;
@@ -754,12 +832,15 @@ public partial class CustomGUIs
                             string originalValue = entry.ContainsKey(columnName) && entry[columnName] != null ? entry[columnName].ToString() : "";
                             if (!ValidateEdit(ref valueToApply, originalValue, columnName, entry))
                             {
+                                diagnosticLines.Add($"      SKIPPED: Validation failed for entry '{entryName}'");
+                                skipReasons.Add($"Row {targetRow}, Col '{columnName}' ({entryName}): Validation failed");
                                 shouldApply = false;
                                 skippedCells++;
                             }
 
                             if (shouldApply)
                             {
+                                diagnosticLines.Add($"      APPLIED to entry '{entryName}' (original='{originalValue}')");
                                 _pendingCellEdits[editKey] = valueToApply;
                                 entry[columnName] = valueToApply;
                                 _modifiedEntries.Add(entry);
@@ -768,6 +849,8 @@ public partial class CustomGUIs
                         }
                         else
                         {
+                            diagnosticLines.Add($"      SKIPPED: Row index out of range");
+                            skipReasons.Add($"Row {targetRow}, Col '{columnName}': Row out of range");
                             skippedCells++;
                         }
 
@@ -776,12 +859,38 @@ public partial class CustomGUIs
                 }
             }
 
+            // Write final diagnostics
+            diagnosticLines.Add($"\n=== Summary ===");
+            diagnosticLines.Add($"Total cells pasted: {pastedCells}");
+            diagnosticLines.Add($"Total cells skipped: {skippedCells}");
+            if (skipReasons.Count > 0)
+            {
+                diagnosticLines.Add($"\nSkip reasons:");
+                foreach (var reason in skipReasons.Take(20))
+                {
+                    diagnosticLines.Add($"  - {reason}");
+                }
+                if (skipReasons.Count > 20)
+                    diagnosticLines.Add($"  ... and {skipReasons.Count - 20} more");
+            }
+
+            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diagnosticPath));
+            System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
+
             // Update grid display
             grid.Invalidate();
         }
         catch (System.Exception ex)
         {
-            MessageBox.Show($"Error pasting clipboard data: {ex.Message}", "Paste Error",
+            diagnosticLines.Add($"\n=== EXCEPTION ===");
+            diagnosticLines.Add($"Exception type: {ex.GetType().Name}");
+            diagnosticLines.Add($"Exception message: {ex.Message}");
+            diagnosticLines.Add($"Stack trace: {ex.StackTrace}");
+
+            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diagnosticPath));
+            System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
+
+            MessageBox.Show($"Error pasting clipboard data: {ex.Message}\n\nDiagnostics saved to:\n{diagnosticPath}", "Paste Error",
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
@@ -947,6 +1056,30 @@ public partial class CustomGUIs
 
                 if (!validationResult.IsValid)
                 {
+                    // DIAGNOSTICS: Log validation failure
+                    string diagnosticPath = System.IO.Path.Combine(
+                        RevitBallet.Commands.PathHelper.RuntimeDirectory,
+                        "diagnostics",
+                        $"DataGridValidationFailed-{System.DateTime.Now:yyyyMMdd-HHmmss-fff}.txt");
+                    var diagnosticLines = new List<string>();
+                    diagnosticLines.Add($"=== DataGrid Validation Failed at {System.DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} ===");
+                    diagnosticLines.Add($"Column: {columnName}");
+                    diagnosticLines.Add($"Element ID: {elem.Id.AsLong()}");
+                    diagnosticLines.Add($"Element type: {elem.GetType().Name}");
+                    diagnosticLines.Add($"Element category: {elem.Category?.Name ?? "(null)"}");
+                    diagnosticLines.Add($"Element name: {elem.Name ?? "(null)"}");
+                    diagnosticLines.Add($"Original value: '{originalValue}'");
+                    diagnosticLines.Add($"New value: '{newValue}'");
+                    diagnosticLines.Add($"Validation error: {validationResult.ErrorMessage}");
+                    diagnosticLines.Add($"Handler: {handler.ColumnName}");
+                    if (handler.Validator != null)
+                    {
+                        diagnosticLines.Add($"Validator type: {handler.Validator.GetType().Name}");
+                    }
+
+                    System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diagnosticPath));
+                    System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
+
                     // Show validation error to user
                     MessageBox.Show(
                         $"Cannot set {columnName} to '{newValue}':\n\n{validationResult.ErrorMessage}",

@@ -122,7 +122,7 @@ public class SelectByWorksetsInDocument : IExternalCommand
                                     false);
 
             // Apply any pending edits to worksets (renames, visibility changes, etc.)
-            if (CustomGUIs.HasPendingEdits())
+            if (CustomGUIs.HasPendingEdits() && !CustomGUIs.WasCancelled())
             {
                 CustomGUIs.ApplyCellEditsToEntities();
             }

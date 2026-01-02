@@ -272,7 +272,7 @@ public class OpenPreviousViewsInSession : IExternalCommand
         // 6. Apply any pending edits to Revit elements
         // ─────────────────────────────────────────────────────────────
         bool editsWereApplied = false;
-        if (CustomGUIs.HasPendingEdits())
+        if (CustomGUIs.HasPendingEdits() && !CustomGUIs.WasCancelled())
         {
             CustomGUIs.ApplyCellEditsToEntities();
             editsWereApplied = true;
