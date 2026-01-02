@@ -419,6 +419,70 @@ public partial class CustomGUIs
                                 continue;
                             }
 
+                            // BATCH CROP REGION EDITS: Apply all crop region columns together to avoid invalid intermediate states
+                            var cropRegionColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                            {
+                                "Crop Region Top", "Crop Region Bottom", "Crop Region Left", "Crop Region Right"
+                            };
+                            var cropEdits = edits.Where(e => cropRegionColumns.Contains(e.Item1)).ToList();
+                            var processedColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+                            if (cropEdits.Count > 1) // Only batch if 2+ crop edits (single edits work fine individually)
+                            {
+                                diagnosticLines.Add($"      Batching {cropEdits.Count} crop region edit(s) together:");
+
+                                // Extract values
+                                double? newTop = null, newBottom = null, newLeft = null, newRight = null;
+                                foreach (var cropEdit in cropEdits)
+                                {
+                                    string columnName = cropEdit.Item1;
+                                    object newValue = cropEdit.Item2;
+
+                                    diagnosticLines.Add($"        {columnName} = {newValue}");
+                                    processedColumns.Add(columnName);
+
+                                    if (columnName.Equals("Crop Region Top", StringComparison.OrdinalIgnoreCase) &&
+                                        double.TryParse(newValue?.ToString(), out double v1))
+                                        newTop = v1;
+                                    else if (columnName.Equals("Crop Region Bottom", StringComparison.OrdinalIgnoreCase) &&
+                                        double.TryParse(newValue?.ToString(), out double v2))
+                                        newBottom = v2;
+                                    else if (columnName.Equals("Crop Region Left", StringComparison.OrdinalIgnoreCase) &&
+                                        double.TryParse(newValue?.ToString(), out double v3))
+                                        newLeft = v3;
+                                    else if (columnName.Equals("Crop Region Right", StringComparison.OrdinalIgnoreCase) &&
+                                        double.TryParse(newValue?.ToString(), out double v4))
+                                        newRight = v4;
+                                }
+
+                                try
+                                {
+                                    if (ColumnHandlerRegistry.ApplyCropRegionEdits(elem, doc, newTop, newBottom, newLeft, newRight))
+                                    {
+                                        diagnosticLines.Add($"        Batch crop region edit: SUCCESS");
+                                        successCount += cropEdits.Count;
+                                    }
+                                    else
+                                    {
+                                        diagnosticLines.Add($"        Batch crop region edit: FAILED");
+                                        foreach (var cropEdit in cropEdits)
+                                        {
+                                            errorMessages.Add($"{GetEntryDisplayName(entry)}.{cropEdit.Item1}: Failed to apply");
+                                        }
+                                        errorCount += cropEdits.Count;
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    diagnosticLines.Add($"        Batch crop region edit: EXCEPTION - {ex.Message}");
+                                    foreach (var cropEdit in cropEdits)
+                                    {
+                                        errorMessages.Add($"{GetEntryDisplayName(entry)}.{cropEdit.Item1}: {ex.Message}");
+                                    }
+                                    errorCount += cropEdits.Count;
+                                }
+                            }
+
                             // Apply each edit for this element
                             foreach (var (columnName, newValue) in edits)
                             {
@@ -426,6 +490,13 @@ public partial class CustomGUIs
                                 if (uniqueNameColumns.Contains(columnName))
                                 {
                                     diagnosticLines.Add($"      Skipping column '{columnName}' (already processed in two-phase rename)");
+                                    continue;
+                                }
+
+                                // Skip if already processed in crop region batch
+                                if (processedColumns.Contains(columnName))
+                                {
+                                    diagnosticLines.Add($"      Skipping column '{columnName}' (already processed in crop region batch)");
                                     continue;
                                 }
 

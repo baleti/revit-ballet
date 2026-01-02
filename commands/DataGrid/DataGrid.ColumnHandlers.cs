@@ -91,12 +91,57 @@ public partial class CustomGUIs
         private static Dictionary<string, ColumnHandler> _handlers = new Dictionary<string, ColumnHandler>(StringComparer.OrdinalIgnoreCase);
         private static bool _initialized = false;
 
+        // Delegate for batched crop region setter (set during RegisterStandardHandlers)
+        private static Func<Autodesk.Revit.DB.View, Document, double?, double?, double?, double?, bool> _setCropRegionFromProjectCoords;
+
         /// <summary>
         /// Register a column handler
         /// </summary>
         public static void Register(ColumnHandler handler)
         {
             _handlers[handler.ColumnName] = handler;
+        }
+
+        /// <summary>
+        /// Apply crop region edits in batch (all at once to avoid invalid intermediate states)
+        /// </summary>
+        public static bool ApplyCropRegionEdits(Element elem, Document doc, double? newTop, double? newBottom, double? newLeft, double? newRight)
+        {
+            if (_setCropRegionFromProjectCoords == null)
+                return false;
+
+            // Get the view from the element (handles both View and Viewport)
+            Autodesk.Revit.DB.View view = null;
+            if (elem is Autodesk.Revit.DB.View viewElem)
+                view = viewElem;
+            else if (elem is Viewport viewport)
+                view = doc.GetElement(viewport.ViewId) as Autodesk.Revit.DB.View;
+
+            if (view == null)
+                return false;
+
+            // CRITICAL: Convert display units to internal units (feet)
+#if REVIT2021 || REVIT2022 || REVIT2023 || REVIT2024 || REVIT2025 || REVIT2026
+            Units projectUnits = doc.GetUnits();
+            FormatOptions lengthOpts = projectUnits.GetFormatOptions(SpecTypeId.Length);
+            ForgeTypeId unitTypeId = lengthOpts.GetUnitTypeId();
+
+            double? internalTop = newTop.HasValue ? UnitUtils.ConvertToInternalUnits(newTop.Value, unitTypeId) : (double?)null;
+            double? internalBottom = newBottom.HasValue ? UnitUtils.ConvertToInternalUnits(newBottom.Value, unitTypeId) : (double?)null;
+            double? internalLeft = newLeft.HasValue ? UnitUtils.ConvertToInternalUnits(newLeft.Value, unitTypeId) : (double?)null;
+            double? internalRight = newRight.HasValue ? UnitUtils.ConvertToInternalUnits(newRight.Value, unitTypeId) : (double?)null;
+#else
+            Units projectUnits = doc.GetUnits();
+            FormatOptions lengthOpts = projectUnits.GetFormatOptions(UnitType.UT_Length);
+            DisplayUnitType unitType = lengthOpts.DisplayUnits;
+
+            double? internalTop = newTop.HasValue ? UnitUtils.ConvertToInternalUnits(newTop.Value, unitType) : (double?)null;
+            double? internalBottom = newBottom.HasValue ? UnitUtils.ConvertToInternalUnits(newBottom.Value, unitType) : (double?)null;
+            double? internalLeft = newLeft.HasValue ? UnitUtils.ConvertToInternalUnits(newLeft.Value, unitType) : (double?)null;
+            double? internalRight = newRight.HasValue ? UnitUtils.ConvertToInternalUnits(newRight.Value, unitType) : (double?)null;
+#endif
+
+            return _setCropRegionFromProjectCoords(view, doc, internalTop, internalBottom, internalLeft, internalRight);
         }
 
         /// <summary>
@@ -714,21 +759,11 @@ public partial class CustomGUIs
                     XYZ newMinView = inverseTransform.OfPoint(newMinProject);
                     XYZ newMaxView = inverseTransform.OfPoint(newMaxProject);
 
-                    // Ensure min is actually less than max in view space
-                    XYZ finalMin = new XYZ(
-                        System.Math.Min(newMinView.X, newMaxView.X),
-                        System.Math.Min(newMinView.Y, newMaxView.Y),
-                        System.Math.Min(newMinView.Z, newMaxView.Z));
-                    XYZ finalMax = new XYZ(
-                        System.Math.Max(newMinView.X, newMaxView.X),
-                        System.Math.Max(newMinView.Y, newMaxView.Y),
-                        System.Math.Max(newMinView.Z, newMaxView.Z));
-
                     // Create NEW BoundingBoxXYZ to avoid Revit API quirks with modified objects
                     BoundingBoxXYZ newBbox = new BoundingBoxXYZ();
                     newBbox.Transform = transform;
-                    newBbox.Min = finalMin;
-                    newBbox.Max = finalMax;
+                    newBbox.Min = newMinView;
+                    newBbox.Max = newMaxView;
                     view.CropBox = newBbox;
 
                     return true;
@@ -738,6 +773,9 @@ public partial class CustomGUIs
                     return false;
                 }
             };
+
+            // Save lambda to static field for batched crop region edits
+            _setCropRegionFromProjectCoords = SetCropRegionFromProjectCoords;
 
             // Crop Region Top
             Register(new ColumnHandler
