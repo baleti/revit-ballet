@@ -113,16 +113,16 @@ public class OpenSheetsInSession : IExternalCommand
                 if (doc != null && browserColumnsByDoc.TryGetValue(doc, out var browserColumns) &&
                     browserColumns != null && browserColumns.Count > 0)
                 {
-                    // Sort by browser columns using the helper method (same as OpenViewsInDocument)
-                    sheetsInDoc = BrowserOrganizationHelper.SortByBrowserColumns(sheetsInDoc, browserColumns);
+                    // Sort by browser columns using the helper method with SheetNumber as tiebreaker
+                    sheetsInDoc = BrowserOrganizationHelper.SortByBrowserColumns(sheetsInDoc, browserColumns, tiebreakerColumn: "SheetNumber");
                 }
                 else
                 {
-                    // Fallback: sort by sheet Title
+                    // Fallback: sort by sheet number
                     sheetsInDoc = sheetsInDoc.OrderBy(row =>
                     {
-                        if (row.ContainsKey("__OriginalObject") && row["__OriginalObject"] is ViewSheet sheet)
-                            return sheet.Title;
+                        if (row.ContainsKey("SheetNumber"))
+                            return row["SheetNumber"]?.ToString() ?? "";
                         return "";
                     }).ToList();
                 }
@@ -209,14 +209,11 @@ public class OpenSheetsInSession : IExternalCommand
             CustomGUIs.DataGrid(gridData, columns, false, initialSelectionIndices);
 
         // ─────────────────────────────────────────────────────────────
-        // 6. Apply any pending edits to Revit elements
+        // 6. Check if edits were applied (DataGrid auto-applies on close)
         // ─────────────────────────────────────────────────────────────
-        bool editsWereApplied = false;
-        if (CustomGUIs.HasPendingEdits())
+        bool editsWereApplied = CustomGUIs.WereEditsApplied();
+        if (editsWereApplied)
         {
-            CustomGUIs.ApplyCellEditsToEntities();
-            editsWereApplied = true;
-
             // Invalidate session cache since edits may have changed sheet names
             ViewDataCache.InvalidateAll("sheets");
         }

@@ -66,18 +66,18 @@ public class OpenSheetsInDocument : IExternalCommand
                 gridData.Add(dict);
             }
 
-            // Sort by browser organization columns (if any), otherwise by Title
+            // Sort by browser organization columns (if any), otherwise by SheetNumber
             if (browserColumns != null && browserColumns.Count > 0)
             {
-                gridData = BrowserOrganizationHelper.SortByBrowserColumns(gridData, browserColumns);
+                gridData = BrowserOrganizationHelper.SortByBrowserColumns(gridData, browserColumns, tiebreakerColumn: "SheetNumber");
             }
             else
             {
                 gridData = gridData.OrderBy(row =>
                 {
-                    // Extract sheet to get Title for sorting
-                    if (row.ContainsKey("__OriginalObject") && row["__OriginalObject"] is ViewSheet sheet)
-                        return sheet.Title;
+                    // Extract sheet number for sorting
+                    if (row.ContainsKey("SheetNumber"))
+                        return row["SheetNumber"]?.ToString() ?? "";
                     return "";
                 }).ToList();
             }

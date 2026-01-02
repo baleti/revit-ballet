@@ -93,12 +93,7 @@ public partial class CustomGUIs
             case "grouptype":
             // View type (cannot be changed after creation)
             case "viewtype":
-            // Read-only calculated properties
-            case "area":
-            case "volume":
-            case "length":
-            case "width":
-            case "height":
+            // Read-only calculated properties (REMOVED: area, volume, length, width, height - these might be editable family parameters!)
             case "perimeter":
             case "crosssection":
             case "cross-section":
@@ -119,6 +114,10 @@ public partial class CustomGUIs
             case "opened":   // Workset opened state - TODO: Find correct API to change this at runtime
                 return false;
         }
+
+        // IMPORTANT: "area", "volume", "length", "width", "height" are NOT blocked here
+        // because they might be editable family TYPE parameters, not calculated properties.
+        // The dynamic parameter handler will determine if they're actually editable at edit-time.
 
         // Revit-specific editable columns
         switch (lowerName)
