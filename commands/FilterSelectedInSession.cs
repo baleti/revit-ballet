@@ -148,7 +148,8 @@ public class FilterSelectedInSession : IExternalCommand
             var chosenRows = CustomGUIs.DataGrid(elementData, propertyNames, false);
 
             // Apply any pending edits to Revit elements
-            if (CustomGUIs.HasPendingEdits())
+            // CRITICAL: Only apply edits if user pressed Enter (not Escape)
+            if (CustomGUIs.HasPendingEdits() && !CustomGUIs.WasCancelled())
             {
                 CustomGUIs.ApplyCellEditsToEntities();
             }

@@ -275,7 +275,7 @@ public class SelectByFamilyTypesInViews : IExternalCommand
         var selectedEntries = CustomGUIs.DataGrid(typeEntries, propertyNames, false);
 
         // Apply any pending edits (family/type renames)
-        if (CustomGUIs.HasPendingEdits())
+        if (CustomGUIs.HasPendingEdits() && !CustomGUIs.WasCancelled())
         {
             CustomGUIs.ApplyCellEditsToEntities();
         }

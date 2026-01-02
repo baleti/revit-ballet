@@ -155,7 +155,7 @@ public class SelectByWorksetsInViews : IExternalCommand
                 CustomGUIs.DataGrid(rows, columns, false);
 
             // Apply any pending edits to worksets (renames, visibility changes, etc.)
-            if (CustomGUIs.HasPendingEdits())
+            if (CustomGUIs.HasPendingEdits() && !CustomGUIs.WasCancelled())
             {
                 CustomGUIs.ApplyCellEditsToEntities();
             }

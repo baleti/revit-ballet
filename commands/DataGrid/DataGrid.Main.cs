@@ -585,6 +585,8 @@ public partial class CustomGUIs
                 else
                 {
                     // Not in edit mode: Cancel and close
+                    // CRITICAL: Set cancellation flag to prevent edit application
+                    _wasCancelled = true;
                     selectedEntries.Clear();
                     form.Close();
                 }
@@ -883,7 +885,8 @@ public partial class CustomGUIs
 
         // AUTOMATIC SYSTEM: Apply any pending edits before returning
         // This makes edit support fully automatic - commands don't need to call ApplyCellEditsToEntities
-        if (HasPendingEdits() && _currentUIDoc != null)
+        // CRITICAL: Skip edit application if user cancelled (pressed Escape in main mode)
+        if (HasPendingEdits() && _currentUIDoc != null && !_wasCancelled)
         {
             try
             {

@@ -668,39 +668,17 @@ public partial class CustomGUIs
                 if (view == null || !view.CropBoxActive || view.CropBox == null)
                     return false;
 
-                // Create diagnostic log
-                var diagnosticLines = new List<string>();
-                string diagnosticPath = null;
-
                 try
                 {
-                    diagnosticPath = System.IO.Path.Combine(
-                        RevitBallet.Commands.PathHelper.RuntimeDirectory,
-                        "diagnostics",
-                        $"CropRegionEdit-{System.DateTime.Now:yyyyMMdd-HHmmss-fff}.txt");
-
-                    diagnosticLines.Add($"=== Crop Region Edit at {System.DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} ===");
-                    diagnosticLines.Add($"View: {view.Name} (Id: {view.Id})");
-                    diagnosticLines.Add($"View Type: {view.ViewType}");
-
-                    BoundingBoxXYZ bbox = view.CropBox;
-                    Transform transform = bbox.Transform;
+                    // Get current crop box and transform - used for depth/height preservation
+                    BoundingBoxXYZ currentBbox = view.CropBox;
+                    Transform transform = currentBbox.Transform;
                     double surveyElevation = GetSurveyPointElevation(doc);
-
-                    diagnosticLines.Add($"Survey Elevation: {surveyElevation} ft");
-                    diagnosticLines.Add($"Original BBox Min (view space): {bbox.Min}");
-                    diagnosticLines.Add($"Original BBox Max (view space): {bbox.Max}");
 
                     // Get current values in project coordinates
                     var current = GetCropRegionInProjectCoords(view, doc);
                     if (!current.HasValue)
-                    {
-                        diagnosticLines.Add("ERROR: Could not get current crop region in project coords");
                         return false;
-                    }
-
-                    diagnosticLines.Add($"Current (project space): Top={current.Value.top}, Bottom={current.Value.bottom}, Left={current.Value.left}, Right={current.Value.right}");
-                    diagnosticLines.Add($"New values: Top={newTop}, Bottom={newBottom}, Left={newLeft}, Right={newRight}");
 
                     bool isElevationOrSection = view.ViewType == ViewType.Elevation || view.ViewType == ViewType.Section;
 
@@ -710,15 +688,9 @@ public partial class CustomGUIs
                     double left = newLeft ?? current.Value.left;
                     double right = newRight ?? current.Value.right;
 
-                    diagnosticLines.Add($"Final values (project space): Top={top}, Bottom={bottom}, Left={left}, Right={right}");
-
                     // Transform current corners to project space to get depth dimension
-                    XYZ currentMinProject = transform.OfPoint(bbox.Min);
-                    XYZ currentMaxProject = transform.OfPoint(bbox.Max);
-
-                    diagnosticLines.Add($"Current corners in project space:");
-                    diagnosticLines.Add($"  Min: {currentMinProject}");
-                    diagnosticLines.Add($"  Max: {currentMaxProject}");
+                    XYZ currentMinProject = transform.OfPoint(currentBbox.Min);
+                    XYZ currentMaxProject = transform.OfPoint(currentBbox.Max);
 
                     // Build new corners in project space
                     Transform inverseTransform = transform.Inverse;
@@ -738,17 +710,9 @@ public partial class CustomGUIs
                         newMaxProject = new XYZ(right, top, currentMaxProject.Z);
                     }
 
-                    diagnosticLines.Add($"New corners in project space:");
-                    diagnosticLines.Add($"  Min: {newMinProject}");
-                    diagnosticLines.Add($"  Max: {newMaxProject}");
-
                     // Transform back to view space
                     XYZ newMinView = inverseTransform.OfPoint(newMinProject);
                     XYZ newMaxView = inverseTransform.OfPoint(newMaxProject);
-
-                    diagnosticLines.Add($"New corners in view space:");
-                    diagnosticLines.Add($"  Min: {newMinView}");
-                    diagnosticLines.Add($"  Max: {newMaxView}");
 
                     // Ensure min is actually less than max in view space
                     XYZ finalMin = new XYZ(
@@ -760,35 +724,18 @@ public partial class CustomGUIs
                         System.Math.Max(newMinView.Y, newMaxView.Y),
                         System.Math.Max(newMinView.Z, newMaxView.Z));
 
-                    diagnosticLines.Add($"Final (corrected) in view space:");
-                    diagnosticLines.Add($"  Min: {finalMin}");
-                    diagnosticLines.Add($"  Max: {finalMax}");
+                    // Create NEW BoundingBoxXYZ to avoid Revit API quirks with modified objects
+                    BoundingBoxXYZ newBbox = new BoundingBoxXYZ();
+                    newBbox.Transform = transform;
+                    newBbox.Min = finalMin;
+                    newBbox.Max = finalMax;
+                    view.CropBox = newBbox;
 
-                    bbox.Min = finalMin;
-                    bbox.Max = finalMax;
-                    view.CropBox = bbox;
-
-                    diagnosticLines.Add("SUCCESS: Crop box updated");
                     return true;
                 }
-                catch (System.Exception ex)
+                catch
                 {
-                    diagnosticLines.Add($"EXCEPTION: {ex.GetType().Name}");
-                    diagnosticLines.Add($"Message: {ex.Message}");
-                    diagnosticLines.Add($"Stack trace: {ex.StackTrace}");
                     return false;
-                }
-                finally
-                {
-                    if (diagnosticPath != null)
-                    {
-                        try
-                        {
-                            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diagnosticPath));
-                            System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
-                        }
-                        catch { }
-                    }
                 }
             };
 
@@ -921,15 +868,16 @@ public partial class CustomGUIs
             });
 
             // Name column for Views (regular views and sheets)
-            // CRITICAL: RequiresUniqueName=true for two-phase rename to avoid "view/sheet with that name already exists" errors
+            // CRITICAL: RequiresUniqueName=true for two-phase rename to avoid "view with that name already exists" errors
             // NOTE: This handler applies to View elements when "Name" column is edited
-            // It handles both regular views and sheets, routing to appropriate rename methods
+            // It handles both regular views (unique names required) and sheets (duplicate names allowed)
+            // Duplicate detection will filter out ViewSheets and only check regular Views
             Register(new ColumnHandler
             {
                 ColumnName = "Name",
                 IsEditable = true,
                 RequiresUniqueName = true,
-                Description = "Element name (unique for views/sheets)",
+                Description = "Element name (unique for views, can be duplicated for sheets)",
                 Validator = ColumnValidators.NotEmpty,
                 Getter = (elem, doc) =>
                 {
@@ -972,24 +920,50 @@ public partial class CustomGUIs
                 }
             });
 
-            // View Name (for regular views, excluding sheets)
+            // View Name (for regular views and viewports, excluding sheets)
             // CRITICAL: RequiresUniqueName=true for two-phase rename to avoid "view with that name already exists" errors
             Register(new ColumnHandler
             {
                 ColumnName = "View Name",
                 IsEditable = true,
                 RequiresUniqueName = true,
-                Description = "View name (unique per document)",
+                Description = "View name (unique per document) - works with Views and Viewports",
                 Validator = ColumnValidators.NotEmpty,
                 Getter = (elem, doc) =>
                 {
+                    // Handle Viewports - get the underlying view
+                    if (elem is Viewport viewport)
+                    {
+                        Autodesk.Revit.DB.View underlyingView = doc.GetElement(viewport.ViewId) as Autodesk.Revit.DB.View;
+                        return underlyingView?.Name;
+                    }
+
+                    // Handle regular Views (non-sheets)
                     if (elem is Autodesk.Revit.DB.View view && !(view is ViewSheet))
                         return view.Name;
+
                     return null;
                 },
                 Setter = (elem, doc, newValue) =>
                 {
                     string strValue = newValue?.ToString() ?? "";
+
+                    // Handle Viewports - rename the underlying view
+                    if (elem is Viewport viewport)
+                    {
+                        try
+                        {
+                            Autodesk.Revit.DB.View underlyingView = doc.GetElement(viewport.ViewId) as Autodesk.Revit.DB.View;
+                            if (underlyingView != null && !(underlyingView is ViewSheet))
+                            {
+                                underlyingView.Name = strValue;
+                                return true;
+                            }
+                        }
+                        catch { return false; }
+                    }
+
+                    // Handle regular Views (non-sheets)
                     if (elem is Autodesk.Revit.DB.View view && !(view is ViewSheet))
                     {
                         try
@@ -999,18 +973,19 @@ public partial class CustomGUIs
                         }
                         catch { return false; }
                     }
+
                     return false;
                 }
             });
 
             // Sheet Name (for ViewSheets)
-            // CRITICAL: RequiresUniqueName=true for two-phase rename
+            // NOTE: Sheet names do NOT need to be unique (only sheet numbers do)
             Register(new ColumnHandler
             {
                 ColumnName = "Sheet Name",
                 IsEditable = true,
-                RequiresUniqueName = true,
-                Description = "Sheet name (unique per document)",
+                RequiresUniqueName = false,
+                Description = "Sheet name (can be duplicated)",
                 Validator = ColumnValidators.NotEmpty,
                 Getter = (elem, doc) =>
                 {
