@@ -71,37 +71,40 @@ public class CreateDraftingViewsFromSheetNames : IExternalCommand
             return Result.Failed;
         }
         // Create drafting views in the current document for each sheet selected
-        Transaction trans = new Transaction(uiDoc.Document, "Create Drafting Views");
-        trans.Start();
-        try
+        using (Transaction trans = new Transaction(uiDoc.Document, "Create Drafting Views"))
         {
-            // Fetch existing view names to avoid duplicates
-            HashSet<string> existingViewNames = new HashSet<string>(
-                new FilteredElementCollector(doc)
-                    .OfClass(typeof(View))
-                    .Cast<View>()
-                    .Select(v => v.Name)
-            );
-
-            foreach (ViewSheet sheet in selectedSheets)
+            trans.Start();
+            try
             {
-                if (!existingViewNames.Contains(sheet.Name))
+                // Fetch existing view names to avoid duplicates
+                HashSet<string> existingViewNames = new HashSet<string>(
+                    new FilteredElementCollector(doc)
+                        .OfClass(typeof(View))
+                        .Cast<View>()
+                        .Select(v => v.Name)
+                );
+
+                foreach (ViewSheet sheet in selectedSheets)
                 {
-                    ViewDrafting draftingView = ViewDrafting.Create(doc, draftingViewFamilyType.Id);
-                    if (draftingView != null)
+                    if (!existingViewNames.Contains(sheet.Name))
                     {
-                        draftingView.Name = sheet.Name; // Set the name of the drafting view to match the sheet name
+                        ViewDrafting draftingView = ViewDrafting.Create(doc, draftingViewFamilyType.Id);
+                        if (draftingView != null)
+                        {
+                            draftingView.Name = sheet.Name; // Set the name of the drafting view to match the sheet name
+                        }
                     }
                 }
+
+                trans.Commit();
+            }
+            catch (Exception ex)
+            {
+                message = ex.Message;
+                trans.RollBack();
+                return Result.Failed;
             }
         }
-        catch (Exception ex)
-        {
-            message = ex.Message;
-            trans.RollBack();
-            return Result.Failed;
-        }
-        trans.Commit();
 
         return Result.Succeeded;
     }
