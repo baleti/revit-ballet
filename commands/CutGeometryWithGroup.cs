@@ -46,24 +46,26 @@ public class CutGeometryWithGroup : IExternalCommand
 #endif
 
         // Use a transaction to group cutting operations
-        Transaction tx = new Transaction(doc);
-        tx.Start("Cut with Group");
-        try
+        using (Transaction tx = new Transaction(doc))
         {
-            foreach (ElementId id in dependentIds)
+            tx.Start("Cut with Group");
+            try
             {
-                Element depElem = doc.GetElement(id);
-                SolidSolidCutUtils.AddCutBetweenSolids(doc, selectedElement, depElem);
-            }
+                foreach (ElementId id in dependentIds)
+                {
+                    Element depElem = doc.GetElement(id);
+                    SolidSolidCutUtils.AddCutBetweenSolids(doc, selectedElement, depElem);
+                }
 
-            tx.Commit();
-            message = "Element cut successfully with group members.";
-        }
-        catch (System.Exception ex)
-        {
-          tx.RollBack();
-          message = $"An error occurred: {ex.Message}";
-          return Result.Failed;
+                tx.Commit();
+                message = "Element cut successfully with group members.";
+            }
+            catch (System.Exception ex)
+            {
+              tx.RollBack();
+              message = $"An error occurred: {ex.Message}";
+              return Result.Failed;
+            }
         }
 
         return Result.Succeeded;
