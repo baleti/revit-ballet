@@ -51,6 +51,13 @@
     <AddIn Type="Command">
         <Name>revit-ballet</Name>
         <Assembly>revit-ballet.dll</Assembly>
+        <FullClassName>SwitchViewInSession</FullClassName>
+        <AddInId>7A900755-CA93-4173-9BF6-3D59E06384FB</AddInId>
+        <VendorId>revit-ballet</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>revit-ballet</Name>
+        <Assembly>revit-ballet.dll</Assembly>
         <FullClassName>SwitchToLastView</FullClassName>
         <AddInId>8B3F7E2A-9C4D-4F1B-8A6E-3D7F2B9A1C4E</AddInId>
         <VendorId>revit-ballet</VendorId>
