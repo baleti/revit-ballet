@@ -367,6 +367,124 @@ public static class ElementDataHelper
             }
         }
 
+        // Add crop region columns for views and viewports (only if rectangular)
+        try
+        {
+            Autodesk.Revit.DB.View viewForCrop = null;
+            if (element is Autodesk.Revit.DB.View viewElem)
+            {
+                viewForCrop = viewElem;
+            }
+            else if (element is Viewport viewport)
+            {
+                viewForCrop = elementDoc.GetElement(viewport.ViewId) as Autodesk.Revit.DB.View;
+            }
+
+            if (viewForCrop != null && viewForCrop.CropBoxActive && viewForCrop.CropBox != null)
+            {
+                // Check if crop region is rectangular
+                bool isRectangular = true;
+                if (viewForCrop is ViewPlan plan)
+                {
+                    try
+                    {
+                        var managerProperty = plan.GetType().GetProperty("CropRegionShapeManager");
+                        if (managerProperty != null)
+                        {
+                            object manager = managerProperty.GetValue(plan, null);
+                            if (manager != null)
+                            {
+                                var method = manager.GetType().GetMethod("GetCropRegionShape");
+                                if (method != null)
+                                {
+                                    CurveLoop cropLoop = method.Invoke(manager, null) as CurveLoop;
+                                    if (cropLoop != null)
+                                    {
+                                        isRectangular = cropLoop.ToList().Count == 4;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        isRectangular = false;
+                    }
+                }
+
+                if (isRectangular)
+                {
+                    BoundingBoxXYZ bbox = viewForCrop.CropBox;
+                    Transform transform = bbox.Transform;
+
+                    // Get survey point elevation
+                    double surveyElevation = 0.0;
+                    try
+                    {
+                        FilteredElementCollector surveyCollector = new FilteredElementCollector(elementDoc);
+                        var surveyPoint = surveyCollector.OfCategory(BuiltInCategory.OST_SharedBasePoint)
+                            .FirstOrDefault() as BasePoint;
+                        if (surveyPoint != null)
+                        {
+                            surveyElevation = surveyPoint.get_BoundingBox(null).Min.Z;
+                        }
+                    }
+                    catch { }
+
+                    // Transform crop box corners to project coordinates
+                    XYZ minCorner = transform.OfPoint(bbox.Min);
+                    XYZ maxCorner = transform.OfPoint(bbox.Max);
+
+                    // Determine coordinate interpretation based on view type
+                    bool isElevationOrSection = viewForCrop.ViewType == ViewType.Elevation || viewForCrop.ViewType == ViewType.Section;
+
+                    double top, bottom, left, right;
+                    if (isElevationOrSection)
+                    {
+                        // For elevation/section: Top/Bottom are elevations (Z) relative to survey point
+                        top = maxCorner.Z - surveyElevation;
+                        bottom = minCorner.Z - surveyElevation;
+                        left = minCorner.X;
+                        right = maxCorner.X;
+                    }
+                    else
+                    {
+                        // For plan: Top/Bottom are Y, Left/Right are X
+                        top = maxCorner.Y;
+                        bottom = minCorner.Y;
+                        left = minCorner.X;
+                        right = maxCorner.X;
+                    }
+
+                    // Convert from internal units (feet) to display units
+#if REVIT2021 || REVIT2022 || REVIT2023 || REVIT2024 || REVIT2025 || REVIT2026
+                    Units projectUnits = elementDoc.GetUnits();
+                    FormatOptions lengthOpts = projectUnits.GetFormatOptions(SpecTypeId.Length);
+                    ForgeTypeId unitTypeId = lengthOpts.GetUnitTypeId();
+
+                    data["Crop Region Top"] = UnitUtils.ConvertFromInternalUnits(top, unitTypeId);
+                    data["Crop Region Bottom"] = UnitUtils.ConvertFromInternalUnits(bottom, unitTypeId);
+                    data["Crop Region Left"] = UnitUtils.ConvertFromInternalUnits(left, unitTypeId);
+                    data["Crop Region Right"] = UnitUtils.ConvertFromInternalUnits(right, unitTypeId);
+#else
+                    // Revit 2017-2020: Use DisplayUnitType
+                    Units projectUnits = elementDoc.GetUnits();
+                    FormatOptions lengthOpts = projectUnits.GetFormatOptions(UnitType.UT_Length);
+                    DisplayUnitType unitType = lengthOpts.DisplayUnits;
+
+                    data["Crop Region Top"] = UnitUtils.ConvertFromInternalUnits(top, unitType);
+                    data["Crop Region Bottom"] = UnitUtils.ConvertFromInternalUnits(bottom, unitType);
+                    data["Crop Region Left"] = UnitUtils.ConvertFromInternalUnits(left, unitType);
+                    data["Crop Region Right"] = UnitUtils.ConvertFromInternalUnits(right, unitType);
+#endif
+                }
+            }
+        }
+        catch
+        {
+            // If we can't get crop region, skip these columns
+        }
+
         // Add centroid coordinates (converted to display units)
         try
         {
@@ -679,6 +797,12 @@ public abstract class FilterElementsBase : IExternalCommand
             if (allPropertyNames.Contains("Group")) orderedProps.Add("Group");
             if (allPropertyNames.Contains("OwnerView")) orderedProps.Add("OwnerView");
 
+            // Add crop region columns (editable)
+            if (allPropertyNames.Contains("Crop Region Top")) orderedProps.Add("Crop Region Top");
+            if (allPropertyNames.Contains("Crop Region Bottom")) orderedProps.Add("Crop Region Bottom");
+            if (allPropertyNames.Contains("Crop Region Left")) orderedProps.Add("Crop Region Left");
+            if (allPropertyNames.Contains("Crop Region Right")) orderedProps.Add("Crop Region Right");
+
             // Add centroid columns
             if (allPropertyNames.Contains("X Centroid")) orderedProps.Add("X Centroid");
             if (allPropertyNames.Contains("Y Centroid")) orderedProps.Add("Y Centroid");
@@ -963,6 +1087,12 @@ public class FilterSelectedInViews : IExternalCommand
             if (allPropertyNames.Contains("LinkName")) orderedProps.Add("LinkName");
             if (allPropertyNames.Contains("Group")) orderedProps.Add("Group");
             if (allPropertyNames.Contains("OwnerView")) orderedProps.Add("OwnerView");
+
+            // Add crop region columns (editable)
+            if (allPropertyNames.Contains("Crop Region Top")) orderedProps.Add("Crop Region Top");
+            if (allPropertyNames.Contains("Crop Region Bottom")) orderedProps.Add("Crop Region Bottom");
+            if (allPropertyNames.Contains("Crop Region Left")) orderedProps.Add("Crop Region Left");
+            if (allPropertyNames.Contains("Crop Region Right")) orderedProps.Add("Crop Region Right");
 
             // Add centroid columns
             if (allPropertyNames.Contains("X Centroid")) orderedProps.Add("X Centroid");

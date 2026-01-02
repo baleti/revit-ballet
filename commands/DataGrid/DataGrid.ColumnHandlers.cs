@@ -19,6 +19,14 @@ public partial class CustomGUIs
         public bool IsEditable { get; set; }
 
         /// <summary>
+        /// If true, this column requires unique values across all elements (e.g., View names, Sheet numbers)
+        /// When true, ApplyCellEditsToEntities will use two-phase renaming to avoid naming conflicts:
+        /// Phase 1: Rename all to temporary unique names (with UUID)
+        /// Phase 2: Rename to final target names
+        /// </summary>
+        public bool RequiresUniqueName { get; set; }
+
+        /// <summary>
         /// Function to get column value from element
         /// </summary>
         public Func<Element, Document, object> Getter { get; set; }
@@ -93,11 +101,33 @@ public partial class CustomGUIs
 
         /// <summary>
         /// Get handler for a column name (case-insensitive)
+        /// Returns null if no explicit handler registered
         /// </summary>
         public static ColumnHandler GetHandler(string columnName)
         {
             _handlers.TryGetValue(columnName, out var handler);
             return handler;
+        }
+
+        /// <summary>
+        /// Get handler for a column name, with fallback to dynamic parameter detection
+        /// This checks if the column is an actual element parameter even if not explicitly registered
+        /// </summary>
+        public static ColumnHandler GetHandlerWithFallback(string columnName, Element elem, Document doc)
+        {
+            // Try explicit handler first
+            var handler = GetHandler(columnName);
+            if (handler != null)
+                return handler;
+
+            // Fallback: Check if this is an actual parameter on the element
+            if (elem != null && IsElementParameter(elem, columnName))
+            {
+                // Return a dynamic parameter handler
+                return CreateDynamicParameterHandler(columnName);
+            }
+
+            return null;
         }
 
         /// <summary>
@@ -107,6 +137,24 @@ public partial class CustomGUIs
         {
             var handler = GetHandler(columnName);
             return handler != null && handler.IsEditable;
+        }
+
+        /// <summary>
+        /// Check if a column is editable, with fallback to dynamic parameter detection
+        /// This allows arbitrary family parameters to be editable even if not explicitly registered
+        /// </summary>
+        public static bool IsColumnEditableWithFallback(string columnName, Element elem)
+        {
+            // Try explicit handler first
+            var handler = GetHandler(columnName);
+            if (handler != null)
+                return handler.IsEditable;
+
+            // Fallback: Check if this is an editable parameter
+            if (elem != null && IsEditableParameter(elem, columnName))
+                return true;
+
+            return false;
         }
 
         /// <summary>
@@ -124,6 +172,159 @@ public partial class CustomGUIs
         {
             _handlers.Clear();
             _initialized = false;
+        }
+
+        /// <summary>
+        /// Check if a column name corresponds to an actual parameter on the element
+        /// </summary>
+        private static bool IsElementParameter(Element elem, string columnName)
+        {
+            if (elem == null) return false;
+
+            // Try exact match
+            Parameter param = elem.LookupParameter(columnName);
+            if (param != null) return true;
+
+            // Try case-insensitive match
+            foreach (Parameter p in elem.Parameters)
+            {
+                if (string.Equals(p.Definition.Name, columnName, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+
+            // Try with space/underscore conversion
+            string colWithSpaces = columnName.Replace("_", " ");
+            param = elem.LookupParameter(colWithSpaces);
+            if (param != null) return true;
+
+            string colWithUnderscores = columnName.Replace(" ", "_");
+            param = elem.LookupParameter(colWithUnderscores);
+            if (param != null) return true;
+
+            return false;
+        }
+
+        /// <summary>
+        /// Check if a parameter on an element is editable (not read-only)
+        /// </summary>
+        private static bool IsEditableParameter(Element elem, string columnName)
+        {
+            if (elem == null) return false;
+
+            Parameter param = FindParameter(elem, columnName);
+            return param != null && !param.IsReadOnly;
+        }
+
+        /// <summary>
+        /// Find a parameter by name with fuzzy matching
+        /// </summary>
+        private static Parameter FindParameter(Element elem, string columnName)
+        {
+            if (elem == null) return null;
+
+            // Try exact match
+            Parameter param = elem.LookupParameter(columnName);
+            if (param != null) return param;
+
+            // Try case-insensitive match
+            foreach (Parameter p in elem.Parameters)
+            {
+                if (string.Equals(p.Definition.Name, columnName, StringComparison.OrdinalIgnoreCase))
+                    return p;
+            }
+
+            // Try with space/underscore conversion
+            string colWithSpaces = columnName.Replace("_", " ");
+            param = elem.LookupParameter(colWithSpaces);
+            if (param != null) return param;
+
+            string colWithUnderscores = columnName.Replace(" ", "_");
+            param = elem.LookupParameter(colWithUnderscores);
+            if (param != null) return param;
+
+            return null;
+        }
+
+        /// <summary>
+        /// Create a dynamic parameter handler for arbitrary parameters
+        /// </summary>
+        private static ColumnHandler CreateDynamicParameterHandler(string columnName)
+        {
+            return new ColumnHandler
+            {
+                ColumnName = columnName,
+                IsEditable = true,
+                Description = $"Dynamic parameter: {columnName}",
+
+                Getter = (elem, doc) =>
+                {
+                    Parameter param = FindParameter(elem, columnName);
+                    if (param == null) return null;
+
+                    // Return value as string (with units if applicable)
+                    return param.AsValueString() ?? param.AsString() ?? "";
+                },
+
+                Setter = (elem, doc, newValue) =>
+                {
+                    Parameter param = FindParameter(elem, columnName);
+                    if (param == null || param.IsReadOnly)
+                        return false;
+
+                    string strValue = newValue?.ToString() ?? "";
+
+                    try
+                    {
+                        switch (param.StorageType)
+                        {
+                            case StorageType.String:
+                                param.Set(strValue);
+                                return true;
+
+                            case StorageType.Integer:
+                                if (int.TryParse(strValue, out int intValue))
+                                {
+                                    param.Set(intValue);
+                                    return true;
+                                }
+                                return false;
+
+                            case StorageType.Double:
+                                // Use SetValueString to handle unit conversion automatically
+                                try
+                                {
+                                    param.SetValueString(strValue);
+                                    return true;
+                                }
+                                catch
+                                {
+                                    // Fallback to direct parsing
+                                    if (double.TryParse(strValue, out double doubleValue))
+                                    {
+                                        param.Set(doubleValue);
+                                        return true;
+                                    }
+                                    return false;
+                                }
+
+                            case StorageType.ElementId:
+                                if (int.TryParse(strValue, out int idValue))
+                                {
+                                    param.Set(idValue.ToElementId());
+                                    return true;
+                                }
+                                return false;
+
+                            default:
+                                return false;
+                        }
+                    }
+                    catch
+                    {
+                        return false;
+                    }
+                }
+            };
         }
 
         /// <summary>
@@ -315,6 +516,594 @@ public partial class CustomGUIs
                         {
                             param.Set(strValue);
                             return true;
+                        }
+                        catch { return false; }
+                    }
+                    return false;
+                }
+            });
+
+            // Helper method to get view from element (view or viewport)
+            Func<Element, Document, Autodesk.Revit.DB.View> GetViewFromElement = (elem, doc) =>
+            {
+                if (elem is Autodesk.Revit.DB.View view)
+                    return view;
+                if (elem is Viewport viewport)
+                    return doc.GetElement(viewport.ViewId) as Autodesk.Revit.DB.View;
+                return null;
+            };
+
+            // Helper method to check if crop region is rectangular
+            Func<Autodesk.Revit.DB.View, bool> IsRectangularCropRegion = (view) =>
+            {
+                if (view == null || view.CropBox == null || !view.CropBoxActive)
+                    return false;
+
+                if (view is ViewPlan plan)
+                {
+                    try
+                    {
+                        var managerProperty = plan.GetType().GetProperty("CropRegionShapeManager");
+                        if (managerProperty != null)
+                        {
+                            object manager = managerProperty.GetValue(plan, null);
+                            if (manager != null)
+                            {
+                                var method = manager.GetType().GetMethod("GetCropRegionShape");
+                                if (method != null)
+                                {
+                                    CurveLoop cropLoop = method.Invoke(manager, null) as CurveLoop;
+                                    if (cropLoop != null)
+                                    {
+                                        return cropLoop.ToList().Count == 4;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        return false;
+                    }
+                }
+                // For other view types (section, elevation), assume rectangular
+                return true;
+            };
+
+            // Helper to convert from internal units to display units
+            Func<double, Document, double> ConvertFromInternal = (internalValue, doc) =>
+            {
+#if REVIT2021 || REVIT2022 || REVIT2023 || REVIT2024 || REVIT2025 || REVIT2026
+                Units projectUnits = doc.GetUnits();
+                FormatOptions lengthOpts = projectUnits.GetFormatOptions(SpecTypeId.Length);
+                ForgeTypeId unitTypeId = lengthOpts.GetUnitTypeId();
+                return UnitUtils.ConvertFromInternalUnits(internalValue, unitTypeId);
+#else
+                Units projectUnits = doc.GetUnits();
+                FormatOptions lengthOpts = projectUnits.GetFormatOptions(UnitType.UT_Length);
+                DisplayUnitType unitType = lengthOpts.DisplayUnits;
+                return UnitUtils.ConvertFromInternalUnits(internalValue, unitType);
+#endif
+            };
+
+            // Helper to convert from display units to internal units
+            Func<double, Document, double> ConvertToInternal = (displayValue, doc) =>
+            {
+#if REVIT2021 || REVIT2022 || REVIT2023 || REVIT2024 || REVIT2025 || REVIT2026
+                Units projectUnits = doc.GetUnits();
+                FormatOptions lengthOpts = projectUnits.GetFormatOptions(SpecTypeId.Length);
+                ForgeTypeId unitTypeId = lengthOpts.GetUnitTypeId();
+                return UnitUtils.ConvertToInternalUnits(displayValue, unitTypeId);
+#else
+                Units projectUnits = doc.GetUnits();
+                FormatOptions lengthOpts = projectUnits.GetFormatOptions(UnitType.UT_Length);
+                DisplayUnitType unitType = lengthOpts.DisplayUnits;
+                return UnitUtils.ConvertToInternalUnits(displayValue, unitType);
+#endif
+            };
+
+            // Helper to get survey point elevation offset
+            Func<Document, double> GetSurveyPointElevation = (doc) =>
+            {
+                try
+                {
+                    // Get survey point
+                    FilteredElementCollector collector = new FilteredElementCollector(doc);
+                    var surveyPoint = collector.OfCategory(BuiltInCategory.OST_SharedBasePoint)
+                        .FirstOrDefault() as BasePoint;
+
+                    if (surveyPoint != null)
+                    {
+                        // Get the survey point's elevation (Z coordinate in project coordinates)
+                        return surveyPoint.get_BoundingBox(null).Min.Z;
+                    }
+                }
+                catch { }
+
+                return 0.0; // Fallback to project origin
+            };
+
+            // Helper to get crop region values in project coordinates relative to survey point
+            Func<Autodesk.Revit.DB.View, Document, (double top, double bottom, double left, double right)?> GetCropRegionInProjectCoords = (view, doc) =>
+            {
+                if (view == null || !view.CropBoxActive || view.CropBox == null)
+                    return null;
+
+                BoundingBoxXYZ bbox = view.CropBox;
+                Transform transform = bbox.Transform;
+                double surveyElevation = GetSurveyPointElevation(doc);
+
+                // Transform corner points to project coordinates
+                XYZ minCorner = transform.OfPoint(bbox.Min);
+                XYZ maxCorner = transform.OfPoint(bbox.Max);
+
+                // For plan views: use X/Y from project coordinates
+                // For elevation/section views: use Z (elevation) from project coordinates for top/bottom
+                bool isElevationOrSection = view.ViewType == ViewType.Elevation || view.ViewType == ViewType.Section;
+
+                if (isElevationOrSection)
+                {
+                    // Top/Bottom are elevations (Z in project coordinates), relative to survey point
+                    double top = maxCorner.Z - surveyElevation;
+                    double bottom = minCorner.Z - surveyElevation;
+                    // Left/Right are horizontal positions in the view direction
+                    double left = minCorner.X;
+                    double right = maxCorner.X;
+                    return (top, bottom, left, right);
+                }
+                else
+                {
+                    // Plan view: Top/Bottom are Y, Left/Right are X in project coordinates
+                    double top = maxCorner.Y;
+                    double bottom = minCorner.Y;
+                    double left = minCorner.X;
+                    double right = maxCorner.X;
+                    return (top, bottom, left, right);
+                }
+            };
+
+            // Helper to set crop region from project coordinates
+            Func<Autodesk.Revit.DB.View, Document, double?, double?, double?, double?, bool> SetCropRegionFromProjectCoords = (view, doc, newTop, newBottom, newLeft, newRight) =>
+            {
+                if (view == null || !view.CropBoxActive || view.CropBox == null)
+                    return false;
+
+                // Create diagnostic log
+                var diagnosticLines = new List<string>();
+                string diagnosticPath = null;
+
+                try
+                {
+                    diagnosticPath = System.IO.Path.Combine(
+                        RevitBallet.Commands.PathHelper.RuntimeDirectory,
+                        "diagnostics",
+                        $"CropRegionEdit-{System.DateTime.Now:yyyyMMdd-HHmmss-fff}.txt");
+
+                    diagnosticLines.Add($"=== Crop Region Edit at {System.DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} ===");
+                    diagnosticLines.Add($"View: {view.Name} (Id: {view.Id})");
+                    diagnosticLines.Add($"View Type: {view.ViewType}");
+
+                    BoundingBoxXYZ bbox = view.CropBox;
+                    Transform transform = bbox.Transform;
+                    double surveyElevation = GetSurveyPointElevation(doc);
+
+                    diagnosticLines.Add($"Survey Elevation: {surveyElevation} ft");
+                    diagnosticLines.Add($"Original BBox Min (view space): {bbox.Min}");
+                    diagnosticLines.Add($"Original BBox Max (view space): {bbox.Max}");
+
+                    // Get current values in project coordinates
+                    var current = GetCropRegionInProjectCoords(view, doc);
+                    if (!current.HasValue)
+                    {
+                        diagnosticLines.Add("ERROR: Could not get current crop region in project coords");
+                        return false;
+                    }
+
+                    diagnosticLines.Add($"Current (project space): Top={current.Value.top}, Bottom={current.Value.bottom}, Left={current.Value.left}, Right={current.Value.right}");
+                    diagnosticLines.Add($"New values: Top={newTop}, Bottom={newBottom}, Left={newLeft}, Right={newRight}");
+
+                    bool isElevationOrSection = view.ViewType == ViewType.Elevation || view.ViewType == ViewType.Section;
+
+                    // Use provided values or keep current
+                    double top = newTop ?? current.Value.top;
+                    double bottom = newBottom ?? current.Value.bottom;
+                    double left = newLeft ?? current.Value.left;
+                    double right = newRight ?? current.Value.right;
+
+                    diagnosticLines.Add($"Final values (project space): Top={top}, Bottom={bottom}, Left={left}, Right={right}");
+
+                    // Transform current corners to project space to get depth dimension
+                    XYZ currentMinProject = transform.OfPoint(bbox.Min);
+                    XYZ currentMaxProject = transform.OfPoint(bbox.Max);
+
+                    diagnosticLines.Add($"Current corners in project space:");
+                    diagnosticLines.Add($"  Min: {currentMinProject}");
+                    diagnosticLines.Add($"  Max: {currentMaxProject}");
+
+                    // Build new corners in project space
+                    Transform inverseTransform = transform.Inverse;
+                    XYZ newMinProject, newMaxProject;
+
+                    if (isElevationOrSection)
+                    {
+                        // For elevation/section: modify X (left/right) and Z (elevation)
+                        // Keep Y (depth) from current bbox
+                        newMinProject = new XYZ(left, currentMinProject.Y, bottom + surveyElevation);
+                        newMaxProject = new XYZ(right, currentMaxProject.Y, top + surveyElevation);
+                    }
+                    else
+                    {
+                        // For plan: modify X and Y, keep Z (height) from current
+                        newMinProject = new XYZ(left, bottom, currentMinProject.Z);
+                        newMaxProject = new XYZ(right, top, currentMaxProject.Z);
+                    }
+
+                    diagnosticLines.Add($"New corners in project space:");
+                    diagnosticLines.Add($"  Min: {newMinProject}");
+                    diagnosticLines.Add($"  Max: {newMaxProject}");
+
+                    // Transform back to view space
+                    XYZ newMinView = inverseTransform.OfPoint(newMinProject);
+                    XYZ newMaxView = inverseTransform.OfPoint(newMaxProject);
+
+                    diagnosticLines.Add($"New corners in view space:");
+                    diagnosticLines.Add($"  Min: {newMinView}");
+                    diagnosticLines.Add($"  Max: {newMaxView}");
+
+                    // Ensure min is actually less than max in view space
+                    XYZ finalMin = new XYZ(
+                        System.Math.Min(newMinView.X, newMaxView.X),
+                        System.Math.Min(newMinView.Y, newMaxView.Y),
+                        System.Math.Min(newMinView.Z, newMaxView.Z));
+                    XYZ finalMax = new XYZ(
+                        System.Math.Max(newMinView.X, newMaxView.X),
+                        System.Math.Max(newMinView.Y, newMaxView.Y),
+                        System.Math.Max(newMinView.Z, newMaxView.Z));
+
+                    diagnosticLines.Add($"Final (corrected) in view space:");
+                    diagnosticLines.Add($"  Min: {finalMin}");
+                    diagnosticLines.Add($"  Max: {finalMax}");
+
+                    bbox.Min = finalMin;
+                    bbox.Max = finalMax;
+                    view.CropBox = bbox;
+
+                    diagnosticLines.Add("SUCCESS: Crop box updated");
+                    return true;
+                }
+                catch (System.Exception ex)
+                {
+                    diagnosticLines.Add($"EXCEPTION: {ex.GetType().Name}");
+                    diagnosticLines.Add($"Message: {ex.Message}");
+                    diagnosticLines.Add($"Stack trace: {ex.StackTrace}");
+                    return false;
+                }
+                finally
+                {
+                    if (diagnosticPath != null)
+                    {
+                        try
+                        {
+                            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diagnosticPath));
+                            System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
+                        }
+                        catch { }
+                    }
+                }
+            };
+
+            // Crop Region Top
+            Register(new ColumnHandler
+            {
+                ColumnName = "Crop Region Top",
+                IsEditable = true,
+                Description = "Top position of crop region (elevation for sections/elevations, Y for plans) - relative to survey point",
+                Getter = (elem, doc) =>
+                {
+                    var view = GetViewFromElement(elem, doc);
+                    if (view == null || !IsRectangularCropRegion(view))
+                        return null;
+
+                    var coords = GetCropRegionInProjectCoords(view, doc);
+                    if (!coords.HasValue)
+                        return null;
+
+                    return ConvertFromInternal(coords.Value.top, doc);
+                },
+                Setter = (elem, doc, newValue) =>
+                {
+                    var view = GetViewFromElement(elem, doc);
+                    if (view == null || !IsRectangularCropRegion(view))
+                        return false;
+
+                    if (!double.TryParse(newValue?.ToString(), out double displayValue))
+                        return false;
+
+                    double internalValue = ConvertToInternal(displayValue, doc);
+                    return SetCropRegionFromProjectCoords(view, doc, internalValue, null, null, null);
+                }
+            });
+
+            // Crop Region Bottom
+            Register(new ColumnHandler
+            {
+                ColumnName = "Crop Region Bottom",
+                IsEditable = true,
+                Description = "Bottom position of crop region (elevation for sections/elevations, Y for plans) - relative to survey point",
+                Getter = (elem, doc) =>
+                {
+                    var view = GetViewFromElement(elem, doc);
+                    if (view == null || !IsRectangularCropRegion(view))
+                        return null;
+
+                    var coords = GetCropRegionInProjectCoords(view, doc);
+                    if (!coords.HasValue)
+                        return null;
+
+                    return ConvertFromInternal(coords.Value.bottom, doc);
+                },
+                Setter = (elem, doc, newValue) =>
+                {
+                    var view = GetViewFromElement(elem, doc);
+                    if (view == null || !IsRectangularCropRegion(view))
+                        return false;
+
+                    if (!double.TryParse(newValue?.ToString(), out double displayValue))
+                        return false;
+
+                    double internalValue = ConvertToInternal(displayValue, doc);
+                    return SetCropRegionFromProjectCoords(view, doc, null, internalValue, null, null);
+                }
+            });
+
+            // Crop Region Left
+            Register(new ColumnHandler
+            {
+                ColumnName = "Crop Region Left",
+                IsEditable = true,
+                Description = "Left position of crop region in project coordinates",
+                Getter = (elem, doc) =>
+                {
+                    var view = GetViewFromElement(elem, doc);
+                    if (view == null || !IsRectangularCropRegion(view))
+                        return null;
+
+                    var coords = GetCropRegionInProjectCoords(view, doc);
+                    if (!coords.HasValue)
+                        return null;
+
+                    return ConvertFromInternal(coords.Value.left, doc);
+                },
+                Setter = (elem, doc, newValue) =>
+                {
+                    var view = GetViewFromElement(elem, doc);
+                    if (view == null || !IsRectangularCropRegion(view))
+                        return false;
+
+                    if (!double.TryParse(newValue?.ToString(), out double displayValue))
+                        return false;
+
+                    double internalValue = ConvertToInternal(displayValue, doc);
+                    return SetCropRegionFromProjectCoords(view, doc, null, null, internalValue, null);
+                }
+            });
+
+            // Crop Region Right
+            Register(new ColumnHandler
+            {
+                ColumnName = "Crop Region Right",
+                IsEditable = true,
+                Description = "Right position of crop region in project coordinates",
+                Getter = (elem, doc) =>
+                {
+                    var view = GetViewFromElement(elem, doc);
+                    if (view == null || !IsRectangularCropRegion(view))
+                        return null;
+
+                    var coords = GetCropRegionInProjectCoords(view, doc);
+                    if (!coords.HasValue)
+                        return null;
+
+                    return ConvertFromInternal(coords.Value.right, doc);
+                },
+                Setter = (elem, doc, newValue) =>
+                {
+                    var view = GetViewFromElement(elem, doc);
+                    if (view == null || !IsRectangularCropRegion(view))
+                        return false;
+
+                    if (!double.TryParse(newValue?.ToString(), out double displayValue))
+                        return false;
+
+                    double internalValue = ConvertToInternal(displayValue, doc);
+                    return SetCropRegionFromProjectCoords(view, doc, null, null, null, internalValue);
+                }
+            });
+
+            // Name column for Views (regular views and sheets)
+            // CRITICAL: RequiresUniqueName=true for two-phase rename to avoid "view/sheet with that name already exists" errors
+            // NOTE: This handler applies to View elements when "Name" column is edited
+            // It handles both regular views and sheets, routing to appropriate rename methods
+            Register(new ColumnHandler
+            {
+                ColumnName = "Name",
+                IsEditable = true,
+                RequiresUniqueName = true,
+                Description = "Element name (unique for views/sheets)",
+                Validator = ColumnValidators.NotEmpty,
+                Getter = (elem, doc) =>
+                {
+                    // Only apply to View elements (includes ViewSheet)
+                    if (elem is Autodesk.Revit.DB.View)
+                        return elem.Name;
+                    return null; // Let other handlers handle non-view elements
+                },
+                Setter = (elem, doc, newValue) =>
+                {
+                    string strValue = newValue?.ToString() ?? "";
+
+                    // For ViewSheets, use SHEET_NAME parameter (not Name property)
+                    if (elem is ViewSheet viewSheet)
+                    {
+                        try
+                        {
+                            Parameter sheetNameParam = viewSheet.get_Parameter(BuiltInParameter.SHEET_NAME);
+                            if (sheetNameParam != null)
+                            {
+                                sheetNameParam.Set(strValue);
+                                return true;
+                            }
+                        }
+                        catch { return false; }
+                    }
+
+                    // For regular views (non-sheets), use Name property
+                    if (elem is Autodesk.Revit.DB.View regularView)
+                    {
+                        try
+                        {
+                            regularView.Name = strValue;
+                            return true;
+                        }
+                        catch { return false; }
+                    }
+
+                    return false; // Not a view element
+                }
+            });
+
+            // View Name (for regular views, excluding sheets)
+            // CRITICAL: RequiresUniqueName=true for two-phase rename to avoid "view with that name already exists" errors
+            Register(new ColumnHandler
+            {
+                ColumnName = "View Name",
+                IsEditable = true,
+                RequiresUniqueName = true,
+                Description = "View name (unique per document)",
+                Validator = ColumnValidators.NotEmpty,
+                Getter = (elem, doc) =>
+                {
+                    if (elem is Autodesk.Revit.DB.View view && !(view is ViewSheet))
+                        return view.Name;
+                    return null;
+                },
+                Setter = (elem, doc, newValue) =>
+                {
+                    string strValue = newValue?.ToString() ?? "";
+                    if (elem is Autodesk.Revit.DB.View view && !(view is ViewSheet))
+                    {
+                        try
+                        {
+                            view.Name = strValue;
+                            return true;
+                        }
+                        catch { return false; }
+                    }
+                    return false;
+                }
+            });
+
+            // Sheet Name (for ViewSheets)
+            // CRITICAL: RequiresUniqueName=true for two-phase rename
+            Register(new ColumnHandler
+            {
+                ColumnName = "Sheet Name",
+                IsEditable = true,
+                RequiresUniqueName = true,
+                Description = "Sheet name (unique per document)",
+                Validator = ColumnValidators.NotEmpty,
+                Getter = (elem, doc) =>
+                {
+                    if (elem is ViewSheet sheet)
+                    {
+                        Parameter param = sheet.get_Parameter(BuiltInParameter.SHEET_NAME);
+                        return param?.AsString() ?? "";
+                    }
+                    return null;
+                },
+                Setter = (elem, doc, newValue) =>
+                {
+                    string strValue = newValue?.ToString() ?? "";
+                    if (elem is ViewSheet sheet)
+                    {
+                        try
+                        {
+                            Parameter param = sheet.get_Parameter(BuiltInParameter.SHEET_NAME);
+                            if (param != null && !param.IsReadOnly)
+                            {
+                                param.Set(strValue);
+                                return true;
+                            }
+                        }
+                        catch { return false; }
+                    }
+                    return false;
+                }
+            });
+
+            // Sheet Number (for ViewSheets)
+            // CRITICAL: RequiresUniqueName=true for two-phase rename
+            Register(new ColumnHandler
+            {
+                ColumnName = "Sheet Number",
+                IsEditable = true,
+                RequiresUniqueName = true,
+                Description = "Sheet number (unique per document)",
+                Validator = ColumnValidators.NotEmpty,
+                Getter = (elem, doc) =>
+                {
+                    if (elem is ViewSheet sheet)
+                        return sheet.SheetNumber;
+                    return null;
+                },
+                Setter = (elem, doc, newValue) =>
+                {
+                    string strValue = newValue?.ToString() ?? "";
+                    if (elem is ViewSheet sheet)
+                    {
+                        try
+                        {
+                            sheet.SheetNumber = strValue;
+                            return true;
+                        }
+                        catch { return false; }
+                    }
+                    return false;
+                }
+            });
+
+            // Detail Number (for Viewports)
+            // CRITICAL: RequiresUniqueName=true for two-phase rename
+            // NOTE: Uses numeric temp values instead of UUID strings
+            Register(new ColumnHandler
+            {
+                ColumnName = "Detail Number",
+                IsEditable = true,
+                RequiresUniqueName = true,
+                Description = "Detail number for viewport (unique per sheet)",
+                Validator = ColumnValidators.NotEmpty,
+                Getter = (elem, doc) =>
+                {
+                    if (elem is Viewport viewport)
+                    {
+                        Parameter param = viewport.get_Parameter(BuiltInParameter.VIEWPORT_DETAIL_NUMBER);
+                        return param?.AsString() ?? "";
+                    }
+                    return null;
+                },
+                Setter = (elem, doc, newValue) =>
+                {
+                    string strValue = newValue?.ToString() ?? "";
+                    if (elem is Viewport viewport)
+                    {
+                        try
+                        {
+                            Parameter param = viewport.get_Parameter(BuiltInParameter.VIEWPORT_DETAIL_NUMBER);
+                            if (param != null && !param.IsReadOnly)
+                            {
+                                param.Set(strValue);
+                                return true;
+                            }
                         }
                         catch { return false; }
                     }

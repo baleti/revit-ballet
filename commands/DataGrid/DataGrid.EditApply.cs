@@ -190,6 +190,140 @@ public partial class CustomGUIs
                     trans.Start();
                     diagnosticLines.Add($"  Transaction started successfully");
 
+                    // CRITICAL: Two-phase rename for columns with uniqueness constraints
+                    // Group edits by column name to detect if we need two-phase rename
+                    var editsByColumn = new Dictionary<string, List<(long internalId, Dictionary<string, object> entry, object newValue)>>();
+                    foreach (var (internalId, entry, edits) in entries)
+                    {
+                        foreach (var (columnName, newValue) in edits)
+                        {
+                            if (!editsByColumn.ContainsKey(columnName))
+                                editsByColumn[columnName] = new List<(long, Dictionary<string, object>, object)>();
+                            editsByColumn[columnName].Add((internalId, entry, newValue));
+                        }
+                    }
+
+                    // Check which columns require two-phase rename
+                    var uniqueNameColumns = new HashSet<string>();
+                    foreach (var columnName in editsByColumn.Keys)
+                    {
+                        var handler = ColumnHandlerRegistry.GetHandler(columnName);
+                        if (handler != null && handler.RequiresUniqueName && editsByColumn[columnName].Count > 1)
+                        {
+                            uniqueNameColumns.Add(columnName);
+                            diagnosticLines.Add($"  Column '{columnName}' requires two-phase rename ({editsByColumn[columnName].Count} edits)");
+                        }
+                    }
+
+                    // Phase 1: Rename all unique-name columns to temporary names
+                    if (uniqueNameColumns.Any())
+                    {
+                        diagnosticLines.Add($"\n  === PHASE 1: Renaming to temporary names ===");
+
+                        // Random number generator for numeric temp values
+                        var random = new System.Random();
+
+                        foreach (var columnName in uniqueNameColumns)
+                        {
+                            var columnEdits = editsByColumn[columnName];
+                            diagnosticLines.Add($"  Processing column: {columnName} ({columnEdits.Count} edits)");
+
+                            // Determine if this column needs numeric temp values
+                            bool useNumericTemp = columnName.Equals("Detail Number", StringComparison.OrdinalIgnoreCase);
+
+                            foreach (var (internalId, entry, newValue) in columnEdits)
+                            {
+                                Element elem = GetElementFromEntry(doc, entry);
+                                if (elem == null)
+                                {
+                                    diagnosticLines.Add($"    ERROR: Could not find element for InternalId={internalId}");
+                                    continue;
+                                }
+
+                                // Generate temporary unique name/number
+                                string tempName;
+                                if (useNumericTemp)
+                                {
+                                    // Use random large number for numeric fields (Detail Number, etc.)
+                                    tempName = random.Next(900000, 999999).ToString();
+                                    diagnosticLines.Add($"    Element {elem.Id.AsLong()}: Renaming to temp number '{tempName}'");
+                                }
+                                else
+                                {
+                                    // Use UUID-based string for text fields (View Name, Sheet Name, etc.)
+                                    tempName = $"{elem.Id.AsLong()}-temp-{Guid.NewGuid().ToString().Substring(0, 8)}";
+                                    diagnosticLines.Add($"    Element {elem.Id.AsLong()}: Renaming to temp name '{tempName}'");
+                                }
+
+                                var handler = ColumnHandlerRegistry.GetHandler(columnName);
+                                if (handler != null && handler.Setter != null)
+                                {
+                                    try
+                                    {
+                                        bool success = handler.Setter(elem, doc, tempName);
+                                        diagnosticLines.Add($"      Result: {(success ? "SUCCESS" : "FAILED")}");
+                                        if (!success)
+                                        {
+                                            diagnosticLines.Add($"      WARNING: Failed to rename to temp name, will skip this element");
+                                        }
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        diagnosticLines.Add($"      EXCEPTION: {ex.Message}");
+                                    }
+                                }
+                            }
+                        }
+
+                        // Phase 2: Rename from temporary names to final target names
+                        diagnosticLines.Add($"\n  === PHASE 2: Renaming to final target names ===");
+                        foreach (var columnName in uniqueNameColumns)
+                        {
+                            var columnEdits = editsByColumn[columnName];
+                            diagnosticLines.Add($"  Processing column: {columnName} ({columnEdits.Count} edits)");
+
+                            foreach (var (internalId, entry, newValue) in columnEdits)
+                            {
+                                Element elem = GetElementFromEntry(doc, entry);
+                                if (elem == null)
+                                {
+                                    diagnosticLines.Add($"    ERROR: Could not find element for InternalId={internalId}");
+                                    errorCount++;
+                                    continue;
+                                }
+
+                                string finalName = newValue?.ToString() ?? "";
+                                diagnosticLines.Add($"    Element {elem.Id.AsLong()}: Renaming to final name '{finalName}'");
+
+                                var handler = ColumnHandlerRegistry.GetHandler(columnName);
+                                if (handler != null && handler.Setter != null)
+                                {
+                                    try
+                                    {
+                                        bool success = handler.Setter(elem, doc, finalName);
+                                        diagnosticLines.Add($"      Result: {(success ? "SUCCESS" : "FAILED")}");
+                                        if (success)
+                                            successCount++;
+                                        else
+                                        {
+                                            errorMessages.Add($"{GetEntryDisplayName(entry)}.{columnName}: Failed to apply");
+                                            errorCount++;
+                                        }
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        diagnosticLines.Add($"      EXCEPTION: {ex.Message}");
+                                        errorMessages.Add($"{GetEntryDisplayName(entry)}.{columnName}: {ex.Message}");
+                                        errorCount++;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Now process remaining edits (non-unique-name columns)
+                    diagnosticLines.Add($"\n  === Processing non-unique-name columns ===");
+
                     foreach (var (internalId, entry, edits) in entries)
                     {
                         diagnosticLines.Add($"\n  Processing entry InternalId={internalId}");
@@ -205,6 +339,13 @@ public partial class CustomGUIs
                             // Apply workset-specific edits
                             foreach (var (columnName, newValue) in edits)
                             {
+                                // Skip if already processed in two-phase rename
+                                if (uniqueNameColumns.Contains(columnName))
+                                {
+                                    diagnosticLines.Add($"      Skipping column '{columnName}' (already processed in two-phase rename)");
+                                    continue;
+                                }
+
                                 try
                                 {
                                     if (ApplyWorksetEdit(doc, entry, columnName, newValue))
@@ -236,6 +377,13 @@ public partial class CustomGUIs
                             // Apply each edit for this element
                             foreach (var (columnName, newValue) in edits)
                             {
+                                // Skip if already processed in two-phase rename
+                                if (uniqueNameColumns.Contains(columnName))
+                                {
+                                    diagnosticLines.Add($"      Skipping column '{columnName}' (already processed in two-phase rename)");
+                                    continue;
+                                }
+
                                 try
                                 {
                                     if (ApplyPropertyEdit(elem, columnName, newValue, entry))
@@ -303,6 +451,11 @@ public partial class CustomGUIs
 
         System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diagnosticPath));
         System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
+
+        // CRITICAL: Clear pending edits to prevent double-application
+        // Some commands (like OpenSheetsInSession) manually check HasPendingEdits() after
+        // DataGrid auto-applies, which would cause edits to be applied twice if not cleared
+        _pendingCellEdits.Clear();
 
         // Show results only if there were errors
         if (errorCount > 0)
@@ -394,15 +547,15 @@ public partial class CustomGUIs
     /// </summary>
     private static bool ApplyPropertyEdit(Element elem, string columnName, object newValue, Dictionary<string, object> entry)
     {
-        // AUTOMATIC SYSTEM: Try handler registry first
+        // AUTOMATIC SYSTEM: Try handler registry first, with fallback to dynamic parameter detection
         ColumnHandlerRegistry.EnsureInitialized();
-        var handler = ColumnHandlerRegistry.GetHandler(columnName);
+        var handler = ColumnHandlerRegistry.GetHandlerWithFallback(columnName, elem, _currentUIDoc?.Document);
 
         if (handler != null && handler.IsEditable && handler.Setter != null)
         {
             try
             {
-                // Use handler to apply edit
+                // Use handler to apply edit (includes both explicit and dynamic parameter handlers)
                 bool success = handler.ApplyEdit(elem, _currentUIDoc.Document, newValue);
                 return success;
             }
