@@ -284,6 +284,9 @@ public class OpenViewsInSession : IExternalCommand
 
                     try
                     {
+                        // CRITICAL FIX: Call OpenDocumentFile first to prevent close/reopen cycle
+                        uiApp.Application.OpenDocumentFile(viewDoc.PathName);
+
                         currentUidoc = uiApp.OpenAndActivateDocument(viewDoc.PathName);
                         currentDoc = viewDoc;
                     }
