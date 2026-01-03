@@ -150,11 +150,8 @@ public partial class CustomGUIs
         // Process edits for each document separately with its own transaction
         diagnosticLines.Add($"\n--- Processing edits for {entriesByDocument.Count} document(s) ---");
 
-        // CRITICAL: Only process edits for the ACTIVE document
-        // Revit does not allow creating transactions on non-active documents
-        // For cross-document edits, we should only edit elements in the currently active document
         Document activeDoc = _currentUIDoc.Document;
-        diagnosticLines.Add($"Active document for transaction: {activeDoc.Title}");
+        diagnosticLines.Add($"Active document: {activeDoc.Title}");
 
         foreach (var docGroup in entriesByDocument)
         {
@@ -165,18 +162,7 @@ public partial class CustomGUIs
             diagnosticLines.Add($"  Path: {doc.PathName ?? "(unsaved)"}");
             diagnosticLines.Add($"  Entries to process: {entries.Count}");
             diagnosticLines.Add($"  Is active document: {doc.Equals(activeDoc)}");
-
-            // CRITICAL: Skip non-active documents
-            if (!doc.Equals(activeDoc))
-            {
-                diagnosticLines.Add($"  SKIPPING: Cannot create transaction on non-active document");
-                diagnosticLines.Add($"  To edit elements in '{doc.Title}', it must be the active document");
-                errorMessages.Add($"Cannot edit elements in non-active document '{doc.Title}'. Please switch to that document first.");
-                errorCount += entries.Count;
-                continue;
-            }
-
-            diagnosticLines.Add($"  Creating transaction...");
+            diagnosticLines.Add($"  Creating transaction on document '{doc.Title}'...");
 
             using (Transaction trans = new Transaction(doc, "Apply DataGrid Edits"))
             {

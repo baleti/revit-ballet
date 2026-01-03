@@ -249,6 +249,9 @@ public class OpenSheetsInSession : IExternalCommand
 
                     try
                     {
+                        // CRITICAL FIX: Call OpenDocumentFile first to prevent close/reopen cycle
+                        uiApp.Application.OpenDocumentFile(sheetDoc.PathName);
+
                         currentUidoc = uiApp.OpenAndActivateDocument(sheetDoc.PathName);
                         currentDoc = sheetDoc;
                     }

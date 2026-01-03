@@ -171,16 +171,17 @@ public class InvokeAddinCommand : IExternalCommand
     private Assembly LoadAssembly(string assemblyPath)
     {
         string assemblyName = Path.GetFileNameWithoutExtension(assemblyPath);
-        
+
         if (loadedAssemblies.ContainsKey(assemblyName))
         {
             return loadedAssemblies[assemblyName];
         }
 
+        // Load from bytes to avoid file locking (enables hot reload during development)
         byte[] assemblyBytes = File.ReadAllBytes(assemblyPath);
         Assembly assembly = Assembly.Load(assemblyBytes);
         loadedAssemblies[assemblyName] = assembly;
-        
+
         // Load all DLLs in the same directory
         string directory = Path.GetDirectoryName(assemblyPath);
         foreach (string dllFile in Directory.GetFiles(directory, "*.dll"))

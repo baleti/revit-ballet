@@ -138,6 +138,30 @@ curl -k -s -X POST https://127.0.0.1:$PORT/roslyn \
   --data-binary @/tmp/query-*.cs | jq -r '.Output'
 ```
 
+**CRITICAL - Use ASCII Only in Query Files:**
+
+**ALWAYS use plain ASCII characters in Roslyn query files.** DO NOT use UTF-8 emoji or multi-byte characters (✓, ❌, ⚠, etc.).
+
+**Why:** Multi-byte UTF-8 characters can cause curl transmission corruption when using `--data-binary`, resulting in:
+- Incomplete file transmission (Content-Length mismatch)
+- Server timeouts waiting for missing bytes
+- Failed queries that appear to "hang"
+
+**Use instead:**
+- `OK` or `PASS` instead of ✓
+- `ERROR` or `FAIL` instead of ❌
+- `WARNING` instead of ⚠
+
+**Example - WRONG:**
+```csharp
+Console.WriteLine("  Status: ✓ No issues");  // Will cause transmission issues
+```
+
+**Example - CORRECT:**
+```csharp
+Console.WriteLine("  Status: OK - No issues");  // Works reliably
+```
+
 **CRITICAL - Claude Code Bash Tool Limitation & Workaround:**
 
 Claude Code's Bash tool has a bug where **multiple command substitutions `$(...)` in one call fail with escaping errors**.
@@ -227,7 +251,60 @@ Pre-imported namespaces:
   "Success": true,
   "Output": "Hello from Revit!\n",
   "Error": null,
-  "Diagnostics": []
+  "Diagnostics": [],
+  "ProcessingLog": [
+    "[15:41:22.123] Request received by server",
+    "[15:41:22.125] Starting compilation (45 chars)...",
+    "[15:41:22.456] Compilation successful (331ms)",
+    "[15:41:22.457] Queueing script for execution on Revit UI thread...",
+    "[15:41:23.001] Script execution started on Revit UI thread",
+    "[15:41:23.002] Script context: UIApp=True, UIDoc=True, Doc=True",
+    "[15:41:23.003] Running script...",
+    "[15:41:23.015] Script completed successfully (12ms)",
+    "[15:41:23.016] Execution completed (559ms) - Success: True"
+  ]
+}
+```
+
+### Monitoring Query Execution
+
+**Check ProcessingLog for post-mortem analysis:**
+
+When a query completes (success, failure, or timeout), check the `ProcessingLog` field to see exactly what happened with timestamps:
+
+```bash
+curl -k -s -X POST https://127.0.0.1:$PORT/roslyn \
+  -H "X-Auth-Token: $TOKEN" \
+  --data-binary @/tmp/query.cs | jq '.ProcessingLog[]'
+```
+
+This shows:
+- How long compilation took
+- When execution started
+- Script context availability (UIApp, UIDoc, Doc)
+- Execution duration
+- Where errors/timeouts occurred
+
+**Monitor server.log for hung requests:**
+
+If curl itself hangs without returning a response, the server may be stuck. Check the server log in real-time:
+
+```bash
+tail -f runtime/server.log
+```
+
+This shows:
+- Connection acceptance and SSL handshake progress
+- Request parsing and authentication
+- Compilation and execution stages
+- Connection-level errors (timeouts, disconnects)
+
+**Script execution timeout:** Scripts are limited to 30 seconds execution time. If exceeded, the request will return with:
+```json
+{
+  "Success": false,
+  "Error": "Script execution timeout (30 seconds). The script may contain an infinite loop or is waiting for user input.",
+  "ProcessingLog": ["...", "[HH:mm:ss.fff] ERROR: Execution timeout after 30 seconds"]
 }
 ```
 

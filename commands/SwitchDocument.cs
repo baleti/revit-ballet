@@ -139,6 +139,11 @@ public class SwitchDocument : IExternalCommand
             // Suppress logging to avoid recording the intermediate view when document opens
             RevitBallet.LogViewChanges.SuppressLogging();
 
+            // CRITICAL FIX: Call OpenDocumentFile first to prevent close/reopen cycle
+            // Per Revit API guidance: If OpenDocumentFile is called before OpenAndActivateDocument,
+            // the latter will ONLY activate the document without closing/reopening it.
+            uiApp.Application.OpenDocumentFile(targetDoc.PathName);
+
             UIDocument newUidoc = uiApp.OpenAndActivateDocument(targetDoc.PathName);
 
             // Try to switch to the last viewed view (still suppressed to avoid intermediate view logging)

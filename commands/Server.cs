@@ -936,14 +936,22 @@ namespace RevitBallet.Commands
 
         private async Task HandleRoslynRequest(Stream stream, string code, string connId)
         {
+            var response = new ScriptResponse();
+            response.LogProcessing("Request received by server");
+
             if (string.IsNullOrWhiteSpace(code))
             {
                 LogToRevit($"[CONN-{connId}] Empty request body");
-                await SendHttpResponse(stream, new ScriptResponse { Success = false, Error = "Empty request body" });
+                response.Success = false;
+                response.Error = "Empty request body";
+                response.LogProcessing("ERROR: Empty request body");
+                await SendHttpResponse(stream, response);
                 return;
             }
 
             LogToRevit($"[CONN-{connId}] Compiling script ({code.Length} chars)...");
+            response.LogProcessing($"Starting compilation ({code.Length} chars)...");
+
             var compileStart = DateTime.Now;
             var compilationResult = await CompileScript(code);
             var compileDuration = (DateTime.Now - compileStart).TotalMilliseconds;
@@ -951,14 +959,23 @@ namespace RevitBallet.Commands
             if (!compilationResult.Success)
             {
                 LogToRevit($"[CONN-{connId}] Compilation failed ({compileDuration:F0}ms)");
+                compilationResult.ErrorResponse.LogProcessing($"Compilation FAILED ({compileDuration:F0}ms)");
                 await SendHttpResponse(stream, compilationResult.ErrorResponse);
                 return;
             }
 
+            response.LogProcessing($"Compilation successful ({compileDuration:F0}ms)");
             LogToRevit($"[CONN-{connId}] Compilation successful ({compileDuration:F0}ms), executing via External Event...");
+            response.LogProcessing("Queueing script for execution on Revit UI thread...");
+
             var executeStart = DateTime.Now;
             var scriptResponse = await ExecuteScriptViaExternalEvent(compilationResult.CompiledScript);
             var executeDuration = (DateTime.Now - executeStart).TotalMilliseconds;
+
+            scriptResponse.LogProcessing($"Execution completed ({executeDuration:F0}ms) - Success: {scriptResponse.Success}");
+
+            // Merge processing logs from compilation stage
+            scriptResponse.ProcessingLog.InsertRange(0, response.ProcessingLog);
 
             LogToRevit($"[CONN-{connId}] Execution completed ({executeDuration:F0}ms) - Success: {scriptResponse.Success}");
             await SendHttpResponse(stream, scriptResponse);
@@ -1061,7 +1078,7 @@ namespace RevitBallet.Commands
             return Task.FromResult(result);
         }
 
-        private Task<ScriptResponse> ExecuteScriptViaExternalEvent(Script<object> script)
+        private async Task<ScriptResponse> ExecuteScriptViaExternalEvent(Script<object> script)
         {
             var tcs = new TaskCompletionSource<ScriptResponse>();
 
@@ -1071,7 +1088,22 @@ namespace RevitBallet.Commands
             // Raise the external event to execute on the UI thread
             scriptExecutionEvent.Raise();
 
-            return tcs.Task;
+            // Add timeout to prevent infinite waiting (30 seconds default)
+            var timeoutTask = Task.Delay(30000);
+            var completedTask = await Task.WhenAny(tcs.Task, timeoutTask);
+
+            if (completedTask == timeoutTask)
+            {
+                var response = new ScriptResponse
+                {
+                    Success = false,
+                    Error = "Script execution timeout (30 seconds). The script may contain an infinite loop or is waiting for user input."
+                };
+                response.LogProcessing("ERROR: Execution timeout after 30 seconds");
+                return response;
+            }
+
+            return await tcs.Task;
         }
 
         private async Task HandleScreenshotRequest(Stream stream, string connId)
@@ -1194,6 +1226,7 @@ namespace RevitBallet.Commands
 
             try
             {
+                response.LogProcessing("Script execution started on Revit UI thread");
                 Console.SetOut(outputCapture);
 
                 var uidoc = app.ActiveUIDocument;
@@ -1208,9 +1241,15 @@ namespace RevitBallet.Commands
                     Doc = doc
                 };
 
+                response.LogProcessing($"Script context: UIApp={app != null}, UIDoc={uidoc != null}, Doc={doc != null}");
+                response.LogProcessing("Running script...");
+
+                var executeStart = DateTime.Now;
                 // Execute the script (no Transaction - user must create one in their script if needed)
                 var result = script.RunAsync(globals).Result;
+                var executeMs = (DateTime.Now - executeStart).TotalMilliseconds;
 
+                response.LogProcessing($"Script completed successfully ({executeMs:F0}ms)");
                 response.Success = true;
                 response.Output = outputCapture.ToString();
 
@@ -1225,6 +1264,7 @@ namespace RevitBallet.Commands
             }
             catch (CompilationErrorException ex)
             {
+                response.LogProcessing("ERROR: Compilation error during execution");
                 response.Success = false;
                 response.Error = "Compilation error";
                 response.Diagnostics = ex.Diagnostics.Select(d => d.ToString()).ToList();
@@ -1241,6 +1281,7 @@ namespace RevitBallet.Commands
                     RevitBalletServer.LogToRevit($"[{DateTime.Now:HH:mm:ss}] Inner stack trace:\n{ex.InnerException.StackTrace}");
                 }
 
+                response.LogProcessing($"ERROR: {ex.GetType().Name} - {ex.Message}");
                 response.Success = false;
                 response.Error = $"{ex.Message}\n\nException Type: {ex.GetType().Name}\n\nStack Trace:\n{ex.StackTrace}";
                 response.Output = outputCapture.ToString();
@@ -1466,10 +1507,18 @@ namespace RevitBallet.Commands
         public string Output { get; set; }
         public string Error { get; set; }
         public List<string> Diagnostics { get; set; }
+        public List<string> ProcessingLog { get; set; }
 
         public ScriptResponse()
         {
             Diagnostics = new List<string>();
+            ProcessingLog = new List<string>();
+        }
+
+        public void LogProcessing(string message)
+        {
+            var timestamp = DateTime.Now.ToString("HH:mm:ss.fff");
+            ProcessingLog.Add($"[{timestamp}] {message}");
         }
 
         public string ToJson()
