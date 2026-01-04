@@ -124,6 +124,11 @@ public class FilterSelectedInSession : IExternalCommand
             if (allPropertyNames.Contains("Group")) orderedProps.Add("Group");
             if (allPropertyNames.Contains("OwnerView")) orderedProps.Add("OwnerView");
 
+            // Add view boolean properties
+            if (allPropertyNames.Contains("Crop View")) orderedProps.Add("Crop View");
+            if (allPropertyNames.Contains("Crop Region Visible")) orderedProps.Add("Crop Region Visible");
+            if (allPropertyNames.Contains("Annotation Crop")) orderedProps.Add("Annotation Crop");
+
             // Add crop region columns (editable)
             if (allPropertyNames.Contains("Crop Region Top")) orderedProps.Add("Crop Region Top");
             if (allPropertyNames.Contains("Crop Region Bottom")) orderedProps.Add("Crop Region Bottom");
@@ -281,6 +286,40 @@ public class FilterSelectedInSession : IExternalCommand
                 }
             }
             catch { }
+        }
+
+        // Add view boolean properties for views and viewports
+        try
+        {
+            Autodesk.Revit.DB.View viewForProperties = null;
+            if (element is Autodesk.Revit.DB.View v)
+            {
+                viewForProperties = v;
+            }
+            else if (element is Viewport viewport)
+            {
+                viewForProperties = doc.GetElement(viewport.ViewId) as Autodesk.Revit.DB.View;
+            }
+
+            if (viewForProperties != null)
+            {
+                data["Crop View"] = viewForProperties.CropBoxActive;
+                data["Crop Region Visible"] = viewForProperties.CropBoxVisible;
+
+                // AnnotationCropActive may not be available in all Revit versions
+                try
+                {
+                    data["Annotation Crop"] = viewForProperties.get_Parameter(BuiltInParameter.VIEWER_ANNOTATION_CROP_ACTIVE)?.AsInteger() == 1;
+                }
+                catch
+                {
+                    // Property not available in this Revit version
+                }
+            }
+        }
+        catch
+        {
+            // If we can't get view properties, skip these columns
         }
 
         // Add crop region columns for views and viewports (only if rectangular)

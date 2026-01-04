@@ -905,6 +905,131 @@ public partial class CustomGUIs
                 }
             });
 
+            // Crop View (CropBoxActive)
+            Register(new ColumnHandler
+            {
+                ColumnName = "Crop View",
+                IsEditable = true,
+                Description = "Whether crop region is active/enabled for the view",
+                Getter = (elem, doc) =>
+                {
+                    var view = GetViewFromElement(elem, doc);
+                    if (view == null) return null;
+                    return view.CropBoxActive;
+                },
+                Setter = (elem, doc, newValue) =>
+                {
+                    var view = GetViewFromElement(elem, doc);
+                    if (view == null) return false;
+
+                    bool boolValue;
+                    if (newValue is bool b)
+                        boolValue = b;
+                    else if (bool.TryParse(newValue?.ToString(), out bool parsed))
+                        boolValue = parsed;
+                    else
+                        return false;
+
+                    try
+                    {
+                        view.CropBoxActive = boolValue;
+                        return true;
+                    }
+                    catch
+                    {
+                        return false;
+                    }
+                }
+            });
+
+            // Crop Region Visible (CropBoxVisible)
+            Register(new ColumnHandler
+            {
+                ColumnName = "Crop Region Visible",
+                IsEditable = true,
+                Description = "Whether crop region boundary is visible in the view",
+                Getter = (elem, doc) =>
+                {
+                    var view = GetViewFromElement(elem, doc);
+                    if (view == null) return null;
+                    return view.CropBoxVisible;
+                },
+                Setter = (elem, doc, newValue) =>
+                {
+                    var view = GetViewFromElement(elem, doc);
+                    if (view == null) return false;
+
+                    bool boolValue;
+                    if (newValue is bool b)
+                        boolValue = b;
+                    else if (bool.TryParse(newValue?.ToString(), out bool parsed))
+                        boolValue = parsed;
+                    else
+                        return false;
+
+                    try
+                    {
+                        view.CropBoxVisible = boolValue;
+                        return true;
+                    }
+                    catch
+                    {
+                        return false;
+                    }
+                }
+            });
+
+            // Annotation Crop
+            Register(new ColumnHandler
+            {
+                ColumnName = "Annotation Crop",
+                IsEditable = true,
+                Description = "Whether annotation crop is active for the view",
+                Getter = (elem, doc) =>
+                {
+                    var view = GetViewFromElement(elem, doc);
+                    if (view == null) return null;
+
+                    try
+                    {
+                        // Try to get via parameter (may not be available in all Revit versions)
+                        Parameter param = view.get_Parameter(BuiltInParameter.VIEWER_ANNOTATION_CROP_ACTIVE);
+                        if (param != null)
+                            return param.AsInteger() == 1;
+                    }
+                    catch { }
+
+                    return null;
+                },
+                Setter = (elem, doc, newValue) =>
+                {
+                    var view = GetViewFromElement(elem, doc);
+                    if (view == null) return false;
+
+                    bool boolValue;
+                    if (newValue is bool b)
+                        boolValue = b;
+                    else if (bool.TryParse(newValue?.ToString(), out bool parsed))
+                        boolValue = parsed;
+                    else
+                        return false;
+
+                    try
+                    {
+                        // Try to set via parameter (may not be available in all Revit versions)
+                        Parameter param = view.get_Parameter(BuiltInParameter.VIEWER_ANNOTATION_CROP_ACTIVE);
+                        if (param != null && !param.IsReadOnly)
+                        {
+                            param.Set(boolValue ? 1 : 0);
+                            return true;
+                        }
+                    }
+                    catch { }
+
+                    return false;
+                }
+            });
+
             // Name column for Views (regular views and sheets)
             // CRITICAL: RequiresUniqueName=true for two-phase rename to avoid "view with that name already exists" errors
             // NOTE: This handler applies to View elements when "Name" column is edited
