@@ -21,6 +21,7 @@ public class CopySelectedElementsToViewsInDocument : IExternalCommand
 
         // Get the selected elements in the active view
         ICollection<ElementId> selectedElementIds = uidoc.GetSelectionIds();
+
         if (!selectedElementIds.Any())
         {
             TaskDialog.Show("Error", "No elements selected. Please select elements to copy.");
@@ -239,18 +240,63 @@ public class CopySelectedElementsToViewsInDocument : IExternalCommand
                 return Result.Failed;
             }
 
-            // Exclude current view from copy targets
-            selectedViews = selectedViews.Where(v => v.Id != activeView.Id).ToList();
+        }
 
-            if (!selectedViews.Any())
+        // ─────────────────────────────────────────────────────────────
+        // 6. Determine the actual source view for elements
+        // ─────────────────────────────────────────────────────────────
+        // If we're on a sheet, elements might belong to views placed on the sheet
+        View sourceView = activeView;
+
+        if (activeView is ViewSheet)
+        {
+            // Find which view the elements actually belong to
+            ElementId ownerViewId = null;
+            foreach (ElementId id in elementsToCopy)
             {
-                message = "No valid target views selected (current view was excluded).";
-                return Result.Failed;
+                Element elem = doc.GetElement(id);
+                if (elem != null)
+                {
+                    ElementId ownerId = elem.OwnerViewId;
+
+                    if (ownerId != null && ownerId != ElementId.InvalidElementId)
+                    {
+                        if (ownerViewId == null)
+                        {
+                            ownerViewId = ownerId;
+                        }
+                        else if (ownerViewId != ownerId)
+                        {
+                            // Elements belong to different views - use first found
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (ownerViewId != null && ownerViewId != ElementId.InvalidElementId)
+            {
+                View ownerView = doc.GetElement(ownerViewId) as View;
+                if (ownerView != null)
+                {
+                    sourceView = ownerView;
+                }
             }
         }
 
         // ─────────────────────────────────────────────────────────────
-        // 6. Start a transaction to copy the elements
+        // 7. Exclude source view from targets
+        // ─────────────────────────────────────────────────────────────
+        selectedViews = selectedViews.Where(v => v.Id != sourceView.Id).ToList();
+
+        if (!selectedViews.Any())
+        {
+            message = "No valid target views selected (source view was excluded).";
+            return Result.Failed;
+        }
+
+        // ─────────────────────────────────────────────────────────────
+        // 8. Start a transaction to copy the elements
         // ─────────────────────────────────────────────────────────────
         using (Transaction transaction = new Transaction(doc, "Copy Selected Elements to Views"))
         {
@@ -262,7 +308,7 @@ public class CopySelectedElementsToViewsInDocument : IExternalCommand
                 try
                 {
                     ElementTransformUtils.CopyElements(
-                        activeView,
+                        sourceView,
                         elementsToCopy,
                         targetView,
                         Transform.Identity,
