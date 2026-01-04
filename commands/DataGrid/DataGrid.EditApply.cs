@@ -23,32 +23,18 @@ public partial class CustomGUIs
     /// </summary>
     public static bool ApplyCellEditsToEntities()
     {
-        // DIAGNOSTICS: Create log file
-        string diagnosticPath = System.IO.Path.Combine(
-            RevitBallet.Commands.PathHelper.RuntimeDirectory,
-            "diagnostics",
-            $"DataGridEditApply-{System.DateTime.Now:yyyyMMdd-HHmmss-fff}.txt");
-        var diagnosticLines = new List<string>();
-        diagnosticLines.Add($"=== DataGrid Edit Application at {System.DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} ===");
 
         if (_pendingCellEdits.Count == 0)
         {
-            diagnosticLines.Add("No pending edits to apply");
-            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diagnosticPath));
-            System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
 
             System.Windows.Forms.MessageBox.Show("No edits to apply.", "Apply Edits",
                 System.Windows.Forms.MessageBoxButtons.OK, System.Windows.Forms.MessageBoxIcon.Information);
             return false;
         }
 
-        diagnosticLines.Add($"Total pending edits: {_pendingCellEdits.Count}");
 
         if (_currentUIDoc == null)
         {
-            diagnosticLines.Add("ERROR: _currentUIDoc is null");
-            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diagnosticPath));
-            System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
 
             System.Windows.Forms.MessageBox.Show(
                 "Cannot apply edits: No active Revit document.\n\n" +
@@ -59,8 +45,6 @@ public partial class CustomGUIs
             return false;
         }
 
-        diagnosticLines.Add($"Active document: {_currentUIDoc.Document.Title}");
-        diagnosticLines.Add($"Active document path: {_currentUIDoc.Document.PathName ?? "(unsaved)"}");
 
         int successCount = 0;
         int errorCount = 0;
@@ -90,20 +74,17 @@ public partial class CustomGUIs
         // Group entries by document for cross-document edit support
         var entriesByDocument = new Dictionary<Document, List<(long internalId, Dictionary<string, object> entry, List<(string, object)> edits)>>();
 
-        diagnosticLines.Add($"\n--- Grouping {editsByEntry.Count} entries by document ---");
 
         foreach (var entryGroup in editsByEntry)
         {
             long internalId = entryGroup.Key;
             var edits = entryGroup.Value;
 
-            diagnosticLines.Add($"\nProcessing entry with InternalId={internalId}, {edits.Count} edits");
 
             // Find the entry with this internal ID
             var entry = _modifiedEntries.FirstOrDefault(e => GetInternalId(e) == internalId);
             if (entry == null)
             {
-                diagnosticLines.Add($"  ERROR: Could not find entry in _modifiedEntries");
                 errorMessages.Add($"Could not find entry with internal ID {internalId}");
                 errorCount++;
                 continue;
@@ -111,7 +92,6 @@ public partial class CustomGUIs
 
             // Log entry info
             string entryName = entry.ContainsKey("Name") ? entry["Name"]?.ToString() : "(no name)";
-            diagnosticLines.Add($"  Entry name: {entryName}");
 
             // Determine which document this entry belongs to
             Document entryDoc = null;
@@ -120,55 +100,39 @@ public partial class CustomGUIs
             if (entry.ContainsKey("__Document") && entry["__Document"] is Document doc)
             {
                 entryDoc = doc;
-                diagnosticLines.Add($"  Found __Document field: {doc.Title}");
-                diagnosticLines.Add($"  Document path: {doc.PathName ?? "(unsaved)"}");
-                diagnosticLines.Add($"  Is same as active doc: {doc.Equals(_currentUIDoc.Document)}");
             }
             else
             {
                 // Fall back to active document
                 entryDoc = _currentUIDoc.Document;
-                diagnosticLines.Add($"  No __Document field, using active document: {entryDoc.Title}");
             }
 
             // Group by document
             if (!entriesByDocument.ContainsKey(entryDoc))
             {
                 entriesByDocument[entryDoc] = new List<(long, Dictionary<string, object>, List<(string, object)>)>();
-                diagnosticLines.Add($"  Created new document group for: {entryDoc.Title}");
             }
 
             entriesByDocument[entryDoc].Add((internalId, entry, edits));
         }
 
-        diagnosticLines.Add($"\n--- Grouped into {entriesByDocument.Count} document(s) ---");
         foreach (var docGroup in entriesByDocument)
         {
-            diagnosticLines.Add($"  Document: {docGroup.Key.Title}, Entries: {docGroup.Value.Count}");
         }
 
         // Process edits for each document separately with its own transaction
-        diagnosticLines.Add($"\n--- Processing edits for {entriesByDocument.Count} document(s) ---");
 
         Document activeDoc = _currentUIDoc.Document;
-        diagnosticLines.Add($"Active document: {activeDoc.Title}");
 
         foreach (var docGroup in entriesByDocument)
         {
             Document doc = docGroup.Key;
             var entries = docGroup.Value;
 
-            diagnosticLines.Add($"\n=== Document: {doc.Title} ===");
-            diagnosticLines.Add($"  Path: {doc.PathName ?? "(unsaved)"}");
-            diagnosticLines.Add($"  Entries to process: {entries.Count}");
-            diagnosticLines.Add($"  Is active document: {doc.Equals(activeDoc)}");
-            diagnosticLines.Add($"  Creating transaction on document '{doc.Title}'...");
 
             using (Transaction trans = new Transaction(doc, "Apply DataGrid Edits"))
             {
-                diagnosticLines.Add($"  Transaction.Start()...");
                 trans.Start();
-                diagnosticLines.Add($"  Transaction started successfully");
 
                 // CRITICAL: Two-phase rename for columns with uniqueness constraints
                 // Group edits by column name to detect if we need two-phase rename
@@ -191,31 +155,23 @@ public partial class CustomGUIs
                         if (handler != null && handler.RequiresUniqueName && editsByColumn[columnName].Count > 1)
                         {
                             uniqueNameColumns.Add(columnName);
-                            diagnosticLines.Add($"  Column '{columnName}' requires two-phase rename ({editsByColumn[columnName].Count} edits)");
                         }
                     }
 
                     // DUPLICATE DETECTION: Check for duplicate target names before starting two-phase rename
                     if (uniqueNameColumns.Any())
                     {
-                        diagnosticLines.Add($"\n  === DUPLICATE DETECTION ===");
-                        var duplicateInfo = DetectDuplicateNames(editsByColumn, uniqueNameColumns, doc, diagnosticLines);
+                        var duplicateInfo = DetectDuplicateNames(editsByColumn, uniqueNameColumns, doc);
 
                         if (duplicateInfo.HasDuplicates)
                         {
-                            diagnosticLines.Add($"  Found {duplicateInfo.DuplicateCount} duplicate name(s) across {duplicateInfo.DuplicateColumns.Count} column(s)");
 
                             // Show dialog to user
                             var dialogResult = ShowDuplicateNameDialog(duplicateInfo);
 
                             if (dialogResult == System.Windows.Forms.DialogResult.Cancel)
                             {
-                                diagnosticLines.Add($"  User cancelled operation due to duplicates");
                                 trans.RollBack();
-
-                                // Write diagnostics
-                                System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diagnosticPath));
-                                System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
 
                                 // Clear pending edits
                                 _pendingCellEdits.Clear();
@@ -223,21 +179,18 @@ public partial class CustomGUIs
                             }
                             else if (dialogResult == System.Windows.Forms.DialogResult.Yes)
                             {
-                                diagnosticLines.Add($"  User chose to append unique suffixes");
-                                AppendUniqueSuffixes(editsByColumn, duplicateInfo, diagnosticLines);
+                                AppendUniqueSuffixes(editsByColumn, duplicateInfo);
                             }
                             // DialogResult.No means "proceed with duplicates" - no action needed
                         }
                         else
                         {
-                            diagnosticLines.Add($"  No duplicate names detected");
                         }
                     }
 
                     // Phase 1: Rename all unique-name columns to temporary names
                     if (uniqueNameColumns.Any())
                     {
-                        diagnosticLines.Add($"\n  === PHASE 1: Renaming to temporary names ===");
 
                         // Random number generator for numeric temp values
                         var random = new System.Random();
@@ -245,7 +198,6 @@ public partial class CustomGUIs
                         foreach (var columnName in uniqueNameColumns)
                         {
                             var columnEdits = editsByColumn[columnName];
-                            diagnosticLines.Add($"  Processing column: {columnName} ({columnEdits.Count} edits)");
 
                             // Determine if this column needs numeric temp values
                             bool useNumericTemp = columnName.Equals("Detail Number", StringComparison.OrdinalIgnoreCase);
@@ -255,7 +207,6 @@ public partial class CustomGUIs
                                 Element elem = GetElementFromEntry(doc, entry);
                                 if (elem == null)
                                 {
-                                    diagnosticLines.Add($"    ERROR: Could not find element for InternalId={internalId}");
                                     continue;
                                 }
 
@@ -265,13 +216,11 @@ public partial class CustomGUIs
                                 {
                                     // Use random large number for numeric fields (Detail Number, etc.)
                                     tempName = random.Next(900000, 999999).ToString();
-                                    diagnosticLines.Add($"    Element {elem.Id.AsLong()}: Renaming to temp number '{tempName}'");
                                 }
                                 else
                                 {
                                     // Use UUID-based string for text fields (View Name, Sheet Name, etc.)
                                     tempName = $"{elem.Id.AsLong()}-temp-{Guid.NewGuid().ToString().Substring(0, 8)}";
-                                    diagnosticLines.Add($"    Element {elem.Id.AsLong()}: Renaming to temp name '{tempName}'");
                                 }
 
                                 var handler = ColumnHandlerRegistry.GetHandler(columnName);
@@ -280,39 +229,32 @@ public partial class CustomGUIs
                                     try
                                     {
                                         bool success = handler.Setter(elem, doc, tempName);
-                                        diagnosticLines.Add($"      Result: {(success ? "SUCCESS" : "FAILED")}");
                                         if (!success)
                                         {
-                                            diagnosticLines.Add($"      WARNING: Failed to rename to temp name, will skip this element");
                                         }
                                     }
-                                    catch (Exception ex)
+                                    catch
                                     {
-                                        diagnosticLines.Add($"      EXCEPTION: {ex.Message}");
                                     }
                                 }
                             }
                         }
 
                         // Phase 2: Rename from temporary names to final target names
-                        diagnosticLines.Add($"\n  === PHASE 2: Renaming to final target names ===");
                         foreach (var columnName in uniqueNameColumns)
                         {
                             var columnEdits = editsByColumn[columnName];
-                            diagnosticLines.Add($"  Processing column: {columnName} ({columnEdits.Count} edits)");
 
                             foreach (var (internalId, entry, newValue) in columnEdits)
                             {
                                 Element elem = GetElementFromEntry(doc, entry);
                                 if (elem == null)
                                 {
-                                    diagnosticLines.Add($"    ERROR: Could not find element for InternalId={internalId}");
                                     errorCount++;
                                     continue;
                                 }
 
                                 string finalName = newValue?.ToString() ?? "";
-                                diagnosticLines.Add($"    Element {elem.Id.AsLong()}: Renaming to final name '{finalName}'");
 
                                 var handler = ColumnHandlerRegistry.GetHandler(columnName);
                                 if (handler != null && handler.Setter != null)
@@ -320,7 +262,6 @@ public partial class CustomGUIs
                                     try
                                     {
                                         bool success = handler.Setter(elem, doc, finalName);
-                                        diagnosticLines.Add($"      Result: {(success ? "SUCCESS" : "FAILED")}");
                                         if (success)
                                             successCount++;
                                         else
@@ -331,7 +272,6 @@ public partial class CustomGUIs
                                     }
                                     catch (Exception ex)
                                     {
-                                        diagnosticLines.Add($"      EXCEPTION: {ex.Message}");
                                         errorMessages.Add($"{GetEntryDisplayName(entry)}.{columnName}: {ex.Message}");
                                         errorCount++;
                                     }
@@ -341,17 +281,13 @@ public partial class CustomGUIs
                     }
 
                     // Now process remaining edits (non-unique-name columns)
-                    diagnosticLines.Add($"\n  === Processing non-unique-name columns ===");
 
                     foreach (var (internalId, entry, edits) in entries)
                     {
-                        diagnosticLines.Add($"\n  Processing entry InternalId={internalId}");
                         string entryName = entry.ContainsKey("Name") ? entry["Name"]?.ToString() : "(no name)";
-                        diagnosticLines.Add($"    Entry name: {entryName}");
 
                         // Check if this is a workset entry (from SelectByWorksetsIn* commands)
                         bool isWorksetEntry = entry.ContainsKey("WorksetId") && entry.ContainsKey("Workset");
-                        diagnosticLines.Add($"    Is workset entry: {isWorksetEntry}");
 
                         if (isWorksetEntry)
                         {
@@ -361,34 +297,25 @@ public partial class CustomGUIs
                                 // Skip if already processed in two-phase rename
                                 if (uniqueNameColumns.Contains(columnName))
                                 {
-                                    diagnosticLines.Add($"      Skipping column '{columnName}' (already processed in two-phase rename)");
                                     continue;
                                 }
 
-                                diagnosticLines.Add($"      Applying workset edit to column '{columnName}':");
                                 string worksetName = entry.ContainsKey("Workset") ? entry["Workset"]?.ToString() : "(unknown)";
-                                diagnosticLines.Add($"        Workset: {worksetName}");
-                                diagnosticLines.Add($"        New value: '{newValue}'");
 
                                 try
                                 {
-                                    if (ApplyWorksetEdit(doc, entry, columnName, newValue, diagnosticLines))
+                                    if (ApplyWorksetEdit(doc, entry, columnName, newValue))
                                     {
-                                        diagnosticLines.Add($"        Result: SUCCESS");
                                         successCount++;
                                     }
                                     else
                                     {
-                                        diagnosticLines.Add($"        Result: FAILED");
                                         errorMessages.Add($"{GetEntryDisplayName(entry)}.{columnName}: Failed to apply");
                                         errorCount++;
                                     }
                                 }
                                 catch (Exception ex)
                                 {
-                                    diagnosticLines.Add($"        Result: EXCEPTION");
-                                    diagnosticLines.Add($"        Exception type: {ex.GetType().Name}");
-                                    diagnosticLines.Add($"        Exception message: {ex.Message}");
                                     errorMessages.Add($"{GetEntryDisplayName(entry)}.{columnName}: {ex.Message}");
                                     errorCount++;
                                 }
@@ -415,7 +342,6 @@ public partial class CustomGUIs
 
                             if (cropEdits.Count > 1) // Only batch if 2+ crop edits (single edits work fine individually)
                             {
-                                diagnosticLines.Add($"      Batching {cropEdits.Count} crop region edit(s) together:");
 
                                 // Extract values
                                 double? newTop = null, newBottom = null, newLeft = null, newRight = null;
@@ -424,7 +350,6 @@ public partial class CustomGUIs
                                     string columnName = cropEdit.Item1;
                                     object newValue = cropEdit.Item2;
 
-                                    diagnosticLines.Add($"        {columnName} = {newValue}");
                                     processedColumns.Add(columnName);
 
                                     if (columnName.Equals("Crop Region Top", StringComparison.OrdinalIgnoreCase) &&
@@ -445,12 +370,10 @@ public partial class CustomGUIs
                                 {
                                     if (ColumnHandlerRegistry.ApplyCropRegionEdits(elem, doc, newTop, newBottom, newLeft, newRight))
                                     {
-                                        diagnosticLines.Add($"        Batch crop region edit: SUCCESS");
                                         successCount += cropEdits.Count;
                                     }
                                     else
                                     {
-                                        diagnosticLines.Add($"        Batch crop region edit: FAILED");
                                         foreach (var cropEdit in cropEdits)
                                         {
                                             errorMessages.Add($"{GetEntryDisplayName(entry)}.{cropEdit.Item1}: Failed to apply");
@@ -460,7 +383,6 @@ public partial class CustomGUIs
                                 }
                                 catch (Exception ex)
                                 {
-                                    diagnosticLines.Add($"        Batch crop region edit: EXCEPTION - {ex.Message}");
                                     foreach (var cropEdit in cropEdits)
                                     {
                                         errorMessages.Add($"{GetEntryDisplayName(entry)}.{cropEdit.Item1}: {ex.Message}");
@@ -475,41 +397,30 @@ public partial class CustomGUIs
                                 // Skip if already processed in two-phase rename
                                 if (uniqueNameColumns.Contains(columnName))
                                 {
-                                    diagnosticLines.Add($"      Skipping column '{columnName}' (already processed in two-phase rename)");
                                     continue;
                                 }
 
                                 // Skip if already processed in crop region batch
                                 if (processedColumns.Contains(columnName))
                                 {
-                                    diagnosticLines.Add($"      Skipping column '{columnName}' (already processed in crop region batch)");
                                     continue;
                                 }
 
-                                diagnosticLines.Add($"      Applying edit to column '{columnName}':");
-                                diagnosticLines.Add($"        Element ID: {elem.Id.AsLong()}");
-                                diagnosticLines.Add($"        Element type: {elem.GetType().Name}");
-                                diagnosticLines.Add($"        New value: '{newValue}'");
 
                                 try
                                 {
-                                    if (ApplyPropertyEdit(elem, columnName, newValue, entry, diagnosticLines))
+                                    if (ApplyPropertyEdit(elem, columnName, newValue, entry))
                                     {
-                                        diagnosticLines.Add($"        Result: SUCCESS");
                                         successCount++;
                                     }
                                     else
                                     {
-                                        diagnosticLines.Add($"        Result: FAILED (setter returned false)");
                                         errorMessages.Add($"{GetEntryDisplayName(entry)}.{columnName}: Failed to apply");
                                         errorCount++;
                                     }
                                 }
                                 catch (Exception ex)
                                 {
-                                    diagnosticLines.Add($"        Result: EXCEPTION");
-                                    diagnosticLines.Add($"        Exception type: {ex.GetType().Name}");
-                                    diagnosticLines.Add($"        Exception message: {ex.Message}");
                                     errorMessages.Add($"{GetEntryDisplayName(entry)}.{columnName}: {ex.Message}");
                                     errorCount++;
                                 }
@@ -517,39 +428,28 @@ public partial class CustomGUIs
                         }
                     }
 
-                    diagnosticLines.Add($"\n  All entries processed for {doc.Title}, committing transaction...");
 
                     // RESILIENT COMMIT: Try to commit even if some individual edits failed
                     // The transaction contains all successful edits from try-catch blocks above
                     try
                     {
                         trans.Commit();
-                        diagnosticLines.Add($"  Transaction committed successfully for {doc.Title}");
                         _editsWereApplied = true;
                     }
                     catch (Exception commitEx)
                     {
                         // CRITICAL: Only catch commit-specific failures here
                         // Individual edit failures are already caught and tracked above
-                        diagnosticLines.Add($"\n  ERROR: Transaction commit failed for {doc.Title}");
-                        diagnosticLines.Add($"    Exception type: {commitEx.GetType().Name}");
-                        diagnosticLines.Add($"    Exception message: {commitEx.Message}");
-                        diagnosticLines.Add($"    Stack trace: {commitEx.StackTrace}");
-                        diagnosticLines.Add($"  Rolling back transaction...");
 
                         try
                         {
                             trans.RollBack();
-                            diagnosticLines.Add($"  Transaction rolled back");
                         }
-                        catch (Exception rollbackEx)
+                        catch
                         {
-                            diagnosticLines.Add($"  Failed to rollback: {rollbackEx.Message}");
                         }
 
                         // Write diagnostics immediately
-                        System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diagnosticPath));
-                        System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
 
                         // Add commit failure to error messages for summary
                         errorMessages.Add($"CRITICAL: Transaction commit failed - {commitEx.Message}. All edits rolled back.");
@@ -561,13 +461,7 @@ public partial class CustomGUIs
         }
 
         // Write final diagnostics
-        diagnosticLines.Add($"\n=== Summary ===");
-        diagnosticLines.Add($"Total successes: {successCount}");
-        diagnosticLines.Add($"Total errors: {errorCount}");
-        diagnosticLines.Add($"Edits were applied: {_editsWereApplied}");
 
-        System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diagnosticPath));
-        System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
 
         // CRITICAL: Clear pending edits to prevent double-application
         // Some commands (like OpenSheetsInSession) manually check HasPendingEdits() after
@@ -582,7 +476,6 @@ public partial class CustomGUIs
             resultMessage += "\n" + string.Join("\n", errorMessages.Take(10));
             if (errorMessages.Count > 10)
                 resultMessage += $"\n... and {errorMessages.Count - 10} more";
-            resultMessage += $"\n\nDiagnostics saved to:\n{diagnosticPath}";
 
             System.Windows.Forms.MessageBox.Show(
                 resultMessage,
@@ -662,7 +555,7 @@ public partial class CustomGUIs
     /// <summary>
     /// Apply a property edit to a Revit element
     /// </summary>
-    private static bool ApplyPropertyEdit(Element elem, string columnName, object newValue, Dictionary<string, object> entry, List<string> diagnosticLines = null)
+    private static bool ApplyPropertyEdit(Element elem, string columnName, object newValue, Dictionary<string, object> entry)
     {
         // AUTOMATIC SYSTEM: Try handler registry first, with fallback to dynamic parameter detection
         ColumnHandlerRegistry.EnsureInitialized();
@@ -672,29 +565,12 @@ public partial class CustomGUIs
         {
             try
             {
-                if (diagnosticLines != null)
-                {
-                    diagnosticLines.Add($"          Using handler: {handler.ColumnName}");
-                    diagnosticLines.Add($"          Handler description: {handler.Description ?? "(none)"}");
-                }
-
                 // Use handler to apply edit (includes both explicit and dynamic parameter handlers)
                 bool success = handler.ApplyEdit(elem, _currentUIDoc.Document, newValue);
-
-                if (diagnosticLines != null)
-                {
-                    diagnosticLines.Add($"          Handler returned: {success}");
-                }
-
                 return success;
             }
             catch (Exception ex)
             {
-                if (diagnosticLines != null)
-                {
-                    diagnosticLines.Add($"          Handler threw exception: {ex.GetType().Name}");
-                    diagnosticLines.Add($"          Exception message: {ex.Message}");
-                }
                 System.Diagnostics.Debug.WriteLine($"Handler for '{columnName}' failed: {ex.Message}");
                 return false;
             }
@@ -1065,29 +941,14 @@ public partial class CustomGUIs
                 if (elem is View vScopeBox)
                 {
                     // Log diagnostics to runtime directory
-                    string diagnosticPath = System.IO.Path.Combine(
-                        RevitBallet.Commands.PathHelper.RuntimeDirectory,
-                        "ScopeBoxEditDiagnostics.txt");
 
-                    var scopeBoxDiagnostics = new System.Collections.Generic.List<string>();
-                    scopeBoxDiagnostics.Add($"=== Scope Box Edit Attempt at {System.DateTime.Now:yyyy-MM-dd HH:mm:ss} ===");
-                    scopeBoxDiagnostics.Add($"View Name: {vScopeBox.Name}");
-                    scopeBoxDiagnostics.Add($"View Title: {vScopeBox.Title}");
-                    scopeBoxDiagnostics.Add($"View Type: {vScopeBox.ViewType}");
-                    scopeBoxDiagnostics.Add($"Is Template: {vScopeBox.IsTemplate}");
-                    scopeBoxDiagnostics.Add($"Requested Scope Box: '{strValue}'");
 
                     Parameter scopeBoxParam = vScopeBox.get_Parameter(BuiltInParameter.VIEWER_VOLUME_OF_INTEREST_CROP);
                     if (scopeBoxParam == null)
                     {
-                        scopeBoxDiagnostics.Add("ERROR: View does not have a scope box parameter");
-                        System.IO.File.AppendAllLines(diagnosticPath, scopeBoxDiagnostics);
                         return false;
                     }
 
-                    scopeBoxDiagnostics.Add($"Parameter Exists: Yes");
-                    scopeBoxDiagnostics.Add($"Parameter IsReadOnly: {scopeBoxParam.IsReadOnly}");
-                    scopeBoxDiagnostics.Add($"Parameter HasValue: {scopeBoxParam.HasValue}");
 
                     if (scopeBoxParam.HasValue)
                     {
@@ -1095,18 +956,14 @@ public partial class CustomGUIs
                         if (currentScopeId != null && currentScopeId != ElementId.InvalidElementId)
                         {
                             Element currentScope = elem.Document.GetElement(currentScopeId);
-                            scopeBoxDiagnostics.Add($"Current Scope Box: '{currentScope?.Name ?? "ERROR"}'");
                         }
                         else
                         {
-                            scopeBoxDiagnostics.Add($"Current Scope Box: None");
                         }
                     }
 
                     if (scopeBoxParam.IsReadOnly)
                     {
-                        scopeBoxDiagnostics.Add("ERROR: Parameter is read-only");
-                        System.IO.File.AppendAllLines(diagnosticPath, scopeBoxDiagnostics);
                         return false;
                     }
 
@@ -1116,14 +973,10 @@ public partial class CustomGUIs
                         try
                         {
                             scopeBoxParam.Set(ElementId.InvalidElementId);
-                            scopeBoxDiagnostics.Add("SUCCESS: Cleared scope box");
-                            System.IO.File.AppendAllLines(diagnosticPath, scopeBoxDiagnostics);
                             return true;
                         }
-                        catch (Exception ex)
+                        catch
                         {
-                            scopeBoxDiagnostics.Add($"ERROR: Failed to clear scope box: {ex.Message}");
-                            System.IO.File.AppendAllLines(diagnosticPath, scopeBoxDiagnostics);
                             return false;
                         }
                     }
@@ -1135,10 +988,8 @@ public partial class CustomGUIs
                         .Cast<Element>()
                         .ToList();
 
-                    scopeBoxDiagnostics.Add($"Available Scope Boxes in Document: {scopeBoxes.Count}");
                     foreach (var sb in scopeBoxes)
                     {
-                        scopeBoxDiagnostics.Add($"  - '{sb.Name}' (ID: {sb.Id.AsLong()})");
                     }
 
                     Element targetScopeBox = scopeBoxes.FirstOrDefault(sb =>
@@ -1146,26 +997,18 @@ public partial class CustomGUIs
 
                     if (targetScopeBox != null)
                     {
-                        scopeBoxDiagnostics.Add($"Found matching scope box: '{targetScopeBox.Name}' (ID: {targetScopeBox.Id.AsLong()})");
                         try
                         {
                             scopeBoxParam.Set(targetScopeBox.Id);
-                            scopeBoxDiagnostics.Add($"SUCCESS: Set scope box to '{targetScopeBox.Name}'");
-                            System.IO.File.AppendAllLines(diagnosticPath, scopeBoxDiagnostics);
                             return true;
                         }
-                        catch (Exception ex)
+                        catch
                         {
-                            diagnosticLines.Add($"ERROR: Failed to set scope box: {ex.Message}");
-                            diagnosticLines.Add($"ERROR: Stack trace: {ex.StackTrace}");
-                            System.IO.File.AppendAllLines(diagnosticPath, diagnosticLines);
                             return false;
                         }
                     }
                     else
                     {
-                        diagnosticLines.Add($"ERROR: No scope box named '{strValue}' found in document");
-                        System.IO.File.AppendAllLines(diagnosticPath, diagnosticLines);
                         return false;
                     }
                 }
@@ -1909,29 +1752,17 @@ public partial class CustomGUIs
     /// <summary>
     /// Apply edits to workset entries (from SelectByWorksetsIn* commands)
     /// </summary>
-    private static bool ApplyWorksetEdit(Document doc, Dictionary<string, object> entry, string columnName, object newValue, List<string> diagnosticLines = null)
+    private static bool ApplyWorksetEdit(Document doc, Dictionary<string, object> entry, string columnName, object newValue)
     {
         if (!doc.IsWorkshared)
-        {
-            if (diagnosticLines != null)
-                diagnosticLines.Add($"          Document is not workshared");
             return false;
-        }
 
         // Get the WorksetId from the entry (stable identifier)
         if (!entry.TryGetValue("WorksetId", out var worksetIdObj) || worksetIdObj == null)
-        {
-            if (diagnosticLines != null)
-                diagnosticLines.Add($"          WorksetId not found in entry");
             return false;
-        }
 
         if (!(worksetIdObj is WorksetId worksetId))
-        {
-            if (diagnosticLines != null)
-                diagnosticLines.Add($"          WorksetId is not a valid WorksetId type");
             return false;
-        }
 
         string strValue = newValue?.ToString() ?? "";
         string lowerColumnName = columnName.ToLowerInvariant();
@@ -2065,7 +1896,7 @@ public partial class CustomGUIs
         Dictionary<string, List<(long internalId, Dictionary<string, object> entry, object newValue)>> editsByColumn,
         HashSet<string> uniqueNameColumns,
         Document doc,
-        List<string> diagnosticLines)
+        List<string> diagnosticLines = null)
     {
         var result = new DuplicateNameInfo();
 
@@ -2265,7 +2096,7 @@ public partial class CustomGUIs
     private static void AppendUniqueSuffixes(
         Dictionary<string, List<(long internalId, Dictionary<string, object> entry, object newValue)>> editsByColumn,
         DuplicateNameInfo duplicateInfo,
-        List<string> diagnosticLines)
+        List<string> diagnosticLines = null)
     {
         var random = new System.Random();
 
