@@ -928,6 +928,37 @@ dotnet build installer/installer.csproj
 - Let the user know the command is ready but not registered
 - If registration is needed, ask the user or wait for explicit instruction
 
+## Command Design Principles
+
+**Silent Completion:**
+- Commands should complete silently without showing success dialogs
+- Do NOT show "Operation Complete", "Success", or summary dialogs at the end
+- Users should feel the command executed smoothly without interruption
+- Only show dialogs for:
+  - **Errors**: When operation fails and user needs to know why
+  - **Required input**: When user must make a decision to proceed
+  - **Warnings**: When user should be aware of important conditions
+
+**Example - WRONG:**
+```csharp
+// After successful operation
+TaskDialog.Show("Success", "Synchronized 3 documents successfully!");
+return Result.Succeeded;
+```
+
+**Example - CORRECT:**
+```csharp
+// After successful operation - just return silently
+return Result.Succeeded;
+
+// Only show dialog on error
+catch (Exception ex)
+{
+    TaskDialog.Show("Error", $"Failed to synchronize: {ex.Message}");
+    return Result.Failed;
+}
+```
+
 ## File Naming Conventions
 
 - **Command Files**: PascalCase matching class name (e.g., `DataGrid2EditMode.cs`)
