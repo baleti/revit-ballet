@@ -4,6 +4,7 @@ using Autodesk.Revit.Attributes;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using RevitBallet.Commands;
 
 [TransactionAttribute(TransactionMode.Manual)]
 public class CopyCropRegionOfSelectedView : IExternalCommand
@@ -17,35 +18,60 @@ public class CopyCropRegionOfSelectedView : IExternalCommand
         // Get the current selection
         ICollection<ElementId> selectedIds = uidoc.GetSelectionIds();
 
-        // Check if exactly one element is selected
-        if (selectedIds.Count != 1)
+        // Check if at least one element is selected
+        if (selectedIds.Count == 0)
         {
-            TaskDialog.Show("Error", "Please select exactly one view or viewport to copy the crop region from.");
+            TaskDialog.Show("Error", "Please select at least one view or viewport.");
             return Result.Failed;
         }
 
-        // Get the selected element
-        ElementId selectedId = selectedIds.First();
-        Element selectedElement = doc.GetElement(selectedId);
+        // Get all selected views (resolve viewports to their views)
+        List<View> selectedViews = new List<View>();
+        foreach (ElementId selectedId in selectedIds)
+        {
+            Element selectedElement = doc.GetElement(selectedId);
+            View view = null;
+
+            if (selectedElement is Viewport viewport)
+            {
+                view = doc.GetElement(viewport.ViewId) as View;
+            }
+            else if (selectedElement is View v)
+            {
+                view = v;
+            }
+
+            if (view != null)
+            {
+                selectedViews.Add(view);
+            }
+        }
+
+        // Check if we have valid views
+        if (selectedViews.Count == 0)
+        {
+            TaskDialog.Show("Error", "No views or viewports found in selection.");
+            return Result.Failed;
+        }
 
         // Determine the source view to get crop region from
         View sourceView = null;
 
-        if (selectedElement is Viewport)
+        if (selectedViews.Count == 1)
         {
-            // If a viewport is selected, get its view
-            Viewport viewport = selectedElement as Viewport;
-            sourceView = doc.GetElement(viewport.ViewId) as View;
-        }
-        else if (selectedElement is View)
-        {
-            // If a view is directly selected
-            sourceView = selectedElement as View;
+            // Single selection - use it as source
+            sourceView = selectedViews[0];
         }
         else
         {
-            message = "The selected element is not a view or viewport.";
-            return Result.Failed;
+            // Multiple selections - show DataGrid to let user pick the source
+            sourceView = PromptUserForSourceView(doc, uidoc, selectedViews);
+
+            if (sourceView == null)
+            {
+                // User cancelled
+                return Result.Cancelled;
+            }
         }
 
         // Check if the source view has a crop region
@@ -98,9 +124,80 @@ public class CopyCropRegionOfSelectedView : IExternalCommand
             return Result.Failed;
         }
 
-        // Create mappings for views that are placed on sheets
+        // Get all OTHER selected views (excluding source) as target views
+        List<View> targetViews = selectedViews.Where(v => v.Id != sourceView.Id).ToList();
+
+        if (targetViews.Count == 0)
+        {
+            TaskDialog.Show("Info", "Only one view was selected. No target views to copy crop region to.");
+            return Result.Cancelled;
+        }
+
+        // Apply the crop region to target views
+        using (Transaction trans = new Transaction(doc, "Copy Crop Region to Selected Views"))
+        {
+            trans.Start();
+
+            int successCount = 0;
+            foreach (View targetView in targetViews)
+            {
+                try
+                {
+                    // Store the original crop visibility state
+                    bool originalCropVisibility = targetView.CropBoxVisible;
+
+                    // Activate crop box on target view
+                    targetView.CropBoxActive = true;
+
+                    // Try to apply the crop shape using ViewCropRegionShapeManager
+                    bool shapeApplied = false;
+                    try
+                    {
+                        ViewCropRegionShapeManager targetCropManager = targetView.GetCropRegionShapeManager();
+                        targetCropManager.SetCropShape(sourceCropShape);
+                        shapeApplied = true;
+                    }
+                    catch (Autodesk.Revit.Exceptions.InvalidOperationException)
+                    {
+                        // View might not support non-rectangular crop shapes
+                        shapeApplied = false;
+                    }
+
+                    // If SetCropShape failed or threw an exception, fall back to setting the CropBox
+                    if (!shapeApplied)
+                    {
+                        BoundingBoxXYZ sourceBBox = GetBoundingBox(sourceCropShape);
+                        targetView.CropBox = sourceBBox;
+                    }
+
+                    // Restore original crop visibility state
+                    targetView.CropBoxVisible = originalCropVisibility;
+                    successCount++;
+                }
+                catch (Exception ex)
+                {
+                    // Log exception but continue with other views
+                    TaskDialog.Show("Error", $"Failed to apply crop region to view '{targetView.Title}': {ex.Message}");
+                }
+            }
+
+            trans.Commit();
+        }
+
+        return Result.Succeeded;
+    }
+
+    /// <summary>
+    /// Shows a DataGrid to let user select the source view from multiple selected views.
+    /// Uses the same columns and sorting as SelectViews command.
+    /// </summary>
+    private View PromptUserForSourceView(Document doc, UIDocument uidoc, List<View> views)
+    {
+        // Get the currently active view
+        View activeView = doc.ActiveView;
+
+        // Create a mapping for views that are placed on sheets
         Dictionary<ElementId, ViewSheet> viewToSheetMap = new Dictionary<ElementId, ViewSheet>();
-        Dictionary<ElementId, ElementId> viewToViewportMap = new Dictionary<ElementId, ElementId>();
         FilteredElementCollector sheetCollector = new FilteredElementCollector(doc)
             .OfClass(typeof(ViewSheet));
         foreach (ViewSheet sheet in sheetCollector)
@@ -111,147 +208,131 @@ public class CopyCropRegionOfSelectedView : IExternalCommand
                 if (viewport != null)
                 {
                     viewToSheetMap[viewport.ViewId] = sheet;
-                    viewToViewportMap[viewport.ViewId] = viewportId;
                 }
             }
         }
 
-        // Get all views in the project
-        FilteredElementCollector viewCollector = new FilteredElementCollector(doc)
-            .OfClass(typeof(View));
+        // Get browser organization columns (pass views so it can detect sheets vs views)
+        List<BrowserOrganizationHelper.BrowserColumn> browserColumns =
+            BrowserOrganizationHelper.GetBrowserColumnsForViews(doc, views);
 
-        // Prepare data for the data grid and map view titles to view objects
+        // Prepare data for the data grid
         List<Dictionary<string, object>> viewData = new List<Dictionary<string, object>>();
-        Dictionary<string, View> titleToViewMap = new Dictionary<string, View>();
 
-        foreach (View view in viewCollector.Cast<View>())
+        foreach (View view in views)
         {
-            // Skip view templates, legends, schedules, project browser, system browser,
-            // views that cannot be cropped, and the source view
-            if (view.IsTemplate || 
-                view.ViewType == ViewType.Legend || 
-                view.ViewType == ViewType.Schedule ||
-                view.ViewType == ViewType.ProjectBrowser ||
-                view.ViewType == ViewType.SystemBrowser ||
-                view.Id.AsLong() == sourceView.Id.AsLong()) // Skip the source view
-                continue;
+            Dictionary<string, object> viewInfo = new Dictionary<string, object>();
 
-            // Skip views that don't support crop box (additional check)
-            if (!CanViewBeCropped(view))
-                continue;
+            // Add browser organization columns first
+            BrowserOrganizationHelper.AddBrowserColumnsToDict(viewInfo, view, doc, browserColumns);
 
-            string sheetInfo = string.Empty;
-            if (view is ViewSheet)
+            // Then add standard columns - differentiate between ViewSheet and regular views
+            if (view is ViewSheet viewSheet)
             {
-                // For a sheet, show its own sheet number and name
-                ViewSheet viewSheet = view as ViewSheet;
-                sheetInfo = $"{viewSheet.SheetNumber} - {viewSheet.Name}";
-            }
-            else if (viewToSheetMap.TryGetValue(view.Id, out ViewSheet sheet))
-            {
-                // For non-sheet views placed on a sheet, display the sheet info
-                sheetInfo = $"{sheet.SheetNumber} - {sheet.Name}";
+                // For a sheet, show its sheet number and name separately
+                viewInfo["SheetNumber"] = viewSheet.SheetNumber;
+                viewInfo["Name"] = viewSheet.Name;
+                viewInfo["Sheet"] = ""; // Empty for sheets
             }
             else
             {
-                sheetInfo = "Not Placed";
+                viewInfo["SheetNumber"] = ""; // Empty for non-sheet views
+                viewInfo["Name"] = view.Name;
+
+                // Check if view is placed on a sheet
+                if (viewToSheetMap.TryGetValue(view.Id, out ViewSheet sheet))
+                {
+                    // For non-sheet views placed on a sheet, display the sheet info.
+                    viewInfo["Sheet"] = $"{sheet.SheetNumber} - {sheet.Name}";
+                }
+                else
+                {
+                    viewInfo["Sheet"] = "Not Placed";
+                }
             }
 
-            // Add view info to the data collection
-            titleToViewMap[view.Title] = view;
-            Dictionary<string, object> viewInfo = new Dictionary<string, object>
-            {
-                { "ElementID", view.Id.AsLong() },
-                { "Title", view.Title },
-                { "View Type", view.ViewType.ToString() },
-                { "Sheet", sheetInfo }
-            };
-
-            // Add ViewportID if view has a corresponding viewport (for # selection set filtering)
-            if (viewToViewportMap.TryGetValue(view.Id, out ElementId viewportId))
-            {
-                viewInfo["ViewportID"] = viewportId.AsLong();
-            }
+            viewInfo["__OriginalObject"] = view; // Store original object for retrieval
 
             viewData.Add(viewInfo);
         }
 
-        // Define the column headers
-        // Note: ElementID is included in data for selection set filtering (#"name" syntax) but not shown by default
-        List<string> columns = new List<string> { "Title", "View Type", "Sheet" };
+        // Sort by browser organization columns (if any), otherwise by Name
+        if (browserColumns != null && browserColumns.Count > 0)
+        {
+            viewData = BrowserOrganizationHelper.SortByBrowserColumns(viewData, browserColumns);
+        }
+        else
+        {
+            viewData = viewData.OrderBy(v => v["Name"].ToString()).ToList();
+        }
+
+        // Determine initial selection based on active view
+        List<int> initialSelection = new List<int>();
+
+        if (activeView != null)
+        {
+            if (activeView is ViewSheet activeSheet)
+            {
+                // Active view is a sheet - select all views in the list that are placed on this sheet
+                for (int i = 0; i < viewData.Count; i++)
+                {
+                    if (viewData[i].ContainsKey("__OriginalObject") && viewData[i]["__OriginalObject"] is View v)
+                    {
+                        // Check if this view is placed on the active sheet
+                        if (viewToSheetMap.TryGetValue(v.Id, out ViewSheet sheet) && sheet.Id == activeSheet.Id)
+                        {
+                            initialSelection.Add(i);
+                        }
+                    }
+                }
+            }
+            else
+            {
+                // Active view is not a sheet - find and select it if it's in the list
+                for (int i = 0; i < viewData.Count; i++)
+                {
+                    if (viewData[i].ContainsKey("__OriginalObject") && viewData[i]["__OriginalObject"] is View v)
+                    {
+                        if (v.Id == activeView.Id)
+                        {
+                            initialSelection.Add(i);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Define the column headers - browser columns first, then standard columns.
+        List<string> columns = new List<string>();
+        columns.AddRange(browserColumns.Select(bc => bc.Name));
+        columns.Add("SheetNumber");
+        columns.Add("Name");
+        columns.Add("Sheet");
 
         // Set UIDocument for selection set support
         CustomGUIs.SetCurrentUIDocument(uidoc);
 
-        // Show the selection dialog using CustomGUIs.DataGrid
-        List<Dictionary<string, object>> selectedViews = CustomGUIs.DataGrid(
+        // Show the selection dialog - user must select exactly ONE view as source
+        List<Dictionary<string, object>> selectedViewData = CustomGUIs.DataGrid(
             viewData,
             columns,
-            false  // Don't span all screens
+            false,  // Don't span all screens
+            initialSelection.Count > 0 ? initialSelection : null  // Pass initial selection
         );
 
-        // If the user made a selection, apply the crop region to those views
-        if (selectedViews != null && selectedViews.Any())
+        // Return the selected view (only one should be selected)
+        if (selectedViewData != null && selectedViewData.Count > 0)
         {
-            using (Transaction trans = new Transaction(doc, "Copy Crop Region to Selected Views"))
+            // Get the first selected view (use __OriginalObject)
+            if (selectedViewData[0].ContainsKey("__OriginalObject") &&
+                selectedViewData[0]["__OriginalObject"] is View selectedView)
             {
-                trans.Start();
-
-                int successCount = 0;
-                foreach (Dictionary<string, object> selectedViewData in selectedViews)
-                {
-                    string viewTitle = selectedViewData["Title"].ToString();
-                    if (titleToViewMap.TryGetValue(viewTitle, out View targetView))
-                    {
-                        try
-                        {
-                            // Store the original crop visibility state
-                            bool originalCropVisibility = targetView.CropBoxVisible;
-
-                            // Activate crop box on target view
-                            targetView.CropBoxActive = true;
-
-                            // Try to apply the crop shape using ViewCropRegionShapeManager
-                            bool shapeApplied = false;
-                            try
-                            {
-                                ViewCropRegionShapeManager targetCropManager = targetView.GetCropRegionShapeManager();
-                                targetCropManager.SetCropShape(sourceCropShape);
-                                shapeApplied = true;
-                            }
-                            catch (Autodesk.Revit.Exceptions.InvalidOperationException)
-                            {
-                                // View might not support non-rectangular crop shapes
-                                shapeApplied = false;
-                            }
-
-                            // If SetCropShape failed or threw an exception, fall back to setting the CropBox
-                            if (!shapeApplied)
-                            {
-                                BoundingBoxXYZ sourceBBox = GetBoundingBox(sourceCropShape);
-                                targetView.CropBox = sourceBBox;
-                            }
-
-                            // Restore original crop visibility state
-                            targetView.CropBoxVisible = originalCropVisibility;
-                            successCount++;
-                        }
-                        catch (Exception ex)
-                        {
-                            // Log exception but continue with other views
-                            TaskDialog.Show("Error", $"Failed to apply crop region to view '{viewTitle}': {ex.Message}");
-                        }
-                    }
-                }
-
-                trans.Commit();
-                
+                return selectedView;
             }
-
-            return Result.Succeeded;
         }
 
-        return Result.Cancelled;
+        return null; // User cancelled or no valid selection
     }
 
     // Helper method to check if a view can be cropped
