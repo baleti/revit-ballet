@@ -327,12 +327,51 @@ public partial class CustomGUIs
                                 return true;
 
                             case StorageType.Integer:
-                                if (int.TryParse(strValue, out int intValue))
+                                // Check if this is a Yes/No parameter
+                                bool isYesNoParameter = false;
+#if REVIT2021 || REVIT2022 || REVIT2023 || REVIT2024 || REVIT2025 || REVIT2026
+                                try
                                 {
-                                    param.Set(intValue);
+                                    // Revit 2021+: Use SpecTypeId
+                                    var dataType = param.Definition.GetDataType();
+                                    isYesNoParameter = dataType != null && dataType == SpecTypeId.Boolean.YesNo;
+                                }
+                                catch { }
+#else
+                                // Revit 2017-2020: Use ParameterType enum
+                                try
+                                {
+                                    isYesNoParameter = param.Definition.ParameterType == ParameterType.YesNo;
+                                }
+                                catch { }
+#endif
+
+                                if (isYesNoParameter)
+                                {
+                                    // Yes/No parameter - interpret text values
+                                    string normalized = strValue.Trim().ToLowerInvariant();
+                                    int yesNoValue;
+
+                                    if (normalized == "yes" || normalized == "true" || normalized == "1")
+                                        yesNoValue = 1;
+                                    else if (normalized == "no" || normalized == "false" || normalized == "0")
+                                        yesNoValue = 0;
+                                    else
+                                        return false; // Invalid value for Yes/No parameter
+
+                                    param.Set(yesNoValue);
                                     return true;
                                 }
-                                return false;
+                                else
+                                {
+                                    // Regular integer parameter
+                                    if (int.TryParse(strValue, out int intValue))
+                                    {
+                                        param.Set(intValue);
+                                        return true;
+                                    }
+                                    return false;
+                                }
 
                             case StorageType.Double:
                                 // Use SetValueString to handle unit conversion automatically
