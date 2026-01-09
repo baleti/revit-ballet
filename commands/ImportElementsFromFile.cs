@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.Attributes;
@@ -55,8 +55,7 @@ namespace RevitCommands
                     ModelPath modelPath = ModelPathUtils.ConvertUserVisiblePathToModelPath(filePath);
                     sourceDoc = app.OpenDocumentFile(modelPath, openOptions);
 
-                    // Collect all 3D model elements from source
-                    // Use multiple collectors for different element classes
+                    // Collect elements from source document
                     List<ElementId> sourceElementIds = new List<ElementId>();
 
                     // Collect model elements
@@ -67,7 +66,7 @@ namespace RevitCommands
                     foreach (Element elem in modelCollector)
                     {
                         // Filter for 3D elements with geometry
-                        if (elem.Location != null && 
+                        if (elem.Location != null &&
                             elem.Category != null &&
                             elem.get_BoundingBox(null) != null &&
                             IsValidModelElement(elem))
@@ -76,20 +75,38 @@ namespace RevitCommands
                         }
                     }
 
+                    // Also collect views (legends, schedules, drafting views)
+                    FilteredElementCollector viewCollector = new FilteredElementCollector(sourceDoc)
+                        .OfClass(typeof(Autodesk.Revit.DB.View));
+
+                    foreach (Autodesk.Revit.DB.View view in viewCollector)
+                    {
+                        // Only copy legend views, schedules, and drafting views (not standard views)
+                        if (view.ViewType == ViewType.Legend ||
+                            view.ViewType == ViewType.Schedule ||
+                            view.ViewType == ViewType.DraftingView)
+                        {
+                            if (!view.IsTemplate)
+                            {
+                                sourceElementIds.Add(view.Id);
+                            }
+                        }
+                    }
+
                     if (sourceElementIds.Count == 0)
                     {
                         TaskDialog.Show("Import Elements",
-                            $"No valid 3D elements found in file:\n{filePath}");
+                            $"No valid elements found in file:\n{filePath}");
                         return Result.Succeeded;
                     }
 
                     // Collect dependent elements (types, materials, etc.)
                     HashSet<ElementId> allElementIds = new HashSet<ElementId>(sourceElementIds);
-                    
+
                     foreach (ElementId id in sourceElementIds)
                     {
                         Element elem = sourceDoc.GetElement(id);
-                        
+
                         // Add element type
                         ElementId typeId = elem.GetTypeId();
                         if (typeId != ElementId.InvalidElementId)
@@ -105,60 +122,77 @@ namespace RevitCommands
                         }
                     }
 
-                    // Copy elements to current document
+                    // Copy elements to current document (try each individually to handle failures gracefully)
+                    int successCount = 0;
+                    int failureCount = 0;
+
                     using (Transaction trans = new Transaction(currentDoc, "Import Elements"))
                     {
                         trans.Start();
 
-                        try
+                        foreach (ElementId elemId in allElementIds)
                         {
-                            // Copy elements from source document
-                            CopyPasteOptions options = new CopyPasteOptions();
-                            options.SetDuplicateTypeNamesHandler(new DuplicateTypeNamesHandler());
-
-                            ICollection<ElementId> copiedIds = ElementTransformUtils.CopyElements(
-                                sourceDoc,
-                                allElementIds.ToList(),
-                                currentDoc,
-                                Transform.Identity,
-                                options);
-
-                            // Filter out types and materials from the imported list for selection
-                            foreach (ElementId id in copiedIds)
+                            try
                             {
-                                Element elem = currentDoc.GetElement(id);
-                                if (elem != null && 
-                                    !(elem is ElementType) && 
-                                    !(elem is Material) &&
-                                    elem.Category != null)
+                                CopyPasteOptions options = new CopyPasteOptions();
+                                options.SetDuplicateTypeNamesHandler(new DuplicateTypeNamesHandler());
+
+                                ICollection<ElementId> copiedIds = ElementTransformUtils.CopyElements(
+                                    sourceDoc,
+                                    new List<ElementId> { elemId },
+                                    currentDoc,
+                                    Transform.Identity,
+                                    options);
+
+                                if (copiedIds != null && copiedIds.Count > 0)
                                 {
-                                    importedElementIds.Add(id);
+                                    successCount++;
+
+                                    // Add to selection list if it's not a type or material
+                                    foreach (ElementId copiedId in copiedIds)
+                                    {
+                                        Element copiedElem = currentDoc.GetElement(copiedId);
+                                        if (copiedElem != null &&
+                                            !(copiedElem is ElementType) &&
+                                            !(copiedElem is Material) &&
+                                            copiedElem.Category != null)
+                                        {
+                                            importedElementIds.Add(copiedId);
+                                        }
+                                    }
+                                }
+                                else
+                                {
+                                    failureCount++;
                                 }
                             }
+                            catch (Exception)
+                            {
+                                failureCount++;
+                            }
+                        }
 
-                            trans.Commit();
-                        }
-                        catch (Exception copyEx)
-                        {
-                            trans.RollBack();
-                            TaskDialog.Show("Copy Failed", 
-                                $"Failed to copy elements: {copyEx.Message}\n\n" +
-                                "This might be due to:\n" +
-                                "- Name conflicts\n" +
-                                "- Different Revit versions\n" +
-                                "- Missing families or types\n" +
-                                "- Corrupted elements");
-                            return Result.Failed;
-                        }
+                        trans.Commit();
                     }
 
                     // Set selection to imported elements
                     if (importedElementIds.Count > 0)
                     {
                         uiDoc.SetSelectionIds(importedElementIds);
-                        
-                        TaskDialog.Show("Import Complete",
-                            $"Successfully imported {importedElementIds.Count} element(s) from:\n{System.IO.Path.GetFileName(filePath)}");
+                    }
+
+                    // Show result if some elements failed
+                    if (failureCount > 0 && successCount == 0)
+                    {
+                        TaskDialog.Show("Import Failed", "All elements failed to copy.");
+                        return Result.Failed;
+                    }
+                    else if (failureCount > 0)
+                    {
+                        TaskDialog.Show("Partial Success",
+                            $"Import completed with issues:\n" +
+                            $"- {successCount} element(s) copied successfully\n" +
+                            $"- {failureCount} element(s) failed to copy");
                     }
                 }
                 finally
