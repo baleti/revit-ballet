@@ -43,6 +43,7 @@ public class CopySelectedElementsToViewsInDocument : IExternalCommand
                 !view.IsTemplate &&
                 view.ViewType != ViewType.ProjectBrowser &&
                 view.ViewType != ViewType.SystemBrowser &&
+                view.ViewType != ViewType.Legend && // Legend views can't be target views
                 view.Id != activeView.Id) // Exclude current view
             {
                 viewsInSelection.Add(view);
@@ -55,6 +56,7 @@ public class CopySelectedElementsToViewsInDocument : IExternalCommand
                     !viewportView.IsTemplate &&
                     viewportView.ViewType != ViewType.ProjectBrowser &&
                     viewportView.ViewType != ViewType.SystemBrowser &&
+                    viewportView.ViewType != ViewType.Legend && // Legend views can't be target views
                     viewportView.Id != activeView.Id)
                 {
                     viewsInSelection.Add(viewportView);
@@ -96,7 +98,8 @@ public class CopySelectedElementsToViewsInDocument : IExternalCommand
                 .Where(v =>
                        !v.IsTemplate &&
                        v.ViewType != ViewType.ProjectBrowser &&
-                       v.ViewType != ViewType.SystemBrowser)
+                       v.ViewType != ViewType.SystemBrowser &&
+                       v.ViewType != ViewType.Legend) // Legend views can't be target views
                 .ToList();
 
             // Get browser organization columns (pass views so it can detect sheets vs views)
