@@ -715,6 +715,22 @@ public static class ElementDataHelper
         // IMPORTANT: Do NOT call get_Geometry() as it can trigger regeneration
         // Only use get_BoundingBox(null) which reads from the database
         BoundingBoxXYZ bb = element.get_BoundingBox(null);
+
+        // Special case: Text elements on sheets have Location type but get_BoundingBox(null) returns null
+        // Need to use get_BoundingBox(view) with the owner view
+        if (bb == null && element.OwnerViewId != null && element.OwnerViewId != ElementId.InvalidElementId)
+        {
+            try
+            {
+                Document elementDoc = element.Document;
+                View ownerView = elementDoc.GetElement(element.OwnerViewId) as View;
+                if (ownerView != null)
+                {
+                    bb = element.get_BoundingBox(ownerView);
+                }
+            }
+            catch { /* Skip if we can't get owner view bounding box */ }
+        }
         // Note: We intentionally do NOT fall back to get_Geometry() here to avoid
         // triggering regeneration of inactive views/sheets
 

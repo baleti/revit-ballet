@@ -329,16 +329,16 @@ public partial class CustomGUIs
                             case StorageType.Integer:
                                 // Check if this is a Yes/No parameter
                                 bool isYesNoParameter = false;
-#if REVIT2021 || REVIT2022 || REVIT2023 || REVIT2024 || REVIT2025 || REVIT2026
+#if REVIT2022 || REVIT2023 || REVIT2024 || REVIT2025 || REVIT2026
                                 try
                                 {
-                                    // Revit 2021+: Use SpecTypeId
+                                    // Revit 2022+: Use GetDataType() and SpecTypeId.Boolean
                                     var dataType = param.Definition.GetDataType();
                                     isYesNoParameter = dataType != null && dataType == SpecTypeId.Boolean.YesNo;
                                 }
                                 catch { }
 #else
-                                // Revit 2017-2020: Use ParameterType enum
+                                // Revit 2017-2021: Use ParameterType enum
                                 try
                                 {
                                     isYesNoParameter = param.Definition.ParameterType == ParameterType.YesNo;
@@ -1287,6 +1287,191 @@ public partial class CustomGUIs
                     return false;
                 }
             });
+
+            // X Centroid
+            Register(new ColumnHandler
+            {
+                ColumnName = "X Centroid",
+                IsEditable = true,
+                Description = "X coordinate of element centroid in project coordinates",
+                Getter = (elem, doc) =>
+                {
+                    // Getter is handled by ElementDataHelper - just return null here
+                    // The actual value is computed during data collection
+                    return null;
+                },
+                Setter = (elem, doc, newValue) =>
+                {
+                    if (!double.TryParse(newValue?.ToString(), out double displayValue))
+                        return false;
+
+                    // Convert from display units to internal units (feet)
+                    double targetX = ConvertToInternal(displayValue, doc);
+
+                    // Get current X coordinate
+                    XYZ currentPos = GetElementPosition(elem, doc);
+                    if (currentPos == null)
+                        return false;
+
+                    // Calculate offset
+                    double deltaX = targetX - currentPos.X;
+                    XYZ translation = new XYZ(deltaX, 0, 0);
+
+                    // Move element
+                    return MoveElement(elem, doc, translation);
+                }
+            });
+
+            // Y Centroid
+            Register(new ColumnHandler
+            {
+                ColumnName = "Y Centroid",
+                IsEditable = true,
+                Description = "Y coordinate of element centroid in project coordinates",
+                Getter = (elem, doc) =>
+                {
+                    // Getter is handled by ElementDataHelper - just return null here
+                    // The actual value is computed during data collection
+                    return null;
+                },
+                Setter = (elem, doc, newValue) =>
+                {
+                    if (!double.TryParse(newValue?.ToString(), out double displayValue))
+                        return false;
+
+                    // Convert from display units to internal units (feet)
+                    double targetY = ConvertToInternal(displayValue, doc);
+
+                    // Get current Y coordinate
+                    XYZ currentPos = GetElementPosition(elem, doc);
+                    if (currentPos == null)
+                        return false;
+
+                    // Calculate offset
+                    double deltaY = targetY - currentPos.Y;
+                    XYZ translation = new XYZ(0, deltaY, 0);
+
+                    // Move element
+                    return MoveElement(elem, doc, translation);
+                }
+            });
+        }
+
+        /// <summary>
+        /// Get the position (centroid) of an element
+        /// Returns XYZ in internal units (feet)
+        /// CRITICAL: Must match GetElementCentroid logic in FilterSelected.cs
+        /// </summary>
+        private static XYZ GetElementPosition(Element elem, Document doc)
+        {
+            // Viewport elements - use GetBoxOutline center
+            if (elem is Viewport viewport)
+            {
+                try
+                {
+                    Outline outline = viewport.GetBoxOutline();
+                    XYZ min = outline.MinimumPoint;
+                    XYZ max = outline.MaximumPoint;
+                    return (min + max) / 2.0;
+                }
+                catch { }
+            }
+
+            // LocationPoint elements
+            if (elem.Location is LocationPoint locationPoint)
+            {
+                return locationPoint.Point;
+            }
+
+            // LocationCurve elements - use midpoint
+            if (elem.Location is LocationCurve locationCurve)
+            {
+                Curve curve = locationCurve.Curve;
+                return (curve.GetEndPoint(0) + curve.GetEndPoint(1)) / 2.0;
+            }
+
+            // For elements without location (including TextNote), use bounding box centroid
+            // IMPORTANT: Do NOT use TextNote.Coord as it's the insertion point, not the visual center
+            BoundingBoxXYZ bb = elem.get_BoundingBox(null);
+
+            // For elements on sheets/views (including TextNote), try with owner view
+            if (bb == null && elem.OwnerViewId != null && elem.OwnerViewId != ElementId.InvalidElementId)
+            {
+                try
+                {
+                    View ownerView = doc.GetElement(elem.OwnerViewId) as View;
+                    if (ownerView != null)
+                    {
+                        bb = elem.get_BoundingBox(ownerView);
+                    }
+                }
+                catch { }
+            }
+
+            if (bb != null)
+            {
+                return (bb.Min + bb.Max) / 2.0;
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Move an element by a translation vector
+        /// Returns true if successful
+        /// CRITICAL: For TextNote, moves the Coord property which will translate the bounding box by the same amount
+        /// </summary>
+        private static bool MoveElement(Element elem, Document doc, XYZ translation)
+        {
+            try
+            {
+                // Viewport elements - cannot be moved directly via API
+                // Viewports are positioned by the view placement on sheet
+                if (elem is Viewport)
+                {
+                    // Viewports cannot be moved - they represent view placements
+                    return false;
+                }
+
+                // LocationPoint elements
+                if (elem.Location is LocationPoint locationPoint)
+                {
+                    XYZ newPoint = locationPoint.Point + translation;
+                    locationPoint.Point = newPoint;
+                    return true;
+                }
+
+                // LocationCurve elements
+                if (elem.Location is LocationCurve locationCurve)
+                {
+                    locationCurve.Move(translation);
+                    return true;
+                }
+
+                // TextNote elements and other elements without Location - use Coord property or ElementTransformUtils
+                if (elem is TextNote textNote)
+                {
+                    var coordProp = textNote.GetType().GetProperty("Coord");
+                    if (coordProp != null && coordProp.CanWrite)
+                    {
+                        XYZ currentCoord = coordProp.GetValue(textNote, null) as XYZ;
+                        if (currentCoord != null)
+                        {
+                            XYZ newCoord = currentCoord + translation;
+                            coordProp.SetValue(textNote, newCoord, null);
+                            return true;
+                        }
+                    }
+                }
+
+                // Fallback: Use ElementTransformUtils for other elements
+                ElementTransformUtils.MoveElement(doc, elem.Id, translation);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         /// <summary>
