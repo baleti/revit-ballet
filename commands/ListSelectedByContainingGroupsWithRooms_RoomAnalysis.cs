@@ -5,7 +5,7 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Architecture;
 
-public partial class FilterSelectedByContainingGroupsWithRooms
+public partial class ListSelectedByContainingGroupsWithRooms
 {
     // Cache for room data
     private Dictionary<ElementId, RoomData> _roomDataCache = new Dictionary<ElementId, RoomData>();
