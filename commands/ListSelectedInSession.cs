@@ -7,11 +7,11 @@ using System.Collections.Generic;
 using System.Linq;
 
 /// <summary>
-/// Filters selected elements across all open documents in the session.
+/// Lists selected elements across all open documents in the session.
 /// Uses SelectionStorage for cross-document selection tracking.
 /// </summary>
 [Transaction(TransactionMode.Manual)]
-public class FilterSelectedInSession : IExternalCommand
+public class ListSelectedInSession : IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
     {
