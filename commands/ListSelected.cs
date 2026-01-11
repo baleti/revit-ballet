@@ -185,6 +185,66 @@ public static class ElementDataHelper
     }
 
     /// <summary>
+    /// Extract text contents from text-containing elements like TextNote, tags, dimensions, etc.
+    /// Returns null if element doesn't contain text.
+    /// </summary>
+    private static string GetElementTextContents(Element element)
+    {
+        try
+        {
+            // TextNote elements
+            if (element is TextNote textNote)
+            {
+                return textNote.Text;
+            }
+
+            // Independent tags (Room Tags, Space Tags, etc.)
+            if (element is IndependentTag tag)
+            {
+                return tag.TagText;
+            }
+
+            // Dimensions
+            if (element is Dimension dimension)
+            {
+                return dimension.ValueString;
+            }
+
+            // Multi-segment dimensions
+            if (element is MultiSegmentDimension multiDim)
+            {
+                // Collect all segment values
+                var segments = new List<string>();
+                foreach (DimensionSegment segment in multiDim.Segments)
+                {
+                    if (!string.IsNullOrEmpty(segment.ValueString))
+                    {
+                        segments.Add(segment.ValueString);
+                    }
+                }
+                return segments.Any() ? string.Join(" | ", segments) : null;
+            }
+
+            // Grids and levels have text in their Name, which is already shown
+            // No need to duplicate it in Contents
+
+            // For other elements, check if they have a TEXT parameter (common in families)
+            Parameter textParam = element.LookupParameter("Text");
+            if (textParam != null && textParam.HasValue && textParam.StorageType == StorageType.String)
+            {
+                string text = textParam.AsString();
+                if (!string.IsNullOrEmpty(text))
+                {
+                    return text;
+                }
+            }
+        }
+        catch { /* Skip if we can't get text contents */ }
+
+        return null;
+    }
+
+    /// <summary>
     /// Creates a data dictionary for an element with standard columns including Family and Type Name.
     ///
     /// FRAMEWORK NOTE: This method provides automatic family/type editing support for all commands.
@@ -586,6 +646,13 @@ public static class ElementDataHelper
             }
         }
 
+        // Add Contents column for text-containing elements
+        string contents = GetElementTextContents(element);
+        if (!string.IsNullOrEmpty(contents))
+        {
+            data["Contents"] = contents;
+        }
+
         return data;
     }
 
@@ -789,7 +856,7 @@ public static class ElementDataHelper
 /// Base class for commands that display Revit elements in a custom data‑grid for filtering and re‑selection.
 /// Now supports elements from linked models and includes scope box information.
 /// </summary>
-public abstract class FilterElementsBase : IExternalCommand
+public abstract class ListElementsBase : IExternalCommand
 {
     public abstract bool SpanAllScreens { get; }
     public abstract bool UseSelectedElements { get; }
@@ -865,10 +932,17 @@ public abstract class FilterElementsBase : IExternalCommand
 
             orderedProps.Add("Id");
 
-            var remainingProps = allPropertyNames.Except(orderedProps).OrderBy(p => p);
+            // Collect remaining properties (excluding Contents which goes at the end)
+            var remainingProps = allPropertyNames.Except(orderedProps).Where(p => p != "Contents").OrderBy(p => p);
             var propertyNames = orderedProps.Where(p => allPropertyNames.Contains(p))
                 .Concat(remainingProps)
                 .ToList();
+
+            // Add Contents column at the end (likely to be very long)
+            if (allPropertyNames.Contains("Contents"))
+            {
+                propertyNames.Add("Contents");
+            }
 
             // Set the current UIDocument for edit operations
             CustomGUIs.SetCurrentUIDocument(uiDoc);
@@ -999,7 +1073,7 @@ public abstract class FilterElementsBase : IExternalCommand
 #region Concrete commands
 
 [Transaction(TransactionMode.Manual)]
-public class FilterSelectedInDocument : FilterElementsBase
+public class ListSelectedInDocument : ListElementsBase
 {
     public override bool SpanAllScreens      => false;
     public override bool UseSelectedElements => true;
@@ -1007,7 +1081,7 @@ public class FilterSelectedInDocument : FilterElementsBase
 }
 
 [Transaction(TransactionMode.Manual)]
-public class FilterSelectedInViews : IExternalCommand
+public class ListSelectedInViews : IExternalCommand
 {
     public Result Execute(ExternalCommandData cData, ref string message, ElementSet elements)
     {
@@ -1162,10 +1236,17 @@ public class FilterSelectedInViews : IExternalCommand
 
             orderedProps.Add("Id");
 
-            var remainingProps = allPropertyNames.Except(orderedProps).OrderBy(p => p);
+            // Collect remaining properties (excluding Contents which goes at the end)
+            var remainingProps = allPropertyNames.Except(orderedProps).Where(p => p != "Contents").OrderBy(p => p);
             var propertyNames = orderedProps.Where(p => allPropertyNames.Contains(p))
                 .Concat(remainingProps)
                 .ToList();
+
+            // Add Contents column at the end (likely to be very long)
+            if (allPropertyNames.Contains("Contents"))
+            {
+                propertyNames.Add("Contents");
+            }
 
             // Set the current UIDocument for edit operations
             CustomGUIs.SetCurrentUIDocument(uiDoc);
