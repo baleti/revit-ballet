@@ -204,25 +204,27 @@ public static class ElementDataHelper
                 return tag.TagText;
             }
 
-            // Dimensions
+            // Dimensions (including multi-segment dimensions)
             if (element is Dimension dimension)
             {
-                return dimension.ValueString;
-            }
-
-            // Multi-segment dimensions
-            if (element is MultiSegmentDimension multiDim)
-            {
-                // Collect all segment values
-                var segments = new List<string>();
-                foreach (DimensionSegment segment in multiDim.Segments)
+                // Check if dimension has multiple segments
+                if (dimension.NumberOfSegments > 1)
                 {
-                    if (!string.IsNullOrEmpty(segment.ValueString))
+                    var segments = new List<string>();
+                    foreach (DimensionSegment segment in dimension.Segments)
                     {
-                        segments.Add(segment.ValueString);
+                        if (!string.IsNullOrEmpty(segment.ValueString))
+                        {
+                            segments.Add(segment.ValueString);
+                        }
                     }
+                    return segments.Any() ? string.Join(" | ", segments) : null;
                 }
-                return segments.Any() ? string.Join(" | ", segments) : null;
+                else
+                {
+                    // Single-segment dimension
+                    return dimension.ValueString;
+                }
             }
 
             // Grids and levels have text in their Name, which is already shown

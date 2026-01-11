@@ -142,10 +142,17 @@ public class ListSelectedInSession : IExternalCommand
 
             orderedProps.Add("Id");
 
-            var remainingProps = allPropertyNames.Except(orderedProps).OrderBy(p => p);
+            // Collect remaining properties (excluding Contents which goes at the end)
+            var remainingProps = allPropertyNames.Except(orderedProps).Where(p => p != "Contents").OrderBy(p => p);
             var propertyNames = orderedProps.Where(p => allPropertyNames.Contains(p))
                 .Concat(remainingProps)
                 .ToList();
+
+            // Add Contents column at the end (likely to be very long)
+            if (allPropertyNames.Contains("Contents"))
+            {
+                propertyNames.Add("Contents");
+            }
 
             // Set the current UIDocument for edit operations
             CustomGUIs.SetCurrentUIDocument(uidoc);
@@ -437,6 +444,72 @@ public class ListSelectedInSession : IExternalCommand
         }
         catch { }
 
+        // Add Contents column for text-containing elements
+        string contents = GetElementTextContents(element);
+        if (!string.IsNullOrEmpty(contents))
+        {
+            data["Contents"] = contents;
+        }
+
         return data;
+    }
+
+    /// <summary>
+    /// Extract text contents from text-containing elements like TextNote, tags, dimensions, etc.
+    /// Returns null if element doesn't contain text.
+    /// </summary>
+    private static string GetElementTextContents(Element element)
+    {
+        try
+        {
+            // TextNote elements
+            if (element is TextNote textNote)
+            {
+                return textNote.Text;
+            }
+
+            // Independent tags (Room Tags, Space Tags, etc.)
+            if (element is IndependentTag tag)
+            {
+                return tag.TagText;
+            }
+
+            // Dimensions (including multi-segment dimensions)
+            if (element is Dimension dimension)
+            {
+                // Check if dimension has multiple segments
+                if (dimension.NumberOfSegments > 1)
+                {
+                    var segments = new List<string>();
+                    foreach (DimensionSegment segment in dimension.Segments)
+                    {
+                        if (!string.IsNullOrEmpty(segment.ValueString))
+                        {
+                            segments.Add(segment.ValueString);
+                        }
+                    }
+                    return segments.Any() ? string.Join(" | ", segments) : null;
+                }
+                else
+                {
+                    // Single-segment dimension
+                    return dimension.ValueString;
+                }
+            }
+
+            // For other elements, check if they have a TEXT parameter (common in families)
+            Parameter textParam = element.LookupParameter("Text");
+            if (textParam != null && textParam.HasValue && textParam.StorageType == StorageType.String)
+            {
+                string text = textParam.AsString();
+                if (!string.IsNullOrEmpty(text))
+                {
+                    return text;
+                }
+            }
+        }
+        catch { /* Skip if we can't get text contents */ }
+
+        return null;
     }
 }
