@@ -1425,11 +1425,16 @@ public partial class CustomGUIs
         {
             try
             {
-                // Viewport elements - cannot be moved directly via API
-                // Viewports are positioned by the view placement on sheet
-                if (elem is Viewport)
+                // Viewport elements - use SetBoxCenter to reposition on sheet
+                if (elem is Viewport viewport)
                 {
-                    // Viewports cannot be moved - they represent view placements
+                    XYZ currentCenter = GetElementPosition(viewport, doc);
+                    if (currentCenter != null)
+                    {
+                        XYZ newCenter = currentCenter + translation;
+                        viewport.SetBoxCenter(newCenter);
+                        return true;
+                    }
                     return false;
                 }
 
