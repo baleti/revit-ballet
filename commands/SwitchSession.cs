@@ -31,6 +31,21 @@ public class SwitchSession : IExternalCommand
     [DllImport("user32.dll")]
     private static extern bool IsWindowVisible(IntPtr hWnd);
 
+    [DllImport("user32.dll")]
+    private static extern bool BringWindowToTop(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool SetActiveWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr SetFocus(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetCurrentThreadId();
+
+    [DllImport("user32.dll")]
+    private static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
+
     private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
     private const int SW_RESTORE = 9;
@@ -74,7 +89,7 @@ public class SwitchSession : IExternalCommand
 
                 // Prepare data for DataGrid
                 var gridData = new List<Dictionary<string, object>>();
-                var columns = new List<string> { "Session ID", "Port", "Hostname", "Document", "Last Heartbeat" };
+                var columns = new List<string> { "Session ID", "Document", "Port", "Hostname", "Last Heartbeat" };
 
                 foreach (var session in sessions)
                 {
@@ -83,7 +98,7 @@ public class SwitchSession : IExternalCommand
                         ["Session ID"] = session.SessionId,
                         ["Port"] = session.Port,
                         ["Hostname"] = session.Hostname,
-                        ["Document"] = session.DocumentTitle ?? "(No document)",
+                        ["Document"] = string.IsNullOrWhiteSpace(session.DocumentTitle) ? "Home Page" : session.DocumentTitle,
                         ["Last Heartbeat"] = FormatHeartbeat(session.LastHeartbeat),
                         ["_ProcessId"] = session.ProcessId, // Hidden field for later use
                         ["_IsCurrent"] = session.SessionId == currentSessionId
@@ -91,8 +106,15 @@ public class SwitchSession : IExternalCommand
                     gridData.Add(row);
                 }
 
-                // Show selection dialog
-                var selectedRows = CustomGUIs.DataGrid(gridData, columns, false);
+                // Sort by Document column
+                gridData = gridData.OrderBy(row => row["Document"].ToString()).ToList();
+
+                // Find index of current session for initial selection
+                int currentSessionIndex = gridData.FindIndex(row => Convert.ToBoolean(row["_IsCurrent"]));
+                List<int> initialSelection = currentSessionIndex >= 0 ? new List<int> { currentSessionIndex } : null;
+
+                // Show selection dialog with current session pre-selected
+                var selectedRows = CustomGUIs.DataGrid(gridData, columns, false, initialSelection);
 
                 if (selectedRows == null || selectedRows.Count == 0)
                 {
