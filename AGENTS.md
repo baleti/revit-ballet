@@ -52,6 +52,46 @@ System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
 - Include element IDs for traceability
 - Log both input values and verified output values
 
+## Version Control Practices
+
+**CRITICAL: One Agent Session = One Commit**
+
+When working on changes, consolidate all modifications into a **single commit** at the end of your session. Do NOT create multiple commits unless the session involves exceptionally large, unrelated changes.
+
+**Why:**
+- Keeps git history clean and focused
+- Each commit represents a complete, coherent piece of work
+- Makes code review and history navigation easier
+- Prevents fragmented commits that mix unrelated changes
+
+**Guidelines:**
+1. **Work incrementally, commit once**: Make all your changes (code, tests, docs), then create ONE commit summarizing the session's work
+2. **Commit message**: Write a clear, descriptive message explaining what was accomplished in the session
+3. **Avoid fragmenting**: Do NOT commit after each small change - accumulate related changes
+4. **Unrelated changes**: If you accidentally change files unrelated to your main task, do NOT commit them with your primary changes. Stage only the files relevant to the session's goal.
+5. **Verify before committing**: Use `git status` and `git diff --cached` to review exactly what you're committing
+
+**Example - CORRECT:**
+```bash
+# Agent session: "Add dark mode toggle feature"
+# - Creates toggle component
+# - Adds state management
+# - Updates CSS
+# - Adds tests
+# Makes ONE commit at end: "feat: add dark mode toggle with state management and tests"
+```
+
+**Example - WRONG:**
+```bash
+# Agent session: "Add dark mode toggle feature"
+# Makes separate commits:
+# - "feat: add toggle component"
+# - "feat: add dark mode state"
+# - "feat: update CSS for dark mode"
+# - "test: add dark mode tests"
+# Result: Fragmented history for a single coherent feature
+```
+
 ## Architecture
 
 ### Multi-Version Revit Support
