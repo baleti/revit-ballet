@@ -128,85 +128,134 @@ namespace RevitCommands
                             continue;
                         }
 
-                        // Collect dependent elements (types, materials, etc.)
-                        HashSet<ElementId> allElementIds = new HashSet<ElementId>(sourceElementIds);
-
-                        foreach (ElementId id in sourceElementIds)
-                        {
-                            Element elem = sourceDoc.GetElement(id);
-
-                            // Add element type
-                            ElementId typeId = elem.GetTypeId();
-                            if (typeId != ElementId.InvalidElementId)
-                            {
-                                allElementIds.Add(typeId);
-                            }
-
-                            // Add materials
-                            ICollection<ElementId> materialIds = elem.GetMaterialIds(false);
-                            foreach (ElementId matId in materialIds)
-                            {
-                                allElementIds.Add(matId);
-                            }
-                        }
-
-                        // Copy elements to current document (try each individually to handle failures gracefully)
+                        // Copy all elements in a single batch operation
+                        // Revit automatically handles dependent types and materials
                         int successCount = 0;
                         int failureCount = 0;
+                        string diagnosticPath = System.IO.Path.Combine(
+                            RevitBallet.Commands.PathHelper.RuntimeDirectory,
+                            "diagnostics",
+                            $"ImportElements-{System.DateTime.Now:yyyyMMdd-HHmmss-fff}.txt");
+                        var diagnosticLines = new List<string>();
+                        diagnosticLines.Add($"=== Import Elements at {System.DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} ===");
+                        diagnosticLines.Add($"Source file: {System.IO.Path.GetFileName(filePath)}");
+                        diagnosticLines.Add($"Elements to copy: {sourceElementIds.Count}");
 
                         using (Transaction trans = new Transaction(currentDoc, "Import Elements"))
                         {
                             trans.Start();
 
-                            foreach (ElementId elemId in allElementIds)
+                            try
                             {
-                                Element elem = sourceDoc.GetElement(elemId);
-                                string elemInfo = GetElementDescription(elem);
+                                // Batch copy all elements - use existing families when names match
+                                // Let Revit handle dependent types/materials automatically
+                                var startTime = System.DateTime.Now;
+                                diagnosticLines.Add($"[{startTime:HH:mm:ss.fff}] Starting batch copy of {sourceElementIds.Count} elements");
 
-                                try
+                                CopyPasteOptions options = new CopyPasteOptions();
+                                options.SetDuplicateTypeNamesHandler(new DuplicateTypeNamesHandler());
+
+                                ICollection<ElementId> copiedIds = ElementTransformUtils.CopyElements(
+                                    sourceDoc,
+                                    sourceElementIds,
+                                    currentDoc,
+                                    Transform.Identity,
+                                    options);
+
+                                var endTime = System.DateTime.Now;
+                                var duration = (endTime - startTime).TotalMilliseconds;
+                                diagnosticLines.Add($"[{endTime:HH:mm:ss.fff}] Batch copy completed in {duration}ms");
+
+                                if (copiedIds != null && copiedIds.Count > 0)
                                 {
-                                    CopyPasteOptions options = new CopyPasteOptions();
-                                    options.SetDuplicateTypeNamesHandler(new DuplicateTypeNamesHandler());
+                                    successCount = sourceElementIds.Count;
+                                    diagnosticLines.Add($"Batch copy successful: {copiedIds.Count} elements copied");
 
-                                    ICollection<ElementId> copiedIds = ElementTransformUtils.CopyElements(
-                                        sourceDoc,
-                                        new List<ElementId> { elemId },
-                                        currentDoc,
-                                        Transform.Identity,
-                                        options);
-
-                                    if (copiedIds != null && copiedIds.Count > 0)
+                                    // Add instance elements to selection list
+                                    foreach (ElementId copiedId in copiedIds)
                                     {
-                                        successCount++;
-
-                                        // Add to selection list if it's not a type or material
-                                        foreach (ElementId copiedId in copiedIds)
+                                        Element copiedElem = currentDoc.GetElement(copiedId);
+                                        if (copiedElem != null &&
+                                            !(copiedElem is ElementType) &&
+                                            !(copiedElem is Material) &&
+                                            copiedElem.Category != null)
                                         {
-                                            Element copiedElem = currentDoc.GetElement(copiedId);
-                                            if (copiedElem != null &&
-                                                !(copiedElem is ElementType) &&
-                                                !(copiedElem is Material) &&
-                                                copiedElem.Category != null)
-                                            {
-                                                importedElementIds.Add(copiedId);
-                                            }
+                                            importedElementIds.Add(copiedId);
                                         }
                                     }
-                                    else
+                                }
+                                else
+                                {
+                                    failureCount = sourceElementIds.Count;
+                                    failureDetails.Add("Batch copy returned null or empty collection");
+                                    diagnosticLines.Add("ERROR: Batch copy returned null or empty collection");
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                // Batch copy failed - fall back to individual copying for detailed error reporting
+                                diagnosticLines.Add($"ERROR: Batch copy failed - {ex.Message}");
+                                diagnosticLines.Add($"Falling back to individual copy for {sourceElementIds.Count} elements");
+                                var fallbackStart = System.DateTime.Now;
+
+                                foreach (ElementId elemId in sourceElementIds)
+                                {
+                                    Element elem = sourceDoc.GetElement(elemId);
+                                    string elemInfo = GetElementDescription(elem);
+
+                                    try
+                                    {
+                                        CopyPasteOptions options = new CopyPasteOptions();
+                                        options.SetDuplicateTypeNamesHandler(new DuplicateTypeNamesHandler());
+
+                                        ICollection<ElementId> copiedIds = ElementTransformUtils.CopyElements(
+                                            sourceDoc,
+                                            new List<ElementId> { elemId },
+                                            currentDoc,
+                                            Transform.Identity,
+                                            options);
+
+                                        if (copiedIds != null && copiedIds.Count > 0)
+                                        {
+                                            successCount++;
+
+                                            foreach (ElementId copiedId in copiedIds)
+                                            {
+                                                Element copiedElem = currentDoc.GetElement(copiedId);
+                                                if (copiedElem != null &&
+                                                    !(copiedElem is ElementType) &&
+                                                    !(copiedElem is Material) &&
+                                                    copiedElem.Category != null)
+                                                {
+                                                    importedElementIds.Add(copiedId);
+                                                }
+                                            }
+                                        }
+                                        else
+                                        {
+                                            failureCount++;
+                                            failureDetails.Add($"{elemInfo} - Copy returned null");
+                                        }
+                                    }
+                                    catch (Exception elemEx)
                                     {
                                         failureCount++;
-                                        failureDetails.Add($"{elemInfo} - Copy returned null");
+                                        failureDetails.Add($"{elemInfo} - {elemEx.Message}");
                                     }
                                 }
-                                catch (Exception ex)
-                                {
-                                    failureCount++;
-                                    failureDetails.Add($"{elemInfo} - {ex.Message}");
-                                }
+
+                                var fallbackEnd = System.DateTime.Now;
+                                var fallbackDuration = (fallbackEnd - fallbackStart).TotalMilliseconds;
+                                diagnosticLines.Add($"Fallback completed in {fallbackDuration}ms");
+                                diagnosticLines.Add($"Fallback results: {successCount} succeeded, {failureCount} failed");
                             }
 
                             trans.Commit();
                         }
+
+                        // Save diagnostics
+                        System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diagnosticPath));
+                        System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
 
                         totalSuccessCount += successCount;
                         totalFailureCount += failureCount;
@@ -379,12 +428,12 @@ namespace RevitCommands
             return $"{type} - {category} - {name} (ID: {elem.Id})";
         }
 
-        // Handler for duplicate type names
+        // Handler for duplicate type names - automatically uses existing families
         public class DuplicateTypeNamesHandler : IDuplicateTypeNamesHandler
         {
             public DuplicateTypeAction OnDuplicateTypeNamesFound(DuplicateTypeNamesHandlerArgs args)
             {
-                // Use destination types if they exist
+                // Use destination types if they exist (avoids repeated dialogs)
                 return DuplicateTypeAction.UseDestinationTypes;
             }
         }
