@@ -191,7 +191,6 @@ public partial class CustomGUIs
                     // Phase 1: Rename all unique-name columns to temporary names
                     if (uniqueNameColumns.Any())
                     {
-
                         // Random number generator for numeric temp values
                         var random = new System.Random();
 
@@ -228,10 +227,7 @@ public partial class CustomGUIs
                                 {
                                     try
                                     {
-                                        bool success = handler.Setter(elem, doc, tempName);
-                                        if (!success)
-                                        {
-                                        }
+                                        handler.Setter(elem, doc, tempName);
                                     }
                                     catch
                                     {
@@ -1974,23 +1970,48 @@ public partial class CustomGUIs
             }
             else if (isNameColumn)
             {
-                // For "Name" column: only check duplicates for regular Views, skip ViewSheets
-                // (ViewSheets can have duplicate names, regular Views cannot)
-                diagnosticLines?.Add($"    Column '{columnName}': Filtering out ViewSheets (only Views need unique names)");
+                // For "Name" column: UNIVERSAL duplicate detection for all elements with unique names
+                // Only ViewSheets are excluded (they can have duplicate names)
+                // Includes: Views, Scope Boxes, Levels, Grids, Selection Filters, OST_Viewers, etc.
+                diagnosticLines?.Add($"    Column '{columnName}': Universal duplicate check (excluding ViewSheets)");
 
-                // Filter to only include regular Views (exclude ViewSheets)
-                var viewEdits = new List<(long internalId, Dictionary<string, object> entry, object newValue)>();
+                // Include all elements except ViewSheets
+                var uniqueNameEdits = new List<(long internalId, Dictionary<string, object> entry, object newValue)>();
                 foreach (var edit in columnEdits)
                 {
                     Element elem = GetElementFromEntry(doc, edit.entry);
-                    if (elem != null && elem is Autodesk.Revit.DB.View && !(elem is ViewSheet))
+                    if (elem == null) continue;
+
+                    // Exclude ViewSheets (they can have duplicate names)
+                    if (elem is ViewSheet)
+                        continue;
+
+                    // For OST_Viewers, check if they reference a ViewSheet (exclude those too)
+                    if (elem.Category?.Id.AsLong() == (int)BuiltInCategory.OST_Viewers)
                     {
-                        viewEdits.Add(edit);
+                        try
+                        {
+                            Parameter idParam = elem.get_Parameter(BuiltInParameter.ID_PARAM);
+                            if (idParam != null && idParam.HasValue)
+                            {
+                                ElementId referencedId = idParam.AsElementId();
+                                if (referencedId != null && referencedId != ElementId.InvalidElementId)
+                                {
+                                    Element referencedElem = doc.GetElement(referencedId);
+                                    if (referencedElem is ViewSheet)
+                                        continue; // Skip markers that reference sheets
+                                }
+                            }
+                        }
+                        catch { }
                     }
+
+                    // Include all other elements
+                    uniqueNameEdits.Add(edit);
                 }
 
-                // Now check for duplicates only among regular views
-                var nameGroups = viewEdits
+                // Check for duplicates among elements that require unique names
+                var nameGroups = uniqueNameEdits
                     .GroupBy(e => e.newValue?.ToString()?.Trim() ?? "")
                     .Where(g => g.Count() > 1) // Only duplicates
                     .ToList();
@@ -2007,7 +2028,7 @@ public partial class CustomGUIs
                         duplicatesInColumn[targetName] = elementIds;
                         result.DuplicateCount += group.Count() - 1; // Count extras as duplicates
 
-                        diagnosticLines?.Add($"    Column '{columnName}': View name '{targetName}' appears {group.Count()} times");
+                        diagnosticLines?.Add($"    Column '{columnName}': Name '{targetName}' appears {group.Count()} times");
                         diagnosticLines?.Add($"      Element IDs: {string.Join(", ", elementIds)}");
                     }
 
