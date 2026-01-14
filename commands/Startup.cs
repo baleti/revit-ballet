@@ -1,6 +1,7 @@
 using Autodesk.Revit.UI;
 using System;
 using System.IO;
+using System.Linq;
 using RevitBallet.Commands;
 
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
@@ -26,10 +27,11 @@ namespace RevitBallet.Commands
         }
 
         /// <summary>
-        /// Handles migration of files from the revit-ballet.update folder to the revit-ballet folder.
+        /// Handles migration of files from update folders to the main revit-ballet folder.
+        /// Supports both standard (revit-ballet.update) and timestamped (revit-ballet.update.YYYYMMDD...) folders.
         /// This two-phase process ensures safe updates:
         /// 1. First startup: Running from update folder, copy files to main folder
-        /// 2. Second startup: Running from main folder, verify and delete update folder
+        /// 2. Second startup: Running from main folder, verify and delete all update folders
         /// </summary>
         /// <param name="application">The UIControlledApplication instance</param>
         private static void HandleUpdateMigration(UIControlledApplication application)
@@ -46,33 +48,65 @@ namespace RevitBallet.Commands
                 );
 
                 string mainFolder = Path.Combine(addinsPath, "revit-ballet");
-                string updateFolder = Path.Combine(addinsPath, "revit-ballet.update");
                 string addinPath = Path.Combine(addinsPath, "revit-ballet.addin");
 
-                // Check if update folder exists
-                if (!Directory.Exists(updateFolder))
+                // Find all update folders (revit-ballet.update and revit-ballet.update.*)
+                var updateFolders = Directory.Exists(addinsPath)
+                    ? Directory.GetDirectories(addinsPath, "revit-ballet.update*")
+                    : new string[0];
+
+                if (updateFolders.Length == 0)
                 {
                     return; // No update pending
                 }
 
-                // Check if we're currently running from the update folder
+                // Check if we're currently running from any update folder
                 string currentAssemblyPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
                 bool runningFromUpdate = currentAssemblyPath.Contains("revit-ballet.update");
 
-                if (runningFromUpdate)
+                // Find which update folder we're running from (if any)
+                string currentUpdateFolder = runningFromUpdate
+                    ? updateFolders.FirstOrDefault(f => currentAssemblyPath.StartsWith(f, StringComparison.OrdinalIgnoreCase))
+                    : null;
+
+                if (runningFromUpdate && currentUpdateFolder != null)
                 {
-                    // Phase 1: We're running from update folder - perform migration
-                    PerformUpdateMigration(mainFolder, updateFolder, addinPath);
+                    // Phase 1: We're running from an update folder - perform migration
+                    PerformUpdateMigration(mainFolder, currentUpdateFolder, addinPath);
+
+                    // Clean up other update folders we're not running from
+                    foreach (var folder in updateFolders.Where(f => !f.Equals(currentUpdateFolder, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        TryDeleteUpdateFolder(folder);
+                    }
                 }
                 else
                 {
-                    // Phase 2: We're running from main folder - verify and cleanup
-                    CleanupUpdateFolder(mainFolder, updateFolder, addinPath);
+                    // Phase 2: We're running from main folder - cleanup all update folders
+                    CleanupAllUpdateFolders(mainFolder, updateFolders, addinPath);
                 }
             }
             catch
             {
                 // Silently fail - don't interrupt Revit startup
+            }
+        }
+
+        /// <summary>
+        /// Attempts to delete an update folder. Fails silently if folder is in use.
+        /// </summary>
+        private static void TryDeleteUpdateFolder(string folderPath)
+        {
+            try
+            {
+                if (Directory.Exists(folderPath))
+                {
+                    Directory.Delete(folderPath, recursive: true);
+                }
+            }
+            catch
+            {
+                // Silently fail - folder may be in use by another Revit version
             }
         }
 
@@ -125,9 +159,13 @@ namespace RevitBallet.Commands
                     foreach (var assemblyElement in doc.Descendants("Assembly"))
                     {
                         string currentValue = assemblyElement.Value;
+                        // Handle both "revit-ballet.update" and "revit-ballet.update.TIMESTAMP" patterns
+                        // by replacing the entire update folder name with just "revit-ballet"
                         if (currentValue.Contains("revit-ballet.update"))
                         {
-                            assemblyElement.Value = currentValue.Replace("revit-ballet.update", "revit-ballet");
+                            // Use regex to replace revit-ballet.update or revit-ballet.update.* with revit-ballet
+                            string updateFolderName = Path.GetFileName(updateFolder);
+                            assemblyElement.Value = currentValue.Replace(updateFolderName, "revit-ballet");
                         }
                     }
                     doc.Save(addinPath);
@@ -140,13 +178,12 @@ namespace RevitBallet.Commands
         }
 
         /// <summary>
-        /// Phase 2: Verifies migration was successful and deletes update folder.
+        /// Phase 2: Verifies migration was successful and deletes all update folders.
         /// </summary>
-        private static void CleanupUpdateFolder(string mainFolder, string updateFolder, string addinPath)
+        private static void CleanupAllUpdateFolders(string mainFolder, string[] updateFolders, string addinPath)
         {
-            bool canDelete = true;
-
-            // Check if .addin points to main folder
+            // First check if .addin points to main folder (not any update folder)
+            bool addinPointsToMain = true;
             if (File.Exists(addinPath))
             {
                 try
@@ -157,69 +194,66 @@ namespace RevitBallet.Commands
                         string currentValue = assemblyElement.Value;
                         if (currentValue.Contains("revit-ballet.update"))
                         {
-                            canDelete = false;
+                            addinPointsToMain = false;
                             break;
                         }
                     }
                 }
                 catch
                 {
-                    canDelete = false;
+                    addinPointsToMain = false;
                 }
             }
 
-            // Check if files in both folders are the same
-            if (canDelete && Directory.Exists(mainFolder))
+            if (!addinPointsToMain)
             {
-                foreach (string updateFile in Directory.GetFiles(updateFolder))
+                // .addin still points to an update folder - don't delete anything
+                return;
+            }
+
+            // Delete all update folders
+            foreach (var updateFolder in updateFolders)
+            {
+                bool canDelete = true;
+
+                // Check if files from this update folder exist in main folder
+                if (Directory.Exists(mainFolder) && Directory.Exists(updateFolder))
                 {
-                    string fileName = Path.GetFileName(updateFile);
-                    string mainFile = Path.Combine(mainFolder, fileName);
-
-                    if (!File.Exists(mainFile))
+                    foreach (string updateFile in Directory.GetFiles(updateFolder))
                     {
-                        canDelete = false;
-                        break;
-                    }
+                        string fileName = Path.GetFileName(updateFile);
+                        string mainFile = Path.Combine(mainFolder, fileName);
 
-                    try
-                    {
-                        byte[] updateBytes = File.ReadAllBytes(updateFile);
-                        byte[] mainBytes = File.ReadAllBytes(mainFile);
-
-                        if (updateBytes.Length != mainBytes.Length)
+                        if (!File.Exists(mainFile))
                         {
                             canDelete = false;
                             break;
                         }
 
-                        for (int i = 0; i < updateBytes.Length; i++)
+                        // Compare file sizes as a quick check (skip byte-by-byte for performance)
+                        try
                         {
-                            if (updateBytes[i] != mainBytes[i])
+                            var updateInfo = new FileInfo(updateFile);
+                            var mainInfo = new FileInfo(mainFile);
+
+                            if (updateInfo.Length != mainInfo.Length)
                             {
                                 canDelete = false;
                                 break;
                             }
                         }
-                    }
-                    catch
-                    {
-                        canDelete = false;
-                        break;
+                        catch
+                        {
+                            canDelete = false;
+                            break;
+                        }
                     }
                 }
-            }
 
-            // Delete update folder if safe to do so
-            if (canDelete)
-            {
-                try
+                // Delete update folder if safe to do so
+                if (canDelete)
                 {
-                    Directory.Delete(updateFolder, recursive: true);
-                }
-                catch
-                {
-                    // Failed to delete - will try again next time
+                    TryDeleteUpdateFolder(updateFolder);
                 }
             }
         }
