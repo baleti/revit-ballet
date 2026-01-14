@@ -1069,30 +1069,27 @@ public partial class CustomGUIs
                 }
             });
 
-            // Name column for Views (regular views and sheets)
-            // CRITICAL: RequiresUniqueName=true for two-phase rename to avoid "view with that name already exists" errors
-            // NOTE: This handler applies to View elements when "Name" column is edited
-            // It handles both regular views (unique names required) and sheets (duplicate names allowed)
-            // Duplicate detection will filter out ViewSheets and only check regular Views
+            // Name column - UNIVERSAL handler for any element with a Name property
+            // CRITICAL: RequiresUniqueName=true for two-phase rename to avoid "element with that name already exists" errors
+            // This handler works universally for: Views, Scope Boxes, Levels, Grids, Selection Sets, and any other named element
+            // Special handling for: ViewSheets (use SHEET_NAME param), OST_Viewers (resolve to underlying view), Groups (rename GroupType)
             Register(new ColumnHandler
             {
                 ColumnName = "Name",
                 IsEditable = true,
                 RequiresUniqueName = true,
-                Description = "Element name (unique for views, can be duplicated for sheets)",
+                Description = "Element name (supports two-phase rename for swapping)",
                 Validator = ColumnValidators.NotEmpty,
                 Getter = (elem, doc) =>
                 {
-                    // Only apply to View elements (includes ViewSheet)
-                    if (elem is Autodesk.Revit.DB.View)
-                        return elem.Name;
-                    return null; // Let other handlers handle non-view elements
+                    // Return Name for any element - this is universal
+                    return elem.Name;
                 },
                 Setter = (elem, doc, newValue) =>
                 {
                     string strValue = newValue?.ToString() ?? "";
 
-                    // For ViewSheets, use SHEET_NAME parameter (not Name property)
+                    // SPECIAL CASE: ViewSheets use SHEET_NAME parameter (not Name property)
                     if (elem is ViewSheet viewSheet)
                     {
                         try
@@ -1107,29 +1104,89 @@ public partial class CustomGUIs
                         catch { return false; }
                     }
 
-                    // For regular views (non-sheets), use Name property
-                    if (elem is Autodesk.Revit.DB.View regularView)
+                    // SPECIAL CASE: Groups - rename the GroupType, not the instance
+                    if (elem is Group group)
                     {
                         try
                         {
-                            regularView.Name = strValue;
+                            group.GroupType.Name = strValue;
                             return true;
                         }
                         catch { return false; }
                     }
 
-                    return false; // Not a view element
+                    // SPECIAL CASE: OST_Viewers (Callouts, Sections, Elevations)
+                    // These are marker elements that reference actual views
+                    if (elem.Category?.Id.AsLong() == (int)BuiltInCategory.OST_Viewers)
+                    {
+                        // First, try VIEW_NAME parameter (works for some view types)
+                        try
+                        {
+                            Parameter viewNameParam = elem.get_Parameter(BuiltInParameter.VIEW_NAME);
+                            if (viewNameParam != null && !viewNameParam.IsReadOnly)
+                            {
+                                viewNameParam.Set(strValue);
+                                return true;
+                            }
+                        }
+                        catch { }
+
+                        // Check if this marker references an actual view via ID_PARAM
+                        try
+                        {
+                            Parameter idParam = elem.get_Parameter(BuiltInParameter.ID_PARAM);
+                            if (idParam != null && idParam.HasValue)
+                            {
+                                ElementId referencedId = idParam.AsElementId();
+                                if (referencedId != null && referencedId != ElementId.InvalidElementId)
+                                {
+                                    Element referencedElem = doc.GetElement(referencedId);
+                                    if (referencedElem is Autodesk.Revit.DB.View referencedView)
+                                    {
+                                        referencedView.Name = strValue;
+                                        return true;
+                                    }
+                                }
+                            }
+                        }
+                        catch { }
+                    }
+
+                    // UNIVERSAL FALLBACK: Try to set Name property directly
+                    // This works for Views, Scope Boxes, Levels, Grids, Selection Filters, and most other named elements
+                    try
+                    {
+                        elem.Name = strValue;
+                        return true;
+                    }
+                    catch { }
+
+                    // LAST RESORT: Check for writable "Name" instance parameter
+                    // Some elements have Name as a parameter rather than a property
+                    try
+                    {
+                        Parameter nameParam = elem.LookupParameter("Name");
+                        if (nameParam != null && !nameParam.IsReadOnly && nameParam.StorageType == StorageType.String)
+                        {
+                            nameParam.Set(strValue);
+                            return true;
+                        }
+                    }
+                    catch { }
+
+                    return false;
                 }
             });
 
             // View Name (for regular views and viewports, excluding sheets)
             // CRITICAL: RequiresUniqueName=true for two-phase rename to avoid "view with that name already exists" errors
+            // Also handles OST_Viewers (elevation markers, section markers) which reference actual views
             Register(new ColumnHandler
             {
                 ColumnName = "View Name",
                 IsEditable = true,
                 RequiresUniqueName = true,
-                Description = "View name (unique per document) - works with Views and Viewports",
+                Description = "View name (unique per document) - works with Views, Viewports, and view markers",
                 Validator = ColumnValidators.NotEmpty,
                 Getter = (elem, doc) =>
                 {
@@ -1172,6 +1229,43 @@ public partial class CustomGUIs
                         {
                             view.Name = strValue;
                             return true;
+                        }
+                        catch { return false; }
+                    }
+
+                    // Handle OST_Viewers (Callouts, Sections, Elevations)
+                    // These elements appear in category "Views" but may not be castable to View class
+                    if (elem.Category?.Id.AsLong() == (int)BuiltInCategory.OST_Viewers)
+                    {
+                        // First, try VIEW_NAME parameter
+                        try
+                        {
+                            Parameter viewNameParam = elem.get_Parameter(BuiltInParameter.VIEW_NAME);
+                            if (viewNameParam != null && !viewNameParam.IsReadOnly)
+                            {
+                                viewNameParam.Set(strValue);
+                                return true;
+                            }
+                        }
+                        catch { }
+
+                        // Check if this is a reference element that points to an actual view
+                        try
+                        {
+                            Parameter idParam = elem.get_Parameter(BuiltInParameter.ID_PARAM);
+                            if (idParam != null && idParam.HasValue)
+                            {
+                                ElementId referencedId = idParam.AsElementId();
+                                if (referencedId != null && referencedId != ElementId.InvalidElementId)
+                                {
+                                    Element referencedElem = doc.GetElement(referencedId);
+                                    if (referencedElem is Autodesk.Revit.DB.View referencedView && !(referencedView is ViewSheet))
+                                    {
+                                        referencedView.Name = strValue;
+                                        return true;
+                                    }
+                                }
+                            }
                         }
                         catch { return false; }
                     }
