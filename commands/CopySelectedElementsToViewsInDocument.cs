@@ -223,6 +223,7 @@ public class CopySelectedElementsToViewsInDocument : IExternalCommand
             // ─────────────────────────────────────────────────────────────
             // 4. Show the grid
             // ─────────────────────────────────────────────────────────────
+            CustomGUIs.SetCurrentUIDocument(uidoc);
             List<Dictionary<string, object>> selectedRows =
                 CustomGUIs.DataGrid(gridData, columns, false, initialSelectionIndices);
 

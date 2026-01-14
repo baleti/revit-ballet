@@ -87,7 +87,7 @@ public class SelectViews : IExternalCommand
                 }
             }
 
-            viewInfo["__OriginalObject"] = view; // Store original object for comparison
+            viewInfo["ElementIdObject"] = view.Id; // Required for edit support
 
             viewData.Add(viewInfo);
         }
@@ -108,8 +108,8 @@ public class SelectViews : IExternalCommand
         {
             sortedActiveViewIndex = viewData.FindIndex(row =>
             {
-                if (row.ContainsKey("__OriginalObject") && row["__OriginalObject"] is View v)
-                    return v.Id == activeView.Id;
+                if (row.ContainsKey("ElementIdObject") && row["ElementIdObject"] is ElementId id)
+                    return id == activeView.Id;
                 return false;
             });
         }
@@ -128,6 +128,9 @@ public class SelectViews : IExternalCommand
             initialSelection = new List<int> { sortedActiveViewIndex };
         }
 
+        // Enable automatic edit application
+        CustomGUIs.SetCurrentUIDocument(uidoc);
+
         // Show the selection dialog (using your custom GUI).
         List<Dictionary<string, object>> selectedViews = CustomGUIs.DataGrid(
             viewData,
@@ -142,10 +145,10 @@ public class SelectViews : IExternalCommand
             // Get the current selection
             ICollection<ElementId> currentSelectionIds = uidoc.GetSelectionIds();
 
-            // Get the ElementIds of the views selected in the dialog using __OriginalObject
+            // Get the ElementIds of the views selected in the dialog using ElementIdObject
             List<ElementId> newViewIds = selectedViews
-                .Where(v => v.ContainsKey("__OriginalObject") && v["__OriginalObject"] is View)
-                .Select(v => (v["__OriginalObject"] as View).Id)
+                .Where(v => v.ContainsKey("ElementIdObject") && v["ElementIdObject"] is ElementId)
+                .Select(v => v["ElementIdObject"] as ElementId)
                 .ToList();
 
             // Add the new views to the current selection
