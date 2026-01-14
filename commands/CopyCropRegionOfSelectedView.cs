@@ -251,6 +251,7 @@ public class CopyCropRegionOfSelectedView : IExternalCommand
                 }
             }
 
+            viewInfo["ElementIdObject"] = view.Id; // Required for edit support
             viewInfo["__OriginalObject"] = view; // Store original object for retrieval
 
             viewData.Add(viewInfo);
@@ -276,10 +277,10 @@ public class CopyCropRegionOfSelectedView : IExternalCommand
                 // Active view is a sheet - select all views in the list that are placed on this sheet
                 for (int i = 0; i < viewData.Count; i++)
                 {
-                    if (viewData[i].ContainsKey("__OriginalObject") && viewData[i]["__OriginalObject"] is View v)
+                    if (viewData[i].ContainsKey("ElementIdObject") && viewData[i]["ElementIdObject"] is ElementId id)
                     {
                         // Check if this view is placed on the active sheet
-                        if (viewToSheetMap.TryGetValue(v.Id, out ViewSheet sheet) && sheet.Id == activeSheet.Id)
+                        if (viewToSheetMap.TryGetValue(id, out ViewSheet sheet) && sheet.Id == activeSheet.Id)
                         {
                             initialSelection.Add(i);
                         }
@@ -291,9 +292,9 @@ public class CopyCropRegionOfSelectedView : IExternalCommand
                 // Active view is not a sheet - find and select it if it's in the list
                 for (int i = 0; i < viewData.Count; i++)
                 {
-                    if (viewData[i].ContainsKey("__OriginalObject") && viewData[i]["__OriginalObject"] is View v)
+                    if (viewData[i].ContainsKey("ElementIdObject") && viewData[i]["ElementIdObject"] is ElementId id)
                     {
-                        if (v.Id == activeView.Id)
+                        if (id == activeView.Id)
                         {
                             initialSelection.Add(i);
                             break;
