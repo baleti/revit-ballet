@@ -65,8 +65,12 @@ namespace RevitBallet.Commands
                 bool runningFromUpdate = currentAssemblyPath.Contains("revit-ballet.update");
 
                 // Find which update folder we're running from (if any)
+                // Sort by length descending to match the most specific (longest) folder first,
+                // preventing "revit-ballet.update" from matching "revit-ballet.update.20240115..."
                 string currentUpdateFolder = runningFromUpdate
-                    ? updateFolders.FirstOrDefault(f => currentAssemblyPath.StartsWith(f, StringComparison.OrdinalIgnoreCase))
+                    ? updateFolders
+                        .OrderByDescending(f => f.Length)
+                        .FirstOrDefault(f => currentAssemblyPath.StartsWith(f + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
                     : null;
 
                 if (runningFromUpdate && currentUpdateFolder != null)

@@ -721,12 +721,36 @@ namespace RevitBalletInstaller
                 catch (IOException)
                 {
                     // Files are locked (Revit is running) - use update folder strategy
-                    Directory.CreateDirectory(updateFolder);
+                    // Try to clean up existing update folder first
+                    string actualUpdateFolder = updateFolder;
+
+                    if (Directory.Exists(updateFolder))
+                    {
+                        try
+                        {
+                            // Try to delete old update folder
+                            Directory.Delete(updateFolder, true);
+                        }
+                        catch (IOException)
+                        {
+                            // Update folder is also locked - use timestamped folder
+                            actualUpdateFolder = Path.Combine(installation.AddinsPath,
+                                $"revit-ballet.update.{DateTime.Now:yyyyMMddHHmmss}");
+                        }
+                        catch (UnauthorizedAccessException)
+                        {
+                            // Permission denied - use timestamped folder
+                            actualUpdateFolder = Path.Combine(installation.AddinsPath,
+                                $"revit-ballet.update.{DateTime.Now:yyyyMMddHHmmss}");
+                        }
+                    }
+
+                    Directory.CreateDirectory(actualUpdateFolder);
 
                     // Extract to update folder
-                    string updateDllPath = Path.Combine(updateFolder, "revit-ballet.dll");
+                    string updateDllPath = Path.Combine(actualUpdateFolder, "revit-ballet.dll");
                     ExtractResource(dllResource, updateDllPath);
-                    ExtractDependencies(installation.Year, updateFolder);
+                    ExtractDependencies(installation.Year, actualUpdateFolder);
 
                     // Update .addin file to point to update folder
                     string addinContent = GetResourceText(addinResource);
@@ -737,7 +761,7 @@ namespace RevitBalletInstaller
                         string currentValue = assemblyElement.Value;
                         if (!currentValue.Contains("\\") && !currentValue.Contains("/"))
                         {
-                            assemblyElement.Value = Path.Combine(updateFolder, currentValue);
+                            assemblyElement.Value = Path.Combine(actualUpdateFolder, currentValue);
                         }
                     }
 
