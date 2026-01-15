@@ -7,7 +7,7 @@ using System.Linq;
 using RevitBallet.Commands;
 
 [Transaction(TransactionMode.Manual)]
-public class SynchronizeDocuments : IExternalCommand
+public class SynchronizeDocumentsInSession : IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
     {
@@ -71,39 +71,25 @@ public class SynchronizeDocuments : IExternalCommand
             return Result.Cancelled;
 
         // Synchronize selected documents sequentially
-        var results = new List<string>();
-        int successCount = 0;
-        int failureCount = 0;
-
         foreach (var selectedDict in selectedDicts)
         {
             Document targetDoc = selectedDict["__Document"] as Document;
             if (targetDoc == null)
                 continue;
 
-            string docName = targetDoc.Title;
-
             try
             {
                 // Perform synchronization
                 SynchronizeDocument(targetDoc);
-                results.Add($"✓ {docName}");
-                successCount++;
             }
             catch (Exception ex)
             {
-                results.Add($"✗ {docName}: {ex.Message}");
-                failureCount++;
+                // Only show dialog on error
+                TaskDialog.Show("Synchronization Error",
+                    $"Failed to synchronize '{targetDoc.Title}':\n\n{ex.Message}");
+                return Result.Failed;
             }
         }
-
-        // Show results
-        string resultMessage = $"Synchronization Complete\n\n" +
-                             $"Success: {successCount}\n" +
-                             $"Failed: {failureCount}\n\n" +
-                             string.Join("\n", results);
-
-        TaskDialog.Show("Synchronize Documents", resultMessage);
 
         return Result.Succeeded;
     }
@@ -119,12 +105,11 @@ public class SynchronizeDocuments : IExternalCommand
         var transactOptions = new TransactWithCentralOptions();
         var syncOptions = new SynchronizeWithCentralOptions();
 
-        // Configure sync options (similar to "Synchronize Now" defaults)
-        // TODO: Verify these settings match "Synchronize Now" behavior
+        // Configure sync options to match "Synchronize Now" defaults
         syncOptions.Comment = "Synchronized via Revit Ballet";
-        syncOptions.Compact = true; // Compact central model
-        syncOptions.SaveLocalBefore = true; // Save local file before sync
-        syncOptions.SaveLocalAfter = true; // Save local file after sync
+        syncOptions.Compact = false; // Do NOT compact - that's a separate, slower operation
+        syncOptions.SaveLocalBefore = false; // No need to save before sync
+        syncOptions.SaveLocalAfter = true; // Save local file after sync (standard behavior)
 
         // Perform synchronization
         doc.SynchronizeWithCentral(transactOptions, syncOptions);
