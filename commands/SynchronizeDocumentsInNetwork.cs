@@ -54,27 +54,24 @@ else
         {
             try
             {
-                // Read sessions file from network registry
-                string sessionsFilePath = Path.Combine(
-                    PathHelper.RuntimeDirectory,
-                    "network",
-                    "sessions");
+                // Read documents file from runtime directory
+                string documentsFilePath = Path.Combine(PathHelper.RuntimeDirectory, "documents");
 
-                if (!File.Exists(sessionsFilePath))
+                if (!File.Exists(documentsFilePath))
                 {
-                    TaskDialog.Show("Error", "No active sessions found. Network registry file does not exist.");
-                    diagnostics.LogError("Sessions file not found");
+                    TaskDialog.Show("Error", "No active documents found. Document registry file does not exist.");
+                    diagnostics.LogError("Documents file not found");
                     executionLog.SetResult(Result.Failed);
                     return Result.Failed;
                 }
 
-                // Parse sessions file
-                var sessions = ParseSessionsFile(sessionsFilePath);
+                // Parse documents file
+                var documents = ParseDocumentsFile(documentsFilePath);
 
-                if (sessions.Count == 0)
+                if (documents.Count == 0)
                 {
-                    TaskDialog.Show("Error", "No active sessions found in network registry.");
-                    diagnostics.LogError("No sessions in registry");
+                    TaskDialog.Show("Error", "No active documents found in registry.");
+                    diagnostics.LogError("No documents in registry");
                     executionLog.SetResult(Result.Failed);
                     return Result.Failed;
                 }
@@ -96,49 +93,24 @@ else
                 var gridData = new List<Dictionary<string, object>>();
                 var columns = new List<string> { "Document", "Session ID", "Hostname", "Port", "Last Heartbeat" };
 
-                foreach (var session in sessions)
+                foreach (var docInfo in documents)
                 {
-                    bool isCurrent = session.SessionId == currentSessionId;
+                    bool isCurrent = docInfo.SessionId == currentSessionId;
 
-                    if (session.Documents.Count == 0)
+                    var row = new Dictionary<string, object>
                     {
-                        // Session with no documents (Home Page)
-                        var row = new Dictionary<string, object>
-                        {
-                            ["Document"] = "(Home Page)",
-                            ["Session ID"] = session.SessionId,
-                            ["Port"] = session.Port,
-                            ["Hostname"] = session.Hostname,
-                            ["Last Heartbeat"] = FormatHeartbeat(session.LastHeartbeat),
-                            ["_Port"] = session.Port,
-                            ["_Hostname"] = session.Hostname,
-                            ["_SessionId"] = session.SessionId,
-                            ["_DocumentTitle"] = "",
-                            ["_IsCurrent"] = isCurrent
-                        };
-                        gridData.Add(row);
-                    }
-                    else
-                    {
-                        // Create a row for each document in the session
-                        foreach (var docTitle in session.Documents)
-                        {
-                            var row = new Dictionary<string, object>
-                            {
-                                ["Document"] = docTitle,
-                                ["Session ID"] = session.SessionId,
-                                ["Port"] = session.Port,
-                                ["Hostname"] = session.Hostname,
-                                ["Last Heartbeat"] = FormatHeartbeat(session.LastHeartbeat),
-                                ["_Port"] = session.Port,
-                                ["_Hostname"] = session.Hostname,
-                                ["_SessionId"] = session.SessionId,
-                                ["_DocumentTitle"] = docTitle,
-                                ["_IsCurrent"] = isCurrent
-                            };
-                            gridData.Add(row);
-                        }
-                    }
+                        ["Document"] = string.IsNullOrWhiteSpace(docInfo.DocumentTitle) ? "(Home Page)" : docInfo.DocumentTitle,
+                        ["Session ID"] = docInfo.SessionId,
+                        ["Port"] = docInfo.Port,
+                        ["Hostname"] = docInfo.Hostname,
+                        ["Last Heartbeat"] = FormatHeartbeat(docInfo.LastHeartbeat),
+                        ["_Port"] = docInfo.Port,
+                        ["_Hostname"] = docInfo.Hostname,
+                        ["_SessionId"] = docInfo.SessionId,
+                        ["_DocumentTitle"] = docInfo.DocumentTitle ?? "",
+                        ["_IsCurrent"] = isCurrent
+                    };
+                    gridData.Add(row);
                 }
 
                 // Sort by Document column
@@ -389,9 +361,9 @@ else
     }
 
 
-    private List<SessionInfo> ParseSessionsFile(string filePath)
+    private List<DocumentInfo> ParseDocumentsFile(string filePath)
     {
-        var sessions = new List<SessionInfo>();
+        var documents = new List<DocumentInfo>();
 
         try
         {
@@ -404,43 +376,35 @@ else
                     continue;
 
                 var parts = line.Split(',');
-                if (parts.Length < 6)
+                // Format: DocumentTitle,DocumentPath,SessionId,Port,Hostname,ProcessId,RegisteredAt,LastHeartbeat,LastSync
+                if (parts.Length < 8)
                     continue;
 
-                var session = new SessionInfo
+                var doc = new DocumentInfo
                 {
-                    SessionId = parts[0].Trim(),
-                    Port = parts[1].Trim(),
-                    Hostname = parts[2].Trim(),
-                    ProcessId = int.Parse(parts[3].Trim()),
-                    RegisteredAt = DateTime.Parse(parts[4].Trim()),
-                    LastHeartbeat = DateTime.Parse(parts[5].Trim()),
-                    Documents = new List<string>()
+                    DocumentTitle = parts[0].Trim(),
+                    DocumentPath = parts[1].Trim(),
+                    SessionId = parts[2].Trim(),
+                    Port = parts[3].Trim(),
+                    Hostname = parts[4].Trim(),
+                    ProcessId = int.Parse(parts[5].Trim()),
+                    RegisteredAt = DateTime.Parse(parts[6].Trim()),
+                    LastHeartbeat = DateTime.Parse(parts[7].Trim())
                 };
 
-                // Parse all documents (parts 6 onwards)
-                for (int i = 6; i < parts.Length; i++)
+                // Filter out stale documents (no heartbeat for > 2 minutes)
+                if ((DateTime.Now - doc.LastHeartbeat).TotalSeconds <= 120)
                 {
-                    string docTitle = parts[i].Trim();
-                    if (!string.IsNullOrEmpty(docTitle))
-                    {
-                        session.Documents.Add(docTitle);
-                    }
-                }
-
-                // Filter out stale sessions (no heartbeat for > 2 minutes)
-                if ((DateTime.Now - session.LastHeartbeat).TotalSeconds <= 120)
-                {
-                    sessions.Add(session);
+                    documents.Add(doc);
                 }
             }
         }
         catch (Exception ex)
         {
-            throw new Exception($"Failed to parse sessions file: {ex.Message}", ex);
+            throw new Exception($"Failed to parse documents file: {ex.Message}", ex);
         }
 
-        return sessions;
+        return documents;
     }
 
     private string FormatHeartbeat(DateTime heartbeat)
@@ -457,15 +421,16 @@ else
             return $"{(int)timeAgo.TotalDays}d ago";
     }
 
-    private class SessionInfo
+    private class DocumentInfo
     {
+        public string DocumentTitle { get; set; }
+        public string DocumentPath { get; set; }
         public string SessionId { get; set; }
         public string Port { get; set; }
         public string Hostname { get; set; }
         public int ProcessId { get; set; }
         public DateTime RegisteredAt { get; set; }
         public DateTime LastHeartbeat { get; set; }
-        public List<string> Documents { get; set; }
     }
 
     private class SessionSyncInfo

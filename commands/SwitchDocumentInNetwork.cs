@@ -59,27 +59,24 @@ public class SwitchDocumentInNetwork : IExternalCommand
         {
             try
             {
-                // Read sessions file from network registry
-                string sessionsFilePath = Path.Combine(
-                    PathHelper.RuntimeDirectory,
-                    "network",
-                    "sessions");
+                // Read documents file from runtime directory
+                string documentsFilePath = Path.Combine(PathHelper.RuntimeDirectory, "documents");
 
-                if (!File.Exists(sessionsFilePath))
+                if (!File.Exists(documentsFilePath))
                 {
-                    TaskDialog.Show("Error", "No active sessions found. Network registry file does not exist.");
-                    diagnostics.LogError("Sessions file not found");
+                    TaskDialog.Show("Error", "No active documents found. Document registry file does not exist.");
+                    diagnostics.LogError("Documents file not found");
                     executionLog.SetResult(Result.Failed);
                     return Result.Failed;
                 }
 
-                // Parse sessions file
-                var sessions = ParseSessionsFile(sessionsFilePath);
+                // Parse documents file
+                var documents = ParseDocumentsFile(documentsFilePath);
 
-                if (sessions.Count == 0)
+                if (documents.Count == 0)
                 {
-                    TaskDialog.Show("Error", "No active sessions found in network registry.");
-                    diagnostics.LogError("No sessions in registry");
+                    TaskDialog.Show("Error", "No active documents found in registry.");
+                    diagnostics.LogError("No documents in registry");
                     executionLog.SetResult(Result.Failed);
                     return Result.Failed;
                 }
@@ -89,20 +86,20 @@ public class SwitchDocumentInNetwork : IExternalCommand
 
                 // Prepare data for DataGrid
                 var gridData = new List<Dictionary<string, object>>();
-                var columns = new List<string> { "Session ID", "Document", "Last Sync", "Port", "Hostname", "Last Heartbeat" };
+                var columns = new List<string> { "Document", "Last Sync", "Session ID", "Port", "Hostname", "Last Heartbeat" };
 
-                foreach (var session in sessions)
+                foreach (var doc in documents)
                 {
                     var row = new Dictionary<string, object>
                     {
-                        ["Session ID"] = session.SessionId,
-                        ["Port"] = session.Port,
-                        ["Hostname"] = session.Hostname,
-                        ["Document"] = string.IsNullOrWhiteSpace(session.DocumentTitle) ? "Home Page" : session.DocumentTitle,
-                        ["Last Sync"] = FormatLastSync(session.LastSync),
-                        ["Last Heartbeat"] = FormatHeartbeat(session.LastHeartbeat),
-                        ["_ProcessId"] = session.ProcessId, // Hidden field for later use
-                        ["_IsCurrent"] = session.SessionId == currentSessionId
+                        ["Document"] = string.IsNullOrWhiteSpace(doc.DocumentTitle) ? "(Untitled)" : doc.DocumentTitle,
+                        ["Last Sync"] = FormatLastSync(doc.LastSync),
+                        ["Session ID"] = doc.SessionId,
+                        ["Port"] = doc.Port,
+                        ["Hostname"] = doc.Hostname,
+                        ["Last Heartbeat"] = FormatHeartbeat(doc.LastHeartbeat),
+                        ["_ProcessId"] = doc.ProcessId, // Hidden field for later use
+                        ["_IsCurrent"] = doc.SessionId == currentSessionId
                     };
                     gridData.Add(row);
                 }
@@ -180,9 +177,9 @@ public class SwitchDocumentInNetwork : IExternalCommand
         }
     }
 
-    private List<SessionInfo> ParseSessionsFile(string filePath)
+    private List<DocumentInfo> ParseDocumentsFile(string filePath)
     {
-        var sessions = new List<SessionInfo>();
+        var documents = new List<DocumentInfo>();
 
         try
         {
@@ -195,54 +192,45 @@ public class SwitchDocumentInNetwork : IExternalCommand
                     continue;
 
                 var parts = line.Split(',');
-                if (parts.Length < 6)
+                // Format: DocumentTitle,DocumentPath,SessionId,Port,Hostname,ProcessId,RegisteredAt,LastHeartbeat,LastSync
+                if (parts.Length < 8)
                     continue;
 
-                var session = new SessionInfo
+                var doc = new DocumentInfo
                 {
-                    SessionId = parts[0].Trim(),
-                    Port = parts[1].Trim(),
-                    Hostname = parts[2].Trim(),
-                    ProcessId = int.Parse(parts[3].Trim()),
-                    RegisteredAt = DateTime.Parse(parts[4].Trim()),
-                    LastHeartbeat = DateTime.Parse(parts[5].Trim())
+                    DocumentTitle = parts[0].Trim(),
+                    DocumentPath = parts[1].Trim(),
+                    SessionId = parts[2].Trim(),
+                    Port = parts[3].Trim(),
+                    Hostname = parts[4].Trim(),
+                    ProcessId = int.Parse(parts[5].Trim()),
+                    RegisteredAt = DateTime.Parse(parts[6].Trim()),
+                    LastHeartbeat = DateTime.Parse(parts[7].Trim())
                 };
 
-                // Check if parts[6] is a LastSync timestamp or a document title
-                // Format: SessionId,Port,Hostname,ProcessId,RegisteredAt,LastHeartbeat,LastSync,Documents...
-                // Old format: SessionId,Port,Hostname,ProcessId,RegisteredAt,LastHeartbeat,Documents...
-                if (parts.Length > 6)
+                // LastSync is optional (index 8)
+                if (parts.Length > 8 && !string.IsNullOrWhiteSpace(parts[8]))
                 {
-                    var field6 = parts[6].Trim();
                     DateTime lastSyncParsed;
-                    // Try to parse as ISO 8601 datetime (starts with year like "2024-")
-                    if (!string.IsNullOrEmpty(field6) &&
-                        field6.Length >= 4 &&
-                        char.IsDigit(field6[0]) &&
-                        field6.Contains("-") &&
-                        DateTime.TryParse(field6, out lastSyncParsed))
+                    if (DateTime.TryParse(parts[8].Trim(), out lastSyncParsed))
                     {
-                        // It's a LastSync timestamp
-                        session.LastSync = lastSyncParsed;
-                        session.DocumentTitle = parts.Length > 7 ? parts[7].Trim() : null;
-                    }
-                    else
-                    {
-                        // Old format - field6 is the document title
-                        session.LastSync = null;
-                        session.DocumentTitle = field6;
+                        doc.LastSync = lastSyncParsed;
                     }
                 }
 
-                sessions.Add(session);
+                // Filter out stale documents (no heartbeat for > 2 minutes)
+                if ((DateTime.Now - doc.LastHeartbeat).TotalSeconds < 120)
+                {
+                    documents.Add(doc);
+                }
             }
         }
         catch (Exception ex)
         {
-            throw new Exception($"Failed to parse sessions file: {ex.Message}", ex);
+            throw new Exception($"Failed to parse documents file: {ex.Message}", ex);
         }
 
-        return sessions;
+        return documents;
     }
 
     private IntPtr FindMainWindow(int processId)
@@ -297,8 +285,10 @@ public class SwitchDocumentInNetwork : IExternalCommand
             return $"{(int)timeAgo.TotalDays}d ago";
     }
 
-    private class SessionInfo
+    private class DocumentInfo
     {
+        public string DocumentTitle { get; set; }
+        public string DocumentPath { get; set; }
         public string SessionId { get; set; }
         public string Port { get; set; }
         public string Hostname { get; set; }
@@ -306,6 +296,5 @@ public class SwitchDocumentInNetwork : IExternalCommand
         public DateTime RegisteredAt { get; set; }
         public DateTime LastHeartbeat { get; set; }
         public DateTime? LastSync { get; set; }
-        public string DocumentTitle { get; set; }
     }
 }
