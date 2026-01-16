@@ -205,10 +205,11 @@ public partial class CustomGUIs
         List<Dictionary<string, object>> workingSet = new List<Dictionary<string, object>>(entries);
         List<SortCriteria> sortCriteria = new List<SortCriteria>();
 
-        // Create form
+        // Create form - position on Revit's screen
+        Screen targetScreen = GetRevitScreen();
         Form form = new Form
         {
-            StartPosition = FormStartPosition.CenterScreen,
+            StartPosition = FormStartPosition.Manual,
             Text = "Selected: 0, Filtered: " + entries.Count + ", Total: " + entries.Count,
             BackColor = Color.White,
             KeyPreview = true // Enable form-level key handling for Shift+Arrow interception
@@ -375,7 +376,7 @@ public partial class CustomGUIs
 
                 int reqWidth = grid.Columns.GetColumnsWidth(DataGridViewElementStates.Visible)
                               + SystemInformation.VerticalScrollBarWidth + 50;
-                form.Width = Math.Min(reqWidth, Screen.PrimaryScreen.WorkingArea.Width - 20);
+                form.Width = Math.Min(reqWidth, targetScreen.WorkingArea.Width - 20);
 
                 _initialSizingDone = true;
             }
@@ -843,7 +844,7 @@ public partial class CustomGUIs
                             2 * grid.RowTemplate.Height +
                             SystemInformation.HorizontalScrollBarHeight + 30;
 
-            int availHeight = Screen.PrimaryScreen.WorkingArea.Height - padding * 2;
+            int availHeight = targetScreen.WorkingArea.Height - padding * 2;
             form.Height = Math.Min(reqHeight, availHeight);
 
             if (spanAllScreens)
@@ -852,17 +853,18 @@ public partial class CustomGUIs
                 form.Width = Screen.AllScreens.Sum(s => s.WorkingArea.Width);
                 form.Location = new Point(
                     Screen.AllScreens.Min(s => s.Bounds.X),
-                    (Screen.PrimaryScreen.WorkingArea.Height - form.Height) / 2);
+                    targetScreen.WorkingArea.Top + (targetScreen.WorkingArea.Height - form.Height) / 2);
             }
             else
             {
                 _currentScreenState = 0;
                 int reqWidth = grid.Columns.GetColumnsWidth(DataGridViewElementStates.Visible)
                               + SystemInformation.VerticalScrollBarWidth + 43;
-                form.Width = Math.Min(reqWidth, Screen.PrimaryScreen.WorkingArea.Width - padding * 2);
+                form.Width = Math.Min(reqWidth, targetScreen.WorkingArea.Width - padding * 2);
+                // Center on the target screen (where Revit is located)
                 form.Location = new Point(
-                    (Screen.PrimaryScreen.WorkingArea.Width - form.Width) / 2,
-                    (Screen.PrimaryScreen.WorkingArea.Height - form.Height) / 2);
+                    targetScreen.WorkingArea.Left + (targetScreen.WorkingArea.Width - form.Width) / 2,
+                    targetScreen.WorkingArea.Top + (targetScreen.WorkingArea.Height - form.Height) / 2);
             }
 
             // Store original bounds and screen for cycling
