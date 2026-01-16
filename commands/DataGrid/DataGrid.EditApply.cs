@@ -9,6 +9,9 @@ public partial class CustomGUIs
     // Store the current UIDocument for edit operations
     private static UIDocument _currentUIDoc = null;
 
+    // Store the Revit main window handle for screen positioning
+    private static IntPtr _revitWindowHandle = IntPtr.Zero;
+
     /// <summary>
     /// Set the current UIDocument for edit operations
     /// Call this from your command before showing the DataGrid
@@ -16,6 +19,37 @@ public partial class CustomGUIs
     public static void SetCurrentUIDocument(UIDocument uidoc)
     {
         _currentUIDoc = uidoc;
+
+        // Also capture the Revit main window handle for screen positioning
+        // MainWindowHandle is only available in Revit 2019+
+#if !(REVIT2017 || REVIT2018)
+        if (uidoc != null && uidoc.Application != null)
+        {
+            _revitWindowHandle = uidoc.Application.MainWindowHandle;
+        }
+#endif
+    }
+
+    /// <summary>
+    /// Set the Revit main window handle directly for screen positioning
+    /// Use this when you don't need edit functionality but want DataGrid on correct screen
+    /// </summary>
+    public static void SetRevitWindowHandle(IntPtr handle)
+    {
+        _revitWindowHandle = handle;
+    }
+
+    /// <summary>
+    /// Gets the screen where the Revit window is located
+    /// Falls back to primary screen if Revit handle is not set
+    /// </summary>
+    internal static System.Windows.Forms.Screen GetRevitScreen()
+    {
+        if (_revitWindowHandle != IntPtr.Zero)
+        {
+            return System.Windows.Forms.Screen.FromHandle(_revitWindowHandle);
+        }
+        return System.Windows.Forms.Screen.PrimaryScreen;
     }
 
     /// <summary>

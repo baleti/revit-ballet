@@ -65,6 +65,13 @@ namespace RevitCommands
             KeyPreview = true;
             KeyDown += (s, e) => { if (e.KeyCode == WinForms.Keys.Escape) Close(); };
 
+            // Position on the same screen as Revit
+            StartPosition = WinForms.FormStartPosition.Manual;
+            var targetScreen = CustomGUIs.GetRevitScreen();
+            Location = new Drawing.Point(
+                targetScreen.WorkingArea.Left + (targetScreen.WorkingArea.Width - Width) / 2,
+                targetScreen.WorkingArea.Top + (targetScreen.WorkingArea.Height - Height) / 2);
+
             // Initialize tooltip
             _toolTip = new WinForms.ToolTip
             {

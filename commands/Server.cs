@@ -274,6 +274,33 @@ namespace RevitBallet.Commands
             }
         }
 
+        /// <summary>
+        /// Updates the LastSync timestamp for the current session in the network registry.
+        /// Called when a document is synchronized with central.
+        /// </summary>
+        public static void UpdateLastSyncTime()
+        {
+            if (serverInstance == null) return;
+
+            try
+            {
+                lock (typeof(RevitBalletServer))
+                {
+                    var entries = serverInstance.ReadNetworkRegistry();
+                    var myEntry = entries.FirstOrDefault(e => e.SessionId == serverInstance.sessionId);
+                    if (myEntry != null)
+                    {
+                        myEntry.LastSync = DateTime.Now;
+                        serverInstance.WriteNetworkRegistry(entries);
+                    }
+                }
+            }
+            catch
+            {
+                // Silently fail - don't interrupt sync operation
+            }
+        }
+
         private async Task UpdateNetworkHeartbeat(CancellationToken cancellationToken)
         {
             while (!cancellationToken.IsCancellationRequested && isRunning)
@@ -401,8 +428,34 @@ namespace RevitBallet.Commands
                             Documents = new List<string>()
                         };
 
-                        // Documents are all remaining parts (comma-separated)
-                        for (int i = 6; i < parts.Length; i++)
+                        // Parse LastSync and Documents
+                        // Format: SessionId,Port,Hostname,ProcessId,RegisteredAt,LastHeartbeat,LastSync,Documents...
+                        int docsStartIndex = 6;
+                        if (parts.Length > 6)
+                        {
+                            var field6 = parts[6].Trim();
+                            DateTime lastSyncParsed;
+                            // Try to parse as ISO 8601 datetime or empty (new format)
+                            if (string.IsNullOrEmpty(field6))
+                            {
+                                // Empty LastSync field in new format
+                                entry.LastSync = null;
+                                docsStartIndex = 7;
+                            }
+                            else if (field6.Length >= 4 &&
+                                     char.IsDigit(field6[0]) &&
+                                     field6.Contains("-") &&
+                                     DateTime.TryParse(field6, out lastSyncParsed))
+                            {
+                                // It's a LastSync timestamp
+                                entry.LastSync = lastSyncParsed;
+                                docsStartIndex = 7;
+                            }
+                            // Otherwise it's old format - field6 is a document title
+                        }
+
+                        // Documents are remaining parts after LastSync
+                        for (int i = docsStartIndex; i < parts.Length; i++)
                         {
                             if (!string.IsNullOrWhiteSpace(parts[i]))
                             {
@@ -425,12 +478,13 @@ namespace RevitBallet.Commands
             var lines = new List<string>();
 
             lines.Add("# Revit Ballet Network Registry - Sessions");
-            lines.Add("# SessionId,Port,Hostname,ProcessId,RegisteredAt,LastHeartbeat,Documents...");
+            lines.Add("# SessionId,Port,Hostname,ProcessId,RegisteredAt,LastHeartbeat,LastSync,Documents...");
 
             foreach (var entry in entries)
             {
                 var docsString = string.Join(",", entry.Documents);
-                var line = $"{entry.SessionId},{entry.Port},{entry.Hostname},{entry.ProcessId},{entry.RegisteredAt:O},{entry.LastHeartbeat:O},{docsString}";
+                var lastSyncStr = entry.LastSync.HasValue ? entry.LastSync.Value.ToString("O") : "";
+                var line = $"{entry.SessionId},{entry.Port},{entry.Hostname},{entry.ProcessId},{entry.RegisteredAt:O},{entry.LastHeartbeat:O},{lastSyncStr},{docsString}";
                 lines.Add(line);
             }
 
@@ -471,7 +525,28 @@ namespace RevitBallet.Commands
                                 Documents = new List<string>()
                             };
 
-                            for (int i = 6; i < parts.Length; i++)
+                            // Parse LastSync and Documents
+                            int docsStartIndex = 6;
+                            if (parts.Length > 6)
+                            {
+                                var field6 = parts[6].Trim();
+                                DateTime lastSyncParsed;
+                                if (string.IsNullOrEmpty(field6))
+                                {
+                                    entry.LastSync = null;
+                                    docsStartIndex = 7;
+                                }
+                                else if (field6.Length >= 4 &&
+                                         char.IsDigit(field6[0]) &&
+                                         field6.Contains("-") &&
+                                         DateTime.TryParse(field6, out lastSyncParsed))
+                                {
+                                    entry.LastSync = lastSyncParsed;
+                                    docsStartIndex = 7;
+                                }
+                            }
+
+                            for (int i = docsStartIndex; i < parts.Length; i++)
                             {
                                 if (!string.IsNullOrWhiteSpace(parts[i]))
                                 {
@@ -1486,6 +1561,7 @@ namespace RevitBallet.Commands
         public List<string> Documents { get; set; }
         public DateTime RegisteredAt { get; set; }
         public DateTime LastHeartbeat { get; set; }
+        public DateTime? LastSync { get; set; }
     }
 
     /// <summary>
