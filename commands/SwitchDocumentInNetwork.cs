@@ -10,7 +10,7 @@ using System.Runtime.InteropServices;
 using RevitBallet.Commands;
 
 [Transaction(TransactionMode.Manual)]
-public class SwitchSession : IExternalCommand
+public class SwitchDocumentInNetwork : IExternalCommand
 {
     // Windows API imports for bringing window to foreground
     [DllImport("user32.dll")]
@@ -54,8 +54,8 @@ public class SwitchSession : IExternalCommand
     {
         UIApplication uiApp = commandData.Application;
 
-        using (var executionLog = CommandExecutionLogger.Start("SwitchSession", commandData))
-        using (var diagnostics = CommandDiagnostics.StartCommand("SwitchSession", uiApp))
+        using (var executionLog = CommandExecutionLogger.Start("SwitchDocumentInNetwork", commandData))
+        using (var diagnostics = CommandDiagnostics.StartCommand("SwitchDocumentInNetwork", uiApp))
         {
             try
             {
@@ -89,7 +89,7 @@ public class SwitchSession : IExternalCommand
 
                 // Prepare data for DataGrid
                 var gridData = new List<Dictionary<string, object>>();
-                var columns = new List<string> { "Session ID", "Document", "Port", "Hostname", "Last Heartbeat" };
+                var columns = new List<string> { "Session ID", "Document", "Last Sync", "Port", "Hostname", "Last Heartbeat" };
 
                 foreach (var session in sessions)
                 {
@@ -99,6 +99,7 @@ public class SwitchSession : IExternalCommand
                         ["Port"] = session.Port,
                         ["Hostname"] = session.Hostname,
                         ["Document"] = string.IsNullOrWhiteSpace(session.DocumentTitle) ? "Home Page" : session.DocumentTitle,
+                        ["Last Sync"] = FormatLastSync(session.LastSync),
                         ["Last Heartbeat"] = FormatHeartbeat(session.LastHeartbeat),
                         ["_ProcessId"] = session.ProcessId, // Hidden field for later use
                         ["_IsCurrent"] = session.SessionId == currentSessionId
@@ -204,9 +205,34 @@ public class SwitchSession : IExternalCommand
                     Hostname = parts[2].Trim(),
                     ProcessId = int.Parse(parts[3].Trim()),
                     RegisteredAt = DateTime.Parse(parts[4].Trim()),
-                    LastHeartbeat = DateTime.Parse(parts[5].Trim()),
-                    DocumentTitle = parts.Length > 6 ? parts[6].Trim() : null
+                    LastHeartbeat = DateTime.Parse(parts[5].Trim())
                 };
+
+                // Check if parts[6] is a LastSync timestamp or a document title
+                // Format: SessionId,Port,Hostname,ProcessId,RegisteredAt,LastHeartbeat,LastSync,Documents...
+                // Old format: SessionId,Port,Hostname,ProcessId,RegisteredAt,LastHeartbeat,Documents...
+                if (parts.Length > 6)
+                {
+                    var field6 = parts[6].Trim();
+                    DateTime lastSyncParsed;
+                    // Try to parse as ISO 8601 datetime (starts with year like "2024-")
+                    if (!string.IsNullOrEmpty(field6) &&
+                        field6.Length >= 4 &&
+                        char.IsDigit(field6[0]) &&
+                        field6.Contains("-") &&
+                        DateTime.TryParse(field6, out lastSyncParsed))
+                    {
+                        // It's a LastSync timestamp
+                        session.LastSync = lastSyncParsed;
+                        session.DocumentTitle = parts.Length > 7 ? parts[7].Trim() : null;
+                    }
+                    else
+                    {
+                        // Old format - field6 is the document title
+                        session.LastSync = null;
+                        session.DocumentTitle = field6;
+                    }
+                }
 
                 sessions.Add(session);
             }
@@ -254,6 +280,23 @@ public class SwitchSession : IExternalCommand
             return $"{(int)timeAgo.TotalDays}d ago";
     }
 
+    private string FormatLastSync(DateTime? lastSync)
+    {
+        if (!lastSync.HasValue)
+            return "-";
+
+        var timeAgo = DateTime.Now - lastSync.Value;
+
+        if (timeAgo.TotalSeconds < 60)
+            return "Just now";
+        else if (timeAgo.TotalMinutes < 60)
+            return $"{(int)timeAgo.TotalMinutes}m ago";
+        else if (timeAgo.TotalHours < 24)
+            return $"{(int)timeAgo.TotalHours}h ago";
+        else
+            return $"{(int)timeAgo.TotalDays}d ago";
+    }
+
     private class SessionInfo
     {
         public string SessionId { get; set; }
@@ -262,6 +305,7 @@ public class SwitchSession : IExternalCommand
         public int ProcessId { get; set; }
         public DateTime RegisteredAt { get; set; }
         public DateTime LastHeartbeat { get; set; }
+        public DateTime? LastSync { get; set; }
         public string DocumentTitle { get; set; }
     }
 }

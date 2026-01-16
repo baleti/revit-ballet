@@ -60,13 +60,45 @@ namespace RevitBallet
                 // Silently fail - don't interrupt Revit startup
             }
 
+            // Subscribe to sync event to track last synchronization time
+            try
+            {
+                application.ControlledApplication.DocumentSynchronizedWithCentral += OnDocumentSynchronized;
+            }
+            catch
+            {
+                // Silently fail - don't interrupt Revit startup
+            }
+
             return Result.Succeeded;
+        }
+
+        private static void OnDocumentSynchronized(object sender, Autodesk.Revit.DB.Events.DocumentSynchronizedWithCentralEventArgs e)
+        {
+            try
+            {
+                RevitBalletServer.UpdateLastSyncTime();
+            }
+            catch
+            {
+                // Silently fail
+            }
         }
 
         public Result OnShutdown(UIControlledApplication application)
         {
             // Cleanup view logging
             LogViewChanges.Cleanup(application);
+
+            // Unsubscribe from sync event
+            try
+            {
+                application.ControlledApplication.DocumentSynchronizedWithCentral -= OnDocumentSynchronized;
+            }
+            catch
+            {
+                // Silently fail
+            }
 
             // Terminate the server
             try

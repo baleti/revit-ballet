@@ -86,7 +86,7 @@
     <AddIn Type="Command">
         <Name>revit-ballet</Name>
         <Assembly>revit-ballet.dll</Assembly>
-        <FullClassName>SwitchSession</FullClassName>
+        <FullClassName>SwitchDocumentInNetwork</FullClassName>
         <AddInId>138931D6-C8D1-40F3-AA1F-21198A8EC522</AddInId>
         <VendorId>revit-ballet</VendorId>
     </AddIn>
