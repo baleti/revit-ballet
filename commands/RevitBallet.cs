@@ -77,7 +77,10 @@ namespace RevitBallet
         {
             try
             {
-                RevitBalletServer.UpdateLastSyncTime();
+                // Pass document path (or title if path is empty) to identify which document was synced
+                var doc = e.Document;
+                var docIdentifier = !string.IsNullOrEmpty(doc.PathName) ? doc.PathName : doc.Title;
+                RevitBalletServer.UpdateLastSyncTime(docIdentifier);
             }
             catch
             {

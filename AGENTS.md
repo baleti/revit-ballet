@@ -124,9 +124,10 @@ Revit Ballet provides a Roslyn compiler-as-a-service that allows AI agents to ex
 
 **Network Registry Structure:**
 ```
-%appdata%/revit-ballet/runtime/network/
-  ├── sessions      # CSV: SessionId,Port,Hostname,ProcessId,RegisteredAt,LastHeartbeat,Documents
-  └── token         # Shared 256-bit authentication token
+%appdata%/revit-ballet/runtime/
+  ├── documents     # CSV: DocumentTitle,DocumentPath,SessionId,Port,Hostname,ProcessId,RegisteredAt,LastHeartbeat,LastSync
+  └── network/
+      └── token     # Shared 256-bit authentication token
 ```
 
 **Design Decision: Shared Token**
@@ -151,8 +152,8 @@ Revit Ballet provides a Roslyn compiler-as-a-service that allows AI agents to ex
 **When you need to query Revit state, test commands, or inspect models:**
 
 1. **Use the Roslyn Server** - Every Revit session runs an HTTPS server that executes C# scripts
-2. **Location**: Token at `runtime/network/token`, sessions at `runtime/network/sessions`
-3. **Find active port**: `grep -v '^#' runtime/network/sessions | head -1 | cut -d',' -f2`
+2. **Location**: Token at `runtime/network/token`, documents at `runtime/documents`
+3. **Find active port**: `grep -v '^#' runtime/documents | head -1 | cut -d',' -f4`
 
 **IMPORTANT - Query File Pattern:**
 
@@ -172,7 +173,7 @@ EOF
 
 # 2. Send the file with --data-binary
 TOKEN=$(cat runtime/network/token)
-PORT=$(grep -v '^#' runtime/network/sessions | head -1 | cut -d',' -f2)
+PORT=$(grep -v '^#' runtime/documents | head -1 | cut -d',' -f4)
 curl -k -s -X POST https://127.0.0.1:$PORT/roslyn \
   -H "X-Auth-Token: $TOKEN" \
   --data-binary @/tmp/query-*.cs | jq -r '.Output'
@@ -213,7 +214,7 @@ Claude Code's Bash tool has a bug where **multiple command substitutions `$(...)
 cat > /tmp/query-revit.sh << 'EOF'
 #!/bin/bash
 TOKEN=$(cat runtime/network/token)
-PORT=$(grep -v '^#' runtime/network/sessions | head -1 | cut -d',' -f2)
+PORT=$(grep -v '^#' runtime/documents | head -1 | cut -d',' -f4)
 curl -k -s -X POST https://127.0.0.1:$PORT/roslyn \
   -H "X-Auth-Token: $TOKEN" \
   --data-binary @/tmp/query-*.cs | jq -r '.Output'
@@ -240,7 +241,7 @@ For frequent queries, create a reusable helper script:
 cat > /tmp/revit-query.sh << 'EOF'
 #!/bin/bash
 TOKEN=$(cat runtime/network/token)
-PORT=$(grep -v '^#' runtime/network/sessions | head -1 | cut -d',' -f2)
+PORT=$(grep -v '^#' runtime/documents | head -1 | cut -d',' -f4)
 curl -k -s -X POST https://127.0.0.1:$PORT/roslyn \
   -H "X-Auth-Token: $TOKEN" \
   --data-binary @"$1" | jq
@@ -264,7 +265,7 @@ bash /tmp/revit-query.sh /tmp/my-query.cs
 **Simple inline queries (single-line, no special characters):**
 ```bash
 TOKEN=$(cat runtime/network/token)
-PORT=$(grep -v '^#' runtime/network/sessions | head -1 | cut -d',' -f2)
+PORT=$(grep -v '^#' runtime/documents | head -1 | cut -d',' -f4)
 curl -k -s -X POST https://127.0.0.1:$PORT/roslyn \
   -H "X-Auth-Token: $TOKEN" \
   -d 'Console.WriteLine("Hello from Revit");' | jq -r '.Output'
@@ -931,22 +932,9 @@ This ensures consistency across Revit 2017-2026. Use this when:
 - Changing Revit API interactions
 - Making significant refactoring changes
 
-## Building
-
-```bash
-# Build plugin (default 2026)
-dotnet build commands/revit-ballet.csproj
-
-# Build for specific version
-dotnet build commands/revit-ballet.csproj -p:RevitYear=2024
-
-# Build installer
-dotnet build installer/installer.csproj
-```
-
 ## Key Files
 
-- `commands/revit-ballet.csproj` - Main plugin project
+- `commands/commands.csproj` - Main plugin project
 - `commands/RevitBallet.cs` - Extension application entry point (initializes server)
 - `commands/Server.cs` - Auto-started Roslyn server for AI agents and network queries
 - `commands/PathHelper.cs` - Runtime path management
