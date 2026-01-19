@@ -4,6 +4,7 @@ using Autodesk.Revit.UI;
 using RevitBallet.Commands;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
@@ -19,12 +20,37 @@ public class SelectByFamilyTypesInNetwork : IExternalCommand
     /// </summary>
     public static bool IsNetworkCommand => true;
 
+    // Diagnostic tracking
+    private List<string> _diagnostics = new List<string>();
+    private Stopwatch _overallStopwatch = new Stopwatch();
+    private Dictionary<string, DocumentTiming> _documentTimings = new Dictionary<string, DocumentTiming>();
+
+    private class DocumentTiming
+    {
+        public string DocumentTitle { get; set; }
+        public string SessionId { get; set; }
+        public bool IsLocal { get; set; }
+        public double CountQueryMs { get; set; }
+        public double ElementsQueryMs { get; set; }
+        public int FamilyTypesFound { get; set; }
+        public int ElementsFound { get; set; }
+    }
+
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
     {
         UIApplication uiapp = commandData.Application;
+        _overallStopwatch.Start();
+        _diagnostics.Clear();
+        _documentTimings.Clear();
+
+        _diagnostics.Add($"=== SelectByFamilyTypesInNetwork Timing Diagnostics ===");
+        _diagnostics.Add($"Started at: {DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}");
+        _diagnostics.Add("");
 
         try
         {
+            var stepWatch = Stopwatch.StartNew();
+
             // Read network token
             string tokenPath = Path.Combine(PathHelper.RuntimeDirectory, "network", "token");
             if (!File.Exists(tokenPath))
@@ -49,7 +75,13 @@ public class SelectByFamilyTypesInNetwork : IExternalCommand
                 return Result.Failed;
             }
 
+            stepWatch.Stop();
+            _diagnostics.Add($"[STEP 0] Initialize and parse documents: {stepWatch.ElapsedMilliseconds}ms");
+            _diagnostics.Add($"         Found {documents.Count} registered documents");
+            _diagnostics.Add("");
+
             // Step 1: Show documents DataGrid - let user select which documents to query
+            stepWatch.Restart();
             var documentGridData = new List<Dictionary<string, object>>();
             foreach (var doc in documents)
             {
@@ -71,23 +103,57 @@ public class SelectByFamilyTypesInNetwork : IExternalCommand
             var documentColumns = new List<string> { "Document", "Session ID", "Port", "Hostname", "Last Heartbeat" };
             var selectedDocuments = CustomGUIs.DataGrid(documentGridData, documentColumns, false);
 
+            stepWatch.Stop();
+            _diagnostics.Add($"[STEP 1] Document selection UI: {stepWatch.ElapsedMilliseconds}ms (includes user interaction)");
+
             if (selectedDocuments == null || selectedDocuments.Count == 0)
+            {
+                WriteDiagnostics("Cancelled at document selection");
                 return Result.Cancelled;
+            }
 
             // Extract selected document objects
             var documentsToQuery = selectedDocuments.Select(row => (DocumentInfo)row["_Document"]).ToList();
+            _diagnostics.Add($"         Selected {documentsToQuery.Count} documents to query");
+            _diagnostics.Add("");
+
+            // Initialize timing entries for each document
+            string currentSessionId = RevitBallet.RevitBallet.SessionId;
+            foreach (var doc in documentsToQuery)
+            {
+                _documentTimings[doc.DocumentTitle] = new DocumentTiming
+                {
+                    DocumentTitle = doc.DocumentTitle,
+                    SessionId = doc.SessionId,
+                    IsLocal = doc.SessionId == currentSessionId
+                };
+            }
 
             // Step 2: Query selected documents for family type COUNTS only (fast)
-            string currentSessionId = RevitBallet.RevitBallet.SessionId;
+            stepWatch.Restart();
             var familyTypeCounts = QueryDocumentsForFamilyTypeCounts(documentsToQuery, token, currentSessionId, uiapp);
+            stepWatch.Stop();
+
+            _diagnostics.Add($"[STEP 2] Query family type counts: {stepWatch.ElapsedMilliseconds}ms TOTAL");
+            _diagnostics.Add($"         Found {familyTypeCounts.Count} unique family types");
+            _diagnostics.Add("");
+            _diagnostics.Add("         Per-document breakdown:");
+            foreach (var timing in _documentTimings.Values.OrderBy(t => t.DocumentTitle))
+            {
+                string locality = timing.IsLocal ? "LOCAL" : "REMOTE";
+                _diagnostics.Add($"           [{locality}] {timing.DocumentTitle}: {timing.CountQueryMs:F1}ms, {timing.FamilyTypesFound} types");
+            }
+            _diagnostics.Add("");
 
             if (familyTypeCounts.Count == 0)
             {
                 TaskDialog.Show("No Family Types", "No family types found in selected documents.");
+                WriteDiagnostics("No family types found");
                 return Result.Cancelled;
             }
 
             // Step 3: Build DataGrid with family types as rows and documents as columns
+            stepWatch.Restart();
             var documentTitles = documentsToQuery.Select(d => d.DocumentTitle).Distinct().ToList();
 
             var familyTypeList = new List<Dictionary<string, object>>();
@@ -120,20 +186,57 @@ public class SelectByFamilyTypesInNetwork : IExternalCommand
             var propertyNames = new List<string> { "Category", "Family", "Type Name" };
             propertyNames.AddRange(documentTitles);
 
+            stepWatch.Stop();
+            _diagnostics.Add($"[STEP 3] Build family type grid data: {stepWatch.ElapsedMilliseconds}ms");
+            _diagnostics.Add($"         {familyTypeList.Count} rows prepared");
+            _diagnostics.Add("");
+
             // Step 4: Show family type DataGrid
+            stepWatch.Restart();
             List<Dictionary<string, object>> selectedFamilyTypes = CustomGUIs.DataGrid(familyTypeList, propertyNames, false);
+            stepWatch.Stop();
+            _diagnostics.Add($"[STEP 4] Family type selection UI: {stepWatch.ElapsedMilliseconds}ms (includes user interaction)");
+
             if (selectedFamilyTypes == null || selectedFamilyTypes.Count == 0)
+            {
+                WriteDiagnostics("Cancelled at family type selection");
                 return Result.Cancelled;
+            }
+
+            _diagnostics.Add($"         Selected {selectedFamilyTypes.Count} family types");
+            _diagnostics.Add("");
 
             // Step 5: Query for actual elements of selected family types
+            stepWatch.Restart();
             var selectedFamilyTypeKeys = selectedFamilyTypes
                 .Where(ft => ft.ContainsKey("_FamilyTypeKey"))
                 .Select(ft => (FamilyTypeKey)ft["_FamilyTypeKey"])
                 .ToList();
 
+            // Reset element counts for timing
+            foreach (var timing in _documentTimings.Values)
+            {
+                timing.ElementsQueryMs = 0;
+                timing.ElementsFound = 0;
+            }
+
             var familyTypeElements = QueryElementsForFamilyTypes(documentsToQuery, selectedFamilyTypeKeys, token, currentSessionId, uiapp);
+            stepWatch.Stop();
+
+            int totalElements = familyTypeElements.Values.Sum(d => d.Values.Sum(l => l.Count));
+            _diagnostics.Add($"[STEP 5] Query elements for selected types: {stepWatch.ElapsedMilliseconds}ms TOTAL");
+            _diagnostics.Add($"         Found {totalElements} total elements");
+            _diagnostics.Add("");
+            _diagnostics.Add("         Per-document breakdown:");
+            foreach (var timing in _documentTimings.Values.OrderBy(t => t.DocumentTitle))
+            {
+                string locality = timing.IsLocal ? "LOCAL" : "REMOTE";
+                _diagnostics.Add($"           [{locality}] {timing.DocumentTitle}: {timing.ElementsQueryMs:F1}ms, {timing.ElementsFound} elements");
+            }
+            _diagnostics.Add("");
 
             // Step 6: Gather selection items from query results
+            stepWatch.Restart();
             List<SelectionItem> selectionItems = new List<SelectionItem>();
 
             foreach (var familyTypeEntry in familyTypeElements)
@@ -159,6 +262,7 @@ public class SelectByFamilyTypesInNetwork : IExternalCommand
             var existingSelection = SelectionStorage.LoadSelection();
             var existingUniqueIds = new HashSet<string>(existingSelection.Select(s => $"{s.DocumentTitle}|{s.UniqueId}"));
 
+            int newItemsAdded = 0;
             // Add new items that don't already exist
             foreach (var item in selectionItems)
             {
@@ -166,19 +270,80 @@ public class SelectByFamilyTypesInNetwork : IExternalCommand
                 if (!existingUniqueIds.Contains(key))
                 {
                     existingSelection.Add(item);
+                    newItemsAdded++;
                 }
             }
 
             // Save selection
             SelectionStorage.SaveSelection(existingSelection);
+            stepWatch.Stop();
 
+            _diagnostics.Add($"[STEP 6] Merge and save selection: {stepWatch.ElapsedMilliseconds}ms");
+            _diagnostics.Add($"         {newItemsAdded} new items added to selection");
+            _diagnostics.Add($"         {existingSelection.Count} total items in selection storage");
+            _diagnostics.Add("");
+
+            _overallStopwatch.Stop();
+            _diagnostics.Add($"=== TOTAL EXECUTION TIME: {_overallStopwatch.ElapsedMilliseconds}ms ===");
+
+            // Summary statistics
+            _diagnostics.Add("");
+            _diagnostics.Add("=== PERFORMANCE SUMMARY ===");
+            var localDocs = _documentTimings.Values.Where(t => t.IsLocal).ToList();
+            var remoteDocs = _documentTimings.Values.Where(t => !t.IsLocal).ToList();
+
+            if (localDocs.Any())
+            {
+                _diagnostics.Add($"Local documents ({localDocs.Count}):");
+                _diagnostics.Add($"  Count query: avg={localDocs.Average(t => t.CountQueryMs):F1}ms, max={localDocs.Max(t => t.CountQueryMs):F1}ms");
+                _diagnostics.Add($"  Elements query: avg={localDocs.Average(t => t.ElementsQueryMs):F1}ms, max={localDocs.Max(t => t.ElementsQueryMs):F1}ms");
+            }
+
+            if (remoteDocs.Any())
+            {
+                _diagnostics.Add($"Remote documents ({remoteDocs.Count}):");
+                _diagnostics.Add($"  Count query: avg={remoteDocs.Average(t => t.CountQueryMs):F1}ms, max={remoteDocs.Max(t => t.CountQueryMs):F1}ms, min={remoteDocs.Min(t => t.CountQueryMs):F1}ms");
+                _diagnostics.Add($"  Elements query: avg={remoteDocs.Average(t => t.ElementsQueryMs):F1}ms, max={remoteDocs.Max(t => t.ElementsQueryMs):F1}ms, min={remoteDocs.Min(t => t.ElementsQueryMs):F1}ms");
+
+                // Identify slowest document
+                var slowestCount = remoteDocs.OrderByDescending(t => t.CountQueryMs).First();
+                var slowestElements = remoteDocs.OrderByDescending(t => t.ElementsQueryMs).First();
+                _diagnostics.Add($"  Slowest count query: {slowestCount.DocumentTitle} ({slowestCount.CountQueryMs:F1}ms)");
+                _diagnostics.Add($"  Slowest elements query: {slowestElements.DocumentTitle} ({slowestElements.ElementsQueryMs:F1}ms)");
+            }
+
+            WriteDiagnostics("Completed successfully");
             return Result.Succeeded;
         }
         catch (Exception ex)
         {
+            _overallStopwatch.Stop();
+            _diagnostics.Add($"[ERROR] Exception after {_overallStopwatch.ElapsedMilliseconds}ms: {ex.Message}");
+            _diagnostics.Add(ex.StackTrace);
+            WriteDiagnostics("Failed with exception");
+
             TaskDialog.Show("Error", $"Failed to query network sessions: {ex.Message}");
             return Result.Failed;
         }
+    }
+
+    private void WriteDiagnostics(string status)
+    {
+        try
+        {
+            _diagnostics.Add("");
+            _diagnostics.Add($"Status: {status}");
+            _diagnostics.Add($"Completed at: {DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}");
+
+            string diagnosticPath = Path.Combine(
+                PathHelper.RuntimeDirectory,
+                "diagnostics",
+                $"SelectByFamilyTypesInNetwork-{DateTime.Now:yyyyMMdd-HHmmss-fff}.txt");
+
+            Directory.CreateDirectory(Path.GetDirectoryName(diagnosticPath));
+            File.WriteAllLines(diagnosticPath, _diagnostics);
+        }
+        catch { }
     }
 
     private List<DocumentInfo> ParseDocumentsFile(string filePath)
@@ -234,6 +399,9 @@ public class SelectByFamilyTypesInNetwork : IExternalCommand
         // Process current session locally
         foreach (var docInfo in documents.Where(d => d.SessionId == currentSessionId))
         {
+            var localWatch = Stopwatch.StartNew();
+            int typesFound = 0;
+
             try
             {
                 var app = uiapp.Application;
@@ -294,12 +462,20 @@ public class SelectByFamilyTypesInNetwork : IExternalCommand
                         if (!result[key].ContainsKey(doc.Title))
                             result[key][doc.Title] = 0;
                         result[key][doc.Title] += count;
+                        typesFound++;
                     }
                 }
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Failed to query local document: {ex.Message}");
+            }
+
+            localWatch.Stop();
+            if (_documentTimings.ContainsKey(docInfo.DocumentTitle))
+            {
+                _documentTimings[docInfo.DocumentTitle].CountQueryMs = localWatch.Elapsed.TotalMilliseconds;
+                _documentTimings[docInfo.DocumentTitle].FamilyTypesFound = typesFound;
             }
         }
 
@@ -315,7 +491,7 @@ public class SelectByFamilyTypesInNetwork : IExternalCommand
                 {
                     client.Timeout = TimeSpan.FromSeconds(120);
 
-                    var tasks = new List<Task<(DocumentInfo DocInfo, RoslynResponse Response)>>();
+                    var tasks = new List<Task<(DocumentInfo DocInfo, RoslynResponse Response, double ElapsedMs)>>();
 
                     foreach (var docInfo in remoteDocuments)
                     {
@@ -370,7 +546,7 @@ else
     }}
 }}";
 
-                        var task = SendRoslynRequestAsync(client, docInfo, query, token);
+                        var task = SendRoslynRequestWithTimingAsync(client, docInfo, query, token);
                         tasks.Add(task);
                     }
 
@@ -383,10 +559,21 @@ else
                         {
                             if (task.Status == TaskStatus.RanToCompletion)
                             {
-                                var (docInfo, jsonResponse) = task.Result;
+                                var (docInfo, jsonResponse, elapsedMs) = task.Result;
+
+                                // Record timing
+                                if (_documentTimings.ContainsKey(docInfo.DocumentTitle))
+                                {
+                                    _documentTimings[docInfo.DocumentTitle].CountQueryMs = elapsedMs;
+                                }
+
                                 if (jsonResponse != null && jsonResponse.Success && !string.IsNullOrWhiteSpace(jsonResponse.Output))
                                 {
-                                    ParseFamilyTypeCountResponse(jsonResponse.Output, docInfo, result);
+                                    int typesFound = ParseFamilyTypeCountResponse(jsonResponse.Output, docInfo, result);
+                                    if (_documentTimings.ContainsKey(docInfo.DocumentTitle))
+                                    {
+                                        _documentTimings[docInfo.DocumentTitle].FamilyTypesFound = typesFound;
+                                    }
                                 }
                             }
                         }
@@ -402,9 +589,10 @@ else
         return result;
     }
 
-    private async Task<(DocumentInfo DocInfo, RoslynResponse Response)> SendRoslynRequestAsync(
+    private async Task<(DocumentInfo DocInfo, RoslynResponse Response, double ElapsedMs)> SendRoslynRequestWithTimingAsync(
         HttpClient client, DocumentInfo docInfo, string query, string token)
     {
+        var stopwatch = Stopwatch.StartNew();
         try
         {
             var content = new StringContent(query, Encoding.UTF8, "text/plain");
@@ -415,19 +603,22 @@ else
             var response = await client.SendAsync(request);
             var responseText = await response.Content.ReadAsStringAsync();
 
+            stopwatch.Stop();
             var jsonResponse = Newtonsoft.Json.JsonConvert.DeserializeObject<RoslynResponse>(responseText);
-            return (docInfo, jsonResponse);
+            return (docInfo, jsonResponse, stopwatch.Elapsed.TotalMilliseconds);
         }
         catch (Exception ex)
         {
+            stopwatch.Stop();
             System.Diagnostics.Debug.WriteLine($"Failed to query document {docInfo.SessionId} ({docInfo.DocumentTitle}): {ex.Message}");
-            return (docInfo, null);
+            return (docInfo, null, stopwatch.Elapsed.TotalMilliseconds);
         }
     }
 
-    private void ParseFamilyTypeCountResponse(string output, DocumentInfo docInfo,
+    private int ParseFamilyTypeCountResponse(string output, DocumentInfo docInfo,
         Dictionary<FamilyTypeKey, Dictionary<string, int>> result)
     {
+        int typesFound = 0;
         foreach (var line in output.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries))
         {
             if (line.StartsWith("FAMILYTYPE|"))
@@ -447,9 +638,11 @@ else
                         result[key] = new Dictionary<string, int>();
 
                     result[key][docInfo.DocumentTitle] = count;
+                    typesFound++;
                 }
             }
         }
+        return typesFound;
     }
 
     private Dictionary<FamilyTypeKey, Dictionary<string, List<ElementInfo>>> QueryElementsForFamilyTypes(
@@ -463,6 +656,9 @@ else
         // Process current session locally
         foreach (var docInfo in documents.Where(d => d.SessionId == currentSessionId))
         {
+            var localWatch = Stopwatch.StartNew();
+            int elementsFound = 0;
+
             try
             {
                 var app = uiapp.Application;
@@ -532,12 +728,20 @@ else
                             DocumentPath = doc.PathName ?? doc.Title,
                             SessionId = docInfo.SessionId
                         });
+                        elementsFound++;
                     }
                 }
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Failed to query elements for local document: {ex.Message}");
+            }
+
+            localWatch.Stop();
+            if (_documentTimings.ContainsKey(docInfo.DocumentTitle))
+            {
+                _documentTimings[docInfo.DocumentTitle].ElementsQueryMs = localWatch.Elapsed.TotalMilliseconds;
+                _documentTimings[docInfo.DocumentTitle].ElementsFound = elementsFound;
             }
         }
 
@@ -565,7 +769,7 @@ else
                 {
                     client.Timeout = TimeSpan.FromSeconds(120);
 
-                    var tasks = new List<Task<(DocumentInfo DocInfo, RoslynResponse Response)>>();
+                    var tasks = new List<Task<(DocumentInfo DocInfo, RoslynResponse Response, double ElapsedMs)>>();
 
                     foreach (var docInfo in remoteDocuments)
                     {
@@ -623,7 +827,7 @@ else
     }}
 }}";
 
-                        var task = SendRoslynRequestAsync(client, docInfo, query, token);
+                        var task = SendRoslynRequestWithTimingAsync(client, docInfo, query, token);
                         tasks.Add(task);
                     }
 
@@ -636,10 +840,21 @@ else
                         {
                             if (task.Status == TaskStatus.RanToCompletion)
                             {
-                                var (docInfo, jsonResponse) = task.Result;
+                                var (docInfo, jsonResponse, elapsedMs) = task.Result;
+
+                                // Record timing
+                                if (_documentTimings.ContainsKey(docInfo.DocumentTitle))
+                                {
+                                    _documentTimings[docInfo.DocumentTitle].ElementsQueryMs = elapsedMs;
+                                }
+
                                 if (jsonResponse != null && jsonResponse.Success && !string.IsNullOrWhiteSpace(jsonResponse.Output))
                                 {
-                                    ParseElementsResponse(jsonResponse.Output, docInfo, familyTypeKeys, result);
+                                    int elementsFound = ParseElementsResponse(jsonResponse.Output, docInfo, familyTypeKeys, result);
+                                    if (_documentTimings.ContainsKey(docInfo.DocumentTitle))
+                                    {
+                                        _documentTimings[docInfo.DocumentTitle].ElementsFound = elementsFound;
+                                    }
                                 }
                             }
                         }
@@ -660,9 +875,10 @@ else
         return value.Replace("\\", "\\\\").Replace("\"", "\\\"");
     }
 
-    private void ParseElementsResponse(string output, DocumentInfo docInfo, List<FamilyTypeKey> familyTypeKeys,
+    private int ParseElementsResponse(string output, DocumentInfo docInfo, List<FamilyTypeKey> familyTypeKeys,
         Dictionary<FamilyTypeKey, Dictionary<string, List<ElementInfo>>> result)
     {
+        int elementsFound = 0;
         foreach (var line in output.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries))
         {
             if (line.StartsWith("ELEMENT|"))
@@ -690,10 +906,12 @@ else
                             DocumentPath = docInfo.DocumentPath ?? docInfo.DocumentTitle,
                             SessionId = docInfo.SessionId
                         });
+                        elementsFound++;
                     }
                 }
             }
         }
+        return elementsFound;
     }
 
     private string FormatHeartbeat(DateTime heartbeat)
