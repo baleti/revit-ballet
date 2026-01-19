@@ -334,8 +334,8 @@ public class SelectByCategoriesInNetwork : IExternalCommand
             }
         }
 
-        // Process remote documents via Roslyn
-        var remoteDocuments = documents.Where(d => d.SessionId != currentSessionId).ToList();
+        // Process remote documents via Roslyn - PARALLEL requests
+        var remoteDocuments = documents.Where(d => d.SessionId != currentSessionId && !string.IsNullOrWhiteSpace(d.DocumentTitle)).ToList();
         if (remoteDocuments.Count > 0)
         {
             using (var handler = new HttpClientHandler())
@@ -346,16 +346,14 @@ public class SelectByCategoriesInNetwork : IExternalCommand
                 {
                     client.Timeout = TimeSpan.FromSeconds(120);
 
+                    // Build all requests and send them in parallel
+                    var tasks = new List<Task<(DocumentInfo DocInfo, RoslynResponse Response)>>();
+
                     foreach (var docInfo in remoteDocuments)
                     {
-                        if (string.IsNullOrWhiteSpace(docInfo.DocumentTitle))
-                            continue;
-
-                        try
-                        {
-                            // Must find specific document by title - Doc may point to a different active document
-                            var escapedTitle = docInfo.DocumentTitle.Replace("\\", "\\\\").Replace("\"", "\\\"");
-                            var query = $@"var docTitle = ""{escapedTitle}"";
+                        // Must find specific document by title - Doc may point to a different active document
+                        var escapedTitle = docInfo.DocumentTitle.Replace("\\", "\\\\").Replace("\"", "\\\"");
+                        var query = $@"var docTitle = ""{escapedTitle}"";
 Console.WriteLine(""DEBUG|Looking for document: "" + docTitle);
 Console.WriteLine(""DEBUG|Available documents: "" + UIApp.Application.Documents.Size);
 Document targetDoc = null;
@@ -384,28 +382,41 @@ else
     }}
 }}";
 
-                            var content = new StringContent(query, Encoding.UTF8, "text/plain");
-                            var request = new HttpRequestMessage(HttpMethod.Post, $"https://127.0.0.1:{docInfo.Port}/roslyn");
-                            request.Headers.Add("X-Auth-Token", token);
-                            request.Content = content;
+                        var task = SendRoslynRequestAsync(client, docInfo, query, token);
+                        tasks.Add(task);
+                    }
 
-                            var response = client.SendAsync(request).Result;
-                            var responseText = response.Content.ReadAsStringAsync().Result;
+                    // Wait for all requests to complete in parallel
+                    try
+                    {
+                        Task.WhenAll(tasks).Wait();
+                    }
+                    catch (AggregateException)
+                    {
+                        // Individual task exceptions are handled below
+                    }
 
-                            var jsonResponse = Newtonsoft.Json.JsonConvert.DeserializeObject<RoslynResponse>(responseText);
-
-                            if (jsonResponse.Success && !string.IsNullOrWhiteSpace(jsonResponse.Output))
+                    // Process all responses
+                    foreach (var task in tasks)
+                    {
+                        try
+                        {
+                            if (task.Status == TaskStatus.RanToCompletion)
                             {
-                                ParseCategoryCountResponse(jsonResponse.Output, docInfo, result);
-                            }
-                            else
-                            {
-                                System.Diagnostics.Debug.WriteLine($"Query returned no data for {docInfo.DocumentTitle}: Success={jsonResponse?.Success}, Error={jsonResponse?.Error}");
+                                var (docInfo, jsonResponse) = task.Result;
+                                if (jsonResponse != null && jsonResponse.Success && !string.IsNullOrWhiteSpace(jsonResponse.Output))
+                                {
+                                    ParseCategoryCountResponse(jsonResponse.Output, docInfo, result);
+                                }
+                                else
+                                {
+                                    System.Diagnostics.Debug.WriteLine($"Query returned no data for {docInfo.DocumentTitle}: Success={jsonResponse?.Success}, Error={jsonResponse?.Error}");
+                                }
                             }
                         }
                         catch (Exception ex)
                         {
-                            System.Diagnostics.Debug.WriteLine($"Failed to query document {docInfo.SessionId} ({docInfo.DocumentTitle}): {ex.Message}");
+                            System.Diagnostics.Debug.WriteLine($"Failed to process response: {ex.Message}");
                         }
                     }
                 }
@@ -413,6 +424,29 @@ else
         }
 
         return result;
+    }
+
+    private async Task<(DocumentInfo DocInfo, RoslynResponse Response)> SendRoslynRequestAsync(
+        HttpClient client, DocumentInfo docInfo, string query, string token)
+    {
+        try
+        {
+            var content = new StringContent(query, Encoding.UTF8, "text/plain");
+            var request = new HttpRequestMessage(HttpMethod.Post, $"https://127.0.0.1:{docInfo.Port}/roslyn");
+            request.Headers.Add("X-Auth-Token", token);
+            request.Content = content;
+
+            var response = await client.SendAsync(request);
+            var responseText = await response.Content.ReadAsStringAsync();
+
+            var jsonResponse = Newtonsoft.Json.JsonConvert.DeserializeObject<RoslynResponse>(responseText);
+            return (docInfo, jsonResponse);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed to query document {docInfo.SessionId} ({docInfo.DocumentTitle}): {ex.Message}");
+            return (docInfo, null);
+        }
     }
 
     private void ParseCategoryCountResponse(string output, DocumentInfo docInfo,
@@ -502,8 +536,8 @@ else
             }
         }
 
-        // Process remote documents via Roslyn
-        var remoteDocuments = documents.Where(d => d.SessionId != currentSessionId).ToList();
+        // Process remote documents via Roslyn - PARALLEL requests
+        var remoteDocuments = documents.Where(d => d.SessionId != currentSessionId && !string.IsNullOrWhiteSpace(d.DocumentTitle)).ToList();
         System.Diagnostics.Debug.WriteLine($"Remote document matches: {remoteDocuments.Count}");
         diagnosticLines.Add($"Remote documents: {remoteDocuments.Count}");
         foreach (var rd in remoteDocuments)
@@ -522,19 +556,19 @@ else
                 {
                     client.Timeout = TimeSpan.FromSeconds(120);
 
+                    // Build all requests and send them in parallel
+                    var categoriesArray = "{ \"" + string.Join("\", \"", categoryNames.Select(c => c.Replace("\"", "\\\""))) + "\" }";
+                    var tasks = new List<Task<(DocumentInfo DocInfo, RoslynResponse Response)>>();
+
+                    diagnosticLines.Add($"  Sending {remoteDocuments.Count} requests in parallel...");
+
                     foreach (var docInfo in remoteDocuments)
                     {
-                        if (string.IsNullOrWhiteSpace(docInfo.DocumentTitle))
-                            continue;
+                        var escapedTitle = docInfo.DocumentTitle.Replace("\\", "\\\\").Replace("\"", "\\\"");
 
-                        try
-                        {
-                            var categoriesArray = "{ \"" + string.Join("\", \"", categoryNames.Select(c => c.Replace("\"", "\\\""))) + "\" }";
-                            var escapedTitle = docInfo.DocumentTitle.Replace("\\", "\\\\").Replace("\"", "\\\"");
-
-                            // Must find specific document by title - Doc may point to a different active document
-                            // Use version-agnostic ElementId access (IntegerValue works on all versions)
-                            var query = $@"var docTitle = ""{escapedTitle}"";
+                        // Must find specific document by title - Doc may point to a different active document
+                        // Use version-agnostic ElementId access (IntegerValue works on all versions)
+                        var query = $@"var docTitle = ""{escapedTitle}"";
 var categories = new string[] {categoriesArray};
 Document targetDoc = null;
 foreach (Document d in UIApp.Application.Documents)
@@ -564,44 +598,64 @@ else
     }}
 }}";
 
-                            var content = new StringContent(query, Encoding.UTF8, "text/plain");
-                            var request = new HttpRequestMessage(HttpMethod.Post, $"https://127.0.0.1:{docInfo.Port}/roslyn");
-                            request.Headers.Add("X-Auth-Token", token);
-                            request.Content = content;
+                        var task = SendRoslynRequestAsync(client, docInfo, query, token);
+                        tasks.Add(task);
+                    }
 
-                            diagnosticLines.Add($"  Sending request to {docInfo.DocumentTitle} at port {docInfo.Port}...");
-                            var response = client.SendAsync(request).Result;
-                            var responseText = response.Content.ReadAsStringAsync().Result;
+                    // Wait for all requests to complete in parallel
+                    try
+                    {
+                        Task.WhenAll(tasks).Wait();
+                    }
+                    catch (AggregateException)
+                    {
+                        // Individual task exceptions are handled below
+                    }
 
-                            var jsonResponse = Newtonsoft.Json.JsonConvert.DeserializeObject<RoslynResponse>(responseText);
+                    diagnosticLines.Add($"  All {tasks.Count} requests completed");
 
-                            diagnosticLines.Add($"  Response: Success={jsonResponse.Success}, HasOutput={!string.IsNullOrWhiteSpace(jsonResponse.Output)}");
-                            if (!string.IsNullOrWhiteSpace(jsonResponse.Output))
+                    // Process all responses
+                    foreach (var task in tasks)
+                    {
+                        try
+                        {
+                            if (task.Status == TaskStatus.RanToCompletion)
                             {
-                                diagnosticLines.Add($"  Output preview: {jsonResponse.Output.Substring(0, Math.Min(500, jsonResponse.Output.Length))}");
+                                var (docInfo, jsonResponse) = task.Result;
+
+                                diagnosticLines.Add($"  Response from {docInfo.DocumentTitle}: Success={jsonResponse?.Success}, HasOutput={!string.IsNullOrWhiteSpace(jsonResponse?.Output)}");
+                                if (jsonResponse != null && !string.IsNullOrWhiteSpace(jsonResponse.Output))
+                                {
+                                    diagnosticLines.Add($"  Output preview: {jsonResponse.Output.Substring(0, Math.Min(500, jsonResponse.Output.Length))}");
+                                }
+                                if (jsonResponse != null && !string.IsNullOrWhiteSpace(jsonResponse.Error))
+                                {
+                                    diagnosticLines.Add($"  Error: {jsonResponse.Error}");
+                                }
+
+                                System.Diagnostics.Debug.WriteLine($"  Remote query response: Success={jsonResponse?.Success}, HasOutput={!string.IsNullOrWhiteSpace(jsonResponse?.Output)}");
+
+                                if (jsonResponse != null && jsonResponse.Success && !string.IsNullOrWhiteSpace(jsonResponse.Output))
+                                {
+                                    System.Diagnostics.Debug.WriteLine($"  Parsing elements response for document {docInfo.SessionId}");
+                                    ParseElementsResponse(jsonResponse.Output, docInfo, result);
+                                    System.Diagnostics.Debug.WriteLine($"  After parsing, result has {result.Count} categories");
+                                    diagnosticLines.Add($"  After parsing: {result.Values.Sum(d => d.Values.Sum(l => l.Count))} elements total");
+                                }
+                                else
+                                {
+                                    System.Diagnostics.Debug.WriteLine($"  Remote query failed or no output: Error={jsonResponse?.Error}");
+                                }
                             }
-                            if (!string.IsNullOrWhiteSpace(jsonResponse.Error))
+                            else if (task.IsFaulted)
                             {
-                                diagnosticLines.Add($"  Error: {jsonResponse.Error}");
-                            }
-
-                            System.Diagnostics.Debug.WriteLine($"  Remote query response: Success={jsonResponse.Success}, HasOutput={!string.IsNullOrWhiteSpace(jsonResponse.Output)}");
-
-                            if (jsonResponse.Success && !string.IsNullOrWhiteSpace(jsonResponse.Output))
-                            {
-                                System.Diagnostics.Debug.WriteLine($"  Parsing elements response for document {docInfo.SessionId}");
-                                ParseElementsResponse(jsonResponse.Output, docInfo, result);
-                                System.Diagnostics.Debug.WriteLine($"  After parsing, result has {result.Count} categories");
-                                diagnosticLines.Add($"  After parsing: {result.Values.Sum(d => d.Values.Sum(l => l.Count))} elements total");
-                            }
-                            else
-                            {
-                                System.Diagnostics.Debug.WriteLine($"  Remote query failed or no output: Error={jsonResponse.Error}");
+                                System.Diagnostics.Debug.WriteLine($"Failed to query elements: {task.Exception?.Message}");
+                                diagnosticLines.Add($"  EXCEPTION: {task.Exception?.Message}");
                             }
                         }
                         catch (Exception ex)
                         {
-                            System.Diagnostics.Debug.WriteLine($"Failed to query elements for document {docInfo.SessionId}: {ex.Message}");
+                            System.Diagnostics.Debug.WriteLine($"Failed to process response: {ex.Message}");
                             diagnosticLines.Add($"  EXCEPTION: {ex.Message}");
                         }
                     }
