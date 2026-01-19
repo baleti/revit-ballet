@@ -908,17 +908,6 @@ Now **ANY command** that creates a "Level" column gets automatic editing!
 
 See `IMPLEMENTATION_SUMMARY.md` in `commands/DataGrid/` for full documentation.
 
-## Build Limitations
-
-**IMPORTANT**: Do NOT attempt to build the installer using `cd installer && dotnet build -c Release`.
-
-Due to limitations of the underlying 9p filesystem in the isolated environment, builds may take excessive amounts of time (over 5 minutes or may hang indefinitely).
-
-Instead:
-- Ask the user to test the build and return results if needed
-- Focus on code changes and let the user handle compilation
-- If build verification is required, request the user run the build command in their environment
-
 ## Testing Across Revit Versions
 
 When making changes that could affect compatibility, it's recommended (though not required) to test builds across all supported Revit versions:
