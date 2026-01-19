@@ -16,6 +16,11 @@ using System.Text;
 [Transaction(TransactionMode.Manual)]
 public class ListSelectedInNetwork : IExternalCommand
 {
+    /// <summary>
+    /// Marks this command as usable outside Revit context via network.
+    /// </summary>
+    public static bool IsNetworkCommand => true;
+
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
     {
         try
@@ -300,46 +305,60 @@ public class ListSelectedInNetwork : IExternalCommand
 
                         // Build query to get element data
                         var uniqueIds = docGroup.Select(e => $"\"{e.UniqueId}\"").ToList();
-                        var uniqueIdsArray = "[" + string.Join(", ", uniqueIds) + "]";
+                        var uniqueIdsArray = "{ " + string.Join(", ", uniqueIds) + " }";
+                        var escapedDocTitle = docGroup.Key.DocumentTitle.Replace("\\", "\\\\").Replace("\"", "\\\"");
 
-                        var query = $@"var uniqueIds = new string[] {uniqueIdsArray};
-var results = new List<string>();
-foreach (var uid in uniqueIds)
+                        // Must find specific document by title - Doc may point to different active document
+                        var query = $@"var docTitle = ""{escapedDocTitle}"";
+var uniqueIds = new string[] {uniqueIdsArray};
+Document targetDoc = null;
+foreach (Document d in UIApp.Application.Documents)
 {{
-    try
+    if (!d.IsLinked && d.Title == docTitle)
     {{
-        var elem = Doc.GetElement(uid);
-        if (elem != null)
+        targetDoc = d;
+        break;
+    }}
+}}
+if (targetDoc == null)
+{{
+    Console.WriteLine(""ERROR|Document not found: "" + docTitle);
+}}
+else
+{{
+    foreach (var uid in uniqueIds)
+    {{
+        try
         {{
-            var parts = new List<string>();
-            parts.Add(""ELEMENT|"" + uid);
-            parts.Add(""Name|"" + (elem.Name ?? """"));
-            parts.Add(""Category|"" + (elem.Category?.Name ?? """"));
-#if REVIT2024 || REVIT2025 || REVIT2026
-            parts.Add(""Id|"" + elem.Id.Value);
-#else
-            parts.Add(""Id|"" + elem.Id.IntegerValue);
-#endif
-
-            // Get Type Name and Family
-            var typeId = elem.GetTypeId();
-            if (typeId != null && typeId != ElementId.InvalidElementId)
+            var elem = targetDoc.GetElement(uid);
+            if (elem != null)
             {{
-                var typeElem = Doc.GetElement(typeId);
-                if (typeElem != null)
+                var parts = new List<string>();
+                parts.Add(""ELEMENT|"" + uid);
+                parts.Add(""Name|"" + (elem.Name ?? """"));
+                parts.Add(""Category|"" + (elem.Category?.Name ?? """"));
+                parts.Add(""Id|"" + elem.Id.IntegerValue);
+
+                // Get Type Name and Family
+                var typeId = elem.GetTypeId();
+                if (typeId != null && typeId != ElementId.InvalidElementId)
                 {{
-                    parts.Add(""Type Name|"" + (typeElem.Name ?? """"));
-                    if (typeElem is FamilySymbol fs)
+                    var typeElem = targetDoc.GetElement(typeId);
+                    if (typeElem != null)
                     {{
-                        parts.Add(""Family|"" + (fs.FamilyName ?? """"));
+                        parts.Add(""Type Name|"" + (typeElem.Name ?? """"));
+                        if (typeElem is FamilySymbol fs)
+                        {{
+                            parts.Add(""Family|"" + (fs.FamilyName ?? """"));
+                        }}
                     }}
                 }}
-            }}
 
-            Console.WriteLine(string.Join(""||"", parts));
+                Console.WriteLine(string.Join(""||"", parts));
+            }}
         }}
+        catch {{ }}
     }}
-    catch {{ }}
 }}";
 
                         var content = new StringContent(query, Encoding.UTF8, "text/plain");

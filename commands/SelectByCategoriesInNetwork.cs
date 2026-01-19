@@ -14,6 +14,11 @@ using System.Threading.Tasks;
 [Regeneration(RegenerationOption.Manual)]
 public class SelectByCategoriesInNetwork : IExternalCommand
 {
+    /// <summary>
+    /// Marks this command as usable outside Revit context via network.
+    /// </summary>
+    public static bool IsNetworkCommand => true;
+
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
     {
         UIApplication uiapp = commandData.Application;
@@ -134,7 +139,7 @@ public class SelectByCategoriesInNetwork : IExternalCommand
             diagnosticLines.Add($"Selected categories: {string.Join(", ", selectedCategoryNames)}");
             diagnosticLines.Add("");
 
-            var categoryElements = QueryElementsForCategories(documentsToQuery, selectedCategoryNames, token, currentSessionId, uiapp);
+            var categoryElements = QueryElementsForCategories(documentsToQuery, selectedCategoryNames, token, currentSessionId, uiapp, diagnosticLines);
 
             // DIAGNOSTIC: Log what QueryElementsForCategories returned
             diagnosticLines.Add($"QueryElementsForCategories returned {categoryElements.Count} categories");
@@ -348,13 +353,36 @@ public class SelectByCategoriesInNetwork : IExternalCommand
 
                         try
                         {
-                            var query = @"var collector = new FilteredElementCollector(Doc);
-var elements = collector.WhereElementIsNotElementType();
-var categoryGroups = elements.Where(e => e.Category != null).GroupBy(e => e.Category.Name).OrderBy(g => g.Key);
-foreach (var group in categoryGroups)
-{
-    Console.WriteLine(""CATEGORY|"" + group.Key + ""|"" + group.Count());
-}";
+                            // Must find specific document by title - Doc may point to a different active document
+                            var escapedTitle = docInfo.DocumentTitle.Replace("\\", "\\\\").Replace("\"", "\\\"");
+                            var query = $@"var docTitle = ""{escapedTitle}"";
+Console.WriteLine(""DEBUG|Looking for document: "" + docTitle);
+Console.WriteLine(""DEBUG|Available documents: "" + UIApp.Application.Documents.Size);
+Document targetDoc = null;
+foreach (Document d in UIApp.Application.Documents)
+{{
+    Console.WriteLine(""DEBUG|  Found: "" + d.Title + "" (IsLinked="" + d.IsLinked + "")"");
+    if (!d.IsLinked && d.Title == docTitle)
+    {{
+        targetDoc = d;
+        break;
+    }}
+}}
+if (targetDoc == null)
+{{
+    Console.WriteLine(""ERROR|Document not found: "" + docTitle);
+}}
+else
+{{
+    var collector = new FilteredElementCollector(targetDoc);
+    var elements = collector.WhereElementIsNotElementType();
+    var categoryGroups = elements.Where(e => e.Category != null).GroupBy(e => e.Category.Name).OrderBy(g => g.Key);
+    Console.WriteLine(""DEBUG|Found "" + categoryGroups.Count() + "" categories"");
+    foreach (var group in categoryGroups)
+    {{
+        Console.WriteLine(""CATEGORY|"" + group.Key + ""|"" + group.Count());
+    }}
+}}";
 
                             var content = new StringContent(query, Encoding.UTF8, "text/plain");
                             var request = new HttpRequestMessage(HttpMethod.Post, $"https://127.0.0.1:{docInfo.Port}/roslyn");
@@ -412,9 +440,10 @@ foreach (var group in categoryGroups)
     }
 
     private Dictionary<string, Dictionary<string, List<ElementInfo>>> QueryElementsForCategories(
-        List<DocumentInfo> documents, List<string> categoryNames, string token, string currentSessionId, UIApplication uiapp)
+        List<DocumentInfo> documents, List<string> categoryNames, string token, string currentSessionId, UIApplication uiapp, List<string> diagnosticLines)
     {
         System.Diagnostics.Debug.WriteLine($"QueryElementsForCategories: documents={documents.Count}, categories={categoryNames.Count}, currentSessionId={currentSessionId}");
+        diagnosticLines.Add($"--- QueryElementsForCategories Start ---");
 
         // Category -> Document Title -> List of ElementInfo
         var result = new Dictionary<string, Dictionary<string, List<ElementInfo>>>();
@@ -429,6 +458,7 @@ foreach (var group in categoryGroups)
         // Process current session locally
         var currentDocs = documents.Where(d => d.SessionId == currentSessionId).ToList();
         System.Diagnostics.Debug.WriteLine($"Current session document matches: {currentDocs.Count}");
+        diagnosticLines.Add($"Local documents (SessionId={currentSessionId}): {currentDocs.Count}");
 
         foreach (var docInfo in currentDocs)
         {
@@ -475,9 +505,11 @@ foreach (var group in categoryGroups)
         // Process remote documents via Roslyn
         var remoteDocuments = documents.Where(d => d.SessionId != currentSessionId).ToList();
         System.Diagnostics.Debug.WriteLine($"Remote document matches: {remoteDocuments.Count}");
+        diagnosticLines.Add($"Remote documents: {remoteDocuments.Count}");
         foreach (var rd in remoteDocuments)
         {
             System.Diagnostics.Debug.WriteLine($"  Remote document: {rd.SessionId}, Doc: {rd.DocumentTitle}, Port: {rd.Port}");
+            diagnosticLines.Add($"  - SessionId={rd.SessionId}, Doc={rd.DocumentTitle}, Port={rd.Port}");
         }
 
         if (remoteDocuments.Count > 0)
@@ -497,19 +529,38 @@ foreach (var group in categoryGroups)
 
                         try
                         {
-                            var categoriesArray = "[\"" + string.Join("\", \"", categoryNames.Select(c => c.Replace("\"", "\\\""))) + "\"]";
+                            var categoriesArray = "{ \"" + string.Join("\", \"", categoryNames.Select(c => c.Replace("\"", "\\\""))) + "\" }";
+                            var escapedTitle = docInfo.DocumentTitle.Replace("\\", "\\\\").Replace("\"", "\\\"");
 
+                            // Must find specific document by title - Doc may point to a different active document
                             // Use version-agnostic ElementId access (IntegerValue works on all versions)
-                            var query = $@"var categories = new string[] {categoriesArray};
-var collector = new FilteredElementCollector(Doc);
-var elements = collector.WhereElementIsNotElementType().Where(e => e.Category != null && categories.Contains(e.Category.Name));
-var categoryGroups = elements.GroupBy(e => e.Category.Name);
-foreach (var group in categoryGroups)
+                            var query = $@"var docTitle = ""{escapedTitle}"";
+var categories = new string[] {categoriesArray};
+Document targetDoc = null;
+foreach (Document d in UIApp.Application.Documents)
 {{
-    Console.WriteLine(""CATEGORY|"" + group.Key);
-    foreach (var elem in group)
+    if (!d.IsLinked && d.Title == docTitle)
     {{
-        Console.WriteLine(""ELEMENT|"" + elem.UniqueId + ""|"" + elem.Id.IntegerValue);
+        targetDoc = d;
+        break;
+    }}
+}}
+if (targetDoc == null)
+{{
+    Console.WriteLine(""ERROR|Document not found: "" + docTitle);
+}}
+else
+{{
+    var collector = new FilteredElementCollector(targetDoc);
+    var elements = collector.WhereElementIsNotElementType().Where(e => e.Category != null && categories.Contains(e.Category.Name));
+    var categoryGroups = elements.GroupBy(e => e.Category.Name);
+    foreach (var group in categoryGroups)
+    {{
+        Console.WriteLine(""CATEGORY|"" + group.Key);
+        foreach (var elem in group)
+        {{
+            Console.WriteLine(""ELEMENT|"" + elem.UniqueId + ""|"" + elem.Id.IntegerValue);
+        }}
     }}
 }}";
 
@@ -518,10 +569,21 @@ foreach (var group in categoryGroups)
                             request.Headers.Add("X-Auth-Token", token);
                             request.Content = content;
 
+                            diagnosticLines.Add($"  Sending request to {docInfo.DocumentTitle} at port {docInfo.Port}...");
                             var response = client.SendAsync(request).Result;
                             var responseText = response.Content.ReadAsStringAsync().Result;
 
                             var jsonResponse = Newtonsoft.Json.JsonConvert.DeserializeObject<RoslynResponse>(responseText);
+
+                            diagnosticLines.Add($"  Response: Success={jsonResponse.Success}, HasOutput={!string.IsNullOrWhiteSpace(jsonResponse.Output)}");
+                            if (!string.IsNullOrWhiteSpace(jsonResponse.Output))
+                            {
+                                diagnosticLines.Add($"  Output preview: {jsonResponse.Output.Substring(0, Math.Min(500, jsonResponse.Output.Length))}");
+                            }
+                            if (!string.IsNullOrWhiteSpace(jsonResponse.Error))
+                            {
+                                diagnosticLines.Add($"  Error: {jsonResponse.Error}");
+                            }
 
                             System.Diagnostics.Debug.WriteLine($"  Remote query response: Success={jsonResponse.Success}, HasOutput={!string.IsNullOrWhiteSpace(jsonResponse.Output)}");
 
@@ -530,6 +592,7 @@ foreach (var group in categoryGroups)
                                 System.Diagnostics.Debug.WriteLine($"  Parsing elements response for document {docInfo.SessionId}");
                                 ParseElementsResponse(jsonResponse.Output, docInfo, result);
                                 System.Diagnostics.Debug.WriteLine($"  After parsing, result has {result.Count} categories");
+                                diagnosticLines.Add($"  After parsing: {result.Values.Sum(d => d.Values.Sum(l => l.Count))} elements total");
                             }
                             else
                             {
@@ -539,12 +602,14 @@ foreach (var group in categoryGroups)
                         catch (Exception ex)
                         {
                             System.Diagnostics.Debug.WriteLine($"Failed to query elements for document {docInfo.SessionId}: {ex.Message}");
+                            diagnosticLines.Add($"  EXCEPTION: {ex.Message}");
                         }
                     }
                 }
             }
         }
 
+        diagnosticLines.Add($"--- QueryElementsForCategories End ---");
         System.Diagnostics.Debug.WriteLine($"QueryElementsForCategories completed: {result.Count} categories");
         foreach (var cat in result)
         {
