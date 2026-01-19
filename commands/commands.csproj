@@ -57,6 +57,12 @@
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
 
+  <!-- Exclude sub-projects from compilation (they have their own .csproj) -->
+  <ItemGroup>
+    <Compile Remove="InvokeAddinCommandInNetwork\**\*.cs" />
+    <None Remove="InvokeAddinCommandInNetwork\**\*" />
+  </ItemGroup>
+
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
     <DebugType>none</DebugType>
   </PropertyGroup>
@@ -76,6 +82,11 @@
     <PackageReference Include="Microsoft.CSharp" Version="4.7.0" />
     <!-- Used for modern folder picker dialog in export commands -->
     <PackageReference Include="Microsoft.WindowsAPICodePack-Shell" Version="1.1.0" />
+  </ItemGroup>
+
+  <!-- System.Net.Http for .NET Framework (needed by SelectByCategoriesInNetwork.cs) -->
+  <ItemGroup Condition="!$(TargetFramework.StartsWith('net8'))">
+    <PackageReference Include="System.Net.Http" Version="4.3.4" />
   </ItemGroup>
 
   <!-- SQLite for LogViewChanges database and SelectionStorage - version depends on .NET Framework version -->
