@@ -22,6 +22,11 @@ using System.Net.Http;
 [Transaction(TransactionMode.Manual)]
 public class CopyTypeParametersInNetwork : IExternalCommand
 {
+    /// <summary>
+    /// Marks this command as usable outside Revit context via network.
+    /// </summary>
+    public static bool IsNetworkCommand => true;
+
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
     {
         UIApplication uiapp = commandData.Application;
@@ -138,49 +143,60 @@ public class CopyTypeParametersInNetwork : IExternalCommand
                 diagnostics.Log($"Selected {selectedDocuments.Count} target document(s)");
 
                 // Step 6: Copy parameters to matching types in selected documents
-                int successCount = 0;
-                int failCount = 0;
-                var errors = new List<string>();
+                int localSuccessCount = 0;
+                int localFailCount = 0;
+                var localErrors = new List<string>();
 
-                // Group by session for efficient processing
+                // Separate local and remote documents
                 var localDocs = selectedDocuments.Where(d => d.IsLocal).ToList();
-                var remoteDocs = selectedDocuments.Where(d => !d.IsLocal).GroupBy(d => d.SessionId).ToList();
+                var remoteDocs = selectedDocuments.Where(d => !d.IsLocal).ToList();
 
-                // Process local documents
+                // Process local documents (must be on UI thread)
                 foreach (var docInfo in localDocs)
                 {
                     diagnostics.Log($"Processing local document: {docInfo.DocumentTitle}");
 
                     var result = CopyParametersToLocalDocument(app, docInfo.DocumentTitle, sourceTypeData, diagnostics);
-                    successCount += result.SuccessCount;
-                    failCount += result.FailCount;
-                    errors.AddRange(result.Errors);
+                    localSuccessCount += result.SuccessCount;
+                    localFailCount += result.FailCount;
+                    localErrors.AddRange(result.Errors);
                 }
 
-                // Process remote documents
-                foreach (var sessionGroup in remoteDocs)
+                // Process remote documents IN PARALLEL with fire-and-forget pattern
+                // The Roslyn scripts will execute even if we don't wait for responses
+                if (remoteDocs.Count > 0)
                 {
-                    foreach (var docInfo in sessionGroup)
-                    {
-                        diagnostics.Log($"Processing remote document: {docInfo.DocumentTitle} in session {docInfo.SessionId}");
+                    diagnostics.Log($"Sending parameter updates to {remoteDocs.Count} remote document(s) in parallel (fire-and-forget)...");
 
-                        var result = CopyParametersToRemoteDocument(
-                            docInfo, sourceTypeData, authToken, diagnostics);
-                        successCount += result.SuccessCount;
-                        failCount += result.FailCount;
-                        errors.AddRange(result.Errors);
-                    }
+                    // Send all requests in parallel without waiting for responses
+                    Parallel.ForEach(remoteDocs, new ParallelOptions { MaxDegreeOfParallelism = 8 }, docInfo =>
+                    {
+                        try
+                        {
+                            diagnostics.Log($"Sending update to: {docInfo.DocumentTitle} in session {docInfo.SessionId}");
+                            SendParameterUpdateAsync(docInfo, sourceTypeData, authToken, diagnostics);
+                        }
+                        catch (Exception ex)
+                        {
+                            diagnostics.Log($"Failed to send update to {docInfo.DocumentTitle}: {ex.Message}");
+                        }
+                    });
+
+                    diagnostics.Log($"All remote update requests sent.");
                 }
 
-                diagnostics.Log($"Copy complete: {successCount} succeeded, {failCount} failed");
+                diagnostics.Log($"Local processing complete: {localSuccessCount} succeeded, {localFailCount} failed");
+                diagnostics.Log($"Remote updates: {remoteDocs.Count} document(s) - fire-and-forget (check target documents for results)");
 
-                // Only show dialog on errors
-                if (failCount > 0 && errors.Count > 0)
+                // Only show dialog on local errors
+                if (localFailCount > 0 && localErrors.Count > 0)
                 {
                     TaskDialog.Show("Partial Success",
-                        $"Copied parameters to {successCount} type(s).\n\nErrors ({failCount}):\n" +
-                        string.Join("\n", errors.Take(10)) +
-                        (errors.Count > 10 ? $"\n... and {errors.Count - 10} more" : ""));
+                        $"Local: Copied parameters to {localSuccessCount} type(s), {localFailCount} failed.\n" +
+                        $"Remote: Sent updates to {remoteDocs.Count} document(s).\n\n" +
+                        $"Local errors:\n" +
+                        string.Join("\n", localErrors.Take(10)) +
+                        (localErrors.Count > 10 ? $"\n... and {localErrors.Count - 10} more" : ""));
                 }
 
                 executionLog.SetResult(Result.Succeeded);
@@ -1011,6 +1027,203 @@ Console.WriteLine(""MATCH_COUNT|"" + matchCount);
             .Replace("\n", "\\n")
             .Replace("\r", "\\r")
             .Replace("\t", "\\t");
+    }
+
+    /// <summary>
+    /// Sends parameter update to remote document using fire-and-forget pattern.
+    /// The script will execute on the remote session even if we don't wait for the response.
+    /// </summary>
+    private void SendParameterUpdateAsync(
+        NetworkDocumentInfo docInfo,
+        List<TypeParameterData> sourceTypeData,
+        string authToken,
+        CommandDiagnostics.DiagnosticSession diagnostics)
+    {
+        string script = BuildParameterUpdateScript(sourceTypeData);
+
+        // Write script to diagnostic file for debugging
+        try
+        {
+            string scriptPath = Path.Combine(
+                PathHelper.RuntimeDirectory,
+                "diagnostics",
+                $"CopyTypeParams-Script-{docInfo.DocumentTitle.Replace(" ", "_")}-{DateTime.Now:yyyyMMdd-HHmmss-fff}.cs");
+            Directory.CreateDirectory(Path.GetDirectoryName(scriptPath));
+            File.WriteAllText(scriptPath, script);
+        }
+        catch { }
+
+        string url = $"https://127.0.0.1:{docInfo.Port}/roslyn";
+
+#if NET8_0_OR_GREATER
+        // Fire-and-forget using Task.Run
+        Task.Run(async () =>
+        {
+            try
+            {
+                using (var handler = new HttpClientHandler())
+                {
+                    handler.ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true;
+
+                    using (var client = new HttpClient(handler))
+                    {
+                        client.Timeout = TimeSpan.FromMinutes(5);
+                        client.DefaultRequestHeaders.Add("X-Auth-Token", authToken);
+
+                        var content = new StringContent(script, Encoding.UTF8, "text/plain");
+                        await client.PostAsync(url, content);
+                    }
+                }
+            }
+            catch
+            {
+                // Fire and forget - ignore errors
+            }
+        });
+#else
+        // Fire-and-forget using ThreadPool
+        System.Threading.ThreadPool.QueueUserWorkItem(_ =>
+        {
+            try
+            {
+                var request = (HttpWebRequest)WebRequest.Create(url);
+                request.Method = "POST";
+                request.ContentType = "text/plain";
+                request.Headers.Add("X-Auth-Token", authToken);
+                request.Timeout = 300000; // 5 minutes
+                request.ServerCertificateValidationCallback = (sender, cert, chain, errors) => true;
+
+                byte[] bodyBytes = Encoding.UTF8.GetBytes(script);
+                request.ContentLength = bodyBytes.Length;
+
+                using (var requestStream = request.GetRequestStream())
+                {
+                    requestStream.Write(bodyBytes, 0, bodyBytes.Length);
+                }
+
+                // Just get the response to complete the request, don't process it
+                using (request.GetResponse()) { }
+            }
+            catch
+            {
+                // Fire and forget - ignore errors
+            }
+        });
+#endif
+    }
+
+    /// <summary>
+    /// Builds the Roslyn script for updating type parameters.
+    /// </summary>
+    private string BuildParameterUpdateScript(List<TypeParameterData> sourceTypeData)
+    {
+        var sb = new StringBuilder();
+
+        // Build the type lookup dictionary as C# code
+        sb.AppendLine("int successCount = 0;");
+        sb.AppendLine("int failCount = 0;");
+        sb.AppendLine();
+        sb.AppendLine("// Type key lookup: category|family|type -> parameter updates");
+        sb.AppendLine("var typeUpdates = new Dictionary<string, Action<Element>>();");
+        sb.AppendLine();
+
+        // Generate an Action for each source type
+        int typeIndex = 0;
+        foreach (var typeData in sourceTypeData)
+        {
+            string categoryName = EscapeForCSharp(typeData.CategoryName);
+            string familyName = EscapeForCSharp(typeData.FamilyName);
+            string typeName = EscapeForCSharp(typeData.TypeName);
+            string typeKey = $"{categoryName}|{familyName}|{typeName}";
+
+            sb.AppendLine($"// Type {typeIndex}: {familyName}:{typeName}");
+            sb.AppendLine($"typeUpdates[\"{typeKey}\"] = (typeElem) => {{");
+            sb.AppendLine("    int paramsSet = 0;");
+            sb.AppendLine("    Parameter p = null;");
+
+            foreach (var paramData in typeData.Parameters)
+            {
+                string paramName = EscapeForCSharp(paramData.Name);
+
+                sb.AppendLine($"    p = typeElem.LookupParameter(\"{paramName}\");");
+                sb.AppendLine("    if (p != null && !p.IsReadOnly) {");
+                sb.AppendLine("        try {");
+
+                switch (paramData.StorageType)
+                {
+                    case StorageType.String:
+                        string strValue = EscapeForCSharp(paramData.StringValue ?? "");
+                        sb.AppendLine($"            p.Set(\"{strValue}\");");
+                        break;
+                    case StorageType.Integer:
+                        sb.AppendLine($"            p.Set({paramData.IntegerValue});");
+                        break;
+                    case StorageType.Double:
+                        sb.AppendLine($"            p.Set({paramData.DoubleValue.ToString(System.Globalization.CultureInfo.InvariantCulture)});");
+                        break;
+                }
+
+                sb.AppendLine("            paramsSet++;");
+                sb.AppendLine("        } catch { }");
+                sb.AppendLine("    }");
+            }
+
+            sb.AppendLine("    if (paramsSet > 0) successCount++;");
+            sb.AppendLine("};");
+            sb.AppendLine();
+            typeIndex++;
+        }
+
+        // Generate the main processing loop - single pass through types
+        sb.AppendLine("// Process types in a single pass with proper transaction handling");
+        sb.AppendLine("var trans = new Transaction(Doc, \"Copy Type Parameters\");");
+        sb.AppendLine("try");
+        sb.AppendLine("{");
+        sb.AppendLine("    trans.Start();");
+        sb.AppendLine();
+        sb.AppendLine("    var collector = new FilteredElementCollector(Doc).OfClass(typeof(ElementType));");
+        sb.AppendLine("    foreach (Element elem in collector)");
+        sb.AppendLine("    {");
+        sb.AppendLine("        try");
+        sb.AppendLine("        {");
+        sb.AppendLine("            var typeElem = elem as ElementType;");
+        sb.AppendLine("            if (typeElem == null || typeElem.Category == null) continue;");
+        sb.AppendLine();
+        sb.AppendLine("            string catName = typeElem.Category.Name ?? \"\";");
+        sb.AppendLine("            string famName = \"\";");
+        sb.AppendLine("            if (typeElem is FamilySymbol fs)");
+        sb.AppendLine("                famName = fs.Family?.Name ?? \"\";");
+        sb.AppendLine("            else");
+        sb.AppendLine("            {");
+        sb.AppendLine("                var familyParam = typeElem.get_Parameter(BuiltInParameter.SYMBOL_FAMILY_NAME_PARAM);");
+        sb.AppendLine("                famName = (familyParam != null && !string.IsNullOrEmpty(familyParam.AsString()))");
+        sb.AppendLine("                    ? familyParam.AsString() : \"System Type\";");
+        sb.AppendLine("            }");
+        sb.AppendLine();
+        sb.AppendLine("            string key = catName + \"|\" + famName + \"|\" + typeElem.Name;");
+        sb.AppendLine("            if (typeUpdates.TryGetValue(key, out var updateAction))");
+        sb.AppendLine("            {");
+        sb.AppendLine("                updateAction(typeElem);");
+        sb.AppendLine("            }");
+        sb.AppendLine("        }");
+        sb.AppendLine("        catch { failCount++; }");
+        sb.AppendLine("    }");
+        sb.AppendLine();
+        sb.AppendLine("    trans.Commit();");
+        sb.AppendLine("}");
+        sb.AppendLine("catch");
+        sb.AppendLine("{");
+        sb.AppendLine("    if (trans.HasStarted()) trans.RollBack();");
+        sb.AppendLine("    throw;");
+        sb.AppendLine("}");
+        sb.AppendLine("finally");
+        sb.AppendLine("{");
+        sb.AppendLine("    trans.Dispose();");
+        sb.AppendLine("}");
+        sb.AppendLine();
+        sb.AppendLine("Console.WriteLine(\"RESULT|\" + successCount + \"|\" + failCount);");
+
+        return sb.ToString();
     }
 
     private RoslynResponse SendRoslynQuery(string port, string authToken, string query)
