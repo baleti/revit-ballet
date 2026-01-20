@@ -85,8 +85,10 @@ namespace RevitBallet.Commands
         private static UIApplication uiApp;
         private ExternalEvent scriptExecutionEvent;
         private ExternalEvent screenshotEvent;
+        private ExternalEvent queryEvent;
         private ScriptExecutionHandler scriptHandler;
         private ScreenshotHandler screenshotHandler;
+        private QueryHandler queryHandler;
         private int activeConnections = 0;
         private int totalConnectionsAccepted = 0;
         private int totalConnectionsSuccessful = 0;
@@ -161,6 +163,9 @@ namespace RevitBallet.Commands
             screenshotHandler = new ScreenshotHandler(sessionId);
             screenshotEvent = ExternalEvent.Create(screenshotHandler);
 
+            queryHandler = new QueryHandler();
+            queryEvent = ExternalEvent.Create(queryHandler);
+
             isRunning = true;
 
             // Register in network registry
@@ -222,6 +227,13 @@ namespace RevitBallet.Commands
             {
                 screenshotEvent?.Dispose();
                 screenshotEvent = null;
+            }
+            catch { }
+
+            try
+            {
+                queryEvent?.Dispose();
+                queryEvent = null;
             }
             catch { }
 
@@ -987,6 +999,11 @@ namespace RevitBallet.Commands
                         LogToRevit($"[CONN-{connId}] Routing to /screenshot endpoint");
                         await HandleScreenshotRequest(stream, connId);
                     }
+                    else if (path.StartsWith("/query/", StringComparison.OrdinalIgnoreCase))
+                    {
+                        LogToRevit($"[CONN-{connId}] Routing to /query endpoint: {path}");
+                        await HandleQueryRequest(stream, path, code, connId);
+                    }
                     else
                     {
                         LogToRevit($"[CONN-{connId}] Unknown endpoint: {path}");
@@ -1207,6 +1224,66 @@ namespace RevitBallet.Commands
                     Error = $"{ex.Message}\n\nException Type: {ex.GetType().Name}"
                 });
             }
+        }
+
+        private async Task HandleQueryRequest(Stream stream, string path, string body, string connId)
+        {
+            var response = new ScriptResponse();
+            response.LogProcessing("Query request received by server");
+
+            try
+            {
+                LogToRevit($"[CONN-{connId}] Processing query request: {path}");
+                response.LogProcessing($"Request path: {path}");
+
+                var executeStart = DateTime.Now;
+                var queryResponse = await ExecuteQueryViaExternalEvent(path, body);
+                var executeDuration = (DateTime.Now - executeStart).TotalMilliseconds;
+
+                queryResponse.LogProcessing($"Execution completed ({executeDuration:F0}ms) - Success: {queryResponse.Success}");
+                queryResponse.ProcessingLog.InsertRange(0, response.ProcessingLog);
+
+                LogToRevit($"[CONN-{connId}] Query completed ({executeDuration:F0}ms) - Success: {queryResponse.Success}");
+                await SendHttpResponse(stream, queryResponse);
+            }
+            catch (System.Exception ex)
+            {
+                LogToRevit($"[CONN-{connId}] Query request exception: {ex.Message}");
+                LogToRevit($"[CONN-{connId}] Exception type: {ex.GetType().FullName}");
+                LogToRevit($"[CONN-{connId}] Stack trace:\n{ex.StackTrace}");
+
+                response.Success = false;
+                response.Error = $"{ex.Message}\n\nException Type: {ex.GetType().Name}";
+                await SendHttpResponse(stream, response);
+            }
+        }
+
+        private async Task<ScriptResponse> ExecuteQueryViaExternalEvent(string path, string body)
+        {
+            var tcs = new TaskCompletionSource<ScriptResponse>();
+
+            // Queue the query execution request in the handler
+            queryHandler.QueueExecution(path, body, tcs);
+
+            // Raise the external event to execute on the UI thread
+            queryEvent.Raise();
+
+            // Add timeout to prevent infinite waiting (30 seconds default)
+            var timeoutTask = Task.Delay(30000);
+            var completedTask = await Task.WhenAny(tcs.Task, timeoutTask);
+
+            if (completedTask == timeoutTask)
+            {
+                var response = new ScriptResponse
+                {
+                    Success = false,
+                    Error = "Query execution timeout (30 seconds)."
+                };
+                response.LogProcessing("ERROR: Execution timeout after 30 seconds");
+                return response;
+            }
+
+            return await tcs.Task;
         }
 
         private Task<string> CaptureScreenshot()
@@ -1545,6 +1622,368 @@ namespace RevitBallet.Commands
             public int Top;
             public int Right;
             public int Bottom;
+        }
+    }
+
+    /// <summary>
+    /// External Event Handler for executing pre-compiled queries on the Revit UI thread
+    /// </summary>
+    internal class QueryHandler : IExternalEventHandler
+    {
+        private string pendingPath;
+        private string pendingBody;
+        private TaskCompletionSource<ScriptResponse> pendingTcs;
+        private readonly object lockObject = new object();
+
+        public void QueueExecution(string path, string body, TaskCompletionSource<ScriptResponse> tcs)
+        {
+            lock (lockObject)
+            {
+                pendingPath = path;
+                pendingBody = body;
+                pendingTcs = tcs;
+            }
+        }
+
+        public void Execute(UIApplication app)
+        {
+            string path;
+            string body;
+            TaskCompletionSource<ScriptResponse> tcs;
+
+            // Get the pending request
+            lock (lockObject)
+            {
+                path = pendingPath;
+                body = pendingBody;
+                tcs = pendingTcs;
+                pendingPath = null;
+                pendingBody = null;
+                pendingTcs = null;
+            }
+
+            if (path == null || tcs == null)
+            {
+                return; // No pending execution
+            }
+
+            var response = new ScriptResponse();
+            var outputCapture = new StringWriter();
+            var originalOut = Console.Out;
+
+            try
+            {
+                response.LogProcessing("Query execution started on Revit UI thread");
+                Console.SetOut(outputCapture);
+
+                var executeStart = DateTime.Now;
+
+                // Parse request body (JSON with documentTitle)
+                var requestData = Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, string>>(body ?? "{}");
+                string documentTitle = requestData.ContainsKey("documentTitle") ? requestData["documentTitle"] : null;
+
+                response.LogProcessing($"Query context: DocumentTitle={documentTitle}");
+
+                // Find target document
+                Document targetDoc = null;
+                if (!string.IsNullOrEmpty(documentTitle))
+                {
+                    foreach (Document d in app.Application.Documents)
+                    {
+                        if (!d.IsLinked && d.Title == documentTitle)
+                        {
+                            targetDoc = d;
+                            break;
+                        }
+                    }
+                }
+
+                if (targetDoc == null && !string.IsNullOrEmpty(documentTitle))
+                {
+                    response.Success = false;
+                    response.Error = $"Document not found: {documentTitle}";
+                    response.Output = outputCapture.ToString();
+                    tcs.SetResult(response);
+                    return;
+                }
+
+                // Route to appropriate query handler
+                if (path.Equals("/query/familytypes/counts", StringComparison.OrdinalIgnoreCase))
+                {
+                    QueryFamilyTypeCounts(targetDoc, response);
+                }
+                else if (path.Equals("/query/familytypes/elements", StringComparison.OrdinalIgnoreCase))
+                {
+                    QueryFamilyTypeElements(targetDoc, requestData, response);
+                }
+                else if (path.Equals("/query/categories/counts", StringComparison.OrdinalIgnoreCase))
+                {
+                    QueryCategoryCounts(targetDoc, response);
+                }
+                else if (path.Equals("/query/categories/elements", StringComparison.OrdinalIgnoreCase))
+                {
+                    QueryCategoryElements(targetDoc, requestData, response);
+                }
+                else if (path.Equals("/query/worksets/counts", StringComparison.OrdinalIgnoreCase))
+                {
+                    QueryWorksetCounts(targetDoc, response);
+                }
+                else if (path.Equals("/query/worksets/elements", StringComparison.OrdinalIgnoreCase))
+                {
+                    QueryWorksetElements(targetDoc, requestData, response);
+                }
+                else
+                {
+                    response.Success = false;
+                    response.Error = $"Unknown query endpoint: {path}";
+                }
+
+                var executeMs = (DateTime.Now - executeStart).TotalMilliseconds;
+                response.LogProcessing($"Query completed ({executeMs:F0}ms)");
+                response.Output = outputCapture.ToString();
+                tcs.SetResult(response);
+            }
+            catch (System.Exception ex)
+            {
+                RevitBalletServer.LogToRevit($"[{DateTime.Now:HH:mm:ss}] Query execution exception: {ex.Message}");
+                RevitBalletServer.LogToRevit($"[{DateTime.Now:HH:mm:ss}] Exception type: {ex.GetType().FullName}");
+                RevitBalletServer.LogToRevit($"[{DateTime.Now:HH:mm:ss}] Stack trace:\n{ex.StackTrace}");
+
+                response.LogProcessing($"ERROR: {ex.GetType().Name} - {ex.Message}");
+                response.Success = false;
+                response.Error = $"{ex.Message}\n\nException Type: {ex.GetType().Name}\n\nStack Trace:\n{ex.StackTrace}";
+                response.Output = outputCapture.ToString();
+                tcs.SetResult(response);
+            }
+            finally
+            {
+                Console.SetOut(originalOut);
+            }
+        }
+
+        private void QueryFamilyTypeCounts(Document doc, ScriptResponse response)
+        {
+            var elementTypes = new FilteredElementCollector(doc)
+                .OfClass(typeof(ElementType))
+                .Cast<ElementType>()
+                .ToList();
+
+            // Count instances by type
+            var typeInstanceCounts = new Dictionary<ElementId, int>();
+            var allInstances = new FilteredElementCollector(doc)
+                .WhereElementIsNotElementType()
+                .Where(x => x.GetTypeId() != null && x.GetTypeId() != ElementId.InvalidElementId)
+                .ToList();
+
+            foreach (var instance in allInstances)
+            {
+                ElementId typeId = instance.GetTypeId();
+                if (!typeInstanceCounts.ContainsKey(typeId))
+                    typeInstanceCounts[typeId] = 0;
+                typeInstanceCounts[typeId]++;
+            }
+
+            foreach (var elementType in elementTypes)
+            {
+                string typeName = elementType.Name;
+                string familyName = "";
+                string categoryName = "";
+
+                if (elementType is FamilySymbol fs)
+                {
+                    familyName = fs.Family.Name;
+                    categoryName = fs.Category != null ? fs.Category.Name : "N/A";
+                    if (categoryName.Contains("Import Symbol") || familyName.Contains("Import Symbol"))
+                        continue;
+                }
+                else
+                {
+                    Parameter familyParam = elementType.get_Parameter(BuiltInParameter.SYMBOL_FAMILY_NAME_PARAM);
+                    familyName = (familyParam != null && !string.IsNullOrEmpty(familyParam.AsString()))
+                        ? familyParam.AsString()
+                        : "System Type";
+                    categoryName = elementType.Category != null ? elementType.Category.Name : "N/A";
+                    if (categoryName.Contains("Import Symbol") || familyName.Contains("Import Symbol"))
+                        continue;
+                }
+
+                int count = typeInstanceCounts.ContainsKey(elementType.Id) ? typeInstanceCounts[elementType.Id] : 0;
+                Console.WriteLine($"FAMILYTYPE|{categoryName}|{familyName}|{typeName}|{count}");
+            }
+
+            response.Success = true;
+        }
+
+        private void QueryFamilyTypeElements(Document doc, Dictionary<string, string> requestData, ScriptResponse response)
+        {
+            // Parse family type keys from request
+            string familyTypesJson = requestData.ContainsKey("familyTypes") ? requestData["familyTypes"] : "[]";
+            var familyTypes = Newtonsoft.Json.JsonConvert.DeserializeObject<List<Dictionary<string, string>>>(familyTypesJson);
+
+            // Build lookup of matching type IDs
+            var matchingTypeIds = new HashSet<ElementId>();
+            var typeIdToKey = new Dictionary<ElementId, Tuple<string, string, string>>();
+
+            var elementTypes = new FilteredElementCollector(doc)
+                .OfClass(typeof(ElementType))
+                .Cast<ElementType>()
+                .ToList();
+
+            foreach (var elementType in elementTypes)
+            {
+                string typeName = elementType.Name;
+                string familyName = "";
+                string categoryName = "";
+
+                if (elementType is FamilySymbol fs)
+                {
+                    familyName = fs.Family.Name;
+                    categoryName = fs.Category != null ? fs.Category.Name : "N/A";
+                }
+                else
+                {
+                    Parameter familyParam = elementType.get_Parameter(BuiltInParameter.SYMBOL_FAMILY_NAME_PARAM);
+                    familyName = (familyParam != null && !string.IsNullOrEmpty(familyParam.AsString()))
+                        ? familyParam.AsString()
+                        : "System Type";
+                    categoryName = elementType.Category != null ? elementType.Category.Name : "N/A";
+                }
+
+                var key = Tuple.Create(categoryName, familyName, typeName);
+                if (familyTypes.Any(ft => ft["category"] == key.Item1 && ft["family"] == key.Item2 && ft["typeName"] == key.Item3))
+                {
+                    matchingTypeIds.Add(elementType.Id);
+                    typeIdToKey[elementType.Id] = key;
+                }
+            }
+
+            // Collect instances
+            var instances = new FilteredElementCollector(doc)
+                .WhereElementIsNotElementType()
+                .Where(x => x.GetTypeId() != null && matchingTypeIds.Contains(x.GetTypeId()))
+                .ToList();
+
+            foreach (var elem in instances)
+            {
+                var key = typeIdToKey[elem.GetTypeId()];
+                Console.WriteLine($"ELEMENT|{key.Item1}|{key.Item2}|{key.Item3}|{elem.UniqueId}|{elem.Id.IntegerValue}");
+            }
+
+            response.Success = true;
+        }
+
+        private void QueryCategoryCounts(Document doc, ScriptResponse response)
+        {
+            var collector = new FilteredElementCollector(doc);
+            var elements = collector.WhereElementIsNotElementType();
+            var categoryGroups = elements.Where(e => e.Category != null).GroupBy(e => e.Category.Name).OrderBy(g => g.Key);
+
+            foreach (var group in categoryGroups)
+            {
+                Console.WriteLine($"CATEGORY|{group.Key}|{group.Count()}");
+            }
+
+            response.Success = true;
+        }
+
+        private void QueryCategoryElements(Document doc, Dictionary<string, string> requestData, ScriptResponse response)
+        {
+            // Parse category names from request
+            string categoriesJson = requestData.ContainsKey("categories") ? requestData["categories"] : "[]";
+            var categories = Newtonsoft.Json.JsonConvert.DeserializeObject<List<string>>(categoriesJson);
+            var categorySet = new HashSet<string>(categories);
+
+            var collector = new FilteredElementCollector(doc);
+            var elements = collector.WhereElementIsNotElementType().Where(e => e.Category != null && categorySet.Contains(e.Category.Name));
+            var categoryGroups = elements.GroupBy(e => e.Category.Name);
+
+            foreach (var group in categoryGroups)
+            {
+                Console.WriteLine($"CATEGORY|{group.Key}");
+                foreach (var elem in group)
+                {
+                    Console.WriteLine($"ELEMENT|{elem.UniqueId}|{elem.Id.IntegerValue}");
+                }
+            }
+
+            response.Success = true;
+        }
+
+        private void QueryWorksetCounts(Document doc, ScriptResponse response)
+        {
+            if (!doc.IsWorkshared)
+            {
+                response.Success = true;
+                response.Output = "INFO|Document is not workshared";
+                return;
+            }
+
+            var collector = new FilteredElementCollector(doc).WhereElementIsNotElementType();
+            var worksetElementCounts = new Dictionary<WorksetId, int>();
+
+            foreach (Element e in collector)
+            {
+                WorksetId wsId = e.WorksetId;
+                if (wsId == WorksetId.InvalidWorksetId) continue;
+                if (!worksetElementCounts.ContainsKey(wsId))
+                    worksetElementCounts[wsId] = 0;
+                worksetElementCounts[wsId]++;
+            }
+
+            foreach (var pair in worksetElementCounts)
+            {
+                Workset ws = doc.GetWorksetTable().GetWorkset(pair.Key);
+                if (ws == null) continue;
+
+                string wsType = "";
+                switch (ws.Kind)
+                {
+                    case WorksetKind.UserWorkset: wsType = "User"; break;
+                    case WorksetKind.StandardWorkset: wsType = "Standard"; break;
+                    case WorksetKind.FamilyWorkset: wsType = "Family"; break;
+                    case WorksetKind.ViewWorkset: wsType = "View"; break;
+                    default: wsType = ws.Kind.ToString(); break;
+                }
+
+                Console.WriteLine($"WORKSET|{ws.Name}|{wsType}|{pair.Value}");
+            }
+
+            response.Success = true;
+        }
+
+        private void QueryWorksetElements(Document doc, Dictionary<string, string> requestData, ScriptResponse response)
+        {
+            if (!doc.IsWorkshared)
+            {
+                response.Success = true;
+                response.Output = "INFO|Document is not workshared";
+                return;
+            }
+
+            // Parse workset names from request
+            string worksetsJson = requestData.ContainsKey("worksets") ? requestData["worksets"] : "[]";
+            var worksets = Newtonsoft.Json.JsonConvert.DeserializeObject<List<string>>(worksetsJson);
+            var worksetNames = new HashSet<string>(worksets);
+
+            var collector = new FilteredElementCollector(doc).WhereElementIsNotElementType();
+
+            foreach (Element e in collector)
+            {
+                WorksetId wsId = e.WorksetId;
+                if (wsId == WorksetId.InvalidWorksetId) continue;
+
+                Workset ws = doc.GetWorksetTable().GetWorkset(wsId);
+                if (ws == null || !worksetNames.Contains(ws.Name)) continue;
+
+                Console.WriteLine($"ELEMENT|{ws.Name}|{e.UniqueId}|{e.Id.IntegerValue}");
+            }
+
+            response.Success = true;
+        }
+
+        public string GetName()
+        {
+            return "RevitBalletQueryHandler";
         }
     }
 

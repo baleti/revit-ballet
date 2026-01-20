@@ -495,58 +495,12 @@ public class SelectByFamilyTypesInNetwork : IExternalCommand
 
                     foreach (var docInfo in remoteDocuments)
                     {
-                        var escapedTitle = docInfo.DocumentTitle.Replace("\\", "\\\\").Replace("\"", "\\\"");
-                        var query = $@"var docTitle = ""{escapedTitle}"";
-Document targetDoc = null;
-foreach (Document d in UIApp.Application.Documents)
-{{
-    if (!d.IsLinked && d.Title == docTitle)
-    {{
-        targetDoc = d;
-        break;
-    }}
-}}
-if (targetDoc == null)
-{{
-    Console.WriteLine(""ERROR|Document not found: "" + docTitle);
-}}
-else
-{{
-    var elementTypes = new FilteredElementCollector(targetDoc).OfClass(typeof(ElementType)).Cast<ElementType>().ToList();
-    var typeInstanceCounts = new Dictionary<ElementId, int>();
-    var allInstances = new FilteredElementCollector(targetDoc).WhereElementIsNotElementType()
-        .Where(x => x.GetTypeId() != null && x.GetTypeId() != ElementId.InvalidElementId).ToList();
-    foreach (var instance in allInstances)
-    {{
-        ElementId typeId = instance.GetTypeId();
-        if (!typeInstanceCounts.ContainsKey(typeId)) typeInstanceCounts[typeId] = 0;
-        typeInstanceCounts[typeId]++;
-    }}
-    foreach (var elementType in elementTypes)
-    {{
-        string typeName = elementType.Name;
-        string familyName = """";
-        string categoryName = """";
-        var fs = elementType as FamilySymbol;
-        if (fs != null)
-        {{
-            familyName = fs.Family.Name;
-            categoryName = fs.Category != null ? fs.Category.Name : ""N/A"";
-            if (categoryName.Contains(""Import Symbol"") || familyName.Contains(""Import Symbol"")) continue;
-        }}
-        else
-        {{
-            Parameter familyParam = elementType.get_Parameter(BuiltInParameter.SYMBOL_FAMILY_NAME_PARAM);
-            familyName = (familyParam != null && !string.IsNullOrEmpty(familyParam.AsString())) ? familyParam.AsString() : ""System Type"";
-            categoryName = elementType.Category != null ? elementType.Category.Name : ""N/A"";
-            if (categoryName.Contains(""Import Symbol"") || familyName.Contains(""Import Symbol"")) continue;
-        }}
-        int count = typeInstanceCounts.ContainsKey(elementType.Id) ? typeInstanceCounts[elementType.Id] : 0;
-        Console.WriteLine(""FAMILYTYPE|"" + categoryName + ""|"" + familyName + ""|"" + typeName + ""|"" + count);
-    }}
-}}";
+                        var requestBody = Newtonsoft.Json.JsonConvert.SerializeObject(new Dictionary<string, string>
+                        {
+                            { "documentTitle", docInfo.DocumentTitle }
+                        });
 
-                        var task = SendRoslynRequestWithTimingAsync(client, docInfo, query, token);
+                        var task = SendQueryRequestWithTimingAsync(client, docInfo, "/query/familytypes/counts", requestBody, token);
                         tasks.Add(task);
                     }
 
@@ -589,14 +543,14 @@ else
         return result;
     }
 
-    private async Task<(DocumentInfo DocInfo, RoslynResponse Response, double ElapsedMs)> SendRoslynRequestWithTimingAsync(
-        HttpClient client, DocumentInfo docInfo, string query, string token)
+    private async Task<(DocumentInfo DocInfo, RoslynResponse Response, double ElapsedMs)> SendQueryRequestWithTimingAsync(
+        HttpClient client, DocumentInfo docInfo, string endpoint, string requestBody, string token)
     {
         var stopwatch = Stopwatch.StartNew();
         try
         {
-            var content = new StringContent(query, Encoding.UTF8, "text/plain");
-            var request = new HttpRequestMessage(HttpMethod.Post, $"https://127.0.0.1:{docInfo.Port}/roslyn");
+            var content = new StringContent(requestBody, Encoding.UTF8, "application/json");
+            var request = new HttpRequestMessage(HttpMethod.Post, $"https://127.0.0.1:{docInfo.Port}{endpoint}");
             request.Headers.Add("X-Auth-Token", token);
             request.Content = content;
 
@@ -745,21 +699,17 @@ else
             }
         }
 
-        // Process remote documents via Roslyn - PARALLEL requests
+        // Process remote documents via pre-compiled endpoint - PARALLEL requests
         var remoteDocuments = documents.Where(d => d.SessionId != currentSessionId && !string.IsNullOrWhiteSpace(d.DocumentTitle)).ToList();
         if (remoteDocuments.Count > 0)
         {
-            // Build family type filter for query
-            var familyTypeFilters = new StringBuilder();
-            familyTypeFilters.Append("var familyTypes = new List<Tuple<string, string, string>> {");
-            bool first = true;
-            foreach (var ft in familyTypeKeys)
+            // Build family type list for JSON request
+            var familyTypesList = familyTypeKeys.Select(ft => new Dictionary<string, string>
             {
-                if (!first) familyTypeFilters.Append(",");
-                familyTypeFilters.Append($"Tuple.Create(\"{EscapeForCSharp(ft.Category)}\", \"{EscapeForCSharp(ft.Family)}\", \"{EscapeForCSharp(ft.TypeName)}\")");
-                first = false;
-            }
-            familyTypeFilters.Append("};");
+                { "category", ft.Category },
+                { "family", ft.Family },
+                { "typeName", ft.TypeName }
+            }).ToList();
 
             using (var handler = new HttpClientHandler())
             {
@@ -773,61 +723,13 @@ else
 
                     foreach (var docInfo in remoteDocuments)
                     {
-                        var escapedTitle = docInfo.DocumentTitle.Replace("\\", "\\\\").Replace("\"", "\\\"");
-                        var query = $@"var docTitle = ""{escapedTitle}"";
-{familyTypeFilters}
-Document targetDoc = null;
-foreach (Document d in UIApp.Application.Documents)
-{{
-    if (!d.IsLinked && d.Title == docTitle)
-    {{
-        targetDoc = d;
-        break;
-    }}
-}}
-if (targetDoc == null)
-{{
-    Console.WriteLine(""ERROR|Document not found: "" + docTitle);
-}}
-else
-{{
-    var elementTypes = new FilteredElementCollector(targetDoc).OfClass(typeof(ElementType)).Cast<ElementType>().ToList();
-    var matchingTypeIds = new HashSet<ElementId>();
-    var typeIdToKey = new Dictionary<ElementId, Tuple<string, string, string>>();
-    foreach (var elementType in elementTypes)
-    {{
-        string typeName = elementType.Name;
-        string familyName = """";
-        string categoryName = """";
-        var fs = elementType as FamilySymbol;
-        if (fs != null)
-        {{
-            familyName = fs.Family.Name;
-            categoryName = fs.Category != null ? fs.Category.Name : ""N/A"";
-        }}
-        else
-        {{
-            Parameter familyParam = elementType.get_Parameter(BuiltInParameter.SYMBOL_FAMILY_NAME_PARAM);
-            familyName = (familyParam != null && !string.IsNullOrEmpty(familyParam.AsString())) ? familyParam.AsString() : ""System Type"";
-            categoryName = elementType.Category != null ? elementType.Category.Name : ""N/A"";
-        }}
-        var key = Tuple.Create(categoryName, familyName, typeName);
-        if (familyTypes.Any(ft => ft.Item1 == key.Item1 && ft.Item2 == key.Item2 && ft.Item3 == key.Item3))
-        {{
-            matchingTypeIds.Add(elementType.Id);
-            typeIdToKey[elementType.Id] = key;
-        }}
-    }}
-    var instances = new FilteredElementCollector(targetDoc).WhereElementIsNotElementType()
-        .Where(x => x.GetTypeId() != null && matchingTypeIds.Contains(x.GetTypeId())).ToList();
-    foreach (var elem in instances)
-    {{
-        var key = typeIdToKey[elem.GetTypeId()];
-        Console.WriteLine(""ELEMENT|"" + key.Item1 + ""|"" + key.Item2 + ""|"" + key.Item3 + ""|"" + elem.UniqueId + ""|"" + elem.Id.IntegerValue);
-    }}
-}}";
+                        var requestBody = Newtonsoft.Json.JsonConvert.SerializeObject(new Dictionary<string, object>
+                        {
+                            { "documentTitle", docInfo.DocumentTitle },
+                            { "familyTypes", Newtonsoft.Json.JsonConvert.SerializeObject(familyTypesList) }
+                        });
 
-                        var task = SendRoslynRequestWithTimingAsync(client, docInfo, query, token);
+                        var task = SendQueryRequestWithTimingAsync(client, docInfo, "/query/familytypes/elements", requestBody, token);
                         tasks.Add(task);
                     }
 
@@ -868,11 +770,6 @@ else
         }
 
         return result;
-    }
-
-    private string EscapeForCSharp(string value)
-    {
-        return value.Replace("\\", "\\\\").Replace("\"", "\\\"");
     }
 
     private int ParseElementsResponse(string output, DocumentInfo docInfo, List<FamilyTypeKey> familyTypeKeys,
