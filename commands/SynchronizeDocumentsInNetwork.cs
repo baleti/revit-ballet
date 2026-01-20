@@ -17,6 +17,11 @@ using System.Net.Http;
 [Transaction(TransactionMode.Manual)]
 public class SynchronizeDocumentsInNetwork : IExternalCommand
 {
+    /// <summary>
+    /// Marks this command as usable outside Revit context via network.
+    /// </summary>
+    public static bool IsNetworkCommand => true;
+
     // Script to sync active document using PostCommand (works from ExternalEvent context)
     private const string SynchronizationScript = @"
 // Post SynchronizeNow command for the active workshared document
@@ -116,8 +121,12 @@ else
                 // Sort by Document column
                 gridData = gridData.OrderBy(row => row["Document"].ToString()).ToList();
 
-                // Show selection dialog - no initial selection, don't span all screens
-                var selectedRows = CustomGUIs.DataGrid(gridData, columns, false);
+                // Find index of current session for initial selection
+                int currentSessionIndex = gridData.FindIndex(row => Convert.ToBoolean(row["_IsCurrent"]));
+                List<int> initialSelection = currentSessionIndex >= 0 ? new List<int> { currentSessionIndex } : null;
+
+                // Show selection dialog with current session pre-selected
+                var selectedRows = CustomGUIs.DataGrid(gridData, columns, false, initialSelection);
 
                 if (selectedRows == null || selectedRows.Count == 0)
                 {
