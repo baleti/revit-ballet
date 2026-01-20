@@ -96,7 +96,7 @@ else
 
                 // Prepare data for DataGrid - one row per document
                 var gridData = new List<Dictionary<string, object>>();
-                var columns = new List<string> { "Document", "Session ID", "Hostname", "Port", "Last Heartbeat" };
+                var columns = new List<string> { "Document", "Last Sync", "Session ID", "Hostname", "Port", "Last Heartbeat" };
 
                 foreach (var docInfo in documents)
                 {
@@ -105,6 +105,7 @@ else
                     var row = new Dictionary<string, object>
                     {
                         ["Document"] = string.IsNullOrWhiteSpace(docInfo.DocumentTitle) ? "(Home Page)" : docInfo.DocumentTitle,
+                        ["Last Sync"] = FormatLastSync(docInfo.LastSync),
                         ["Session ID"] = docInfo.SessionId,
                         ["Port"] = docInfo.Port,
                         ["Hostname"] = docInfo.Hostname,
@@ -401,6 +402,16 @@ else
                     LastHeartbeat = DateTime.Parse(parts[7].Trim())
                 };
 
+                // LastSync is optional (index 8)
+                if (parts.Length > 8 && !string.IsNullOrWhiteSpace(parts[8]))
+                {
+                    DateTime lastSyncParsed;
+                    if (DateTime.TryParse(parts[8].Trim(), out lastSyncParsed))
+                    {
+                        doc.LastSync = lastSyncParsed;
+                    }
+                }
+
                 // Filter out stale documents (no heartbeat for > 2 minutes)
                 if ((DateTime.Now - doc.LastHeartbeat).TotalSeconds <= 120)
                 {
@@ -430,6 +441,23 @@ else
             return $"{(int)timeAgo.TotalDays}d ago";
     }
 
+    private string FormatLastSync(DateTime? lastSync)
+    {
+        if (!lastSync.HasValue)
+            return "-";
+
+        var timeAgo = DateTime.Now - lastSync.Value;
+
+        if (timeAgo.TotalSeconds < 60)
+            return "Just now";
+        else if (timeAgo.TotalMinutes < 60)
+            return $"{(int)timeAgo.TotalMinutes}m ago";
+        else if (timeAgo.TotalHours < 24)
+            return $"{(int)timeAgo.TotalHours}h ago";
+        else
+            return $"{(int)timeAgo.TotalDays}d ago";
+    }
+
     private class DocumentInfo
     {
         public string DocumentTitle { get; set; }
@@ -440,6 +468,7 @@ else
         public int ProcessId { get; set; }
         public DateTime RegisteredAt { get; set; }
         public DateTime LastHeartbeat { get; set; }
+        public DateTime? LastSync { get; set; }
     }
 
     private class SessionSyncInfo
