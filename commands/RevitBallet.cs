@@ -70,6 +70,16 @@ namespace RevitBallet
                 // Silently fail - don't interrupt Revit startup
             }
 
+            // Subscribe to DocumentChanged event to track last transaction time
+            try
+            {
+                application.ControlledApplication.DocumentChanged += OnDocumentChanged;
+            }
+            catch
+            {
+                // Silently fail - don't interrupt Revit startup
+            }
+
             return Result.Succeeded;
         }
 
@@ -88,6 +98,24 @@ namespace RevitBallet
             }
         }
 
+        private static void OnDocumentChanged(object sender, Autodesk.Revit.DB.Events.DocumentChangedEventArgs e)
+        {
+            try
+            {
+                // Only track committed transactions (not rollbacks, undo, or redo)
+                if (e.Operation == Autodesk.Revit.DB.Events.UndoOperation.TransactionCommitted)
+                {
+                    var doc = e.GetDocument();
+                    var docIdentifier = !string.IsNullOrEmpty(doc.PathName) ? doc.PathName : doc.Title;
+                    RevitBalletServer.UpdateLastTransactionTime(docIdentifier);
+                }
+            }
+            catch
+            {
+                // Silently fail
+            }
+        }
+
         public Result OnShutdown(UIControlledApplication application)
         {
             // Cleanup view logging
@@ -97,6 +125,16 @@ namespace RevitBallet
             try
             {
                 application.ControlledApplication.DocumentSynchronizedWithCentral -= OnDocumentSynchronized;
+            }
+            catch
+            {
+                // Silently fail
+            }
+
+            // Unsubscribe from DocumentChanged event
+            try
+            {
+                application.ControlledApplication.DocumentChanged -= OnDocumentChanged;
             }
             catch
             {

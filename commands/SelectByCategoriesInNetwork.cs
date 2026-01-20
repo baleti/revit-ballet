@@ -34,15 +34,8 @@ public class SelectByCategoriesInNetwork : IExternalCommand
             }
             string token = File.ReadAllText(tokenPath).Trim();
 
-            // Read documents file
-            string documentsPath = Path.Combine(PathHelper.RuntimeDirectory, "documents");
-            if (!File.Exists(documentsPath))
-            {
-                TaskDialog.Show("Error", "Documents file not found.");
-                return Result.Failed;
-            }
-
-            var documents = ParseDocumentsFile(documentsPath);
+            // Get active documents from registry
+            var documents = DocumentRegistry.GetActiveDocuments();
             if (documents.Count == 0)
             {
                 TaskDialog.Show("Error", "No active documents found in registry.");

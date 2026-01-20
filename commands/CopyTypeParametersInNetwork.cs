@@ -69,16 +69,8 @@ public class CopyTypeParametersInNetwork : IExternalCommand
                     return Result.Cancelled;
                 }
 
-                // Step 3: Read documents file
-                string documentsFilePath = Path.Combine(PathHelper.RuntimeDirectory, "documents");
-                if (!File.Exists(documentsFilePath))
-                {
-                    TaskDialog.Show("Error", "No active documents found. Document registry file does not exist.");
-                    executionLog.SetResult(Result.Failed);
-                    return Result.Failed;
-                }
-
-                var networkDocuments = ParseDocumentsFile(documentsFilePath);
+                // Step 3: Get active documents from registry
+                var networkDocuments = DocumentRegistry.GetActiveDocuments();
                 if (networkDocuments.Count == 0)
                 {
                     TaskDialog.Show("Error", "No active documents found in registry.");
@@ -118,7 +110,7 @@ public class CopyTypeParametersInNetwork : IExternalCommand
                         DocumentTitle = docEntry.DocumentTitle,
                         DocumentPath = docEntry.DocumentPath,
                         Hostname = docEntry.Hostname,
-                        Port = docEntry.Port,
+                        Port = docEntry.Port.ToString(),
                         MatchingTypeCount = 0, // Unknown - not checked
                         IsLocal = isCurrentSession
                     });
