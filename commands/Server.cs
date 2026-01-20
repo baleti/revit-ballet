@@ -267,25 +267,12 @@ namespace RevitBallet.Commands
         private void RegisterInNetwork()
         {
             var newEntries = CreateDocumentEntries();
-
-            lock (typeof(RevitBalletServer))
-            {
-                var entries = ReadDocumentRegistry();
-                // Remove any existing entries for this session before adding new ones
-                entries.RemoveAll(e => e.SessionId == sessionId);
-                entries.AddRange(newEntries);
-                WriteDocumentRegistry(entries);
-            }
+            DocumentRegistry.UpsertDocuments(newEntries);
         }
 
         private void UnregisterFromNetwork()
         {
-            lock (typeof(RevitBalletServer))
-            {
-                var entries = ReadDocumentRegistry();
-                entries.RemoveAll(e => e.SessionId == sessionId);
-                WriteDocumentRegistry(entries);
-            }
+            DocumentRegistry.RemoveSession(sessionId);
         }
 
         /// <summary>
@@ -299,23 +286,30 @@ namespace RevitBallet.Commands
 
             try
             {
-                lock (typeof(RevitBalletServer))
-                {
-                    var entries = serverInstance.ReadDocumentRegistry();
-                    // Find the document by path (or title if path is empty) in this session
-                    var docEntry = entries.FirstOrDefault(e =>
-                        e.SessionId == serverInstance.sessionId &&
-                        (e.DocumentPath == documentPath || (string.IsNullOrEmpty(e.DocumentPath) && e.DocumentTitle == documentPath)));
-                    if (docEntry != null)
-                    {
-                        docEntry.LastSync = DateTime.Now;
-                        serverInstance.WriteDocumentRegistry(entries);
-                    }
-                }
+                DocumentRegistry.UpdateLastSync(serverInstance.sessionId, documentPath, DateTime.Now);
             }
             catch
             {
                 // Silently fail - don't interrupt sync operation
+            }
+        }
+
+        /// <summary>
+        /// Updates the LastTransaction timestamp for a specific document in the registry.
+        /// Called when a transaction is committed in the document.
+        /// </summary>
+        /// <param name="documentPath">Path of the document where transaction was committed</param>
+        public static void UpdateLastTransactionTime(string documentPath)
+        {
+            if (serverInstance == null) return;
+
+            try
+            {
+                DocumentRegistry.UpdateLastTransaction(serverInstance.sessionId, documentPath, DateTime.Now);
+            }
+            catch
+            {
+                // Silently fail - don't interrupt transaction operation
             }
         }
 
@@ -327,46 +321,43 @@ namespace RevitBallet.Commands
                 {
                     await Task.Delay(30000, cancellationToken); // Every 30 seconds
 
-                    lock (typeof(RevitBalletServer))
+                    var now = DateTime.Now;
+
+                    // Get current open documents
+                    var openDocs = GetOpenDocuments();
+
+                    // Get existing entries for this session (to preserve LastSync and LastTransaction)
+                    var allEntries = DocumentRegistry.GetAllDocuments();
+                    var myEntries = allEntries.Where(e => e.SessionId == sessionId).ToList();
+
+                    // Build updated entries for currently open documents
+                    var updatedEntries = new List<DocumentEntry>();
+                    foreach (var doc in openDocs)
                     {
-                        var entries = ReadDocumentRegistry();
-                        var now = DateTime.Now;
+                        // Find existing entry to preserve LastSync and LastTransaction
+                        var existingEntry = myEntries.FirstOrDefault(e =>
+                            e.DocumentPath == doc.Path || e.DocumentTitle == doc.Title);
 
-                        // Get current open documents
-                        var openDocs = GetOpenDocuments();
-
-                        // Get existing entries for this session (to preserve LastSync)
-                        var myEntries = entries.Where(e => e.SessionId == sessionId).ToList();
-
-                        // Remove all entries for this session
-                        entries.RemoveAll(e => e.SessionId == sessionId);
-
-                        // Add entries for currently open documents, preserving LastSync where applicable
-                        foreach (var doc in openDocs)
+                        updatedEntries.Add(new DocumentEntry
                         {
-                            // Find existing entry to preserve LastSync
-                            var existingEntry = myEntries.FirstOrDefault(e =>
-                                e.DocumentPath == doc.Path || e.DocumentTitle == doc.Title);
-
-                            entries.Add(new DocumentEntry
-                            {
-                                DocumentTitle = doc.Title,
-                                DocumentPath = doc.Path,
-                                SessionId = sessionId,
-                                Port = serverPort,
-                                Hostname = Environment.MachineName,
-                                ProcessId = System.Diagnostics.Process.GetCurrentProcess().Id,
-                                RegisteredAt = existingEntry?.RegisteredAt ?? now,
-                                LastHeartbeat = now,
-                                LastSync = existingEntry?.LastSync
-                            });
-                        }
-
-                        // Clean up dead documents (from sessions with no heartbeat for 2 minutes)
-                        entries.RemoveAll(e => (now - e.LastHeartbeat).TotalSeconds > 120);
-
-                        WriteDocumentRegistry(entries);
+                            DocumentTitle = doc.Title,
+                            DocumentPath = doc.Path,
+                            SessionId = sessionId,
+                            Port = serverPort,
+                            Hostname = Environment.MachineName,
+                            ProcessId = System.Diagnostics.Process.GetCurrentProcess().Id,
+                            RegisteredAt = existingEntry?.RegisteredAt ?? now,
+                            LastHeartbeat = now,
+                            LastSync = existingEntry?.LastSync,
+                            LastTransaction = existingEntry?.LastTransaction
+                        });
                     }
+
+                    // Upsert all documents for this session
+                    DocumentRegistry.UpsertDocuments(updatedEntries);
+
+                    // Clean up dead documents (from all sessions with no heartbeat for 2 minutes)
+                    DocumentRegistry.RemoveStaleDocuments();
                 }
                 catch (OperationCanceledException)
                 {
@@ -448,132 +439,10 @@ namespace RevitBallet.Commands
             return Path.Combine(GetNetworkFolderPath(), TOKEN_FILE);
         }
 
-        private List<DocumentEntry> ReadDocumentRegistry()
-        {
-            var path = GetDocumentsFilePath();
-            var entries = new List<DocumentEntry>();
-
-            if (!File.Exists(path))
-                return entries;
-
-            try
-            {
-                var lines = File.ReadAllLines(path);
-                foreach (var line in lines)
-                {
-                    if (string.IsNullOrWhiteSpace(line) || line.StartsWith("#"))
-                        continue;
-
-                    var parts = line.Split(',');
-                    // Format: DocumentTitle,DocumentPath,SessionId,Port,Hostname,ProcessId,RegisteredAt,LastHeartbeat,LastSync
-                    if (parts.Length >= 8)
-                    {
-                        var entry = new DocumentEntry
-                        {
-                            DocumentTitle = parts[0],
-                            DocumentPath = parts[1],
-                            SessionId = parts[2],
-                            Port = int.Parse(parts[3]),
-                            Hostname = parts[4],
-                            ProcessId = int.Parse(parts[5]),
-                            RegisteredAt = DateTime.Parse(parts[6]),
-                            LastHeartbeat = DateTime.Parse(parts[7])
-                        };
-
-                        // LastSync is optional (index 8)
-                        if (parts.Length > 8 && !string.IsNullOrWhiteSpace(parts[8]))
-                        {
-                            DateTime lastSyncParsed;
-                            if (DateTime.TryParse(parts[8], out lastSyncParsed))
-                            {
-                                entry.LastSync = lastSyncParsed;
-                            }
-                        }
-
-                        entries.Add(entry);
-                    }
-                }
-            }
-            catch { }
-
-            return entries;
-        }
-
-        private void WriteDocumentRegistry(List<DocumentEntry> entries)
-        {
-            var path = GetDocumentsFilePath();
-            var lines = new List<string>();
-
-            lines.Add("# Revit Ballet Document Registry");
-            lines.Add("# DocumentTitle,DocumentPath,SessionId,Port,Hostname,ProcessId,RegisteredAt,LastHeartbeat,LastSync");
-
-            foreach (var entry in entries)
-            {
-                var lastSyncStr = entry.LastSync.HasValue ? entry.LastSync.Value.ToString("O") : "";
-                var line = $"{entry.DocumentTitle},{entry.DocumentPath},{entry.SessionId},{entry.Port},{entry.Hostname},{entry.ProcessId},{entry.RegisteredAt:O},{entry.LastHeartbeat:O},{lastSyncStr}";
-                lines.Add(line);
-            }
-
-            File.WriteAllLines(path, lines);
-        }
 
         public static List<DocumentEntry> GetActiveDocuments()
         {
-            var path = Path.Combine(PathHelper.RuntimeDirectory, DOCUMENTS_FILE);
-
-            var entries = new List<DocumentEntry>();
-
-            if (!File.Exists(path))
-                return entries;
-
-            lock (typeof(RevitBalletServer))
-            {
-                try
-                {
-                    var lines = File.ReadAllLines(path);
-                    foreach (var line in lines)
-                    {
-                        if (string.IsNullOrWhiteSpace(line) || line.StartsWith("#"))
-                            continue;
-
-                        var parts = line.Split(',');
-                        // Format: DocumentTitle,DocumentPath,SessionId,Port,Hostname,ProcessId,RegisteredAt,LastHeartbeat,LastSync
-                        if (parts.Length >= 8)
-                        {
-                            var entry = new DocumentEntry
-                            {
-                                DocumentTitle = parts[0],
-                                DocumentPath = parts[1],
-                                SessionId = parts[2],
-                                Port = int.Parse(parts[3]),
-                                Hostname = parts[4],
-                                ProcessId = int.Parse(parts[5]),
-                                RegisteredAt = DateTime.Parse(parts[6]),
-                                LastHeartbeat = DateTime.Parse(parts[7])
-                            };
-
-                            // LastSync is optional (index 8)
-                            if (parts.Length > 8 && !string.IsNullOrWhiteSpace(parts[8]))
-                            {
-                                DateTime lastSyncParsed;
-                                if (DateTime.TryParse(parts[8], out lastSyncParsed))
-                                {
-                                    entry.LastSync = lastSyncParsed;
-                                }
-                            }
-
-                            // Only return entries with recent heartbeat
-                            if ((DateTime.Now - entry.LastHeartbeat).TotalSeconds < 120)
-                            {
-                                entries.Add(entry);
-                            }
-                        }
-                    }
-                }
-                catch { }
-            }
-
-            return entries;
+            return DocumentRegistry.GetActiveDocuments();
         }
 
         public static string GetSharedAuthToken()
@@ -1991,19 +1860,6 @@ namespace RevitBallet.Commands
     /// Represents a single document entry in the document registry.
     /// One entry per open document across all Revit sessions.
     /// </summary>
-    public class DocumentEntry
-    {
-        public string DocumentTitle { get; set; }
-        public string DocumentPath { get; set; }
-        public string SessionId { get; set; }
-        public int Port { get; set; }
-        public string Hostname { get; set; }
-        public int ProcessId { get; set; }
-        public DateTime RegisteredAt { get; set; }
-        public DateTime LastHeartbeat { get; set; }
-        public DateTime? LastSync { get; set; }
-    }
-
     /// <summary>
     /// Globals available to Roslyn scripts
     /// </summary>

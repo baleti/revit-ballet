@@ -193,20 +193,43 @@ public class ListSelectedInNetwork : IExternalCommand
                 }
             }
 
-            // Build ordered list with standard columns
+            // Build ordered list with standard columns (matching ListSelectedInSession)
             var orderedProps = new List<string> { "Name" };
             if (allPropertyNames.Contains("Document")) orderedProps.Add("Document");
             if (allPropertyNames.Contains("Type Name")) orderedProps.Add("Type Name");
             if (allPropertyNames.Contains("Family")) orderedProps.Add("Family");
+            if (allPropertyNames.Contains("Scope Box")) orderedProps.Add("Scope Box");
+            if (allPropertyNames.Contains("ScopeBoxes")) orderedProps.Add("ScopeBoxes");
             orderedProps.Add("Category");
             if (allPropertyNames.Contains("Group")) orderedProps.Add("Group");
             if (allPropertyNames.Contains("OwnerView")) orderedProps.Add("OwnerView");
+
+            // Add view boolean properties
+            if (allPropertyNames.Contains("Crop View")) orderedProps.Add("Crop View");
+            if (allPropertyNames.Contains("Crop Region Visible")) orderedProps.Add("Crop Region Visible");
+            if (allPropertyNames.Contains("Annotation Crop")) orderedProps.Add("Annotation Crop");
+
+            // Add crop region columns
+            if (allPropertyNames.Contains("Crop Region Top")) orderedProps.Add("Crop Region Top");
+            if (allPropertyNames.Contains("Crop Region Bottom")) orderedProps.Add("Crop Region Bottom");
+            if (allPropertyNames.Contains("Crop Region Left")) orderedProps.Add("Crop Region Left");
+            if (allPropertyNames.Contains("Crop Region Right")) orderedProps.Add("Crop Region Right");
+
             orderedProps.Add("Id");
 
-            var remainingProps = allPropertyNames.Except(orderedProps).OrderBy(p => p);
+            // Exclude internal fields from remaining props (DocumentTitle is duplicate of Document, SessionId/DocumentPath are internal)
+            var remainingProps = allPropertyNames.Except(orderedProps)
+                .Where(p => p != "Contents" && p != "DocumentTitle" && p != "DocumentPath" && p != "SessionId")
+                .OrderBy(p => p);
             var propertyNames = orderedProps.Where(p => allPropertyNames.Contains(p))
                 .Concat(remainingProps)
                 .ToList();
+
+            // Add Contents column at the end (likely to be very long)
+            if (allPropertyNames.Contains("Contents"))
+            {
+                propertyNames.Add("Contents");
+            }
 
             // Set the current UIDocument for edit operations (only works for local session)
             CustomGUIs.SetCurrentUIDocument(uidoc);
@@ -296,8 +319,7 @@ public class ListSelectedInNetwork : IExternalCommand
                     try
                     {
                         // Find document info from documents registry
-                        string documentsPath = Path.Combine(PathHelper.RuntimeDirectory, "documents");
-                        var documents = ParseDocumentsFile(documentsPath);
+                        var documents = DocumentRegistry.GetActiveDocuments();
                         // Find any document entry with matching session ID (they all have same port/hostname)
                         var docInfo = documents.FirstOrDefault(d => d.SessionId == docGroup.Key.SessionId);
 
@@ -338,6 +360,20 @@ else
                 parts.Add(""Name|"" + (elem.Name ?? """"));
                 parts.Add(""Category|"" + (elem.Category?.Name ?? """"));
                 parts.Add(""Id|"" + elem.Id.IntegerValue);
+
+                // Get Group name
+                if (elem.GroupId != null && elem.GroupId != ElementId.InvalidElementId && elem.GroupId.IntegerValue != -1)
+                {{
+                    var grp = targetDoc.GetElement(elem.GroupId) as Group;
+                    if (grp != null) parts.Add(""Group|"" + grp.Name);
+                }}
+
+                // Get OwnerView name
+                if (elem.OwnerViewId != null && elem.OwnerViewId != ElementId.InvalidElementId)
+                {{
+                    var ownerView = targetDoc.GetElement(elem.OwnerViewId) as View;
+                    if (ownerView != null) parts.Add(""OwnerView|"" + ownerView.Name);
+                }}
 
                 // Get Type Name and Family
                 var typeId = elem.GetTypeId();
@@ -483,7 +519,7 @@ else
     }
 
     /// <summary>
-    /// Build element data dictionary for local session elements
+    /// Build element data dictionary for local session elements (matches ListSelectedInSession)
     /// </summary>
     private Dictionary<string, object> BuildElementDataDictionary(Element element, Document doc)
     {
@@ -539,7 +575,108 @@ else
             }
         }
 
+        // Add view-specific scope box property
+        if (element is View view)
+        {
+            try
+            {
+                Parameter scopeBoxParam = view.get_Parameter(BuiltInParameter.VIEWER_VOLUME_OF_INTEREST_CROP);
+                if (scopeBoxParam != null && scopeBoxParam.HasValue)
+                {
+                    ElementId scopeBoxId = scopeBoxParam.AsElementId();
+                    if (scopeBoxId != null && scopeBoxId != ElementId.InvalidElementId)
+                    {
+                        Element assignedScopeBox = doc.GetElement(scopeBoxId);
+                        data["Scope Box"] = assignedScopeBox?.Name ?? "";
+                    }
+                    else
+                    {
+                        data["Scope Box"] = "";
+                    }
+                }
+            }
+            catch { }
+        }
+
+        // Add view boolean properties for views and viewports
+        try
+        {
+            View viewForProperties = null;
+            if (element is View v)
+            {
+                viewForProperties = v;
+            }
+            else if (element is Viewport viewport)
+            {
+                viewForProperties = doc.GetElement(viewport.ViewId) as View;
+            }
+
+            if (viewForProperties != null)
+            {
+                data["Crop View"] = viewForProperties.CropBoxActive;
+                data["Crop Region Visible"] = viewForProperties.CropBoxVisible;
+
+                try
+                {
+                    data["Annotation Crop"] = viewForProperties.get_Parameter(BuiltInParameter.VIEWER_ANNOTATION_CROP_ACTIVE)?.AsInteger() == 1;
+                }
+                catch { }
+            }
+        }
+        catch { }
+
+        // Add Contents column for text-containing elements
+        string contents = GetElementTextContents(element);
+        if (!string.IsNullOrEmpty(contents))
+        {
+            data["Contents"] = contents;
+        }
+
         return data;
+    }
+
+    /// <summary>
+    /// Extract text contents from text-containing elements
+    /// </summary>
+    private static string GetElementTextContents(Element element)
+    {
+        try
+        {
+            if (element is TextNote textNote)
+                return textNote.Text;
+
+            if (element is IndependentTag tag)
+                return tag.TagText;
+
+            if (element is Dimension dimension)
+            {
+                if (dimension.NumberOfSegments > 1)
+                {
+                    var segments = new List<string>();
+                    foreach (DimensionSegment segment in dimension.Segments)
+                    {
+                        if (!string.IsNullOrEmpty(segment.ValueString))
+                            segments.Add(segment.ValueString);
+                    }
+                    return segments.Any() ? string.Join(" | ", segments) : null;
+                }
+                else
+                {
+                    return dimension.ValueString;
+                }
+            }
+
+            Parameter textParam = element.LookupParameter("Text");
+            if (textParam != null && textParam.HasValue && textParam.StorageType == StorageType.String)
+            {
+                string text = textParam.AsString();
+                if (!string.IsNullOrEmpty(text))
+                    return text;
+            }
+        }
+        catch { }
+
+        return null;
     }
 
     private class DocumentInfo

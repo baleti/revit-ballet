@@ -12,6 +12,11 @@ using RevitBallet.Commands;
 [Transaction(TransactionMode.Manual)]
 public class SwitchDocumentInNetwork : IExternalCommand
 {
+    /// <summary>
+    /// Marks this command as usable outside Revit context via network.
+    /// </summary>
+    public static bool IsNetworkCommand => true;
+
     // Windows API imports for bringing window to foreground
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr hWnd);
@@ -59,19 +64,8 @@ public class SwitchDocumentInNetwork : IExternalCommand
         {
             try
             {
-                // Read documents file from runtime directory
-                string documentsFilePath = Path.Combine(PathHelper.RuntimeDirectory, "documents");
-
-                if (!File.Exists(documentsFilePath))
-                {
-                    TaskDialog.Show("Error", "No active documents found. Document registry file does not exist.");
-                    diagnostics.LogError("Documents file not found");
-                    executionLog.SetResult(Result.Failed);
-                    return Result.Failed;
-                }
-
-                // Parse documents file
-                var documents = ParseDocumentsFile(documentsFilePath);
+                // Get active documents from registry
+                var documents = DocumentRegistry.GetActiveDocuments();
 
                 if (documents.Count == 0)
                 {
@@ -86,13 +80,14 @@ public class SwitchDocumentInNetwork : IExternalCommand
 
                 // Prepare data for DataGrid
                 var gridData = new List<Dictionary<string, object>>();
-                var columns = new List<string> { "Document", "Last Sync", "Session ID", "Port", "Hostname", "Last Heartbeat" };
+                var columns = new List<string> { "Document", "Last Transaction", "Last Sync", "Session ID", "Port", "Hostname", "Last Heartbeat" };
 
                 foreach (var doc in documents)
                 {
                     var row = new Dictionary<string, object>
                     {
                         ["Document"] = string.IsNullOrWhiteSpace(doc.DocumentTitle) ? "(Untitled)" : doc.DocumentTitle,
+                        ["Last Transaction"] = FormatLastTransaction(doc.LastTransaction),
                         ["Last Sync"] = FormatLastSync(doc.LastSync),
                         ["Session ID"] = doc.SessionId,
                         ["Port"] = doc.Port,
@@ -177,62 +172,6 @@ public class SwitchDocumentInNetwork : IExternalCommand
         }
     }
 
-    private List<DocumentInfo> ParseDocumentsFile(string filePath)
-    {
-        var documents = new List<DocumentInfo>();
-
-        try
-        {
-            var lines = File.ReadAllLines(filePath);
-
-            foreach (var line in lines)
-            {
-                // Skip comments and empty lines
-                if (string.IsNullOrWhiteSpace(line) || line.StartsWith("#"))
-                    continue;
-
-                var parts = line.Split(',');
-                // Format: DocumentTitle,DocumentPath,SessionId,Port,Hostname,ProcessId,RegisteredAt,LastHeartbeat,LastSync
-                if (parts.Length < 8)
-                    continue;
-
-                var doc = new DocumentInfo
-                {
-                    DocumentTitle = parts[0].Trim(),
-                    DocumentPath = parts[1].Trim(),
-                    SessionId = parts[2].Trim(),
-                    Port = parts[3].Trim(),
-                    Hostname = parts[4].Trim(),
-                    ProcessId = int.Parse(parts[5].Trim()),
-                    RegisteredAt = DateTime.Parse(parts[6].Trim()),
-                    LastHeartbeat = DateTime.Parse(parts[7].Trim())
-                };
-
-                // LastSync is optional (index 8)
-                if (parts.Length > 8 && !string.IsNullOrWhiteSpace(parts[8]))
-                {
-                    DateTime lastSyncParsed;
-                    if (DateTime.TryParse(parts[8].Trim(), out lastSyncParsed))
-                    {
-                        doc.LastSync = lastSyncParsed;
-                    }
-                }
-
-                // Filter out stale documents (no heartbeat for > 2 minutes)
-                if ((DateTime.Now - doc.LastHeartbeat).TotalSeconds < 120)
-                {
-                    documents.Add(doc);
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            throw new Exception($"Failed to parse documents file: {ex.Message}", ex);
-        }
-
-        return documents;
-    }
-
     private IntPtr FindMainWindow(int processId)
     {
         IntPtr mainWindow = IntPtr.Zero;
@@ -285,16 +224,21 @@ public class SwitchDocumentInNetwork : IExternalCommand
             return $"{(int)timeAgo.TotalDays}d ago";
     }
 
-    private class DocumentInfo
+    private string FormatLastTransaction(DateTime? lastTransaction)
     {
-        public string DocumentTitle { get; set; }
-        public string DocumentPath { get; set; }
-        public string SessionId { get; set; }
-        public string Port { get; set; }
-        public string Hostname { get; set; }
-        public int ProcessId { get; set; }
-        public DateTime RegisteredAt { get; set; }
-        public DateTime LastHeartbeat { get; set; }
-        public DateTime? LastSync { get; set; }
+        if (!lastTransaction.HasValue)
+            return "-";
+
+        var timeAgo = DateTime.Now - lastTransaction.Value;
+
+        if (timeAgo.TotalSeconds < 60)
+            return "Just now";
+        else if (timeAgo.TotalMinutes < 60)
+            return $"{(int)timeAgo.TotalMinutes}m ago";
+        else if (timeAgo.TotalHours < 24)
+            return $"{(int)timeAgo.TotalHours}h ago";
+        else
+            return $"{(int)timeAgo.TotalDays}d ago";
     }
+
 }
