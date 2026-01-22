@@ -27,8 +27,19 @@ public class OpenSheetsInDocument : IExternalCommand
 
         if (ViewDataCache.TryGetDocumentCache(doc, "sheets", out gridData, out columns))
         {
-            // Cache hit! Skip expensive data collection
-            // Note: gridData still contains __OriginalObject references from cache
+            // Cache hit! Reconstruct ViewSheet objects from cached ElementIds
+            // This is critical: sync operations invalidate references but not ElementIds
+            foreach (var row in gridData)
+            {
+                if (row.ContainsKey("ElementIdObject") && row["ElementIdObject"] is ElementId id)
+                {
+                    Element elem = doc.GetElement(id);
+                    if (elem is ViewSheet sheet)
+                    {
+                        row["__OriginalObject"] = sheet; // Reconstruct fresh ViewSheet reference
+                    }
+                }
+            }
         }
         else
         {
@@ -61,7 +72,10 @@ public class OpenSheetsInDocument : IExternalCommand
                 dict["Name"] = sheet.Name;
 
                 dict["ElementIdObject"] = sheet.Id; // Required for edit functionality
-                dict["__OriginalObject"] = sheet; // Store original object for extraction
+
+                // CRITICAL: Do NOT store ViewSheet object in cache - it becomes invalid after sync
+                // Store ElementId only; reconstruct ViewSheet on cache hit (see above)
+                dict["__OriginalObject"] = sheet; // Store for current use only
 
                 gridData.Add(dict);
             }
@@ -88,8 +102,13 @@ public class OpenSheetsInDocument : IExternalCommand
             columns.Add("SheetNumber");
             columns.Add("Name");
 
-            // Save to cache for next time
-            ViewDataCache.SaveDocumentCache(doc, "sheets", gridData, columns);
+            // Save to cache for next time - remove __OriginalObject before caching
+            var cacheData = gridData.Select(row => {
+                var cacheRow = new Dictionary<string, object>(row);
+                cacheRow.Remove("__OriginalObject"); // Don't cache ViewSheet objects!
+                return cacheRow;
+            }).ToList();
+            ViewDataCache.SaveDocumentCache(doc, "sheets", cacheData, columns);
         }
 
         // ─────────────────────────────────────────────────────────────
@@ -108,7 +127,7 @@ public class OpenSheetsInDocument : IExternalCommand
             Viewport vp = new FilteredElementCollector(doc)
                             .OfClass(typeof(Viewport))
                             .Cast<Viewport>()
-                            .FirstOrDefault(vpt => vpt.ViewId == activeView.Id);
+                            .FirstOrDefault(vpt => vpt.ViewId.Equals(activeView.Id));
 
             if (vp != null)
             {
@@ -124,7 +143,7 @@ public class OpenSheetsInDocument : IExternalCommand
             selectedIndex = gridData.FindIndex(row =>
             {
                 if (row.ContainsKey("__OriginalObject") && row["__OriginalObject"] is ViewSheet sheet)
-                    return sheet.Id == targetSheetId;
+                    return sheet.Id.Equals(targetSheetId);
                 return false;
             });
         }

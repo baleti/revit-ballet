@@ -14,13 +14,20 @@ public class CloseViewsInDocument : IExternalCommand
     {
         UIDocument uidoc = commandData.Application.ActiveUIDocument;
         Document doc = uidoc.Document;
+        View activeView = uidoc.ActiveView;
 
         // Get SessionId for database operations
         string sessionId = RevitBallet.LogViewChanges.GetSessionId();
 
         // Get all currently open views
         IList<UIView> UIViews = uidoc.GetOpenUIViews();
+
+        // Build openViews list with special handling:
+        // - If a view is placed on a sheet, show the SHEET instead of the view
+        // - Avoid duplicates (use HashSet to track added view IDs)
         List<View> openViews = new List<View>();
+        HashSet<ElementId> addedViewIds = new HashSet<ElementId>();
+
         foreach (UIView UIview in UIViews)
         {
             View view = doc.GetElement(UIview.ViewId) as View;
@@ -29,7 +36,34 @@ public class CloseViewsInDocument : IExternalCommand
                 view.ViewType != ViewType.ProjectBrowser &&
                 view.ViewType != ViewType.SystemBrowser)
             {
-                openViews.Add(view);
+                // If this is a non-sheet view, check if it's placed on a sheet
+                if (!(view is ViewSheet))
+                {
+                    var viewport = new FilteredElementCollector(doc)
+                        .OfClass(typeof(Viewport))
+                        .Cast<Viewport>()
+                        .FirstOrDefault(vp => vp.ViewId.Equals(view.Id));
+
+                    if (viewport != null)
+                    {
+                        // View is placed on a sheet - add the SHEET instead
+                        ViewSheet containingSheet = doc.GetElement(viewport.SheetId) as ViewSheet;
+                        if (containingSheet != null && !addedViewIds.Contains(containingSheet.Id))
+                        {
+                            openViews.Add(containingSheet);
+                            addedViewIds.Add(containingSheet.Id);
+                        }
+                        // Skip adding the view itself
+                        continue;
+                    }
+                }
+
+                // Add view/sheet (if not already added)
+                if (!addedViewIds.Contains(view.Id))
+                {
+                    openViews.Add(view);
+                    addedViewIds.Add(view.Id);
+                }
             }
         }
 
@@ -69,7 +103,7 @@ public class CloseViewsInDocument : IExternalCommand
                 var viewport = new FilteredElementCollector(doc)
                     .OfClass(typeof(Viewport))
                     .Cast<Viewport>()
-                    .FirstOrDefault(vp => vp.ViewId == v.Id);
+                    .FirstOrDefault(vp => vp.ViewId.Equals(v.Id));
 
                 if (viewport != null)
                 {
@@ -82,17 +116,17 @@ public class CloseViewsInDocument : IExternalCommand
                 }
             }
 
-            dict["ViewType"] = v.ViewType;
             dict["ElementIdObject"] = v.Id;
             dict["__OriginalObject"] = v;
 
             gridData.Add(dict);
         }
 
-        // Sort by browser organization columns
+        // Sort by browser organization columns (if any), otherwise by Title
+        // Use "SheetNumber" as tiebreaker for multi-column sorting (sheets sort by number, views group together)
         if (browserColumns != null && browserColumns.Count > 0)
         {
-            gridData = BrowserOrganizationHelper.SortByBrowserColumns(gridData, browserColumns);
+            gridData = BrowserOrganizationHelper.SortByBrowserColumns(gridData, browserColumns, tiebreakerColumn: "SheetNumber");
         }
         else
         {
@@ -109,12 +143,60 @@ public class CloseViewsInDocument : IExternalCommand
         columns.AddRange(browserColumns.Select(bc => bc.Name));
         columns.Add("SheetNumber");
         columns.Add("Name");
-        columns.Add("ViewType");
         columns.Add("Sheet");
+
+        // ─────────────────────────────────────────────────────────────
+        // Figure out which row should be pre-selected (current view or its sheet)
+        // Note: openViews already replaces views-on-sheets with their containing sheets
+        // ─────────────────────────────────────────────────────────────
+        int selectedIndex = -1;
+        ElementId targetViewId = null;
+
+        if (activeView is ViewSheet)
+        {
+            targetViewId = activeView.Id;
+        }
+        else
+        {
+            // Check if active view is placed on a sheet
+            Viewport vp = new FilteredElementCollector(doc)
+                            .OfClass(typeof(Viewport))
+                            .Cast<Viewport>()
+                            .FirstOrDefault(vpt => vpt.ViewId.Equals(activeView.Id));
+
+            if (vp != null)
+            {
+                ViewSheet containingSheet = doc.GetElement(vp.SheetId) as ViewSheet;
+                if (containingSheet != null)
+                {
+                    // View is on a sheet - select the sheet
+                    // (The sheet will be in openViews list because we replaced the view with the sheet)
+                    targetViewId = containingSheet.Id;
+                }
+            }
+
+            if (targetViewId == null) // not on a sheet
+                targetViewId = activeView.Id;
+        }
+
+        // Find the index in sorted gridData
+        if (targetViewId != null)
+        {
+            selectedIndex = gridData.FindIndex(row =>
+            {
+                if (row.ContainsKey("__OriginalObject") && row["__OriginalObject"] is View view)
+                    return view.Id.Equals(targetViewId);
+                return false;
+            });
+        }
+
+        List<int> initialSelectionIndices = selectedIndex >= 0
+            ? new List<int> { selectedIndex }
+            : new List<int>();
 
         // Show the grid
         CustomGUIs.SetCurrentUIDocument(uidoc);
-        var selectedDicts = CustomGUIs.DataGrid(gridData, columns, false);
+        var selectedDicts = CustomGUIs.DataGrid(gridData, columns, false, initialSelectionIndices);
         List<View> selectedViews = CustomGUIs.ExtractOriginalObjects<View>(selectedDicts);
 
         if (selectedViews.Count == 0)

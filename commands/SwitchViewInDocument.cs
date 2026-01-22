@@ -88,7 +88,7 @@ public class SwitchViewInDocument : IExternalCommand
 
         if (activeView is ViewSheet)
         {
-            selectedIndex = viewsInHistory.FindIndex(v => v.Id == currentViewId);
+            selectedIndex = viewsInHistory.FindIndex(v => v.Id.Equals(currentViewId));
             if (selectedIndex < 0)
                 selectedIndex = viewsInHistory.FindIndex(v => v.Title == activeView.Title);
         }
@@ -98,7 +98,7 @@ public class SwitchViewInDocument : IExternalCommand
             var viewports = new FilteredElementCollector(doc)
                             .OfClass(typeof(Viewport))
                             .Cast<Viewport>()
-                            .Where(vp => vp.ViewId == currentViewId)
+                            .Where(vp => vp.ViewId.Equals(currentViewId))
                             .ToList();
 
             if (viewports.Count > 0)
@@ -106,14 +106,14 @@ public class SwitchViewInDocument : IExternalCommand
                 ViewSheet sheet = doc.GetElement(viewports.First().SheetId) as ViewSheet;
                 if (sheet != null)
                 {
-                    selectedIndex = viewsInHistory.FindIndex(v => v.Id == sheet.Id);
+                    selectedIndex = viewsInHistory.FindIndex(v => v.Id.Equals(sheet.Id));
                     if (selectedIndex < 0)
                         selectedIndex = viewsInHistory.FindIndex(v => v.Title == sheet.Title);
                 }
             }
             else
             {
-                selectedIndex = viewsInHistory.FindIndex(v => v.Id == currentViewId);
+                selectedIndex = viewsInHistory.FindIndex(v => v.Id.Equals(currentViewId));
                 if (selectedIndex < 0)
                     selectedIndex = viewsInHistory.FindIndex(v => v.Title == activeView.Title);
             }
@@ -148,7 +148,7 @@ public class SwitchViewInDocument : IExternalCommand
                 var viewport = new FilteredElementCollector(doc)
                     .OfClass(typeof(Viewport))
                     .Cast<Viewport>()
-                    .FirstOrDefault(vp => vp.ViewId == view.Id);
+                    .FirstOrDefault(vp => vp.ViewId.Equals(view.Id));
 
                 if (viewport != null)
                 {
@@ -161,7 +161,6 @@ public class SwitchViewInDocument : IExternalCommand
                 }
             }
 
-            dict["ViewType"] = view.ViewType;
             dict["ElementIdObject"] = view.Id;
             dict["__OriginalObject"] = view;
 
@@ -169,9 +168,10 @@ public class SwitchViewInDocument : IExternalCommand
         }
 
         // Sort by browser columns if available
+        // Use "SheetNumber" as tiebreaker for multi-column sorting (sheets sort by number, views group together)
         if (browserColumns != null && browserColumns.Count > 0)
         {
-            viewDicts = BrowserOrganizationHelper.SortByBrowserColumns(viewDicts, browserColumns);
+            viewDicts = BrowserOrganizationHelper.SortByBrowserColumns(viewDicts, browserColumns, tiebreakerColumn: "SheetNumber");
 
             // Recalculate selectedIndex after sorting to match the active view or its sheet
             ElementId targetViewId = null;
@@ -185,7 +185,7 @@ public class SwitchViewInDocument : IExternalCommand
                 var viewports = new FilteredElementCollector(doc)
                                 .OfClass(typeof(Viewport))
                                 .Cast<Viewport>()
-                                .Where(vp => vp.ViewId == currentViewId)
+                                .Where(vp => vp.ViewId.Equals(currentViewId))
                                 .ToList();
 
                 if (viewports.Count > 0)
@@ -205,7 +205,7 @@ public class SwitchViewInDocument : IExternalCommand
                 selectedIndex = viewDicts.FindIndex(row =>
                 {
                     if (row.ContainsKey("__OriginalObject") && row["__OriginalObject"] is View v)
-                        return v.Id == targetViewId;
+                        return v.Id.Equals(targetViewId);
                     return false;
                 });
 
@@ -220,7 +220,6 @@ public class SwitchViewInDocument : IExternalCommand
         propertyNames.AddRange(browserColumns.Select(bc => bc.Name));
         propertyNames.Add("SheetNumber");
         propertyNames.Add("Name");
-        propertyNames.Add("ViewType");
         propertyNames.Add("Sheet");
 
         // Show picker & handle result
