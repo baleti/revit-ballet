@@ -1449,6 +1449,72 @@ public partial class CustomGUIs
                     return MoveElement(elem, doc, translation);
                 }
             });
+
+            // Contents (for text-containing elements)
+            Register(new ColumnHandler
+            {
+                ColumnName = "Contents",
+                IsEditable = true,
+                Description = "Text contents for TextNote, dimensions, and other text elements (tags are read-only)",
+                Getter = (elem, doc) =>
+                {
+                    // Getter is handled by ElementDataHelper.GetElementTextContents
+                    // Just return null here - the actual value is computed during data collection
+                    return null;
+                },
+                Setter = (elem, doc, newValue) =>
+                {
+                    string strValue = newValue?.ToString() ?? "";
+
+                    try
+                    {
+                        // TextNote elements
+                        if (elem is TextNote textNote)
+                        {
+                            textNote.Text = strValue;
+                            return true;
+                        }
+
+                        // Independent tags - TagText property is read-only, cannot edit
+                        if (elem is IndependentTag)
+                        {
+                            return false;
+                        }
+
+                        // Dimensions - set override value
+                        if (elem is Dimension dimension)
+                        {
+                            // For single-segment dimensions, set the value override
+                            if (dimension.NumberOfSegments <= 1)
+                            {
+                                dimension.ValueOverride = strValue;
+                                return true;
+                            }
+                            else
+                            {
+                                // For multi-segment dimensions, cannot edit via Contents
+                                // (would need per-segment editing)
+                                return false;
+                            }
+                        }
+
+                        // For other elements with "Text" parameter
+                        Parameter textParam = elem.LookupParameter("Text");
+                        if (textParam != null && !textParam.IsReadOnly && textParam.StorageType == StorageType.String)
+                        {
+                            textParam.Set(strValue);
+                            return true;
+                        }
+
+                        // Element type not supported for text editing
+                        return false;
+                    }
+                    catch
+                    {
+                        return false;
+                    }
+                }
+            });
         }
 
         /// <summary>
