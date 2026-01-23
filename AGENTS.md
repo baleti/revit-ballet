@@ -52,6 +52,39 @@ System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
 - Include element IDs for traceability
 - Log both input values and verified output values
 
+### Working with CIFS Network Mounts (Linux Only)
+
+**Context**: This repository may be accessed via CIFS mount on Linux (`mount -t cifs`). WSL drvfs mounts do NOT have these issues.
+
+**What Works Fine on CIFS:**
+- ✅ Direct file operations (Read/Write/Edit tools, cat, echo, cp, etc.)
+- ✅ Git read operations (log, status, diff, show, blame)
+- ✅ Git commits, pushes, pulls
+- ✅ Git stash (saves successfully even if it shows error messages - always verify with `git stash list`)
+- ✅ Git branch operations
+
+**What Fails on Linux CIFS:**
+- ❌ **Git rebase when commits contain case-variant filenames** (e.g., both `Installer.cs` and `installer.cs`)
+  - Root cause: Windows is case-insensitive, Linux is case-sensitive
+  - Git treats them as different files on Linux, same file on Windows
+  - Rebase checkout fails: "error: The following untracked working tree files would be overwritten"
+- ❌ **Git working tree manipulation for specific files** (random filesystem cache corruption)
+  - Symptoms: `git reset --hard` fails with "error: unable to create file: No such file or directory"
+  - Symptoms: `git checkout -- <file>` fails even though file exists
+  - Workaround: `git update-index --skip-worktree <file>` temporarily
+
+**Solution for Git Rebases and Commit Signing:**
+- Use Windows or WSL with drvfs mount (NOT Linux CIFS mount)
+- Example: `cd /mnt/c/path/to/revit-ballet` on WSL
+- Drvfs properly handles Windows case-insensitivity
+
+**Recovery from CIFS Git Issues:**
+1. Don't panic - CIFS affects working tree, not git object database
+2. Verify safety: `git fsck`, `git stash list`, `git log --oneline`
+3. For corrupted files: `git update-index --skip-worktree <file>`
+4. Switch to Windows/WSL for rebases
+5. After rebase: `git update-index --no-skip-worktree <file>` to restore normal tracking
+
 ## Version Control Practices
 
 **CRITICAL: One Agent Session = One Commit**
