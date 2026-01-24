@@ -1361,3 +1361,16 @@ fitting all shortcuts becomes an issue, may need to redesign it later
 ***** consider your own shortcuts mechanism like emacs with a modifier key starting sequence
 another interface to InvokeAddinCommand effectively
 if performance will be acceptable
+* 2026
+** January
+*** 11
+**** =21:56= assigning new shortcuts proves increasingly difficult due to revit design
+existing shortcuts block new ones
+e.g. shortcut ts blocks tsa, because revit will wait after ts is typed for the next character
+autocad in that sense was better, because it required explicit confirmation with spacebar when shortcuts was complete
+but can't think of a proper way to solve it
+*** 18
+**** =23:00= moved ai agents development environment from wsl/qemu to hyper-v
+noticeable performance improvement
+*** 19
+**** =20:00= testing pre-compiled server endpoints to improve performance of InNetwork commands
