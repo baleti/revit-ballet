@@ -1,0 +1,286 @@
+* fix slow display of datagrid list for CopySelectedElementsToViewsInDocument
+this has been done to SwitchViewInDocument
+may do that for SelectViews as well
+* SelectLinkedModelIn{View,Document,Session,Network}
+need to facilitate prefix shortcut command as SL- clashes with a popular default shortcut
+* HideSelectedElementsInViews
+HideSelectedElementsInCurrentView already exists, but i need a way to hide temporarily multiple links in multiple views for the sake of performance
+on larger models worksets may not be enough
+* add detail groups to categories selection and to sdgv sdgd sdgs sdga shortcuts
+* think of adding a general window search to invokeaddincommandinnewtork
+not just revit but other windows too
+like win+tab in kde, dont know why windows hasnt added it yet
+* ApplyFiltersInNeetwork
+prboably more braodly edit view templates in network
+* ReloadLinksInNetwork
+I will probably have to recreate a lot of commands with InNetwork scope
+* OpenDocumentsInNetwork
+open new revit files as separate revit processes
+make it choose from a folder first, like a regular file picker rather than a datagrid
+unless same as OpenPreviousViews?
+* room inference
+if you had a way to infer boundaries of rooms from plans that could facilitate many other mechanisms
+topology, furniture layouts etc.
+could be trained from plan photographs as well as revit models
+best to restrain it just to images of plans
+look into existing work
+* replace "FamilyTypes" to just "Types"
+family/category are just grouping of types
+types themselves can hold parameters and are very editable, while family/categories are not so important (I think)
+* get rid of "OfSelected" in commands, make selection mechanism more universal
+if input data types are not selected prompt for selection, if they are just use them
+* add columns to InvokeAddinCommand
+this may make it slow, add caching mechanism (no need to update it if .dll hasn't changed)
+add input data type column
+e.g. ResetTitlesOfSelectedViewports, input: Viewport/View
+or SelectFamilyTypesOfSelected, input: any
+* CopyElementsInNetwork
+probably duplicate of something below
+select elements, select documents, possibly select views in documents if view dependent elements
+need to copy filters across docuemnts, but probably should double down as a general replacement for 
+mayb replace CopySelectedElementsToViewsInDocument and DuplicateSelectedViewsAndPlaceOnSheet
+* CopyTypeParametersIn{Session,Network}
+should work with view templates as well
+* datagrid edit mode: combine pattern and math fields
+add notation like (( x + 1 ))
+add function to increment given value by 1 or so or to append an incrementing value
+find a better syntax to capture specific number to operate on - could be existing regex
+ e.g. 1 in BV-BNE-111-1-L -FOH- -LTGS-INLI
+* duplicate view of datagrid
+e.g. pressing ctrl+n should make a copy of current datagrid and making changes to either one should "be synchronous" (that is same underlying model), but could be queried differently
+or consider some undo button for views
+* add warning when pressing escape when editing datagrids
+when edits have been made
+confirm that user wants to cancel the changes
+sounds like a reasnable idea, pressing escape after pressing it after making edits to a cell sounds like a very probable mistake to make
+  it's not itiot-proofing I'm trying to tell myself
+  "separation of mechanism from policy"
+* add undo.redo mechanism for edit mode of datagrids
+when editing datagrid sometimes you may make a mistake, during longer edits it's better to undo than pressing escape
+* consider adding "data science" operations/transformations on tables
+powerquery-like, but better, perhaps a separate table of transformations, modeless
+could be as simple as removing dulpicates by selected column, summing, etc.
+could be context menu or shortcuts
+* add shortcuts to SelectFamilyTypesIn* STV STD STS STA 
+* console application for orchestrating revit instances (invoking commands) on desktop
+in network mode there is no need to run commands from revit i think
+should prove very useful for printing
+* SwitchSheetInNetwork
+* for InNetwork commands loading panel should show progress of collecting data from each indivudal revit ballet server
+when longer than 3 seconds or so
+consider including loading of datagrid as well as that seems to be taking a lot of time as well
+* consider reimplementing switch document and view operation through revit server
+currently this operation appears to be leaving some hanging transactions (possibly)
+using a background process calling revit server may combine it into a two separate steps
+see if it won't be too slow
+* SwitchDocumentInNetwork
+* SynchronizeAllInSession
+* add ListSelectedInNetwork and SelectByCategoryInNetwork
+* command to copy elements across sessions
+copy to same view
+copy elements 3d in same place
+without going through an intermediate file (script should handle it however it works best)
+copy entire views (locations, names)
+copy entire sheets with views (details, viewport types)
+scope boxes
+* either add SwitchDocumentInNetwork or list multiple documents in SwitchSessionInNetwork
+or do both
+also rename SwitchSession to SwitchSessionInNetwork
+* duplicateSheetsInNetwork
+same as duplicating sheets with views and detailing but carried across revit instances in different processes
+* add a warning when there are existing names to commands trying to rename views
+halt operation or return to datagrid
+right now they just fail leaving scrambled names and no way to undo
+* create an autohotkey binding to invoke SwitchSession from outside revit
+this will be needed because often revit thread will be blocked when you synchronize and you will want to then switch to another session not to wait
+SwitchSession doesn't require access to revit
+think how to organize binding with some being in ahk
+** consider not relying on autohotkey
+you already create an installer and assuming windows platofrm
+perhaps there is some other way to register shortcuts on windows natively
+* update Export/ImportViewTemplate commands to prompt a dialog asking to overwrite settings of existing view template
+not sure what would happen with overrids to graphics of linked models
+* InvokeAddinCommandViaShortcuts command
+As opposed to InvokeAddinCommand it shouldn't present any interface but listen to subsequent key strokes and spacebar to terminate sequence (like in autocad)
+
+It effectively acts as a prefix (find a single key that is free by default), dont use anything complicated like ctrl+a on tmux
+
+This hopefully opens up configuration space
+
+Consider adding a visual interface like in emacs that shows up after a short pause in input (listing possible combination from those already input)
+
+Add shortcuts column to InvokeAddinCommand
+* fix SwitchSession not activating window properly
+user has to click on the window to activate it
+doesn't seem to happen when switching with tab+alt
+* rename command DuplicateSelectedViewsAndPlaceOnSheet to DuplicateSelectedViewsAndPlaceOnSheets
+indicate it works with multiple sheets selected
+* fix CopySelectedElementsToViewsInDocument command to work with detail groups and sheet views
+* crop region segments not showing up when views (not placed on sheets) (elevations) selected
+** it may be also useful to add side segments 
+elevations need to be often stretched sidewise to account for wall thicknesses
+* make names column editable in selectview command
+got errors when tried it last time
+* add view template specific columns to datagrid fo FitlerSelectedIn*
+I swear that there was a command for filtering view templates already
+* add excel like functions to dataframes
+group by, list only unique
+not sure how it would work with refernces to original elements
+some higher-level grou-like object reference?
+* add filters to selectbycategory list
+* keep focus in datagrid when filtering on last selection
+its a useful reference
+* fix duplicate sheet command not preserving view detail number parameters
+of corresponding views
+also not preserving viewport types
+* when selecting chains of dimensions and invoking FitlerSelected* commands put individual dimension segments distances as separate columns
+* align selected elements left, bottom, top, right, middle vertical, middle horizontal
+vim shortcuts: aah aaj aak aal, aav, aah
+* set bottom/top heights of elevation crop regions
+maybe relative to levels
+should stop if crop region isn't rectangle
+* fix painful bug in renaming view names that prompts error asking for unique names
+even when given names are already unique
+likely there is issue with order, names some names are being renamed before others that have the same name
+more importantly it shouldn't halt the entire operation, but give user some way to resolve confilcts or return to previous dialog
+that was very painful to discover in prod
+* make dataframes modeless and linked
+selecting entries selects items in current view
+
+Ive briefly looked into it before but gave up quickly
+This could enable multiview workflow, possibly through composing different commands like unix shell
+
+[2025-12-31 Wed] make them pivot, referential/navigable and generate one from the other (pivot)
+For example, see if getting a sheet table could reliably generate a new table of views 
+If this approach is inuitive consider more window-manager functionalities for handling multiple dataframes
+tabs, tiling into a single window, grouping into window
+Add pivot commands, same list as for InvokeAddinCommand but different list depending on active datatable
+would be worth finishing unifying columns across tables (e.g. functionality like highlighting a sheet in one dataframe navigates (puts into focus, opens) table of views in another window)
+For example group tables or combine on key parameters
+Consider ripping off excel pivot table interface again or find something simpler
+
+[2026-01-01 Thu] tables effectively can act as temporary stored selection sets
+may need a new set of commands to act on them more explicitely
+
+[2026-01-12]
+with modelss dialogs hanging around invoking the same command should proably bring into focus existing dialog rather than creating a new one (perhaps a new mechanism will need to be created)
+* add extents columsn to grids
+3d and 2d (if views selected)
+* fix sudden switching views breaking
+* add command DuplicateSelectedViewsAndPlaceToLevelsOnSheets
+it should do the same as previous command but place them on different level
+may have been mentioned already
+** also may be worth as a ceiling plan
+** also may be worth as a plan but on a different level
+* synchronize all documents in session
+just lost some work, partially because synchronizing models in the same session is a bit cumbersome
+* add InSession commands
+FilterSelectedInSession, SelectByCategoriesInSession, etc.
+* change command assigned to vs to show separately type and name
+renaming values otheriwse doesn't work (For title column)
+* replicate copy sheets to open documents from pyrevit
+need a way to copy sheets across projects
+it should include other options like copyting viewports, schedules, revisions etc.
+** pyrevit is incomplete
+didn't copy sheet parameters, that's a major issue
+didn't copy views
+** utilize "server infrastrucutre" to streamline operation
+communicate with agent to write/read an .rvt file
+* make datagrids showing sheets also include parameters used in project browser organization
+they often contain important indications
+hopefully it's possible to obtain what parameters are used (it's user-defined)
+* a command that matches positions of viewports relative to project origin/survey point
+or grids
+to make viewports overlap even if their shapes differ
+* fix command SelectViewFiltersMatchingSelected not correctly recognizing matching filters
+tired a lighting fixture and nothing was returned
+* add line styles to selectbyfamilytype command
+* make select by worksests in project command also show only user defined worksets
+* make sorting follow actual numebrs
+1,2,3,4 instead 1,10,11,2,21,22,3 etc.
+* when selecting viewports and invoking selectfiltered command and trying $"view name" synntax it didn't show any columns
+* add command duplicate selected views with view template, graphic overrides and all view-dependent elements but on different level
+options for multiple duplicates and multiple levels
+* fix column referecing in cell rename dialog
+tried using $sheet and values didn't show up in the preview
+* filtereselected with centroids started taking a lot of time - profile and optimize it
+* make "crop region visible" parameter editbale in filterselected command
+need to first solve the issue with centroid calculation triggering graphics regeneration making FilterSelectedIn commands very slow with viewports
+* make switch command register when views are closed with closeviews commands
+* check all commands/handlers modifying names of views/sheets and make them also update relevant view changes logs 
+not sure if it's consistent right now
+* set view templates to selected views in datagrids
+maybe it already exists (lol doubt it)
+* try combining columns of multiple types selected
+rather than taking intersaction
+it may become too slow, hopefully can be mitigated by the newly added cancellable progress dialog
+* set height of selected sections
+only clipping depth seems exposed
+* commands to list warnings in datagrid
+ids in their own columns
+can't copy id numbers from default revit panel
+* rename groups in selectbygroup commands
+* fix centroid calculations for viewports
+values don't get copied correctly
+* assign shortcut to select view templte of selected elements command
+* copy crop region to selected views
+if possible
+* selectbycategory doesn't show sections or elevations
+* fix filerselectedinproject regenerating each viewport in latest commit
+may have been some diagnostic code, centroid calculation shouldn't have caused it yet, find out what it could be
+after commit cd2cd14a629ff44729622e4a3e46f1ffb1483525
+* auto sort views in SwitchViews by first cvolumn
+sorting was prboabl previously defau;t in datagrid but now comands need to do it themselves
+* support setting scope boxes in FilterSelectedIn* commands
+right now they fail
+should be able to set from existing scope boxes in project
+* fix installer
+updated only 2025 and skipped 2024
+* add position of elements
+e.g. viewports
+make it modifiable, it should be possible to place viewports in same positions for example
+* ToggleLevelBubblesInSelectedViews but for grids
+I wonder why it's not there already, prehaps it wasn't possible?
+* done
+** see if you can add instance count to select by family command
+may be too slow
+didn't see any performance issues
+** make type column in filter command editable
+** add switch document command
+[2025-12-21 Sun 00:20]
+like in autocad-ballet wd shortcut
+also generally support for multi-document view switching like in autocad-ballet
+e.g. support for SwitchViewLast
+*** as with autocad-ballet this proved difficult due to tricky state management
+for example initially was using self-generated guids for tracking session, but these wouldn't be accessible to commands invoked via invokeaddincommand (separate memoery spaces), so had to make decision to rely on process id instead
+  hopefully with combination with document title it won't be  clashing
+but seems to work okay now
+  realistically i should expect future bugs, this is a rather complex part of the codebase
+** add other sheet parameters to switch-view commands
+[2025-12-21 Sun 00:20]
+they are often valuable 
+ended up adding only parameters used in current browser organization
+also using them to sort entries to mimick project browser organization
+** fix pdf exporter error
+it was a neferious one, open dialog didn't have a parent window causing it to disappear when focus was changed to another window
+in case of pdf exporter it was putting revit in a strange state that caused it to hang on some commands (e.g. editing outline of fiilled regions)
+** offset extents/lengths/ends of grids in view
+[2026-01-02 Fri 11:11]
+added them as extra columns in FilterSelected* commands
+using absolute units (tried survey origin, but falls back to project origin)
+only works when crop region is rectangular (left, right, top, bottom)
+** rename FilterSelectedIn* commands
+[2026-01-11 Sun 21:57]
+something more descriptive, they became a "universal scheduling tool"
+*** renamed to ListSelectedIn*
+more descriptive, but l character can't be used as a shortcut as it's too far away
+  "left handedness" of revit proves to be very limiting
+  resorted to using x, it's underutilized in revit shortcuts and seems generic
+    which seems fitting for such a fundamental command
+** add "contents" columns to FilterSelectedIn* commands for texts and tags
+[2026-01-11 Sun 21:47]
+placed at the end in case text will be very long
+** fix renaming view column in SelectViews
+[2026-01-14 Wed 10:20]
+SelectViews command stored the view object as __OriginalObject, but the DataGrid automatic editing system expects ElementIdObject or Id to find the Revit element for applying edits
+fixed a few other commands with the same issue
