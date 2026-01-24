@@ -1374,3 +1374,18 @@ but can't think of a proper way to solve it
 noticeable performance improvement
 *** 19
 **** =20:00= testing pre-compiled server endpoints to improve performance of InNetwork commands
+*** 24
+**** =18:39= struggling with smb and git incompatibilities
+case insensitivity and lack of symlinks cause a lot of errors and eventually confused claude agent leading it to lose substantial portion of codebase
+I partially saw it coming and started refactoring recent changes before the incident, however it still took down a substantial portion of changes (changes made for InvokeAddinCommandInNetwork and other InNetwork commands)
+***** =20:58= shot myself in the foot this time by running
+git stash push -u -m "temp"
+cd ..
+git clone git@github.com:baleti/revit-ballet.git revit-ballet-clean
+cd revit-ballet-clean
+git rebase --exec 'git commit --amend --no-edit -S' 21d80163c
+cd ..
+rm -rf revit-ballet/.git
+cp -ra revit-ballet-clean/.git revit-ballet
+this removed remaining untracked changes that survived previous incident
+lol, there is some comedic irony in this situation that I may see later
