@@ -193,7 +193,7 @@ namespace RevitBallet.Commands
 
                 var command = connection.CreateCommand();
                 command.CommandText = @"
-                    SELECT DISTINCT SessionId, DocumentTitle, DocumentPath, ViewId, ViewTitle, ViewType, Timestamp
+                    SELECT SessionId, DocumentTitle, DocumentPath, ViewId, ViewTitle, ViewType, Timestamp
                     FROM ViewHistory
                     WHERE SessionId = @SessionId
                       AND DocumentTitle = @DocumentTitle
@@ -240,7 +240,7 @@ namespace RevitBallet.Commands
 
                 var command = connection.CreateCommand();
                 command.CommandText = @"
-                    SELECT DISTINCT SessionId, DocumentTitle, DocumentPath, ViewId, ViewTitle, ViewType, Timestamp
+                    SELECT SessionId, DocumentTitle, DocumentPath, ViewId, ViewTitle, ViewType, Timestamp
                     FROM ViewHistory
                     WHERE SessionId = @SessionId
                     ORDER BY Timestamp DESC
@@ -285,7 +285,7 @@ namespace RevitBallet.Commands
 
                 var command = connection.CreateCommand();
                 command.CommandText = @"
-                    SELECT DISTINCT SessionId, DocumentTitle, DocumentPath, ViewId, ViewTitle, ViewType, Timestamp
+                    SELECT SessionId, DocumentTitle, DocumentPath, ViewId, ViewTitle, ViewType, Timestamp
                     FROM ViewHistory
                     WHERE DocumentTitle = @DocumentTitle
                       AND SessionId != @ExcludeSessionId
