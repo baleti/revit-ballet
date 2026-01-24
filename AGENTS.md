@@ -20,29 +20,34 @@ Revit Ballet is a collection of custom commands for Revit that provides enhanced
 
 ### Diagnostic Logging Convention
 
-**When to add diagnostics:** For non-trivial operations where bugs could arise from unit conversion, coordinate transformations, or API behavioral differences.
+**When to add diagnostics:** For non-trivial operations where bugs could arise from unit conversion, coordinate transformations, or API behavioral differences. Also use for performance diagnostics when operations are slow.
 
-**Location:** All diagnostic files MUST be saved to `runtime/diagnostics/` directory.
+**Location:** All diagnostic files MUST be saved to `%appdata%/revit-ballet/runtime/diagnostics/` directory.
+- This is the same as the repository's `runtime/diagnostics/` folder
+- Use `PathHelper.RuntimeDirectory` or `Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) + @"\revit-ballet\runtime\diagnostics"`
+- **NEVER save diagnostics to document folder or temp folder** - always use runtime/diagnostics
 
-**Naming:** Use descriptive names with timestamps: `{OperationName}-{yyyyMMdd-HHmmss-fff}.txt`
+**Naming:** Use descriptive names with timestamps: `{OperationName}_{yyyyMMdd_HHmmss}.txt`
 
 **Content Format:**
 ```csharp
 // Create diagnostic file
-string diagnosticPath = System.IO.Path.Combine(
-    RevitBallet.Commands.PathHelper.RuntimeDirectory,
-    "diagnostics",
-    $"MyOperation-{System.DateTime.Now:yyyyMMdd-HHmmss-fff}.txt");
+string diagFolder = System.IO.Path.Combine(
+    System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData),
+    "revit-ballet", "runtime", "diagnostics");
+System.IO.Directory.CreateDirectory(diagFolder);
+
+string diagPath = System.IO.Path.Combine(
+    diagFolder,
+    $"MyOperation_{System.DateTime.Now:yyyyMMdd_HHmmss}.txt");
 
 var diagnosticLines = new List<string>();
-diagnosticLines.Add($"=== Operation Name at {System.DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} ===");
+diagnosticLines.Add($"=== Operation Name - {System.DateTime.Now:yyyy-MM-dd HH:mm:ss} ===");
 diagnosticLines.Add($"Input Values: ...");
 diagnosticLines.Add($"Intermediate Results: ...");
 diagnosticLines.Add($"Final Results: ...");
 
-// Always create directory before writing
-System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diagnosticPath));
-System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
+System.IO.File.WriteAllLines(diagPath, diagnosticLines);
 ```
 
 **Key principles:**
@@ -52,38 +57,47 @@ System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
 - Include element IDs for traceability
 - Log both input values and verified output values
 
-### Working with CIFS Network Mounts (Linux Only)
+### Case-Insensitive Filesystems (CIFS/drvfs) with Case-Sensitive Git
 
-**Context**: This repository may be accessed via CIFS mount on Linux (`mount -t cifs`). WSL drvfs mounts do NOT have these issues.
+**Context (baleti developer environment)**: Repository accessed via case-insensitive Windows filesystems (CIFS mount on Linux, WSL drvfs).
 
-**What Works Fine on CIFS:**
-- ✅ Direct file operations (Read/Write/Edit tools, cat, echo, cp, etc.)
+**Critical Behavior - Filesystem vs Git:**
+- **Filesystem**: Case-insensitive (Windows behavior)
+  - `installer.csproj`, `Installer.csproj`, `iNstaller.csproj` → ALL resolve to same file
+  - Example: `ls installer/Installer.csproj` and `ls installer/iNsTaLLer.CsPrOj` both succeed
+- **Git**: Case-sensitive
+  - `installer.cs` and `Installer.cs` → tracked as DIFFERENT files in commits
+  - Can create commits with both variants on Windows (they appear as one file)
+  - On checkout, git tries to create both → filesystem sees them as duplicates → conflicts
+
+**What Works Fine:**
+- ✅ Direct file operations (Read/Write/Edit tools)
 - ✅ Git read operations (log, status, diff, show, blame)
 - ✅ Git commits, pushes, pulls
-- ✅ Git stash (saves successfully even if it shows error messages - always verify with `git stash list`)
+- ✅ Git stash (even with error messages - always verify with `git stash list`)
 - ✅ Git branch operations
 
-**What Fails on Linux CIFS:**
-- ❌ **Git rebase when commits contain case-variant filenames** (e.g., both `Installer.cs` and `installer.cs`)
-  - Root cause: Windows is case-insensitive, Linux is case-sensitive
-  - Git treats them as different files on Linux, same file on Windows
-  - Rebase checkout fails: "error: The following untracked working tree files would be overwritten"
-- ❌ **Git working tree manipulation for specific files** (random filesystem cache corruption)
-  - Symptoms: `git reset --hard` fails with "error: unable to create file: No such file or directory"
-  - Symptoms: `git checkout -- <file>` fails even though file exists
+**What Fails:**
+- ❌ **Git rebase with case-variant filenames in commits**
+  - Rebase tries to checkout commits with both `Installer.cs` AND `installer.cs`
+  - Filesystem treats them as same file → conflict: "untracked working tree files would be overwritten"
+  - Solution: Remove duplicate lowercase/uppercase variants, keep one consistent case
+- ❌ **Git working tree manipulation** (CIFS-specific cache corruption)
+  - Symptoms: `git reset --hard` fails, `git checkout --` fails despite file existing
   - Workaround: `git update-index --skip-worktree <file>` temporarily
+  - **Note**: drvfs handles this better than CIFS
 
-**Solution for Git Rebases and Commit Signing:**
-- Use Windows or WSL with drvfs mount (NOT Linux CIFS mount)
-- Example: `cd /mnt/c/path/to/revit-ballet` on WSL
-- Drvfs properly handles Windows case-insensitivity
+**Best Practices:**
+- Use consistent casing in filenames (PascalCase for C# files)
+- Before rebasing: Check for case-variant duplicates with `git ls-files | sort -f | uniq -di`
+- Use WSL drvfs (`/mnt/c/...`) instead of Linux CIFS for rebases (better filesystem handling)
 
-**Recovery from CIFS Git Issues:**
-1. Don't panic - CIFS affects working tree, not git object database
+**Recovery from Conflicts:**
+1. Don't panic - filesystem issues affect working tree, not git object database
 2. Verify safety: `git fsck`, `git stash list`, `git log --oneline`
 3. For corrupted files: `git update-index --skip-worktree <file>`
-4. Switch to Windows/WSL for rebases
-5. After rebase: `git update-index --no-skip-worktree <file>` to restore normal tracking
+4. Remove duplicate case-variant files: Keep one consistent case (e.g., `Installer.cs`)
+5. After cleanup: `git update-index --no-skip-worktree <file>`
 
 ## Version Control Practices
 
