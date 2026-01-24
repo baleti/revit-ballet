@@ -52,16 +52,35 @@ namespace RevitCommands
                 foreach (string filePath in filePaths)
                 {
                     Document sourceDoc = null;
+                    bool shouldCloseDoc = false;
                     try
                     {
-                        OpenOptions openOptions = new OpenOptions
+                        // Check if document is already open in another window
+                        bool wasAlreadyOpen = false;
+                        foreach (Document openDoc in app.Documents)
                         {
-                            Audit = false,
-                            DetachFromCentralOption = DetachFromCentralOption.DetachAndPreserveWorksets
-                        };
+                            if (!openDoc.IsLinked &&
+                                !string.IsNullOrEmpty(openDoc.PathName) &&
+                                openDoc.PathName.Equals(filePath, StringComparison.OrdinalIgnoreCase))
+                            {
+                                sourceDoc = openDoc;
+                                wasAlreadyOpen = true;
+                                break;
+                            }
+                        }
 
-                        ModelPath modelPath = ModelPathUtils.ConvertUserVisiblePathToModelPath(filePath);
-                        sourceDoc = app.OpenDocumentFile(modelPath, openOptions);
+                        if (!wasAlreadyOpen)
+                        {
+                            OpenOptions openOptions = new OpenOptions
+                            {
+                                Audit = false,
+                                DetachFromCentralOption = DetachFromCentralOption.DetachAndDiscardWorksets
+                            };
+
+                            ModelPath modelPath = ModelPathUtils.ConvertUserVisiblePathToModelPath(filePath);
+                            sourceDoc = app.OpenDocumentFile(modelPath, openOptions);
+                            shouldCloseDoc = true;
+                        }
 
                         // Collect elements from source document
                         List<ElementId> sourceElementIds = new List<ElementId>();
@@ -75,6 +94,14 @@ namespace RevitCommands
                         {
                             // Skip base points - they cannot be copied
                             if (elem is BasePoint)
+                                continue;
+
+                            // Skip sketch elements - these are internal geometry that cannot be copied separately
+                            if (elem.Category != null && elem.Category.Name == "<Sketch>")
+                                continue;
+
+                            // Skip SketchPlane elements
+                            if (elem is SketchPlane)
                                 continue;
 
                             // Filter for 3D elements with geometry
@@ -132,14 +159,6 @@ namespace RevitCommands
                         // Revit automatically handles dependent types and materials
                         int successCount = 0;
                         int failureCount = 0;
-                        string diagnosticPath = System.IO.Path.Combine(
-                            RevitBallet.Commands.PathHelper.RuntimeDirectory,
-                            "diagnostics",
-                            $"ImportElements-{System.DateTime.Now:yyyyMMdd-HHmmss-fff}.txt");
-                        var diagnosticLines = new List<string>();
-                        diagnosticLines.Add($"=== Import Elements at {System.DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} ===");
-                        diagnosticLines.Add($"Source file: {System.IO.Path.GetFileName(filePath)}");
-                        diagnosticLines.Add($"Elements to copy: {sourceElementIds.Count}");
 
                         using (Transaction trans = new Transaction(currentDoc, "Import Elements"))
                         {
@@ -149,9 +168,6 @@ namespace RevitCommands
                             {
                                 // Batch copy all elements - use existing families when names match
                                 // Let Revit handle dependent types/materials automatically
-                                var startTime = System.DateTime.Now;
-                                diagnosticLines.Add($"[{startTime:HH:mm:ss.fff}] Starting batch copy of {sourceElementIds.Count} elements");
-
                                 CopyPasteOptions options = new CopyPasteOptions();
                                 options.SetDuplicateTypeNamesHandler(new DuplicateTypeNamesHandler());
 
@@ -162,14 +178,9 @@ namespace RevitCommands
                                     Transform.Identity,
                                     options);
 
-                                var endTime = System.DateTime.Now;
-                                var duration = (endTime - startTime).TotalMilliseconds;
-                                diagnosticLines.Add($"[{endTime:HH:mm:ss.fff}] Batch copy completed in {duration}ms");
-
                                 if (copiedIds != null && copiedIds.Count > 0)
                                 {
                                     successCount = sourceElementIds.Count;
-                                    diagnosticLines.Add($"Batch copy successful: {copiedIds.Count} elements copied");
 
                                     // Add instance elements to selection list
                                     foreach (ElementId copiedId in copiedIds)
@@ -188,16 +199,11 @@ namespace RevitCommands
                                 {
                                     failureCount = sourceElementIds.Count;
                                     failureDetails.Add("Batch copy returned null or empty collection");
-                                    diagnosticLines.Add("ERROR: Batch copy returned null or empty collection");
                                 }
                             }
                             catch (Exception ex)
                             {
                                 // Batch copy failed - fall back to individual copying for detailed error reporting
-                                diagnosticLines.Add($"ERROR: Batch copy failed - {ex.Message}");
-                                diagnosticLines.Add($"Falling back to individual copy for {sourceElementIds.Count} elements");
-                                var fallbackStart = System.DateTime.Now;
-
                                 foreach (ElementId elemId in sourceElementIds)
                                 {
                                     Element elem = sourceDoc.GetElement(elemId);
@@ -243,19 +249,10 @@ namespace RevitCommands
                                         failureDetails.Add($"{elemInfo} - {elemEx.Message}");
                                     }
                                 }
-
-                                var fallbackEnd = System.DateTime.Now;
-                                var fallbackDuration = (fallbackEnd - fallbackStart).TotalMilliseconds;
-                                diagnosticLines.Add($"Fallback completed in {fallbackDuration}ms");
-                                diagnosticLines.Add($"Fallback results: {successCount} succeeded, {failureCount} failed");
                             }
 
                             trans.Commit();
                         }
-
-                        // Save diagnostics
-                        System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diagnosticPath));
-                        System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
 
                         totalSuccessCount += successCount;
                         totalFailureCount += failureCount;
@@ -268,7 +265,7 @@ namespace RevitCommands
                     }
                     finally
                     {
-                        if (sourceDoc != null && sourceDoc.IsValidObject)
+                        if (shouldCloseDoc && sourceDoc != null && sourceDoc.IsValidObject)
                         {
                             sourceDoc.Close(false);
                         }
