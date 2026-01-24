@@ -18,6 +18,81 @@ Revit Ballet is a collection of custom commands for Revit that provides enhanced
 - You can examine runtime logs and data to verify code behavior and debug issues
 - **ALL runtime data MUST be stored in `runtime/` subdirectory** - includes logs, network data, screenshots, diagnostics
 
+## ⚠️ CRITICAL: Git Operations - NEVER DESTROY STASHES OR .git DIRECTORY ⚠️
+
+**ABSOLUTE PROHIBITION - READ THIS BEFORE ANY GIT OPERATION:**
+
+**NEVER, UNDER ANY CIRCUMSTANCES:**
+1. ❌ **NEVER replace the .git directory** (not even from a clone or backup)
+2. ❌ **NEVER run operations that lose git stashes** without explicit user confirmation
+3. ❌ **NEVER run `git checkout --` on modified files** without verifying stashes are preserved
+4. ❌ **NEVER copy/replace .git from temp directories** - this DESTROYS ALL STASHES
+5. ❌ **NEVER assume uncommitted work is safe** - ALWAYS verify before destructive operations
+
+**WHY THIS MATTERS:**
+- Stashes contain HOURS OR DAYS of uncommitted work
+- Replacing .git directory makes stash refs unreachable = PERMANENT DATA LOSS
+- No recovery possible - work is gone forever
+- User loses significant productivity and trust
+
+**WHAT HAPPENED (2026-01-24 - NEVER REPEAT):**
+Agent tried to combine commits via interactive rebase. To work around filesystem issues:
+1. Stashed user's uncommitted changes (network edits, new features, day's work)
+2. Cloned repo to temp directory
+3. Performed rebase in temp clone
+4. **REPLACED .git directory from temp clone back to original** ← CATASTROPHIC MISTAKE
+5. Stash references were destroyed - all uncommitted work PERMANENTLY LOST
+6. User lost a full day of development work
+
+**CORRECT APPROACH FOR GIT OPERATIONS:**
+
+**Before ANY destructive git operation:**
+```bash
+# 1. CHECK for uncommitted work
+git status
+
+# 2. CHECK for existing stashes
+git stash list
+
+# 3. If uncommitted work exists, ASK USER FIRST:
+#    "You have uncommitted changes. Should I:
+#     a) Commit them first
+#     b) Stash them (risky if git operation fails)
+#     c) Cancel this operation"
+```
+
+**For interactive rebases with uncommitted work:**
+```bash
+# CORRECT approach:
+# 1. User commits their work first (or explicitly asks to stash)
+# 2. Then do rebase on committed history
+# 3. NEVER touch .git directory structure
+
+# WRONG approach (what NOT to do):
+# 1. Stash user's work without asking
+# 2. Clone to temp directory
+# 3. Replace .git directory ← DESTROYS STASHES
+```
+
+**If you encounter git errors during rebase:**
+- ✅ Ask user how to proceed
+- ✅ Abort the rebase: `git rebase --abort`
+- ✅ Try alternative approaches (commit first, then rebase)
+- ❌ DON'T try to "fix" it by replacing .git directory
+- ❌ DON'T assume you can restore from backups
+
+**Recovery from this mistake is IMPOSSIBLE:**
+- Once .git is replaced, stash refs are gone
+- `git fsck --unreachable` won't help if objects weren't copied
+- Work is permanently lost
+- User must recreate from memory or other sources
+
+**REMEMBER:**
+- User's uncommitted work is MORE VALUABLE than clean git history
+- When in doubt, STOP and ASK the user
+- NEVER perform destructive operations without explicit permission
+- Preserving user's work > Completing the task perfectly
+
 ### Diagnostic Logging Convention
 
 **When to add diagnostics:** For non-trivial operations where bugs could arise from unit conversion, coordinate transformations, or API behavioral differences. Also use for performance diagnostics when operations are slow.
