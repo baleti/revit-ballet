@@ -926,6 +926,7 @@ namespace RevitBalletInstaller
             {
                 // Create runtime directory for this Revit version
                 string runtimeBinDir = Path.Combine(targetDir, "commands", "bin", installation.Year);
+                string runtimeUpdateDir = runtimeBinDir + ".update";
                 Directory.CreateDirectory(runtimeBinDir);
 
                 // Find version-specific DLL resource
@@ -945,9 +946,49 @@ namespace RevitBalletInstaller
                     continue; // Skip this version
                 }
 
-                // Extract main DLL to runtime location
+                // Try to extract to main directory first
                 string runtimeDllPath = Path.Combine(runtimeBinDir, "revit-ballet.dll");
-                ExtractResource(dllResource, runtimeDllPath);
+                bool usedUpdateFolder = false;
+
+                try
+                {
+                    // Try to extract directly to main folder
+                    using (Stream stream = assembly.GetManifestResourceStream(dllResource))
+                    {
+                        if (stream != null)
+                        {
+                            using (FileStream fs = new FileStream(runtimeDllPath, FileMode.Create, FileAccess.Write, FileShare.None))
+                            {
+                                stream.CopyTo(fs);
+                            }
+                        }
+                    }
+                }
+                catch (IOException)
+                {
+                    // File is locked (InvokeAddinCommandInNetwork is running) - use update folder
+                    usedUpdateFolder = true;
+
+                    // Clean up old update folder if it exists
+                    if (Directory.Exists(runtimeUpdateDir))
+                    {
+                        try
+                        {
+                            Directory.Delete(runtimeUpdateDir, true);
+                        }
+                        catch
+                        {
+                            // Use timestamped folder if can't delete
+                            runtimeUpdateDir = runtimeBinDir + $".update.{DateTime.Now:yyyyMMddHHmmss}";
+                        }
+                    }
+
+                    Directory.CreateDirectory(runtimeUpdateDir);
+                    string updateDllPath = Path.Combine(runtimeUpdateDir, "revit-ballet.dll");
+                    ExtractResource(dllResource, updateDllPath);
+
+                    runtimeBinDir = runtimeUpdateDir; // Use update folder for dependencies too
+                }
 
                 // Extract dependencies to runtime location using file mapping or fallback
                 if (fileMappings != null && fileMappings.Count > 0)

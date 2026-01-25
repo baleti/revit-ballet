@@ -98,20 +98,21 @@ namespace RevitBallet.Commands
                 }
             }
 
-            try
-            {
-                string diagnosticPath = System.IO.Path.Combine(
-                    PathHelper.RuntimeDirectory,
-                    "diagnostics",
-                    $"TransactionMonitor-{DateTime.Now:yyyyMMdd-HHmmss-fff}.txt");
-
-                System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diagnosticPath));
-                System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
-            }
-            catch
-            {
-                // Silently fail - don't interrupt operations
-            }
+            // Diagnostic file writing disabled
+            // try
+            // {
+            //     string diagnosticPath = System.IO.Path.Combine(
+            //         PathHelper.RuntimeDirectory,
+            //         "diagnostics",
+            //         $"TransactionMonitor-{DateTime.Now:yyyyMMdd-HHmmss-fff}.txt");
+            //
+            //     System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diagnosticPath));
+            //     System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
+            // }
+            // catch
+            // {
+            //     // Silently fail - don't interrupt operations
+            // }
         }
     }
 }

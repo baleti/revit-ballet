@@ -212,22 +212,23 @@ public partial class CopySelectedElementsAlongContainingGroupsByRooms
 
     private void SaveDiagnostics(bool forceWrite = false)
     {
-        if (!enableDiagnostics || !saveDiagnosticsToFile) return;
-
-        string desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
-        string fileName = $"RevitPerformance_{DateTime.Now:yyyyMMdd_HHmmss}.txt";
-        string filePath = System.IO.Path.Combine(desktopPath, fileName);
-
-        try
-        {
-            System.IO.File.WriteAllText(filePath, diagnosticLog.ToString());
-            if (forceWrite)
-            {
-                Autodesk.Revit.UI.TaskDialog.Show("Performance Report", 
-                    $"Execution time: {globalStopwatch.Elapsed:mm\\:ss}\nReport saved to:\n{filePath}");
-            }
-        }
-        catch { }
+        // Diagnostic file writing disabled
+        // if (!enableDiagnostics || !saveDiagnosticsToFile) return;
+        //
+        // string desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+        // string fileName = $"RevitPerformance_{DateTime.Now:yyyyMMdd_HHmmss}.txt";
+        // string filePath = System.IO.Path.Combine(desktopPath, fileName);
+        //
+        // try
+        // {
+        //     System.IO.File.WriteAllText(filePath, diagnosticLog.ToString());
+        //     if (forceWrite)
+        //     {
+        //         Autodesk.Revit.UI.TaskDialog.Show("Performance Report",
+        //             $"Execution time: {globalStopwatch.Elapsed:mm\\:ss}\nReport saved to:\n{filePath}");
+        //     }
+        // }
+        // catch { }
     }
 }
 

@@ -143,20 +143,21 @@ namespace RevitBallet.Commands
 
             private void WriteDiagnostic()
             {
-                try
-                {
-                    string diagnosticPath = System.IO.Path.Combine(
-                        PathHelper.RuntimeDirectory,
-                        "diagnostics",
-                        $"{commandName}-{startTime:yyyyMMdd-HHmmss-fff}.txt");
-
-                    System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diagnosticPath));
-                    System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
-                }
-                catch
-                {
-                    // Silently fail - don't interrupt command execution
-                }
+                // Diagnostic file writing disabled
+                // try
+                // {
+                //     string diagnosticPath = System.IO.Path.Combine(
+                //         PathHelper.RuntimeDirectory,
+                //         "diagnostics",
+                //         $"{commandName}-{startTime:yyyyMMdd-HHmmss-fff}.txt");
+                //
+                //     System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diagnosticPath));
+                //     System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
+                // }
+                // catch
+                // {
+                //     // Silently fail - don't interrupt command execution
+                // }
             }
         }
     }

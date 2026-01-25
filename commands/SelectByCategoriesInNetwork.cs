@@ -222,14 +222,14 @@ public class SelectByCategoriesInNetwork : IExternalCommand
             diagnosticLines.Add($"Selection saved to storage");
             diagnosticLines.Add("=== END DIAGNOSTIC ===");
 
-            // Write final diagnostic
-            try
-            {
-                string diagnosticPath = Path.Combine(PathHelper.RuntimeDirectory, "diagnostics", $"SelectByCategoriesInNetwork-Query-{DateTime.Now:yyyyMMdd-HHmmss-fff}.txt");
-                Directory.CreateDirectory(Path.GetDirectoryName(diagnosticPath));
-                File.WriteAllLines(diagnosticPath, diagnosticLines);
-            }
-            catch { }
+            // Diagnostic file writing disabled
+            // try
+            // {
+            //     string diagnosticPath = Path.Combine(PathHelper.RuntimeDirectory, "diagnostics", $"SelectByCategoriesInNetwork-Query-{DateTime.Now:yyyyMMdd-HHmmss-fff}.txt");
+            //     Directory.CreateDirectory(Path.GetDirectoryName(diagnosticPath));
+            //     File.WriteAllLines(diagnosticPath, diagnosticLines);
+            // }
+            // catch { }
 
             return Result.Succeeded;
         }
