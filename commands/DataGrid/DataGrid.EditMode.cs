@@ -626,8 +626,9 @@ public partial class CustomGUIs
             if (!Clipboard.ContainsText())
             {
                 diagnosticLines.Add("ERROR: Clipboard does not contain text");
-                System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diagnosticPath));
-                System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
+                // Diagnostic file writing disabled
+                // System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diagnosticPath));
+                // System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
                 MessageBox.Show("Clipboard does not contain text data.", "Paste",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
@@ -637,8 +638,9 @@ public partial class CustomGUIs
             if (string.IsNullOrEmpty(clipboardText))
             {
                 diagnosticLines.Add("ERROR: Clipboard text is empty");
-                System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diagnosticPath));
-                System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
+                // Diagnostic file writing disabled
+                // System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diagnosticPath));
+                // System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
                 MessageBox.Show("Clipboard is empty.", "Paste",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
@@ -670,8 +672,9 @@ public partial class CustomGUIs
             if (clipboardData.Count == 0)
             {
                 diagnosticLines.Add("ERROR: No data parsed from clipboard");
-                System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diagnosticPath));
-                System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
+                // Diagnostic file writing disabled
+                // System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diagnosticPath));
+                // System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
                 MessageBox.Show("No data to paste.", "Paste",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
@@ -775,8 +778,9 @@ public partial class CustomGUIs
                 if (startCol >= grid.Columns.Count)
                 {
                     diagnosticLines.Add($"ERROR: No editable column found starting from column {grid.CurrentCell.ColumnIndex}");
-                    System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diagnosticPath));
-                    System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
+                    // Diagnostic file writing disabled
+                    // System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diagnosticPath));
+                    // System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
                     MessageBox.Show("No editable column found at cursor position.", "Paste",
                         MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
@@ -874,8 +878,9 @@ public partial class CustomGUIs
                     diagnosticLines.Add($"  ... and {skipReasons.Count - 20} more");
             }
 
-            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diagnosticPath));
-            System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
+            // Diagnostic file writing disabled
+            // System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diagnosticPath));
+            // System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
 
             // Update grid display
             grid.Invalidate();
@@ -887,10 +892,11 @@ public partial class CustomGUIs
             diagnosticLines.Add($"Exception message: {ex.Message}");
             diagnosticLines.Add($"Stack trace: {ex.StackTrace}");
 
-            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diagnosticPath));
-            System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
+            // Diagnostic file writing disabled
+            // System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diagnosticPath));
+            // System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
 
-            MessageBox.Show($"Error pasting clipboard data: {ex.Message}\n\nDiagnostics saved to:\n{diagnosticPath}", "Paste Error",
+            MessageBox.Show($"Error pasting clipboard data: {ex.Message}", "Paste Error",
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
@@ -1083,8 +1089,9 @@ public partial class CustomGUIs
                         diagnosticLines.Add($"Validator type: {handler.Validator.GetType().Name}");
                     }
 
-                    System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diagnosticPath));
-                    System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
+                    // Diagnostic file writing disabled
+                    // System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diagnosticPath));
+                    // System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
 
                     // Show validation error to user
                     MessageBox.Show(

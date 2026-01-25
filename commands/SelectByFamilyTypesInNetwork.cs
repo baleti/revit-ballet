@@ -322,21 +322,22 @@ public class SelectByFamilyTypesInNetwork : IExternalCommand
 
     private void WriteDiagnostics(string status)
     {
-        try
-        {
-            _diagnostics.Add("");
-            _diagnostics.Add($"Status: {status}");
-            _diagnostics.Add($"Completed at: {DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}");
-
-            string diagnosticPath = Path.Combine(
-                PathHelper.RuntimeDirectory,
-                "diagnostics",
-                $"SelectByFamilyTypesInNetwork-{DateTime.Now:yyyyMMdd-HHmmss-fff}.txt");
-
-            Directory.CreateDirectory(Path.GetDirectoryName(diagnosticPath));
-            File.WriteAllLines(diagnosticPath, _diagnostics);
-        }
-        catch { }
+        // Diagnostic file writing disabled
+        // try
+        // {
+        //     _diagnostics.Add("");
+        //     _diagnostics.Add($"Status: {status}");
+        //     _diagnostics.Add($"Completed at: {DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}");
+        //
+        //     string diagnosticPath = Path.Combine(
+        //         PathHelper.RuntimeDirectory,
+        //         "diagnostics",
+        //         $"SelectByFamilyTypesInNetwork-{DateTime.Now:yyyyMMdd-HHmmss-fff}.txt");
+        //
+        //     Directory.CreateDirectory(Path.GetDirectoryName(diagnosticPath));
+        //     File.WriteAllLines(diagnosticPath, _diagnostics);
+        // }
+        // catch { }
     }
 
     private List<DocumentInfo> ParseDocumentsFile(string filePath)

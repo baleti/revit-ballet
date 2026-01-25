@@ -1,3 +1,12 @@
+* generalize invoking commands over many revit instances (through revit ballet server)
+instead of creating dedictated endpoints for each command make these endpoints generated automatically
+e.g. /commands/OpenSheets
+  in request body provide sheets to be opened
+  perhaps some simple key: value in json format
+  it likely would be easier if invoking command got available sheets in a list and could choose (so a new command effectively, ~OpenSheetsInNetwork~)
+increases automation, running mutliple commands simultaneously
+possibly leads to creating a domain-specific language (only if you have to)
+you may still create dedictate endpoints if more granular access is needed
 * fix slow display of datagrid list for CopySelectedElementsToViewsInDocument
 this has been done to SwitchViewInDocument
 may do that for SelectViews as well
