@@ -7,7 +7,15 @@ using Autodesk.Revit.UI;
 public partial class CustomGUIs
 {
     // Store the current UIDocument for edit operations
-    private static UIDocument _currentUIDoc = null;
+    // Using object type to avoid JIT loading RevitAPIUI.dll when not needed
+    private static object _currentUIDoc = null;
+
+    // Helper property to safely cast to UIDocument when needed
+    // This triggers RevitAPIUI type loading only when actually accessed
+    private static UIDocument CurrentUIDoc => _currentUIDoc as UIDocument;
+
+    // Track if we're running in Revit context (has API access) vs standalone
+    private static bool _hasRevitApiAccess = true; // Default to true for backward compatibility
 
     // Store the Revit main window handle for screen positioning
     private static IntPtr _revitWindowHandle = IntPtr.Zero;
@@ -16,18 +24,37 @@ public partial class CustomGUIs
     /// Set the current UIDocument for edit operations
     /// Call this from your command before showing the DataGrid
     /// </summary>
-    public static void SetCurrentUIDocument(UIDocument uidoc)
+    public static void SetCurrentUIDocument(object uidoc)
     {
         _currentUIDoc = uidoc;
 
         // Also capture the Revit main window handle for screen positioning
         // MainWindowHandle is only available in Revit 2019+
 #if !(REVIT2017 || REVIT2018)
-        if (uidoc != null && uidoc.Application != null)
+        if (uidoc != null)
         {
-            _revitWindowHandle = uidoc.Application.MainWindowHandle;
+            var uidocTyped = uidoc as UIDocument;
+            if (uidocTyped != null && uidocTyped.Application != null)
+            {
+                _revitWindowHandle = uidocTyped.Application.MainWindowHandle;
+            }
         }
 #endif
+    }
+
+    /// <summary>
+    /// Set whether Revit API access is available.
+    /// Call this from standalone applications to disable Revit-specific features.
+    /// </summary>
+    public static void SetRevitApiAccess(bool hasAccess)
+    {
+        _hasRevitApiAccess = hasAccess;
+
+        // If disabling Revit access, also clear UIDocument reference
+        if (!hasAccess)
+        {
+            _currentUIDoc = null;
+        }
     }
 
     /// <summary>
@@ -138,7 +165,7 @@ public partial class CustomGUIs
             else
             {
                 // Fall back to active document
-                entryDoc = _currentUIDoc.Document;
+                entryDoc = CurrentUIDoc.Document;
             }
 
             // Group by document
@@ -156,7 +183,7 @@ public partial class CustomGUIs
 
         // Process edits for each document separately with its own transaction
 
-        Document activeDoc = _currentUIDoc.Document;
+        Document activeDoc = CurrentUIDoc.Document;
 
         foreach (var docGroup in entriesByDocument)
         {
@@ -589,14 +616,14 @@ public partial class CustomGUIs
     {
         // AUTOMATIC SYSTEM: Try handler registry first, with fallback to dynamic parameter detection
         ColumnHandlerRegistry.EnsureInitialized();
-        var handler = ColumnHandlerRegistry.GetHandlerWithFallback(columnName, elem, _currentUIDoc?.Document);
+        var handler = ColumnHandlerRegistry.GetHandlerWithFallback(columnName, elem, CurrentUIDoc?.Document);
 
         if (handler != null && handler.IsEditable && handler.Setter != null)
         {
             try
             {
                 // Use handler to apply edit (includes both explicit and dynamic parameter handlers)
-                bool success = handler.ApplyEdit(elem, _currentUIDoc.Document, newValue);
+                bool success = handler.ApplyEdit(elem, CurrentUIDoc.Document, newValue);
                 return success;
             }
             catch (Exception ex)

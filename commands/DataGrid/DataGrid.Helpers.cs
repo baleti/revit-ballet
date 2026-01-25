@@ -60,6 +60,10 @@ public partial class CustomGUIs
     /// </summary>
     private static void EnsureElementIdObjectInRows(List<Dictionary<string, object>> entries)
     {
+        // Skip if running without Revit API access (e.g., in standalone network launcher)
+        if (!_hasRevitApiAccess)
+            return;
+
         foreach (var entry in entries)
         {
             // If ElementIdObject already exists, nothing to do
@@ -271,10 +275,10 @@ public partial class CustomGUIs
             return _selectionSetCache[selectionSetName];
 
         // Return empty set if no UIDocument is available
-        if (_currentUIDoc == null || _currentUIDoc.Document == null)
+        if (_currentUIDoc == null || CurrentUIDoc.Document == null)
             return new HashSet<long>();
 
-        var doc = _currentUIDoc.Document;
+        var doc = CurrentUIDoc.Document;
         var result = new HashSet<long>();
 
         try

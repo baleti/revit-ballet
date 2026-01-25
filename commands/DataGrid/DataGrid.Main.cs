@@ -559,7 +559,18 @@ public partial class CustomGUIs
             // F2: Toggle edit mode / Show cell editor
             if (e.KeyCode == Keys.F2)
             {
-                if (_isEditMode && _selectedEditCells.Count > 0)
+                // Disable edit mode when running without Revit API access
+                if (!_hasRevitApiAccess)
+                {
+                    MessageBox.Show(
+                        "Edit mode is not available when running outside Revit.\n\n" +
+                        "This launcher is for command selection only.",
+                        "Edit Mode Unavailable",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
+                    e.Handled = true;
+                }
+                else if (_isEditMode && _selectedEditCells.Count > 0)
                 {
                     // Already in edit mode, show advanced edit dialog
                     ShowCellEditPrompt(grid);

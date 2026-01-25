@@ -1036,6 +1036,12 @@ public partial class CustomGUIs
     /// </summary>
     private static bool ValidateEdit(ref string newValue, string originalValue, string columnName, Dictionary<string, object> dataRow)
     {
+        // Skip Revit-specific validation when running without Revit API access
+        if (!_hasRevitApiAccess)
+        {
+            return true; // Allow all edits in standalone mode
+        }
+
         // AUTOMATIC SYSTEM: Try handler validation first
         ColumnHandlerRegistry.EnsureInitialized();
         var handler = ColumnHandlerRegistry.GetHandler(columnName);
@@ -1046,13 +1052,13 @@ public partial class CustomGUIs
             RevitDB.Element elem = null;
             if (_currentUIDoc != null && dataRow != null)
             {
-                elem = GetElementFromEntry(_currentUIDoc.Document, dataRow);
+                elem = GetElementFromEntry(CurrentUIDoc.Document, dataRow);
             }
 
             if (elem != null)
             {
                 // Run handler's validator
-                var validationResult = handler.Validate(elem, _currentUIDoc.Document, originalValue, newValue);
+                var validationResult = handler.Validate(elem, CurrentUIDoc.Document, originalValue, newValue);
 
                 if (!validationResult.IsValid)
                 {
