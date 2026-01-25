@@ -231,22 +231,16 @@ namespace InvokeAddinCommandInNetwork
                     return;
                 }
 
-                // Build command list
+                // Build command list - hardcoded for network-compatible commands
                 var commandEntries = new List<Dictionary<string, object>>
                 {
                     new Dictionary<string, object>
                     {
-                        ["Command"] = "Test Command 1",
-                        ["Description"] = "This is a test"
-                    },
-                    new Dictionary<string, object>
-                    {
-                        ["Command"] = "Test Command 2",
-                        ["Description"] = "Another test"
+                        ["Command"] = "OpenRvtFilesInNewSessions"
                     }
                 };
 
-                var columns = new List<string> { "Command", "Description" };
+                var columns = new List<string> { "Command" };
 
                 // Call DataGrid
                 Program.Log("Calling CustomGUIs.DataGrid...");
@@ -258,8 +252,13 @@ namespace InvokeAddinCommandInNetwork
 
                 if (result != null && result.Any())
                 {
-                    string selected = result.First()["Command"]?.ToString();
-                    MessageBox.Show($"You selected: {selected}", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    var selectedCommand = result.First();
+                    string commandName = selectedCommand["Command"]?.ToString();
+
+                    Program.Log($"Selected command: {commandName}");
+
+                    // Execute the command handler
+                    ExecuteCommandHandler(assembly, commandName);
                 }
             }
             catch (Exception ex)
@@ -275,6 +274,168 @@ namespace InvokeAddinCommandInNetwork
             }
 
             Program.Log("ShowCommandDialog completed - ready for next hotkey");
+        }
+
+        /// <summary>
+        /// Execute a command handler by calling its static method
+        /// </summary>
+        private void ExecuteCommandHandler(Assembly assembly, string commandName)
+        {
+            try
+            {
+                Program.Log($"Executing command: {commandName}");
+
+                if (commandName == "OpenRvtFilesInNewSessions")
+                {
+                    // Find RevitFileHelper class (doesn't require RevitAPIUI)
+                    Type helperType = null;
+                    try
+                    {
+                        helperType = assembly.GetType("RevitBallet.Commands.RevitFileHelper");
+
+                        if (helperType == null)
+                        {
+                            helperType = assembly.GetTypes()
+                                .FirstOrDefault(t => t.Name == "RevitFileHelper");
+                        }
+                    }
+                    catch (ReflectionTypeLoadException ex)
+                    {
+                        helperType = ex.Types
+                            .Where(t => t != null && t.Name == "RevitFileHelper")
+                            .FirstOrDefault();
+
+                        Program.Log($"ReflectionTypeLoadException while loading RevitFileHelper");
+                        foreach (var loaderEx in ex.LoaderExceptions.Take(3))
+                        {
+                            if (loaderEx != null)
+                                Program.Log($"  Loader exception: {loaderEx.Message}");
+                        }
+                    }
+
+                    if (helperType == null)
+                    {
+                        Program.Log("ERROR: Could not find RevitFileHelper class");
+                        MessageBox.Show("Could not find RevitFileHelper class.\n\nCheck the log file for details.", "Error",
+                            MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        return;
+                    }
+
+                    Program.Log($"Found helper type: {helperType.FullName}");
+
+                    // Call GetRevitFilesFromDocuments() static method
+                    var getFilesMethod = helperType.GetMethod("GetRevitFilesFromDocuments",
+                        BindingFlags.Public | BindingFlags.Static);
+
+                    if (getFilesMethod == null)
+                    {
+                        Program.Log("ERROR: Could not find GetRevitFilesFromDocuments method");
+                        MessageBox.Show("Could not find GetRevitFilesFromDocuments method", "Error",
+                            MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        return;
+                    }
+
+                    Program.Log("Calling GetRevitFilesFromDocuments...");
+                    var rvtFiles = (List<Dictionary<string, object>>)getFilesMethod.Invoke(null, null);
+                    Program.Log($"Found {rvtFiles.Count} .rvt files");
+
+                    if (rvtFiles.Count == 0)
+                    {
+                        MessageBox.Show("No Revit files found in Documents folder.", "No Files",
+                            MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        return;
+                    }
+
+                    // Show files in DataGrid
+                    Type customGuisTypeForFiles = null;
+                    try
+                    {
+                        customGuisTypeForFiles = assembly.GetTypes()
+                            .FirstOrDefault(t => t.Name == "CustomGUIs");
+                    }
+                    catch (ReflectionTypeLoadException ex)
+                    {
+                        customGuisTypeForFiles = ex.Types
+                            .Where(t => t != null && t.Name == "CustomGUIs")
+                            .FirstOrDefault();
+                    }
+
+                    if (customGuisTypeForFiles == null)
+                    {
+                        Program.Log("ERROR: Could not find CustomGUIs class");
+                        MessageBox.Show("Could not find CustomGUIs class for file selection", "Error",
+                            MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        return;
+                    }
+
+                    var dataGridMethod = customGuisTypeForFiles.GetMethod("DataGrid",
+                        BindingFlags.Public | BindingFlags.Static);
+
+                    if (dataGridMethod == null)
+                    {
+                        Program.Log("ERROR: Could not find DataGrid method");
+                        MessageBox.Show("Could not find DataGrid method for file selection", "Error",
+                            MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        return;
+                    }
+
+                    var columns = new List<string>
+                    {
+                        "File Name",
+                        "Revit Version",
+                        "Central Model",
+                        "Last Modified",
+                        "Last Opened"
+                    };
+
+                    Program.Log("Showing files in DataGrid...");
+                    var selectedFiles = (List<Dictionary<string, object>>)dataGridMethod.Invoke(
+                        null,
+                        new object[] { rvtFiles, columns, false, null, null, false, null, false });
+
+                    Program.Log($"User selected {selectedFiles?.Count ?? 0} files");
+
+                    if (selectedFiles != null && selectedFiles.Any())
+                    {
+                        // Open selected files using RevitFileHelper
+                        var openFileMethod = helperType.GetMethod("OpenFileInRevit",
+                            BindingFlags.Public | BindingFlags.Static);
+
+                        if (openFileMethod == null)
+                        {
+                            Program.Log("ERROR: Could not find OpenFileInRevit method");
+                            MessageBox.Show("Could not find OpenFileInRevit method", "Error",
+                                MessageBoxButtons.OK, MessageBoxIcon.Error);
+                            return;
+                        }
+
+                        foreach (var file in selectedFiles)
+                        {
+                            string filePath = file["Path"].ToString();
+                            string revitVersion = file["Revit Version"].ToString();
+
+                            Program.Log($"Opening {filePath} in Revit {revitVersion}");
+                            openFileMethod.Invoke(null, new object[] { filePath, revitVersion });
+                        }
+                    }
+                }
+                else
+                {
+                    MessageBox.Show($"Unknown command: {commandName}", "Error",
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                Program.Log($"Error executing command {commandName}: {ex.Message}");
+                Program.Log($"  StackTrace: {ex.StackTrace}");
+                if (ex.InnerException != null)
+                {
+                    Program.Log($"  InnerException: {ex.InnerException.Message}");
+                }
+                MessageBox.Show($"Error executing command:\n\n{ex.Message}", "Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
 
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
@@ -440,7 +601,7 @@ namespace InvokeAddinCommandInNetwork
         }
 
         /// <summary>
-        /// Find revit-ballet.dll in AppData
+        /// Find revit-ballet.dll in AppData, checking .update folders first
         /// </summary>
         private string FindRevitBalletDll()
         {
@@ -456,8 +617,24 @@ namespace InvokeAddinCommandInNetwork
             foreach (var version in versions)
             {
                 string versionDir = Path.Combine(binDir, version);
-                string dllPath = Path.Combine(versionDir, "revit-ballet.dll");
 
+                // Check for update folders first (same mechanism as Startup.cs)
+                var updateDirs = Directory.GetDirectories(binDir, version + ".update*");
+                if (updateDirs.Length > 0)
+                {
+                    // Use the first update folder found (sorted by name, most recent timestamp first)
+                    string updateDir = updateDirs.OrderByDescending(d => d).First();
+                    string updateDllPath = Path.Combine(updateDir, "revit-ballet.dll");
+
+                    if (File.Exists(updateDllPath))
+                    {
+                        Program.Log($"Found revit-ballet.dll for Revit {version} in update folder");
+                        return updateDllPath;
+                    }
+                }
+
+                // Fall back to main folder
+                string dllPath = Path.Combine(versionDir, "revit-ballet.dll");
                 if (File.Exists(dllPath))
                 {
                     Program.Log($"Found revit-ballet.dll for Revit {version}");

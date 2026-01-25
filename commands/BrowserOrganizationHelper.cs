@@ -225,25 +225,26 @@ namespace RevitBallet.Commands
         /// </summary>
         private static void WriteDiagnostic(List<string> diagnosticLines)
         {
-            try
-            {
-                string runtimeDir = System.IO.Path.Combine(
-                    System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData),
-                    "revit-ballet",
-                    "runtime");
-
-                string diagnosticPath = System.IO.Path.Combine(
-                    runtimeDir,
-                    "diagnostics",
-                    $"BrowserOrgHelper-{System.DateTime.Now:yyyyMMdd-HHmmss-fff}.txt");
-
-                System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diagnosticPath));
-                System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
-            }
-            catch
-            {
-                // Silently fail if diagnostic writing fails
-            }
+            // Diagnostic file writing disabled
+            // try
+            // {
+            //     string runtimeDir = System.IO.Path.Combine(
+            //         System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData),
+            //         "revit-ballet",
+            //         "runtime");
+            //
+            //     string diagnosticPath = System.IO.Path.Combine(
+            //         runtimeDir,
+            //         "diagnostics",
+            //         $"BrowserOrgHelper-{System.DateTime.Now:yyyyMMdd-HHmmss-fff}.txt");
+            //
+            //     System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diagnosticPath));
+            //     System.IO.File.WriteAllLines(diagnosticPath, diagnosticLines);
+            // }
+            // catch
+            // {
+            //     // Silently fail if diagnostic writing fails
+            // }
         }
 
         /// <summary>

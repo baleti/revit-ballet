@@ -148,33 +148,33 @@ public class ListSelectedInNetwork : IExternalCommand
 
             if (!elementData.Any())
             {
-                // Write diagnostic file
-                try
-                {
-                    string diagnosticPath = Path.Combine(
-                        PathHelper.RuntimeDirectory,
-                        "diagnostics",
-                        $"ListSelectedInNetwork-NoElements-{DateTime.Now:yyyyMMdd-HHmmss-fff}.txt");
-                    Directory.CreateDirectory(Path.GetDirectoryName(diagnosticPath));
-
-                    var lines = new List<string>();
-                    lines.Add($"ListSelectedInNetwork - No elements found");
-                    lines.Add($"Current Session ID: {currentSessionId}");
-                    lines.Add($"Total items in SelectionStorage: {storedSelection.Count}");
-                    lines.Add("");
-                    lines.Add("Session groups:");
-                    foreach (var group in storedSelection.GroupBy(s => s.SessionId ?? currentSessionId))
-                    {
-                        lines.Add($"  Session {group.Key}: {group.Count()} elements");
-                        foreach (var doc in group.GroupBy(e => e.DocumentTitle))
-                        {
-                            lines.Add($"    Document '{doc.Key}': {doc.Count()} elements");
-                        }
-                    }
-
-                    File.WriteAllLines(diagnosticPath, lines);
-                }
-                catch { }
+                // Diagnostic file writing disabled
+                // try
+                // {
+                //     string diagnosticPath = Path.Combine(
+                //         PathHelper.RuntimeDirectory,
+                //         "diagnostics",
+                //         $"ListSelectedInNetwork-NoElements-{DateTime.Now:yyyyMMdd-HHmmss-fff}.txt");
+                //     Directory.CreateDirectory(Path.GetDirectoryName(diagnosticPath));
+                //
+                //     var lines = new List<string>();
+                //     lines.Add($"ListSelectedInNetwork - No elements found");
+                //     lines.Add($"Current Session ID: {currentSessionId}");
+                //     lines.Add($"Total items in SelectionStorage: {storedSelection.Count}");
+                //     lines.Add("");
+                //     lines.Add("Session groups:");
+                //     foreach (var group in storedSelection.GroupBy(s => s.SessionId ?? currentSessionId))
+                //     {
+                //         lines.Add($"  Session {group.Key}: {group.Count()} elements");
+                //         foreach (var doc in group.GroupBy(e => e.DocumentTitle))
+                //         {
+                //             lines.Add($"    Document '{doc.Key}': {doc.Count()} elements");
+                //         }
+                //     }
+                //
+                //     File.WriteAllLines(diagnosticPath, lines);
+                // }
+                // catch { }
 
                 TaskDialog.Show("Info", "None of the selected elements are available.");
                 return Result.Cancelled;

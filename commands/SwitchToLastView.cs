@@ -288,19 +288,20 @@ public class SwitchToLastView : IExternalCommand
 
     private static void WriteDiagnostic(System.Collections.Generic.List<string> lines)
     {
-        try
-        {
-            string diagnosticPath = System.IO.Path.Combine(
-                PathHelper.RuntimeDirectory,
-                "diagnostics",
-                $"SwitchToLastView-{System.DateTime.Now:yyyyMMdd-HHmmss-fff}.txt");
-
-            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diagnosticPath));
-            System.IO.File.WriteAllLines(diagnosticPath, lines);
-        }
-        catch
-        {
-            // Silently fail - don't interrupt the command
-        }
+        // Diagnostic file writing disabled
+        // try
+        // {
+        //     string diagnosticPath = System.IO.Path.Combine(
+        //         PathHelper.RuntimeDirectory,
+        //         "diagnostics",
+        //         $"SwitchToLastView-{System.DateTime.Now:yyyyMMdd-HHmmss-fff}.txt");
+        //
+        //     System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(diagnosticPath));
+        //     System.IO.File.WriteAllLines(diagnosticPath, lines);
+        // }
+        // catch
+        // {
+        //     // Silently fail - don't interrupt the command
+        // }
     }
 }

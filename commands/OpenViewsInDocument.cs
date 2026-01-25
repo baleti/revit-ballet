@@ -300,20 +300,21 @@ public class OpenViewsInDocument : IExternalCommand
         diagnosticLines.Add("");
         diagnosticLines.Add($"=== TOTAL EXECUTION TIME: {overallStopwatch.ElapsedMilliseconds} ms ===");
 
-        string diagnosticPath = Path.Combine(
-            PathHelper.RuntimeDirectory,
-            "diagnostics",
-            $"OpenViewsInDocument-{DateTime.Now:yyyyMMdd-HHmmss-fff}.txt");
-
-        try
-        {
-            Directory.CreateDirectory(Path.GetDirectoryName(diagnosticPath));
-            File.WriteAllLines(diagnosticPath, diagnosticLines);
-        }
-        catch
-        {
-            // Silently ignore diagnostic save failures
-        }
+        // Diagnostic file writing disabled
+        // string diagnosticPath = Path.Combine(
+        //     PathHelper.RuntimeDirectory,
+        //     "diagnostics",
+        //     $"OpenViewsInDocument-{DateTime.Now:yyyyMMdd-HHmmss-fff}.txt");
+        //
+        // try
+        // {
+        //     Directory.CreateDirectory(Path.GetDirectoryName(diagnosticPath));
+        //     File.WriteAllLines(diagnosticPath, diagnosticLines);
+        // }
+        // catch
+        // {
+        //     // Silently ignore diagnostic save failures
+        // }
 
         return Result.Succeeded;
     }
