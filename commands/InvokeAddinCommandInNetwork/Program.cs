@@ -429,11 +429,16 @@ namespace InvokeAddinCommandInNetwork
             {
                 Program.Log($"Error executing command {commandName}: {ex.Message}");
                 Program.Log($"  StackTrace: {ex.StackTrace}");
+
+                string errorMessage = ex.Message;
                 if (ex.InnerException != null)
                 {
                     Program.Log($"  InnerException: {ex.InnerException.Message}");
+                    // Show inner exception message to user (it's usually more informative)
+                    errorMessage = ex.InnerException.Message;
                 }
-                MessageBox.Show($"Error executing command:\n\n{ex.Message}", "Error",
+
+                MessageBox.Show($"Error executing command:\n\n{errorMessage}", "Error",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
