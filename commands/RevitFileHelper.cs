@@ -348,7 +348,11 @@ namespace RevitBallet.Commands
 
             if (revitExe == null || !File.Exists(revitExe))
             {
-                throw new FileNotFoundException($"Revit {revitVersion} executable not found. Expected at: {revitExe}");
+                string expectedPath = revitExe ?? $@"C:\Program Files\Autodesk\Revit {revitVersion}\Revit.exe";
+                throw new FileNotFoundException(
+                    $"Revit {revitVersion} is not installed or could not be found.\n\n" +
+                    $"Expected location: {expectedPath}\n\n" +
+                    $"Please install Revit {revitVersion} or select files from a different version.");
             }
 
             // Launch Revit with the file
