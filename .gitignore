@@ -44,3 +44,6 @@ runtime/
 .claude/
 .worktrees/
 deploy/
+
+# using AGENTS.md and symlinking CLAUDE.md on-demand
+CLAUDE.md
