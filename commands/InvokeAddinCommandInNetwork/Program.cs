@@ -606,44 +606,50 @@ namespace InvokeAddinCommandInNetwork
         }
 
         /// <summary>
-        /// Find revit-ballet.dll in AppData, checking .update folders first
+        /// Find revit-ballet.dll in Addins folder, checking .update folders first
+        /// (Same location as InvokeAddinCommand uses)
         /// </summary>
         private string FindRevitBalletDll()
         {
             string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            string binDir = Path.Combine(appData, "revit-ballet", "commands", "bin");
-
-            if (!Directory.Exists(binDir))
-                return null;
 
             // Try to find matching Revit version DLL
-            var versions = new[] { "2024", "2023", "2022", "2021", "2020" };
+            var versions = new[] { "2026", "2025", "2024", "2023", "2022", "2021", "2020" };
 
             foreach (var version in versions)
             {
-                string versionDir = Path.Combine(binDir, version);
+                // Load from same location as Revit loads from (Addins folder)
+                // This allows us to benefit from the .update folder mechanism
+                string addinsBasePath = Path.Combine(appData, "Autodesk", "Revit", "Addins", version);
 
-                // Check for update folders first (same mechanism as Startup.cs)
-                var updateDirs = Directory.GetDirectories(binDir, version + ".update*");
-                if (updateDirs.Length > 0)
+                if (!Directory.Exists(addinsBasePath))
+                    continue;
+
+                string mainFolder = Path.Combine(addinsBasePath, "revit-ballet");
+                string mainDllPath = Path.Combine(mainFolder, "revit-ballet.dll");
+
+                // Check for update folders (same mechanism as Startup.cs and InvokeAddinCommand)
+                var updateFolders = Directory.GetDirectories(addinsBasePath, "revit-ballet.update*");
+
+                // Prefer update folders if they exist (newer version)
+                if (updateFolders.Length > 0)
                 {
                     // Use the first update folder found (sorted by name, most recent timestamp first)
-                    string updateDir = updateDirs.OrderByDescending(d => d).First();
-                    string updateDllPath = Path.Combine(updateDir, "revit-ballet.dll");
+                    string updateFolder = updateFolders.OrderByDescending(f => f).First();
+                    string updateDllPath = Path.Combine(updateFolder, "revit-ballet.dll");
 
                     if (File.Exists(updateDllPath))
                     {
-                        Program.Log($"Found revit-ballet.dll for Revit {version} in update folder");
+                        Program.Log($"Found revit-ballet.dll for Revit {version} in update folder: {updateFolder}");
                         return updateDllPath;
                     }
                 }
 
                 // Fall back to main folder
-                string dllPath = Path.Combine(versionDir, "revit-ballet.dll");
-                if (File.Exists(dllPath))
+                if (File.Exists(mainDllPath))
                 {
-                    Program.Log($"Found revit-ballet.dll for Revit {version}");
-                    return dllPath;
+                    Program.Log($"Found revit-ballet.dll for Revit {version} in main folder");
+                    return mainDllPath;
                 }
             }
 
