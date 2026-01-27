@@ -1,3 +1,5 @@
+* add delay to synchronize in network
+otherwise it will cause computer to crash and work to be lost
 * generalize invoking commands over many revit instances (through revit ballet server)
 instead of creating dedictated endpoints for each command make these endpoints generated automatically
 e.g. /commands/OpenSheets
