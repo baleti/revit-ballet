@@ -41,9 +41,11 @@ Thumbs.db
 ehthumbs.db
 
 runtime/
+runtime
+deploy/
+deploy
 .claude/
 .worktrees/
-deploy/
 
 # using AGENTS.md and symlinking CLAUDE.md on-demand
 CLAUDE.md
