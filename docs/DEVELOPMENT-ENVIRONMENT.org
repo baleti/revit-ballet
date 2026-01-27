@@ -1,0 +1,470 @@
+#+TITLE: Revit Ballet - Development Environment Setup
+#+AUTHOR: Revit Ballet
+#+DATE: 2026-01-27
+
+* Overview
+
+Revit Ballet development uses a hybrid Windows/Linux environment with shared folders and hot-reload capabilities:
+
+- *Revit* runs on Windows host
+- *Claude Code instances* run in Hyper-V Debian VMs (multiple parallel instances via git worktrees)
+- *Shared folders* (SMB/CIFS) enable live development, testing, and deployment
+- *Update mechanism* (=.update*= folders) allows hot-reloading without stopping Revit
+
+* Architecture Diagram
+
+#+BEGIN_EXAMPLE
+┌─────────────────────────────────────────────────────────┐
+│ Windows Host (192.168.231.1)                            │
+│                                                          │
+│  ┌─────────────┐    ┌─────────────────────────────┐   │
+│  │ Revit 2017- │───▶│ Addins Folder               │   │
+│  │ 2026        │    │ (Hot-reload via .update*)    │◀──┼──┐
+│  └─────────────┘    └─────────────────────────────┘   │  │
+│                                                          │  │
+│  ┌─────────────────────────────────────────────────┐   │  │
+│  │ Runtime Folder                                   │◀──┼──┤
+│  │ (logs, diagnostics, screenshots, network data)   │   │  │
+│  └─────────────────────────────────────────────────┘   │  │
+│                                                          │  │
+│  SMB Server (shares above folders)                      │  │
+│                        ▲                                 │  │
+└────────────────────────┼─────────────────────────────────┘  │
+                         │ Hyper-V Virtual Switch             │
+                         ▼                                     │
+┌──────────────────────────────────────────────────────────┐  │
+│ Debian VMs (192.168.231.x)                               │  │
+│                                                           │  │
+│  ┌─────────────────────────────────────────────────┐    │  │
+│  │ /home/user/revit-ballet/ (main repo)            │    │  │
+│  │  ├── commands/         (source code)            │    │  │
+│  │  ├── installer/        (installer source)       │    │  │
+│  │  ├── deploy/ ───────────────────────────────────────────┤
+│  │  │   (symlink → CIFS mount of Addins folder)    │    │
+│  │  └── runtime/ ──────────────────────────────────────────┘
+│  │      (symlink → CIFS mount of runtime folder)   │    │
+│  │                                                  │    │
+│  │  ┌─ .worktrees/claude2-1234/ (worktree #1) ────┘    │
+│  │  │   ├── deploy/ → ../../deploy                      │
+│  │  │   └── runtime/ → ../../runtime                    │
+│  │  │                                                    │
+│  │  └─ .worktrees/claude2-5678/ (worktree #2) ──────┐  │
+│  │      ├── deploy/ → ../../deploy                   │  │
+│  │      └── runtime/ → ../../runtime                 │  │
+│  └─────────────────────────────────────────────────────┘  │
+│                                                            │
+│  Claude Code instances run in tmux sessions               │
+└────────────────────────────────────────────────────────────┘
+#+END_EXAMPLE
+
+* Prerequisites
+
+Before setting up the development environment:
+
+1. Windows 10/11 with Hyper-V enabled
+2. Revit 2017-2026 installed on Windows host
+3. Debian VM(s) running in Hyper-V with network access to host
+4. .NET SDK 8.0+ installed in Debian VM
+5. Git configured in Debian VM
+
+* Step 1: Windows Host Setup - SMB Shares
+
+Create SMB shares to expose Revit's Addins and runtime folders to the Linux VMs.
+
+** Create SMB User
+
+#+BEGIN_SRC powershell
+# Create dedicated SMB user without password for local network access
+New-LocalUser -Name "smb-revit-ballet" -NoPassword
+#+END_SRC
+
+** Share Folders
+
+#+BEGIN_SRC powershell
+# Share runtime folder (logs, diagnostics, screenshots, network data)
+New-SmbShare -Name "revit-ballet-runtime" `
+  -Path "C:\Users\User\AppData\Roaming\revit-ballet" `
+  -FullAccess "smb-revit-ballet"
+
+# Share Revit Addins folder (deployed DLLs and configurations)
+New-SmbShare -Name "revit-addins" `
+  -Path "C:\Users\User\AppData\Roaming\Autodesk\Revit\Addins" `
+  -FullAccess "smb-revit-ballet"
+#+END_SRC
+
+** Grant Filesystem Permissions
+
+#+BEGIN_SRC powershell
+# Grant full control to SMB user on runtime folder
+icacls "C:\Users\User\AppData\Roaming\revit-ballet" `
+  /grant "smb-revit-ballet:(OI)(CI)F" /T
+
+# Grant full control to SMB user on Addins folder
+icacls "C:\Users\User\AppData\Roaming\Autodesk\Revit\Addins" `
+  /grant "smb-revit-ballet:(OI)(CI)F" /T
+#+END_SRC
+
+* Step 2: Linux VM Setup - Mount SMB Shares
+
+** Install CIFS Utilities
+
+#+BEGIN_SRC bash
+sudo apt update
+sudo apt install cifs-utils
+#+END_SRC
+
+** Create Mount Points
+
+#+BEGIN_SRC bash
+# Create directories for mounting shared folders
+mkdir -p ~/revit-ballet/runtime
+mkdir -p ~/revit-ballet/deploy
+#+END_SRC
+
+** Configure /etc/fstab
+
+Add these lines to =/etc/fstab= with =mfsymlinks= support for git worktrees:
+
+#+BEGIN_EXAMPLE
+# Revit Ballet runtime folder (logs, diagnostics, network data)
+//192.168.231.1/revit-ballet-runtime /home/user/revit-ballet/runtime cifs username=smb-revit-ballet,password=<password>,uid=1000,gid=1000,mfsymlinks,_netdev,noserverino 0 0
+
+# Revit Addins folder (deployment target)
+//192.168.231.1/revit-addins /home/user/revit-ballet/deploy cifs username=smb-revit-ballet,password=<password>,uid=1000,gid=1000,mfsymlinks,_netdev,noserverino 0 0
+#+END_EXAMPLE
+
+*Critical mount options:*
+- =mfsymlinks= - Enables symlink support on CIFS (required for git worktrees)
+- =noserverino= - Avoids inode caching issues on case-insensitive filesystems
+- =_netdev= - Waits for network before mounting at boot
+- =uid=1000,gid=1000= - Match your Linux user ID
+
+** Mount the Shares
+
+#+BEGIN_SRC bash
+sudo mount -a
+
+# Verify mounts
+mount | grep revit-ballet
+# Should show:
+# //192.168.231.1/revit-ballet-runtime on /home/user/revit-ballet/runtime type cifs (...)
+# //192.168.231.1/revit-addins on /home/user/revit-ballet/deploy type cifs (...)
+
+# Test write access
+touch ~/revit-ballet/runtime/test.txt
+touch ~/revit-ballet/deploy/test.txt
+ls -l ~/revit-ballet/runtime/test.txt
+ls -l ~/revit-ballet/deploy/test.txt
+#+END_SRC
+
+* Step 3: Repository Structure
+
+After mounting, your repository structure should look like:
+
+#+BEGIN_EXAMPLE
+/home/user/revit-ballet/
+├── commands/              # Git-tracked C# source code
+├── installer/             # Git-tracked installer source
+├── docs/                  # Git-tracked documentation
+├── .git/                  # Git repository metadata
+├── .worktrees/            # Git worktrees for parallel instances
+│   ├── claude2-1234/      # Worktree #1 (separate branch)
+│   │   ├── deploy/ → ../../deploy       # Symlink to shared deploy
+│   │   └── runtime/ → ../../runtime     # Symlink to shared runtime
+│   └── claude2-5678/      # Worktree #2 (separate branch)
+│       ├── deploy/ → ../../deploy
+│       └── runtime/ → ../../runtime
+├── deploy/                # CIFS mount → Windows Addins folder
+│   ├── 2017/
+│   │   └── revit-ballet/
+│   │       └── revit-ballet.dll  # Deployed binaries
+│   ├── 2026/
+│   │   ├── revit-ballet/
+│   │   │   └── revit-ballet.dll  # Main installed version
+│   │   └── revit-ballet.update.20260127143022/  # Hot-reload folder
+│   │       └── revit-ballet.dll  # Newly built version
+│   └── ...
+└── runtime/               # CIFS mount → Windows runtime folder
+    ├── diagnostics/       # Diagnostic logs from commands
+    ├── screenshots/       # Screenshots captured via /screenshot endpoint
+    ├── network/           # Network coordination data
+    │   └── token          # Shared authentication token
+    ├── documents          # CSV registry of active Revit sessions
+    └── server.log         # Roslyn server log
+#+END_EXAMPLE
+
+* Step 4: Build and Deployment Pipeline
+
+** Build Configuration
+
+The =commands.csproj= file is configured to build for multiple Revit versions and deploy to the shared =deploy/= folder:
+
+#+BEGIN_SRC xml
+<PropertyGroup>
+  <RevitYear Condition="'$(RevitYear)' == ''">2026</RevitYear>
+  <OutputPath>../deploy/$(RevitYear)/revit-ballet</OutputPath>
+</PropertyGroup>
+#+END_SRC
+
+** Building for a Specific Revit Version
+
+#+BEGIN_SRC bash
+cd ~/revit-ballet/commands
+
+# Build for Revit 2026 (default)
+dotnet build -c Release
+
+# Build for Revit 2024
+dotnet build -c Release -p:RevitYear=2024
+
+# Build for all versions
+for year in {2026..2017}; do
+  dotnet build -c Release -p:RevitYear=$year
+done
+#+END_SRC
+
+** Deployment Flow (Normal Installation)
+
+1. *Build*: =dotnet build= compiles source code
+2. *Deploy*: Binaries copied to =deploy/{RevitYear}/revit-ballet/=
+3. *Revit Loads*: Windows Revit reads DLLs from =Addins/{RevitYear}/revit-ballet/=
+4. *Runtime Data*: Commands write logs/diagnostics to =runtime/= (shared via SMB)
+
+** Hot-Reload Deployment Flow (During Development)
+
+During active development, when Revit is running and DLLs are locked:
+
+1. *Build Attempt*: =dotnet build= tries to write to =deploy/{RevitYear}/revit-ballet/=
+2. *File Locked*: Main folder is locked by running Revit process
+3. *Update Folder*: Build system creates =deploy/{RevitYear}/revit-ballet.update.YYYYMMDDHHMMSS/=
+4. *Deploy to Update Folder*: New binaries written to timestamped update folder
+5. *Revit Continues Running*: No interruption to current Revit session
+6. *Next Startup - Phase 1*: Revit loads from =.update*= folder, copies files to main folder
+7. *Second Startup - Phase 2*: Revit loads from main folder, deletes =.update*= folders
+
+** Update Mechanism Details
+
+The update mechanism is implemented in =commands/Startup.cs=:
+
+*** Phase 1: Running from Update Folder
+
+#+BEGIN_SRC csharp
+// Startup.cs detects we're running from revit-ballet.update* folder
+bool runningFromUpdate = currentAssemblyPath.Contains("revit-ballet.update");
+
+if (runningFromUpdate) {
+    // Copy all files from update folder to main folder
+    PerformUpdateMigration(mainFolder, currentUpdateFolder, addinPath);
+
+    // Clean up OTHER update folders (not the one we're running from)
+    CleanupOtherUpdateFolders(updateFolders, currentUpdateFolder);
+}
+#+END_SRC
+
+*** Phase 2: Running from Main Folder
+
+#+BEGIN_SRC csharp
+// On second startup, we're now running from main folder
+else {
+    // Verify migration succeeded
+    VerifyMigration(mainFolder, updateFolders);
+
+    // Delete ALL update folders (safe now)
+    CleanupAllUpdateFolders(updateFolders);
+}
+#+END_SRC
+
+*** Why This Works
+
+- *No File Locking*: Update folders are separate from running binaries
+- *Atomic Updates*: Copy happens during startup, before commands are loaded
+- *Safe Cleanup*: Old update folders only deleted after new version is running
+- *Uninterrupted Development*: Revit never needs to close during development
+
+* Step 5: Multi-Instance Development with Git Worktrees
+
+** Why Git Worktrees?
+
+- *Parallel Development*: Multiple Claude Code instances on different branches simultaneously
+- *Isolated Git State*: Each worktree has separate staging area and commits
+- *Shared Infrastructure*: All worktrees share =deploy/= and =runtime/= via symlinks
+- *No Conflicts*: Agents can work on different features without stepping on each other
+
+** Starting a New Claude Code Instance
+
+SSH into VM and create a new worktree with tmux session:
+
+#+BEGIN_SRC bash
+ssh -t user@192.168.231.92 '
+  RANDOM_ID=$RANDOM$RANDOM;
+  tmux new-session "
+    cd /home/user/revit-ballet &&
+    git worktree add -b claude2-$RANDOM_ID .worktrees/claude2-$RANDOM_ID &&
+    cd .worktrees/claude2-$RANDOM_ID &&
+    ln -s ../../deploy &&
+    ln -s ../../runtime &&
+    ~/.local/bin/claude --dangerously-skip-permissions
+  "
+'
+#+END_SRC
+
+** Tmux Benefits
+
+- *Session Tracking*: Each Claude instance runs in a named tmux session
+- *Reconnection*: Detach (Ctrl+B, D) and reattach (=tmux attach=) to running sessions
+- *Multi-Shell*: Open additional shells in same worktree (Ctrl+B, C)
+- *Process Isolation*: Clean separation between parallel Claude instances
+- *Persistent Sessions*: Instances survive SSH disconnections
+
+** Worktree Management
+
+#+BEGIN_SRC bash
+# List all worktrees
+git worktree list
+
+# Remove a worktree (after Claude session ends)
+git worktree remove .worktrees/claude2-1234
+
+# Prune deleted worktrees
+git worktree prune
+#+END_SRC
+
+* Step 6: Development Workflow
+
+** Complete Development Cycle
+
+1. *Start Claude Code Instance*: Create worktree and launch Claude in tmux
+2. *Make Code Changes*: Claude modifies =commands/*.cs= files
+3. *Build*: =dotnet build -c Release -p:RevitYear=2026=
+4. *Deploy*: Binaries written to =deploy/2026/revit-ballet.update.TIMESTAMP/=
+5. *Test in Revit*: Next Revit startup loads new version automatically
+6. *Verify*: Check =runtime/server.log= and command outputs
+7. *Iterate*: Make more changes, rebuild, test again
+
+** Testing Commands via Roslyn Server
+
+Every Revit session runs a Roslyn server for AI agent queries:
+
+#+BEGIN_SRC bash
+# Find active Revit session port
+PORT=$(grep -v '^#' runtime/documents | head -1 | cut -d',' -f4)
+
+# Query Revit session
+cat > /tmp/query.cs << 'EOF'
+Console.WriteLine("Document: " + Doc.Title);
+Console.WriteLine("Elements: " + new FilteredElementCollector(Doc)
+    .WhereElementIsNotElementType().Count());
+EOF
+
+curl -k -s -X POST https://127.0.0.1:$PORT/roslyn \
+  -H "X-Auth-Token: $(cat runtime/network/token)" \
+  --data-binary @/tmp/query.cs | jq -r '.Output'
+#+END_SRC
+
+** Monitoring and Debugging
+
+#+BEGIN_SRC bash
+# Watch server log in real-time
+tail -f runtime/server.log
+
+# Check active Revit sessions
+cat runtime/documents
+
+# View diagnostics from commands
+ls -lth runtime/diagnostics/ | head
+
+# View recent screenshots
+ls -lth runtime/screenshots/ | head
+#+END_SRC
+
+* Filesystem Considerations
+
+See =CLAUDE.md= § "Case-Insensitive Filesystems" for CIFS/git interaction details:
+
+- *Filesystem*: Case-insensitive (Windows behavior via CIFS)
+- *Git*: Case-sensitive (tracks =Foo.cs= and =foo.cs= as different files)
+- *Symlinks*: Use =mfsymlinks= mount option for proper support
+- *Git Rebase*: Avoid interactive rebases on CIFS when case-variant filenames exist
+- *Working Tree*: Use WSL drvfs (=/mnt/c/...=) instead of CIFS for complex git operations
+
+* Troubleshooting
+
+** CIFS Mount Issues
+
+#+BEGIN_SRC bash
+# Check mount status
+mount | grep revit-ballet
+
+# Remount if stale
+sudo umount ~/revit-ballet/runtime
+sudo umount ~/revit-ballet/deploy
+sudo mount -a
+
+# Check Windows SMB share status
+# (On Windows host in PowerShell)
+Get-SmbShare | Where-Object Name -like "*revit*"
+Get-SmbSession
+#+END_SRC
+
+** Build Deployment Issues
+
+#+BEGIN_SRC bash
+# Verify deploy folder is writable
+touch ~/revit-ballet/deploy/2026/test.txt
+
+# Check for locked files (on Windows)
+# (In PowerShell as Administrator)
+openfiles /query /fo csv | findstr revit-ballet
+
+# Force cleanup of update folders (when Revit is closed)
+rm -rf ~/revit-ballet/deploy/2026/revit-ballet.update*
+#+END_SRC
+
+** Roslyn Server Issues
+
+#+BEGIN_SRC bash
+# Check if server is running
+cat runtime/documents
+
+# View server log for errors
+tail -50 runtime/server.log
+
+# Test connectivity
+PORT=$(grep -v '^#' runtime/documents | head -1 | cut -d',' -f4)
+curl -k -s https://127.0.0.1:$PORT/roslyn \
+  -H "X-Auth-Token: $(cat runtime/network/token)" \
+  -d 'Console.WriteLine("Test");'
+#+END_SRC
+
+** Git Worktree Issues
+
+#+BEGIN_SRC bash
+# List worktrees and their status
+git worktree list
+
+# Remove stuck worktree
+git worktree remove --force .worktrees/claude2-1234
+
+# Clean up worktree metadata
+git worktree prune
+
+# Recreate symlinks if missing
+cd .worktrees/claude2-1234
+ln -s ../../deploy
+ln -s ../../runtime
+#+END_SRC
+
+* Security Notes
+
+- *Localhost Only*: Roslyn servers bind to 127.0.0.1 (not network accessible)
+- *Shared Token*: All Revit sessions share one authentication token in =runtime/network/token=
+- *SMB Local Network*: SMB shares are only accessible within Hyper-V virtual switch
+- *Development Only*: This setup is designed for local development, not production
+- *Code Execution*: Roslyn server has full Revit API access (read/write/delete model data)
+
+* References
+
+- =CLAUDE.md= - AI agent integration and code conventions
+- =commands/Startup.cs= - Update migration implementation
+- =commands/InvokeAddinCommand.cs= - Dynamic command loading with update folder support
+- =installer/Installer.cs= - Update folder creation during installation
