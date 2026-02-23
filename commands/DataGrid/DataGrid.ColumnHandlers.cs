@@ -1515,6 +1515,111 @@ public partial class CustomGUIs
                     }
                 }
             });
+
+            // Workset (for workshared documents)
+            Register(new ColumnHandler
+            {
+                ColumnName = "Workset",
+                IsEditable = true,
+                Description = "Element workset (workshared documents only)",
+                Validator = (elem, doc, oldValue, newValue) =>
+                {
+                    // Check if document is workshared
+                    if (!doc.IsWorkshared)
+                    {
+                        return ValidationResult.Invalid("Document is not workshared. Worksets are not available.");
+                    }
+
+                    string targetWorksetName = newValue?.ToString()?.Trim() ?? "";
+                    if (string.IsNullOrEmpty(targetWorksetName))
+                    {
+                        return ValidationResult.Invalid("Workset name cannot be empty.");
+                    }
+
+                    // Check if the workset exists
+                    var worksets = new FilteredWorksetCollector(doc)
+                        .OfKind(WorksetKind.UserWorkset)
+                        .ToList();
+
+                    Workset targetWorkset = worksets.FirstOrDefault(ws =>
+                        string.Equals(ws.Name, targetWorksetName, StringComparison.OrdinalIgnoreCase));
+
+                    if (targetWorkset == null)
+                    {
+                        var availableNames = string.Join(", ", worksets.Select(ws => ws.Name).Take(5));
+                        if (worksets.Count > 5)
+                            availableNames += $", ... ({worksets.Count - 5} more)";
+                        return ValidationResult.Invalid($"Workset '{targetWorksetName}' not found. Available worksets: {availableNames}");
+                    }
+
+                    // Check if element can have its workset changed
+                    Parameter worksetParam = elem.get_Parameter(BuiltInParameter.ELEM_PARTITION_PARAM);
+                    if (worksetParam == null || worksetParam.IsReadOnly)
+                    {
+                        return ValidationResult.Invalid("This element cannot have its workset changed (parameter is read-only or not available).");
+                    }
+
+                    return ValidationResult.Valid();
+                },
+                Getter = (elem, doc) =>
+                {
+                    if (!doc.IsWorkshared)
+                        return null;
+
+                    try
+                    {
+                        // Get workset ID from element
+                        WorksetId worksetId = elem.WorksetId;
+                        if (worksetId == null || worksetId == WorksetId.InvalidWorksetId)
+                            return null;
+
+                        // Get workset from table
+                        WorksetTable worksetTable = doc.GetWorksetTable();
+                        Workset workset = worksetTable.GetWorkset(worksetId);
+                        return workset?.Name;
+                    }
+                    catch
+                    {
+                        return null;
+                    }
+                },
+                Setter = (elem, doc, newValue) =>
+                {
+                    if (!doc.IsWorkshared)
+                        return false;
+
+                    string targetWorksetName = newValue?.ToString()?.Trim() ?? "";
+                    if (string.IsNullOrEmpty(targetWorksetName))
+                        return false;
+
+                    // Find the target workset by name (case-insensitive)
+                    var worksets = new FilteredWorksetCollector(doc)
+                        .OfKind(WorksetKind.UserWorkset)
+                        .ToList();
+
+                    Workset targetWorkset = worksets.FirstOrDefault(ws =>
+                        string.Equals(ws.Name, targetWorksetName, StringComparison.OrdinalIgnoreCase));
+
+                    if (targetWorkset == null)
+                        return false;
+
+                    // Set the workset parameter (using ELEM_PARTITION_PARAM for compatibility)
+                    Parameter worksetParam = elem.get_Parameter(BuiltInParameter.ELEM_PARTITION_PARAM);
+                    if (worksetParam == null || worksetParam.IsReadOnly)
+                        return false;
+
+                    try
+                    {
+                        // Set using the workset's ID integer value
+                        worksetParam.Set(targetWorkset.Id.IntegerValue);
+                        return true;
+                    }
+                    catch
+                    {
+                        return false;
+                    }
+                }
+            });
         }
 
         /// <summary>
