@@ -265,4 +265,11 @@
         <AddInId>6B4E9A2C-7F3D-4A8E-9C6F-2D1A4B7E8C9F</AddInId>
         <VendorId>revit-ballet</VendorId>
     </AddIn>
+    <AddIn Type="Command">
+        <Name>revit-ballet</Name>
+        <Assembly>revit-ballet.dll</Assembly>
+        <FullClassName>SelectViewTemplatesOfSelectedViews</FullClassName>
+        <AddInId>CD8C8F66-E432-4267-AA58-B0731CDC7135</AddInId>
+        <VendorId>revit-ballet</VendorId>
+    </AddIn>
 </RevitAddIns>

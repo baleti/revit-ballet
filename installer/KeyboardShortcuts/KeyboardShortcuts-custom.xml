@@ -49,6 +49,7 @@
   <ShortcutItem CommandId="98b59470-fc5f-4a4d-9315-db387e8c89a2" Shortcuts="SGV"/>
   <ShortcutItem CommandId="9bf19ae6-4594-4ab1-b3aa-e5b85a11983e" Shortcuts="SWD"/>
   <ShortcutItem CommandId="82941f8e-8c09-4da3-a849-e84a7ac1dfa8" Shortcuts="SWV"/>
+  <ShortcutItem CommandId="cd8c8f66-e432-4267-aa58-b0731cdc7135" Shortcuts="VT"/>
   <ShortcutItem CommandId="CustomCtrl_%CustomCtrl_%Add-Ins%Align%alignLeftButton" Shortcuts="AAL"/>
   <ShortcutItem CommandId="CustomCtrl_%CustomCtrl_%Add-Ins%Align%alignCenterButton" Shortcuts="AAC"/>
   <ShortcutItem CommandId="CustomCtrl_%CustomCtrl_%Add-Ins%Align%alignRightButton" Shortcuts="AAR"/>

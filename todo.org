@@ -1,3 +1,172 @@
+* try AI to assign elements to correct worksets
+sounds like a perfect use for ai, expand context at will (integrate other documents, paraemters, positions, etc.), simple non-geometric changes
+* constraints parameters not showing up in datagrid
+e.g. level, upper limit, etc. in rooms
+* invokelastrevitcommand 
+see if you can record what commands were invoke last in revit
+if not, record just commands invoked from invokerevitcommand
+it may be useful sometimes to have this shortcuts when repating the same action
+  happened when working with multiple files
+* see if you could make ImportElementsFromFile command to overwrite families with existing names rather than having revit rename them
+that would be useful to keep families across models in sync
+many don't transfer with transferprojectstandards command (e.g. furniture, plumbing fixutres)
+* add projectinformtion to selectbycategoriesindocument
+and make its datagrid editable
+need an easier way to edit it, just had to on a project copy the same information to project information tables in multiple documents
+* think how to group documents in SwitchDocumentInSession
+right now it's hard to tell which documents exist in same session
+maybe they should be placed on same row (separate columns)
+  document names would be swapped left and right depending when they were last active
+  struggle to fit complex graph structure into a human-readable grid
+* why there are two commands
+SelectFamilyTypesOfSelected
+SwapFamilyTypeOfSelectedElements
+* command that adds a filter with selected type name
+this turns out to be an incredibly common use case in my workflow
+format: <category> - Type: <type name>
+possibly also add straight away to current view template
+* conslidate SEctionBoxFromView and SectionBoxFromSelectedView
+same logic with selection as previously, if selected use, if not pormpt datagrid to choose
+* add SelectSameLegendsAsSelectedElement command?
+it may be too specific
+* add legend views (legends) as a separate category to selectbycategory datagrid
+possibly other view types too? e.g. view:plan, view:ceiling ?
+* fix scale parameter of titleblocks not being editable in datagrid
+showed up only as "scale param" that failed to be edited
+* find a way to positiong detail group relative to view 
+needed for positioning levels on the side of the view
+world coordinates irrelevant
+likely once that's made other items could follow (detail items, annotations, etc.)
+* check if there is some way to catch if elements are borrowed and can't be edited, so that not entire transactions get cancelled but only the conflicting parts
+* make it possible to add to existing selection rather than replacing existing one
+was trying to combine selections of doors in link with selection of doors in model to copy references but revit kept nulliying selection after new one
+couldnt save selected elements in link to a selection set to combine them
+* dimension from the point selected in room to room borders
+possibly pickup things across it
+picking up reference planes is too tedious, may be worth automating
+* fix changing detail number prompting duplicates
+it seems to fail even when pressing no in dialog
+it is posisble to change value in normal properties dialog to the same value
+* think of some way to record changes made on project
+not so much to undo changes or to blame who made changes, but at the least granular level to gauge performance
+* make OpenSheet not open sheets when chaning names/parameters (edit mode)
+* consolidate SectionBox3DFromView and SectionBox3DFromSelectedView commands
+logic should be like in other commands, if view/viewport is selected use it, prompt for view otherwise
+* consider adding simple/extended datagrid modes
+many datagrids get very big and slow
+consider addressing it with a separate mode that will only display essentials
+  likely need to decide what essentials mean for each category
+similar design as selection modes, phase modes
+** you may then remove these FilterDoors, FilterPosition, FilterSheets etc. commands
+* add commands ExpandSelectionByHosts and ExpandSelectionByHosted
+for example select all elements on selected sheets/views
+not sure how uniform/intuitive hosting relations will be
+some may be also dangaerous, e.g. levels tend to host most elements
+** SelectHostsOfSelected already exists
+make it work as well if selected elements belong to links
+* remove CopyToClipboardTypeNameOfElementInLinkedModel
+not needed, may just copy name and any other parameter directly from the grid
+* remove link from selection when using SelectFamilyTypeInstancesInLinkedModels
+it may cause issues for uses trying to copy paste selected elements in place
+revit refuses to copy them when link is selected as well
+* fix ImportElementsFromSelectedLinkedModel not pasting to correct location
+encountered bug in a link positined with shared coordinates
+* add SelectViewsOfSelectedSheets
+same as SelectViewportsOfSelectedSheets, but may save me a step
+or even better find a conveinent way to getting datagrid of viewports in resaonable time
+  likely would require skipping computing centroids beforehand
+* see if you can remove some revision related commands and make them simply editable as columns as attributes of sheets
+* add vim-like shortcuts to opening second, third, etc. last view
+e.g. pressing 2 before it should open seond to last, 3 third to last etc
+likely requires implementing the previously mentioned shortcuts system first
+* make it possible to import types even if there were not instantiated in export rvt
+ImportElementsFromFile
+it's probably somewhere down in the list already
+* add parameters category to selectbycategoryindocument
+it may be useful to change categories to which parameters apply
+in revit there is no way to change them in one go, have to be changed one by one which is slow
+* renaming detail number of views prompts a warning about duplicate names and fails even when pressed "no"
+it works for viewports
+it should work for both views and viewports
+* dont display warning against renaming views with the same name when renaming views in SelectViews dialog when they are legeneds
+because legends can have the same name
+* add SelectParents and SelectChildren commands
+it's rather abstract what Parents and Childres will mean in any one case, but try to come up with good heuristics
+can be very useful
+* rename SelectViewsFromSets to SelectViewSets
+* add .csv option to ExportSchedule
+* LinkRevit
+default LinkRevit doesn't let you link multiple files at once
+copy dialog with settings
+* make SelectByGroupInViews work with selected viewports
+it should show groupe elements from only all selected views (viewports)
+* support exporting drafting views in ExportElementsToRvt
+* add positong/coordinates columns to links
+you may have done it to Transform... command
+* make ImportElementsFromSelectedLinkedModel command exclude view specific elements and import those that it can
+[Window Title]
+InvokeLastAddinCommand - Error
+
+[Main Instruction]
+Some of the elements cannot be copied, because they are view-specific.
+Parameter name: elementsToCopy
+
+[Close]
+* consider overlkaying a window on top of revit to display more information
+not counting on revit api to provide comparable overlays
+possibly could prove useful to other commands (e.g. placing walls along outlines of room boundaries)
+* add support for types in ExportElementsToRvt
+right now exporting selected types (not instances) doesn't work
+* add centroid values for viewports relative to project origin rather than sheet
+
+should ensure proper positioninig of views
+also should calculate centroid of crop region rather than viewport
+  viewport shape/size can change depenging on annotations
+* SwitchDocumentInNetwork doesn't work when I use alt+escape to switch windows
+* add schedules to SelectViews
+* separate Views category in SelectByCategoriesInDocument
+Views: Schedule, Views: Sheet, Views: Plan, etc.
+and InSession and InNetwork
+* asynchronous evaluation of cells
+will need visual cues of loading states
+likely needed when modeless datagrid get implemented
+* make SelectByFamilyTypesInViews use multiple viewports in selection
+right now it lists elements in current view instead
+* export pdf and dwg export settings
+lol good luck, maybe make it a separate command, later bundle other settings to it, perhaps call it ExportSettings
+* copy filters with their settings across view templates
+need much better logic for view templates in general
+* prevent SelectByCategoryInViews from regenerating views when viewports are selected
+may be hard to reproduce and torubleshoot, good luck
+* prevent ExportElementsToRvt from registering exporter temporary files as opened documents in SwitchDocumentInNetwork
+* add view templates to ExportElementsToRvt
+now doesn't seem to be supported, or import command is not picking them up
+also rename both commands to be consistent
+remove separete commands to export/import to rvt file
+add dialog listing types/elements it wants to import and let user select them
+* SelectParent
+think of some general shortcut to expand selection to logical parent (E,g, scope box to associated sections - that's actually children but get the gist)
+* make OpenRvtFilesInSessions schedule opening of new sessinos based on memory usage
+prevent it from thrashing to disk
+* make OpenRvtFilesInSessions open arbitrary folder, don't hardcode documents
+sometimes central models can change and you will have to open them instead
+rename to make local copy explicit, add sane defaults if possible (overwrite existing local copy)
+* get switch views in session command work with families and detached projects
+detached as in files without a saved location on disk
+* test launching revit with different .ini files pointing to different locations to save local copies of central model
+test if it's possible to open mutliple such local copies under one user account and synchronize to central simultanously
+* add delay to innetwork commands
+experienced a serious system crash when performing too many operations simultaneously
+it would be useful to be able to schedule operations with delay for example of 30 seconds
+* switching views in session sadly seems to lead to uncommitted transactions
+rethink this method, otherwise this will be rendering revit unstable
+* make SelectFamilyTypesOfSelected work with links
+link types have some useful properties, e.g. "room bounding"
+* changing sheet numbers in switchsheet command should update cache
+right now sheet numebrs change but command datagrid shows old ones
+probably needs to update logviewchanges log
+* rename DuplicateSelectedSheets to simply DuplicateSheets and reuse the same pattern as before
+if sheets are selected use them, if nothing is selected promt user datagrid to select them
 * add delay to synchronize in network
 otherwise it will cause computer to crash and work to be lost
 * generalize invoking commands over many revit instances (through revit ballet server)
@@ -231,8 +400,6 @@ only clipping depth seems exposed
 ids in their own columns
 can't copy id numbers from default revit panel
 * rename groups in selectbygroup commands
-* fix centroid calculations for viewports
-values don't get copied correctly
 * assign shortcut to select view templte of selected elements command
 * copy crop region to selected views
 if possible
@@ -295,3 +462,11 @@ placed at the end in case text will be very long
 [2026-01-14 Wed 10:20]
 SelectViews command stored the view object as __OriginalObject, but the DataGrid automatic editing system expects ElementIdObject or Id to find the Revit element for applying edits
 fixed a few other commands with the same issue
+** fix centroid calculations for viewports
+values don't get copied correctly
+*** has been fixed long time ago
+[2026-02-06 Fri 16:38]
+** add switch to previous view shortcut
+right now there is just cycle between last two, but there is none to get back to previous in chronological list
+*** options > ctrl tab order option does that already
+[2026-02-27 Fri 11:13]
