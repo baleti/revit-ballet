@@ -10,7 +10,9 @@ using Autodesk.Revit.DB.Architecture;
 public partial class CopySelectedElementsAlongContainingGroupsByRooms
 {
     private bool enableDiagnostics = false;
+#pragma warning disable CS0414
     private bool saveDiagnosticsToFile = true;
+#pragma warning restore CS0414
     private StringBuilder diagnosticLog = new StringBuilder();
     
     // Timing tracking

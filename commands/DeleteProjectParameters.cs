@@ -139,7 +139,7 @@ namespace RevitBallet.Commands
                         foreach (Parameter p in elem.Parameters)
                         {
                             // Skip built-in parameters (negative IDs)
-                            if (p.Id.IntegerValue < 0)
+                            if (p.Id.AsLong() < 0)
                                 continue;
 
                             string paramName = p.Definition.Name;
@@ -183,7 +183,7 @@ namespace RevitBallet.Commands
                 {
                     foreach (Parameter p in elem.Parameters)
                     {
-                        if (p.Id.IntegerValue < 0)
+                        if (p.Id.AsLong() < 0)
                             continue;
 
                         string paramName = p.Definition.Name;
@@ -222,7 +222,7 @@ namespace RevitBallet.Commands
                 if (storageType == StorageType.ElementId)
                 {
                     ElementId elemId = p.AsElementId();
-                    return elemId != null && elemId.IntegerValue != -1;
+                    return elemId != null && elemId != ElementId.InvalidElementId;
                 }
 
                 return false;

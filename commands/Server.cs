@@ -1735,7 +1735,7 @@ namespace RevitBallet.Commands
             foreach (var elem in instances)
             {
                 var key = typeIdToKey[elem.GetTypeId()];
-                Console.WriteLine($"ELEMENT|{key.Item1}|{key.Item2}|{key.Item3}|{elem.UniqueId}|{elem.Id.IntegerValue}");
+                Console.WriteLine($"ELEMENT|{key.Item1}|{key.Item2}|{key.Item3}|{elem.UniqueId}|{elem.Id.AsLong()}");
             }
 
             response.Success = true;
@@ -1771,7 +1771,7 @@ namespace RevitBallet.Commands
                 Console.WriteLine($"CATEGORY|{group.Key}");
                 foreach (var elem in group)
                 {
-                    Console.WriteLine($"ELEMENT|{elem.UniqueId}|{elem.Id.IntegerValue}");
+                    Console.WriteLine($"ELEMENT|{elem.UniqueId}|{elem.Id.AsLong()}");
                 }
             }
 
@@ -1844,7 +1844,7 @@ namespace RevitBallet.Commands
                 Workset ws = doc.GetWorksetTable().GetWorkset(wsId);
                 if (ws == null || !worksetNames.Contains(ws.Name)) continue;
 
-                Console.WriteLine($"ELEMENT|{ws.Name}|{e.UniqueId}|{e.Id.IntegerValue}");
+                Console.WriteLine($"ELEMENT|{ws.Name}|{e.UniqueId}|{e.Id.AsLong()}");
             }
 
             response.Success = true;

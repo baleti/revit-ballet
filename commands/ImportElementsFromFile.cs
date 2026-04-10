@@ -201,7 +201,7 @@ namespace RevitCommands
                                     failureDetails.Add("Batch copy returned null or empty collection");
                                 }
                             }
-                            catch (Exception ex)
+                            catch (Exception)
                             {
                                 // Batch copy failed - fall back to individual copying for detailed error reporting
                                 foreach (ElementId elemId in sourceElementIds)
