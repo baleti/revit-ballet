@@ -1,0 +1,138 @@
+#+TITLE: Architecture Vision: Command Abstraction & Orchestration
+#+DATE: 2026-04-10
+
+* Overview
+
+The long-term vision is to evolve revit-ballet commands from standalone Revit
+add-in entry points into composable, introspectable units that can be wired
+together visually (like Grasshopper / Houdini) or driven programmatically via
+the Roslyn scripting server.
+
+* Core Idea: Commands as Data-Flow Nodes
+
+Each command should be expressible as a node with:
+- Typed *input sockets* (e.g. ~IEnumerable<ViewPlan>~, ~string prefix~)
+- Typed *output sockets* (e.g. ~IEnumerable<ViewPlan>~ produced, ~IEnumerable<Viewport>~ placed)
+- A pure *execute* function that transforms inputs → outputs inside a transaction
+- Metadata: display name, category, icon, description
+
+This mirrors how parametric design tools (Grasshopper, Dynamo, Houdini) treat
+operations, and would allow:
+1. A graph GUI that lets users wire commands together without writing code
+2. A REST/gRPC API layer (via the existing Roslyn server) to script pipelines
+3. Recording and replaying command sequences
+4. Batch automation across multiple documents
+
+* Layered Architecture
+
+#+BEGIN_SRC
+┌────────────────────────────────────────────────────────┐
+│  GUI Layer                                             │
+│  ┌─────────────────────┐  ┌──────────────────────┐    │
+│  │  Ribbon / Buttons   │  │  Visual Graph Editor  │    │
+│  │  (current)          │  │  (future)             │    │
+│  └──────────┬──────────┘  └──────────┬───────────┘    │
+│             │                        │                 │
+└─────────────┼────────────────────────┼─────────────────┘
+              │                        │
+┌─────────────▼────────────────────────▼─────────────────┐
+│  Command Abstraction Layer                             │
+│                                                        │
+│  interface ICommand<TInput, TOutput>                   │
+│  {                                                     │
+│      CommandDescriptor Metadata { get; }               │
+│      TOutput Execute(TInput input, Document doc);      │
+│  }                                                     │
+│                                                        │
+│  class CommandDescriptor                               │
+│  {                                                     │
+│      string Name;                                      │
+│      string Category;                                  │
+│      IReadOnlyList<PortDescriptor> Inputs;             │
+│      IReadOnlyList<PortDescriptor> Outputs;            │
+│  }                                                     │
+└─────────────────────────────┬──────────────────────────┘
+                              │
+┌─────────────────────────────▼──────────────────────────┐
+│  Input Resolution Layer                                │
+│                                                        │
+│  Resolves typed inputs from:                           │
+│  1. Current Revit selection (filtered to relevant type)│
+│  2. Active view / active sheet (fallback)              │
+│  3. DataGrid picker (when no implicit source exists)   │
+│  4. Graph node connections (when running in graph mode)│
+│  5. API call arguments (when invoked via Roslyn server)│
+└─────────────────────────────┬──────────────────────────┘
+                              │
+┌─────────────────────────────▼──────────────────────────┐
+│  Revit API / Document Layer                            │
+└────────────────────────────────────────────────────────┘
+#+END_SRC
+
+* Input Resolution Rules (Standard Behaviour)
+
+These rules govern how every command resolves its primary element input.
+They should be implemented once in a shared ~InputResolver~ helper and reused:
+
+| Situation                          | Resolution                                         |
+|------------------------------------+----------------------------------------------------|
+| Input type = View/Viewport,        | Use active view (or view of active viewport)       |
+| nothing selected                   |                                                    |
+| Input type = View/Viewport,        | Filter selection to matching type; ignore others   |
+| something selected                 |                                                    |
+| Input type = Sheet, nothing        | Use active sheet if current view is a sheet        |
+| selected                           |                                                    |
+| Input type = other element type,   | Show DataGrid picker scoped to that type           |
+| nothing selected                   |                                                    |
+| Input type = other element type,   | Filter selection; if none survive, fall back to    |
+| something selected                 | DataGrid picker                                    |
+
+* Visual Graph Editor (Future)
+
+Modelled on Grasshopper (Rhino) and Houdini:
+- Canvas with draggable nodes representing commands
+- Typed sockets with coloured wires indicating data type
+- Node execution order derived from dependency graph (topological sort)
+- Ability to bake results back into the document or pass to next node
+- Persistent graph saved as JSON alongside the Revit project or in a sidecar file
+
+Implementation path:
+1. Define ~ICommand<TInput, TOutput>~ interface and adapt existing commands
+2. Build a simple WPF canvas prototype with manual wiring
+3. Add graph serialisation (JSON) and replay
+4. Integrate with the Roslyn scripting server for headless execution
+
+* Roslyn Server API (Future)
+
+The existing Roslyn server already allows executing C# expressions in-process.
+Once commands are abstracted, it becomes possible to:
+
+#+BEGIN_SRC csharp
+// Example: pipeline via Roslyn API
+var floorPlans = Resolve<IEnumerable<ViewPlan>>(selection);
+var ceilingPlans = Run<CeilingPlanFromFloorPlan>(floorPlans, prefix: "RCP - ");
+var sheets = Run<DuplicateView>(ceilingPlans, mode: DuplicationMode.WithDetailing);
+#+END_SRC
+
+This enables:
+- CI/CD automation of Revit document preparation
+- External tooling integration (Python scripts calling the Roslyn endpoint)
+- Unit-testable command logic decoupled from Revit UI
+
+* Naming Conventions (Canonical Rules)
+
+See [[file:command-standardization-plan.org]] for the full audit and migration plan.
+
+Short form:
+- Commands are *singular*: ~DuplicateView~, not ~DuplicateViews~
+- No "Selected" in the name: selection is implied by the Input Resolution Layer
+- Name describes the transformation, not the source of input:
+  ~CeilingPlanFromFloorPlan~, ~DuplicateView~, ~ExportViewToPDF~
+
+* Prior Art / References
+
+- Grasshopper (Robert McNeel & Associates) — parametric visual programming for Rhino
+- Houdini (SideFX) — node-based procedural 3D pipeline
+- Dynamo — open-source visual programming for Revit (note: we are building something
+  lighter-weight and more Revit-native, without Dynamo's geometry kernel overhead)
+- UNIX pipes — the original composable single-responsibility tool model

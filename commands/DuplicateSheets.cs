@@ -32,77 +32,77 @@ namespace RevitAddin
         private readonly WinForms.RadioButton _radioWithDetailing;
         private readonly WinForms.RadioButton _radioViewsWithoutDetailing;
         private readonly WinForms.RadioButton _radioViewsWithDetailing;
+        private readonly WinForms.TextBox _txtPrefix;
+        private readonly WinForms.TextBox _txtSuffix;
         private readonly WinForms.NumericUpDown _numCopies;
 
         public CustomSheetDuplicateOption SelectedOption { get; private set; } =
             CustomSheetDuplicateOption.EmptySheet;
 
         public int CopyCount { get; private set; } = 1;
+        public string Prefix { get; private set; } = "";
+        public string Suffix { get; private set; } = "";
 
         public SheetDuplicationOptionsForm()
         {
             Text            = "Duplicate Sheet Options";
             FormBorderStyle = WinForms.FormBorderStyle.FixedDialog;
             StartPosition   = WinForms.FormStartPosition.CenterScreen;
-            ClientSize      = new Size(340, 220);
+            ClientSize      = new Size(340, 295);
             MaximizeBox = MinimizeBox = false;
 
             _radioEmpty = new WinForms.RadioButton
             {
-                Text    = "Empty Sheet",
-                Left    = 20,
-                Top     = 20,
-                Width   = 300,
-                Checked = true
+                Text = "Empty Sheet", Left = 20, Top = 20, Width = 300, Checked = true
             };
             _radioWithDetailing = new WinForms.RadioButton
             {
-                Text  = "With Sheet Detailing",
-                Left  = 20,
-                Top   = 45,
-                Width = 300
+                Text = "With Sheet Detailing", Left = 20, Top = 45, Width = 300
             };
             _radioViewsWithoutDetailing = new WinForms.RadioButton
             {
-                Text    = "With Sheet Detailing, Views Without Detailing",
-                Left    = 20,
-                Top     = 70,
-                Width   = 300
+                Text = "With Sheet Detailing, Views Without Detailing",
+                Left = 20, Top = 70, Width = 300
             };
             _radioViewsWithDetailing = new WinForms.RadioButton
             {
-                Text  = "With Sheet Detailing, Views With Detailing",
-                Left  = 20,
-                Top   = 95,
-                Width = 300
+                Text = "With Sheet Detailing, Views With Detailing",
+                Left = 20, Top = 95, Width = 300
             };
+
+            var lblPrefix = new WinForms.Label
+            {
+                Text = "Prefix:", Left = 20, Top = 135, Width = 55,
+                TextAlign = ContentAlignment.MiddleLeft
+            };
+            _txtPrefix = new WinForms.TextBox { Left = 80, Top = 132, Width = 240 };
+
+            var lblSuffix = new WinForms.Label
+            {
+                Text = "Suffix:", Left = 20, Top = 167, Width = 55,
+                TextAlign = ContentAlignment.MiddleLeft
+            };
+            _txtSuffix = new WinForms.TextBox { Left = 80, Top = 164, Width = 240 };
 
             var lblCopies = new WinForms.Label
             {
-                Text  = "Number of copies:",
-                Left  = 20,
-                Top   = 135,
-                Width = 120
+                Text = "Number of copies:", Left = 20, Top = 207, Width = 120
             };
             _numCopies = new WinForms.NumericUpDown
             {
-                Left    = 150,
-                Top     = 130,
-                Width   = 60,
-                Minimum = 1,
-                Maximum = 50,
-                Value   = 1
+                Left = 150, Top = 203, Width = 60, Minimum = 1, Maximum = 50, Value = 1
             };
 
-            var ok     = new WinForms.Button { Text = "OK",     Left = 90,  Width = 70, Top = 170, DialogResult = WinForms.DialogResult.OK };
-            var cancel = new WinForms.Button { Text = "Cancel", Left = 170, Width = 70, Top = 170, DialogResult = WinForms.DialogResult.Cancel };
+            var ok     = new WinForms.Button { Text = "OK",     Left = 90,  Width = 70, Top = 247, DialogResult = WinForms.DialogResult.OK };
+            var cancel = new WinForms.Button { Text = "Cancel", Left = 170, Width = 70, Top = 247, DialogResult = WinForms.DialogResult.Cancel };
 
             AcceptButton = ok;
             CancelButton = cancel;
 
             Controls.AddRange(new WinForms.Control[]
             {
-                _radioEmpty, _radioWithDetailing, _radioViewsWithoutDetailing, _radioViewsWithDetailing, 
+                _radioEmpty, _radioWithDetailing, _radioViewsWithoutDetailing, _radioViewsWithDetailing,
+                lblPrefix, _txtPrefix, lblSuffix, _txtSuffix,
                 lblCopies, _numCopies, ok, cancel
             });
         }
@@ -122,6 +122,8 @@ namespace RevitAddin
                 SelectedOption = CustomSheetDuplicateOption.WithSheetDetailingViewsWithDetailing;
 
             CopyCount = (int)_numCopies.Value;
+            Prefix = _txtPrefix.Text;
+            Suffix = _txtSuffix.Text;
         }
     }
 
@@ -137,7 +139,9 @@ namespace RevitAddin
             Document doc,
             IEnumerable<ViewSheet> sheets,
             CustomSheetDuplicateOption option,
-            int copies)
+            int copies,
+            string prefix = "",
+            string suffix = "")
         {
             var usedNumbers = new HashSet<string>(
                 new FilteredElementCollector(doc)
@@ -178,7 +182,7 @@ namespace RevitAddin
                     usedNumbers.Add(nextNo);
 
                     dupSheet.SheetNumber = nextNo;
-                    dupSheet.Name = sheet.Name;
+                    dupSheet.Name = prefix + sheet.Name + suffix;
 
                     // Handle view duplication for the new options
                     if (option == CustomSheetDuplicateOption.WithSheetDetailingViewsWithoutDetailing ||
@@ -394,11 +398,14 @@ namespace RevitAddin
 
             CustomSheetDuplicateOption option;
             int copies;
+            string prefix, suffix;
             using (var dlg = new SheetDuplicationOptionsForm())
             {
                 if (dlg.ShowDialog() != WinForms.DialogResult.OK) return Result.Cancelled;
                 option = dlg.SelectedOption;
                 copies = dlg.CopyCount;
+                prefix = dlg.Prefix;
+                suffix = dlg.Suffix;
             }
 
             using (var t = new Transaction(doc, "Duplicate Selected Sheets"))
@@ -407,7 +414,7 @@ namespace RevitAddin
                 List<ViewSheet> createdSheets = null;
                 try
                 {
-                    createdSheets = SheetDuplicator.DuplicateSheets(doc, sheets, option, copies);
+                    createdSheets = SheetDuplicator.DuplicateSheets(doc, sheets, option, copies, prefix, suffix);
                     t.Commit();
                 }
                 catch (Exception ex)
