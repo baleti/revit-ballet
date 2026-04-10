@@ -3,6 +3,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows.Forms;       // For Windows Forms
+using WinFormsTextBox = System.Windows.Forms.TextBox;
+using WinFormsControl = System.Windows.Forms.Control;
 using System.Drawing;             // For form sizing
 using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
@@ -117,8 +119,8 @@ namespace RevitAddin
         private RadioButton radioWithoutDetailing;
         private RadioButton radioWithDetailing;
         private RadioButton radioDependent;
-        private TextBox txtPrefix;
-        private TextBox txtSuffix;
+        private WinFormsTextBox txtPrefix;
+        private WinFormsTextBox txtSuffix;
         private NumericUpDown numDuplicates;
         private Label lblDuplicates;
         private Button okButton;
@@ -154,14 +156,14 @@ namespace RevitAddin
                 Text = "Prefix:", Left = 20, Top = 120, Width = 55,
                 TextAlign = ContentAlignment.MiddleLeft
             };
-            txtPrefix = new TextBox() { Left = 80, Top = 117, Width = 180 };
+            txtPrefix = new WinFormsTextBox() { Left = 80, Top = 117, Width = 180 };
 
             var lblSuffix = new Label()
             {
                 Text = "Suffix:", Left = 20, Top = 152, Width = 55,
                 TextAlign = ContentAlignment.MiddleLeft
             };
-            txtSuffix = new TextBox() { Left = 80, Top = 149, Width = 180 };
+            txtSuffix = new WinFormsTextBox() { Left = 80, Top = 149, Width = 180 };
 
             lblDuplicates = new Label()
             {
@@ -185,7 +187,7 @@ namespace RevitAddin
                 DialogResult = DialogResult.Cancel
             };
 
-            this.Controls.AddRange(new Control[]
+            this.Controls.AddRange(new WinFormsControl[]
             {
                 radioWithoutDetailing, radioWithDetailing, radioDependent,
                 lblPrefix, txtPrefix, lblSuffix, txtSuffix,

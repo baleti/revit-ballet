@@ -7,6 +7,8 @@ using System.Windows.Forms;
 using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
+using WinFormsTextBox = System.Windows.Forms.TextBox;
+using WinFormsControl = System.Windows.Forms.Control;
 
 using RevitView = Autodesk.Revit.DB.View;
 using RevitViewport = Autodesk.Revit.DB.Viewport;
@@ -18,8 +20,8 @@ namespace RevitAddin
     {
         private RadioButton radioWithoutDetailing;
         private RadioButton radioWithDetailing;
-        private TextBox txtPrefix;
-        private TextBox txtSuffix;
+        private WinFormsTextBox txtPrefix;
+        private WinFormsTextBox txtSuffix;
         private Button okButton;
         private Button cancelButton;
 
@@ -47,10 +49,10 @@ namespace RevitAddin
             };
 
             var lblPrefix = new Label { Text = "Prefix:", Left = 20, Top = 90, Width = 55, TextAlign = ContentAlignment.MiddleLeft };
-            txtPrefix = new TextBox { Left = 80, Top = 87, Width = 210 };
+            txtPrefix = new WinFormsTextBox { Left = 80, Top = 87, Width = 210 };
 
             var lblSuffix = new Label { Text = "Suffix:", Left = 20, Top = 122, Width = 55, TextAlign = ContentAlignment.MiddleLeft };
-            txtSuffix = new TextBox { Left = 80, Top = 119, Width = 210 };
+            txtSuffix = new WinFormsTextBox { Left = 80, Top = 119, Width = 210 };
 
             okButton = new Button
             {
@@ -66,7 +68,7 @@ namespace RevitAddin
             AcceptButton = okButton;
             CancelButton = cancelButton;
 
-            Controls.AddRange(new Control[]
+            Controls.AddRange(new WinFormsControl[]
             {
                 radioWithoutDetailing, radioWithDetailing,
                 lblPrefix, txtPrefix,
