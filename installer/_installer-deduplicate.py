@@ -13,8 +13,9 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
-SOURCE_PATH = Path("../commands/bin")
-OUTPUT_PATH = Path("./bin/resources")
+SCRIPT_DIR = Path(__file__).resolve().parent
+SOURCE_PATH = SCRIPT_DIR / "../commands/bin"
+OUTPUT_PATH = SCRIPT_DIR / "bin/resources"
 
 
 def print_error(*args, **kwargs):
