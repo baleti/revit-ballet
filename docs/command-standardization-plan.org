@@ -1,0 +1,272 @@
+#+TITLE: Command Standardization Plan
+#+DATE: 2026-04-10
+#+STATUS: DRAFT — awaiting review before execution
+
+* Goal
+
+Align all commands with the canonical conventions described in
+[[file:architecture-vision.org]], specifically:
+
+1. *No "Selected" in the class name* — selection is implied behaviour
+2. *Singular form* — commands operate on one or many inputs the same way
+3. *Standard input resolution* — use active view / filter selection / DataGrid
+   picker depending on what's in the selection and what the command expects
+
+The changes below are *renames only* (no logic changes) unless noted otherwise.
+Every renamed class must also update:
+- The source ~.cs~ file name (keep 1:1 with class name)
+- Any cross-file references (currently ~ViewDuplicator~, ~SheetDuplicator~, etc.)
+- The ribbon button entry in ~CommandRegistry.cs~ / ~*.addin~ manifest / ribbon XML
+  (verify before executing)
+
+* Input Resolution Standard
+
+Implement a shared helper before or alongside these renames:
+
+#+BEGIN_SRC csharp
+// Proposed: commands/InputResolver.cs
+public static class InputResolver
+{
+    public static List<T> ResolveViews<T>(UIDocument uiDoc)
+        where T : View { ... }
+
+    public static List<ViewSheet> ResolveSheets(UIDocument uiDoc) { ... }
+
+    public static List<Element> ResolveElements(UIDocument uiDoc,
+        params BuiltInCategory[] categories) { ... }
+}
+#+END_SRC
+
+Rules (from [[file:architecture-vision.org]]):
+- View/Viewport input + nothing selected → active view
+- View/Viewport input + selection → filter to matching type
+- Sheet + nothing selected → active view if it's a sheet
+- Other element type → DataGrid picker if nothing relevant selected
+- Always silently filter mixed selections to the relevant type
+
+* Naming Convention
+
+| Old pattern                  | New pattern         | Example                              |
+|------------------------------+---------------------+--------------------------------------|
+| ~FooSelectedBars~            | ~FooBars~           | ~DuplicateSelectedViews~ → ~DuplicateView~ |
+| ~FooSelectedBar~             | ~FooBar~            | ~CopyCropRegionOfSelectedView~ → ~CopyCropRegion~ |
+| ~FooBars~ (plural)           | ~FooBar~            | ~DuplicateViewsAsDraftingViews~ → ~DuplicateViewAsDraftingView~ |
+| ~FooSelected~ at end         | ~Foo~               | ~ZoomSelected~ → ~ZoomToSelection~ (or ~ZoomView~) |
+
+* Rename Catalogue
+
+Below is the full list of commands that need renaming, grouped by the nature of
+the change required. Entries marked [input-logic] also need their selection
+fallback updated to follow the standard input resolution rules.
+
+** Duplicate / Copy commands
+
+| Current name                                          | Proposed name                             | Notes              |
+|-------------------------------------------------------+-------------------------------------------+--------------------|
+| ~DuplicateSelectedViews~                              | ~DuplicateView~                           | [input-logic] already has active-view fallback in DuplicateSelectedSheets but not here |
+| ~DuplicateSelectedViewsAndPlaceOnSheet~               | ~DuplicateViewAndPlaceOnSheet~            | [input-logic]      |
+| ~DuplicateSelectedSheets~                             | ~DuplicateSheet~                          | already has active-sheet fallback ✓ |
+| ~DuplicateSelectedViewAndSectionBox3DFromViewsInLinkedModels~ | ~DuplicateViewAndSectionBox3DFromLinkedModel~ | [input-logic] |
+| ~DuplicateViewsAsDraftingViews~                       | ~DuplicateViewAsDraftingView~             |                    |
+| ~DuplicateViewsToSheets~                              | ~DuplicateViewToSheet~                    |                    |
+| ~DuplicateSheetWithViewsAsDraftingViews~              | ~DuplicateSheetWithViewsAsDraftingView~   |                    |
+| ~CopySelectedElementsAlongContainingGroupsByRooms~    | ~CopyElementAlongContainingGroupByRoom~   | [input-logic]      |
+| ~CopySelectedElementsToViewsInDocument~               | ~CopyElementToViewsInDocument~            | [input-logic]      |
+| ~CopySelectedRevisionCloudsToSheetsAndInheritRevision~ | ~CopyRevisionCloudToSheetAndInheritRevision~ | [input-logic]  |
+| ~CopyCropRegionOfSelectedView~                        | ~CopyCropRegion~                          | [input-logic]      |
+
+** Assign / Apply commands
+
+| Current name                                          | Proposed name                             | Notes              |
+|-------------------------------------------------------+-------------------------------------------+--------------------|
+| ~AssignViewTemplateToSelectedViews~                   | ~AssignViewTemplate~                      | [input-logic]      |
+| ~AddViewFiltersToSelectedViewOrViewTemplates~         | ~AddViewFilterToViewOrViewTemplate~       | [input-logic]      |
+| ~DeleteViewFiltersFromSelectedViewsOrViewTemplates~   | ~DeleteViewFilterFromViewOrViewTemplate~  | [input-logic]      |
+| ~SetViewFiltersOnSelectedViewsOrViewTemplates~        | ~SetViewFilterOnViewOrViewTemplate~       | [input-logic]      |
+| ~SelectViewFiltersOnSelectedViewOrViewTemplates~      | ~SelectViewFilterOnViewOrViewTemplate~    | [input-logic]      |
+
+** Change / Set / Toggle commands
+
+| Current name                                          | Proposed name                             | Notes              |
+|-------------------------------------------------------+-------------------------------------------+--------------------|
+| ~ChangeLineStyleOfSelectedFilledRegions~              | ~ChangeLineStyleOfFilledRegion~           | [input-logic]      |
+| ~ChangeWorksetOfSelectedElements~                     | ~ChangeWorksetOfElement~                  | [input-logic]      |
+| ~ChangeLevelOfSelectedElements~                       | ~ChangeLevelOfElement~                    | [input-logic]      |
+| ~ChangeLengthOfSelectedGrids~                         | ~ChangeLengthOfGrid~                      | [input-logic]      |
+| ~ChangeLengthsOfSelectedLevels~                       | ~ChangeLengthOfLevel~                     | [input-logic]      |
+| ~SetSelectedGrids2D~                                  | ~SetGrids2D~                              | [input-logic]      |
+| ~SetSelectedLevels2D~                                 | ~SetLevels2D~                             | [input-logic]      |
+| ~SetParametersOfSelectedInstances~                    | ~SetParametersOfInstance~                 | [input-logic]      |
+| ~SetParameterValueToSelectedFamilyTypesInCurrentFamily~ | ~SetParameterValueOfFamilyTypeInCurrentFamily~ | [input-logic] |
+| ~SetRevisionToSelectedSheetsOrClouds~                 | ~SetRevisionToSheetOrCloud~               | [input-logic]      |
+| ~UnsetRevisionToSelectedSheets~                       | ~UnsetRevisionToSheet~                    | [input-logic]      |
+| ~ToggleBubblesOfSelectedGrids~                        | ~ToggleBubblesOfGrid~                     | [input-logic]      |
+| ~ToggleBubblesOfSelectedLevels~                       | ~ToggleBubblesOfLevel~                    | [input-logic]      |
+| ~RenameParametersOfSelectedElements~                  | ~RenameParameterOfElement~                | [input-logic]      |
+| ~RenameSelectedTexts~                                 | ~RenameText~                              | [input-logic]      |
+| ~ResetTitlesOfSelectedViewports~                      | ~ResetTitleOfViewport~                    | [input-logic]      |
+| ~TransformSelectedElements~                           | ~TransformElement~                        | [input-logic]      |
+| ~SwapFamilyTypeOfSelectedElements~                    | ~SwapFamilyTypeOfElement~                 | [input-logic]      |
+| ~SwapSelectedModelGroups~                             | ~SwapModelGroup~                          | [input-logic]      |
+| ~UnpinSelectedElements~                               | ~UnpinElement~                            | [input-logic]      |
+| ~MoveSelectedToCentroid~                              | ~MoveElementToCentroid~                   | [input-logic]      |
+| ~MoveSelectedViewsToSheet~                            | ~MoveViewToSheet~                         | [input-logic]      |
+| ~OffsetCropRegionOfSelectedViews~                     | ~OffsetCropRegionOfView~                  | [input-logic]      |
+| ~FaceFlipSelectedDoors~                               | ~FaceFlipDoor~                            | [input-logic]      |
+
+** Create commands
+
+| Current name                                          | Proposed name                             | Notes              |
+|-------------------------------------------------------+-------------------------------------------+--------------------|
+| ~CreateFilledRegionsFromSelectedAreas~                | ~CreateFilledRegionFromArea~              | [input-logic]      |
+| ~CreateFilledRegionsOfSelectedElementsInSelectedViews~ | ~CreateFilledRegionOfElementInView~       | [input-logic]      |
+| ~CreateReferenceCalloutsToSelectedElements~           | ~CreateReferenceCalloutToElement~         | [input-logic]      |
+| ~CreateSectionsThroughSelectedElements~               | ~CreateSectionThroughElement~             | [input-logic]      |
+| ~CreateViewSetFromSelectedViews~                      | ~CreateViewSetFromView~                   | [input-logic]      |
+| ~DrawRevisionCloudAroundSelectedElementsInSheets~     | ~DrawRevisionCloudAroundElementInSheet~   | [input-logic]      |
+| ~DrawRevisionCloudAroundSelectedElementsInSheetsAndInheritRevision~ | ~DrawRevisionCloudAroundElementInSheetAndInheritRevision~ | [input-logic] |
+| ~DirectShapeBoundingBoxFromSelectedElements~          | ~DirectShapeBoundingBoxFromElement~       | [input-logic]      |
+| ~DirectShapeBoundingBoxFromSelected3DElements~        | ~DirectShapeBoundingBoxFrom3DElement~     | [input-logic]      |
+| ~DirectShapesFromSelectedAreas~                       | ~DirectShapeFromArea~                     | [input-logic]      |
+| ~DirectShapesFromSelectedRooms~                       | ~DirectShapeFromRoom~                     | [input-logic]      |
+| ~SectionBox3DAroundSelectedElements~                  | ~SectionBox3DAroundElement~               | [input-logic]      |
+| ~SectionBox3DFromSelectedView~                        | ~SectionBox3DFromView~                    | (already exists as ~SectionBox3DFromView~, resolve conflict) |
+
+** Add / Tag commands
+
+| Current name                                          | Proposed name                             | Notes              |
+|-------------------------------------------------------+-------------------------------------------+--------------------|
+| ~AddTextNoteToSelectedDoors~                          | ~AddTextNoteToDoor~                       | [input-logic]      |
+| ~AddTextNoteToSelectedElements~                       | ~AddTextNoteToElement~                    | [input-logic]      |
+| ~TagSelectedElements~                                 | ~TagElement~                              | [input-logic]      |
+| ~TagNotTaggedElementsInSelectedViews~                 | ~TagNotTaggedElementsInView~              | [input-logic]      |
+
+** Delete / Remove commands
+
+| Current name                                          | Proposed name                             | Notes              |
+|-------------------------------------------------------+-------------------------------------------+--------------------|
+| ~DeleteSelectedElements~                              | ~DeleteElement~                           | [input-logic]      |
+| ~DeleteDuplicatesFromSelectedElements~                | ~DeleteDuplicateOfElement~                | [input-logic]      |
+
+** Hide / Isolate commands
+
+| Current name                                          | Proposed name                             | Notes              |
+|-------------------------------------------------------+-------------------------------------------+--------------------|
+| ~HideSelectedElementsInViews~                         | ~HideElementInView~                       | [input-logic]      |
+| ~IsolateSelectedElementsToTemporaryHideIsolate~       | ~IsolateElement~                          | [input-logic]      |
+| ~UnhideSelectedElementsToTemporaryHideIsolate~        | ~UnhideElement~                           | [input-logic]      |
+| ~OutlineSelectedElementsInCurrentViewWithDetailLines~ | ~OutlineElementInViewWithDetailLines~     | [input-logic]      |
+
+** Select commands
+
+| Current name                                          | Proposed name                             | Notes              |
+|-------------------------------------------------------+-------------------------------------------+--------------------|
+| ~SelectArrayMembersOfSelectedElements~                | ~SelectArrayMembersOfElement~             | [input-logic]      |
+| ~SelectArrayOfSelectedElements~                       | ~SelectArrayOfElement~                    | [input-logic]      |
+| ~SelectAssociatedFromSelectedDimensions~              | ~SelectAssociatedFromDimension~           | [input-logic]      |
+| ~SelectAssociatedTagsOfSelected~                      | ~SelectAssociatedTagOfElement~            | [input-logic]      |
+| ~SelectCategoriesInSelectedLinkedModelsBase~          | ~SelectCategoryInLinkedModel~ (base)      |                    |
+| ~SelectDuplicatesFromSelected~                        | ~SelectDuplicateOfElement~                | [input-logic]      |
+| ~SelectFamilyTypesOfSelected~                         | ~SelectFamilyTypeOfElement~               | [input-logic]      |
+| ~SelectHostedBySelectedTags~                          | ~SelectHostedByTag~                       | [input-logic]      |
+| ~SelectHostsOfSelected~                               | ~SelectHostOfElement~                     | [input-logic]      |
+| ~SelectInSelectedGroups~                              | ~SelectInGroup~                           | [input-logic]      |
+| ~SelectRevisionCloudsOfSelectedSheets~                | ~SelectRevisionCloudOfSheet~              | [input-logic]      |
+| ~SelectSheetsBySelectedTitleBlocks~                   | ~SelectSheetByTitleBlock~                 | [input-logic]      |
+| ~SelectViewFiltersMatchingSelected~                   | ~SelectViewFilterMatchingElement~         | [input-logic]      |
+| ~SelectViewFiltersOnSelectedViewOrViewTemplates~      | same → ~SelectViewFilterOnViewOrViewTemplate~ | [input-logic]  |
+| ~SelectViewTemplatesOfSelectedViews~                  | ~SelectViewTemplateOfView~                | [input-logic]      |
+| ~SelectViewportsOfSelectedSheets~                     | ~SelectViewportOfSheet~                   | [input-logic]      |
+| ~SelectViewportsOfSelectedViews~                      | ~SelectViewportOfView~                    | [input-logic]      |
+| ~SelectViewsOfSelectedViewports~                      | ~SelectViewOfViewport~                    | [input-logic]      |
+| ~SelectViewsWhereSelectedAreVisible~                  | ~SelectViewWhereElementIsVisible~         | [input-logic]      |
+
+** Export commands
+
+| Current name                                          | Proposed name                             | Notes              |
+|-------------------------------------------------------+-------------------------------------------+--------------------|
+| ~ExportSelectedElementsToFile~                        | ~ExportElementToFile~                     | [input-logic]      |
+| ~ExportSelectedViewsCommand~                          | ~ExportView~                              | [input-logic]      |
+| ~ExportSelectedViewsToDWG~                            | ~ExportViewToDWG~                         | [input-logic]      |
+| ~ExportSelectedViewsToPDF~                            | ~ExportViewToPDF~                         | [input-logic]      |
+
+** List / Inspect commands
+
+| Current name                                          | Proposed name                             | Notes              |
+|-------------------------------------------------------+-------------------------------------------+--------------------|
+| ~ListSelectedByCategory~                              | ~ListElementByCategory~                   | [input-logic]      |
+| ~ListSelectedByContainingGroupsWithRooms~             | ~ListElementByContainingGroupWithRoom~    | [input-logic]      |
+| ~ListSelectedByScopeBoxes~                            | ~ListElementByScopeBox~                   | [input-logic]      |
+| ~ListSelectedInNetwork~                               | ~ListElementInNetwork~                    | [input-logic]      |
+| ~ListSelectedInSession~                               | ~ListElementInSession~                    | [input-logic]      |
+| ~ListSelectedInViews~                                 | ~ListElementInView~                       | [input-logic]      |
+| ~ListSheetsByDetailItemSelected~                      | ~ListSheetByDetailItem~                   | [input-logic]      |
+| ~ListSheetsWithSelectedLegend~                        | ~ListSheetWithLegend~                     | [input-logic]      |
+| ~ListViewsByDetailItemSelected~                       | ~ListViewByDetailItem~                    | [input-logic]      |
+
+** Combine / Boolean commands
+
+| Current name                                          | Proposed name                             | Notes              |
+|-------------------------------------------------------+-------------------------------------------+--------------------|
+| ~CombineSelectedElementsContainingSelectedModelGroups~ | ~CombineElementContainingModelGroup~      | [input-logic]      |
+| ~CombineSelectedElementsWithSelectedModelGroups~      | ~CombineElementWithModelGroup~            | [input-logic]      |
+| ~CombineSelectedFilledRegions~                        | ~CombineFilledRegion~                     | [input-logic]      |
+| ~BooleanDifferenceFilledRegionsWithSelectedElements~  | ~BooleanDifferenceFilledRegionWithElement~ | [input-logic]     |
+| ~ClashDetectionSelectedElements~                      | ~ClashDetectionOfElement~                 | [input-logic]      |
+
+** Clash / Section box
+
+| Current name                                          | Proposed name                             | Notes              |
+|-------------------------------------------------------+-------------------------------------------+--------------------|
+| ~SectionBox3DFromViewsInSelectedLinkedModels~         | ~SectionBox3DFromViewInLinkedModel~       |                    |
+
+** Zoom / Navigate
+
+| Current name                                          | Proposed name                             | Notes              |
+|-------------------------------------------------------+-------------------------------------------+--------------------|
+| ~ZoomSelected~                                        | ~ZoomToElement~                           | [input-logic] — describes what it does |
+
+** Place / Import
+
+| Current name                                          | Proposed name                             | Notes              |
+|-------------------------------------------------------+-------------------------------------------+--------------------|
+| ~PlaceSelectedViewsOnSheets~                          | ~PlaceViewOnSheet~                        | [input-logic]      |
+| ~ImportElementsFromSelectedLinkedModel~               | ~ImportElementFromLinkedModel~            | [input-logic]      |
+
+* Commands That Already Comply ✓
+
+These commands already follow the conventions and need no rename:
+
+- ~CeilingPlanFromFloorPlan~ (new, 2026-04-10)
+- ~SectionBox3DFromView~
+- ~SectionBox3DFromViewsInLinkedModels~
+- ~CloseCurrentView~, ~CloseViewsInDocument~, ~CloseViewsInSession~
+- ~SwitchDocument~, ~SwitchPhase~, ~SwitchSelectionMode~, etc.
+- ~DrawCropRegion~, ~DrawSectionLine~, ~DrawRoomGraph~
+- ~CreateDetailLines~, ~CreateLines~ (no "Selected"; element input via selection/DataGrid)
+
+* Execution Plan
+
+1. [ ] Implement ~InputResolver~ helper in ~commands/InputResolver.cs~
+2. [ ] Update commands marked [input-logic] to use ~InputResolver~ where they
+       currently error out ("nothing selected") instead of falling back
+3. [ ] Rename files and classes — *one batch PR per category group above*
+       to keep diffs reviewable
+4. [ ] Update ~CommandRegistry.cs~ display names for renamed commands
+5. [ ] Verify ribbon button definitions (*.addin / ribbon XML) if they reference
+       class names directly
+6. [ ] Update any cross-command class references (e.g. ~ViewDuplicator~ is shared
+       across rename boundaries)
+
+* Conflicts to Resolve Before Renaming
+
+- ~SectionBox3DFromSelectedView~ and ~SectionBox3DFromView~ *both currently exist*.
+  The one without "Selected" appears to be the correct canonical name.
+  Verify they are not duplicates; if so, merge or delete the "Selected" one.
+
+* Out of Scope for Now
+
+- Changing the *logic* of commands (beyond input resolution standardisation)
+- Removing the duplicate-count field from ~DuplicateView~ (current feature)
+- Migrating to a formal ~ICommand<TInput,TOutput>~ interface (architecture vision,
+  tracked separately)

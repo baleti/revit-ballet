@@ -32,14 +32,16 @@ namespace RevitAddin
     {
         /// <summary>
         /// Loops through the provided views and duplicates each.
-        /// The new view is renamed using the original name, "Copy", timestamp, and a sequential number suffix.
+        /// The new view is renamed using the optional prefix/suffix around the original name, plus "Copy" and timestamp.
         /// If a view does not support the chosen duplication option, it is skipped.
         /// </summary>
         /// <param name="doc">The Revit document.</param>
         /// <param name="views">The list of views to duplicate.</param>
         /// <param name="mode">The chosen duplication mode.</param>
         /// <param name="duplicateCount">The number of duplicates to create.</param>
-        public static void DuplicateViews(Document doc, IEnumerable<RevitView> views, DuplicationMode mode, int duplicateCount)
+        /// <param name="prefix">Optional prefix prepended to the view name.</param>
+        /// <param name="suffix">Optional suffix appended to the view name.</param>
+        public static void DuplicateViews(Document doc, IEnumerable<RevitView> views, DuplicationMode mode, int duplicateCount, string prefix = "", string suffix = "")
         {
             // Prepare a timestamp for naming.
             string timestamp = DateTime.Now.ToString("yyyyMMddHHmmss");
@@ -88,12 +90,12 @@ namespace RevitAddin
                             // If only one duplicate is requested, don't append the _N suffix
                             if (duplicateCount == 1)
                             {
-                                dupView.Name = $"{baseName} - Copy {timestamp}";
+                                dupView.Name = $"{prefix}{baseName} - Copy {timestamp}{suffix}";
                             }
                             else
                             {
                                 // For multiple duplicates, append _N suffix starting from 1
-                                dupView.Name = $"{baseName} - Copy {timestamp}_{i + 1}";
+                                dupView.Name = $"{prefix}{baseName} - Copy {timestamp}_{i + 1}{suffix}";
                             }
                         }
                     }
@@ -109,10 +111,14 @@ namespace RevitAddin
     {
         public DuplicationMode SelectedMode { get; private set; } = DuplicationMode.WithoutDetailing;
         public int DuplicateCount { get; private set; } = 1;
+        public string Prefix { get; private set; } = "";
+        public string Suffix { get; private set; } = "";
 
         private RadioButton radioWithoutDetailing;
         private RadioButton radioWithDetailing;
         private RadioButton radioDependent;
+        private TextBox txtPrefix;
+        private TextBox txtSuffix;
         private NumericUpDown numDuplicates;
         private Label lblDuplicates;
         private Button okButton;
@@ -120,85 +126,72 @@ namespace RevitAddin
 
         public DuplicationOptionsForm()
         {
-            // Set basic form properties.
             this.Text = "Duplication Options";
             this.FormBorderStyle = FormBorderStyle.FixedDialog;
             this.StartPosition = FormStartPosition.CenterScreen;
-            this.ClientSize = new Size(250, 190);
+            this.ClientSize = new Size(280, 265);
             this.MaximizeBox = false;
             this.MinimizeBox = false;
 
-            // Create radio buttons.
             radioWithoutDetailing = new RadioButton()
             {
                 Text = "Without Detailing",
-                Left = 20,
-                Top = 20,
-                Width = 200,
-                Checked = true
+                Left = 20, Top = 20, Width = 230, Checked = true
             };
             radioWithDetailing = new RadioButton()
             {
                 Text = "With Detailing",
-                Left = 20,
-                Top = 50,
-                Width = 200
+                Left = 20, Top = 50, Width = 230
             };
             radioDependent = new RadioButton()
             {
                 Text = "Dependent",
-                Left = 20,
-                Top = 80,
-                Width = 200
+                Left = 20, Top = 80, Width = 230
             };
 
-            // Create number of duplicates control
+            var lblPrefix = new Label()
+            {
+                Text = "Prefix:", Left = 20, Top = 120, Width = 55,
+                TextAlign = ContentAlignment.MiddleLeft
+            };
+            txtPrefix = new TextBox() { Left = 80, Top = 117, Width = 180 };
+
+            var lblSuffix = new Label()
+            {
+                Text = "Suffix:", Left = 20, Top = 152, Width = 55,
+                TextAlign = ContentAlignment.MiddleLeft
+            };
+            txtSuffix = new TextBox() { Left = 80, Top = 149, Width = 180 };
+
             lblDuplicates = new Label()
             {
                 Text = "Number of duplicates:",
-                Left = 20,
-                Top = 120,
-                Width = 130
+                Left = 20, Top = 190, Width = 140
             };
-
             numDuplicates = new NumericUpDown()
             {
-                Left = 155,
-                Top = 118,
-                Width = 70,
-                Minimum = 1,
-                Maximum = 100,
-                Value = 1
+                Left = 165, Top = 188, Width = 70,
+                Minimum = 1, Maximum = 100, Value = 1
             };
 
-            // Create OK and Cancel buttons.
             okButton = new Button()
             {
-                Text = "OK",
-                Left = 50,
-                Width = 70,
-                Top = 150,
+                Text = "OK", Left = 60, Width = 70, Top = 225,
                 DialogResult = DialogResult.OK
             };
             cancelButton = new Button()
             {
-                Text = "Cancel",
-                Left = 130,
-                Width = 70,
-                Top = 150,
+                Text = "Cancel", Left = 145, Width = 70, Top = 225,
                 DialogResult = DialogResult.Cancel
             };
 
-            // Add controls to the form.
-            this.Controls.Add(radioWithoutDetailing);
-            this.Controls.Add(radioWithDetailing);
-            this.Controls.Add(radioDependent);
-            this.Controls.Add(lblDuplicates);
-            this.Controls.Add(numDuplicates);
-            this.Controls.Add(okButton);
-            this.Controls.Add(cancelButton);
+            this.Controls.AddRange(new Control[]
+            {
+                radioWithoutDetailing, radioWithDetailing, radioDependent,
+                lblPrefix, txtPrefix, lblSuffix, txtSuffix,
+                lblDuplicates, numDuplicates, okButton, cancelButton
+            });
 
-            // Set the Accept and Cancel buttons.
             this.AcceptButton = okButton;
             this.CancelButton = cancelButton;
         }
@@ -207,7 +200,6 @@ namespace RevitAddin
         {
             base.OnClosing(e);
 
-            // When closing with OK, store the selected duplication mode and count.
             if (this.DialogResult == DialogResult.OK)
             {
                 if (radioWithoutDetailing.Checked)
@@ -218,6 +210,8 @@ namespace RevitAddin
                     SelectedMode = DuplicationMode.Dependent;
 
                 DuplicateCount = (int)numDuplicates.Value;
+                Prefix = txtPrefix.Text;
+                Suffix = txtSuffix.Text;
             }
         }
     }
@@ -269,6 +263,8 @@ namespace RevitAddin
 
                 DuplicationMode mode = form.SelectedMode;
                 int duplicateCount = form.DuplicateCount;
+                string prefix = form.Prefix;
+                string suffix = form.Suffix;
 
                 // Start a transaction.
                 using (Transaction trans = new Transaction(doc, "Duplicate Selected Views"))
@@ -277,7 +273,7 @@ namespace RevitAddin
                     try
                     {
                         // Duplicate the selected views using the chosen mode and count.
-                        ViewDuplicator.DuplicateViews(doc, selectedViews, mode, duplicateCount);
+                        ViewDuplicator.DuplicateViews(doc, selectedViews, mode, duplicateCount, prefix, suffix);
                         trans.Commit();
                     }
                     catch (Exception ex)
