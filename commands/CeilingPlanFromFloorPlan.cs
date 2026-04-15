@@ -187,28 +187,44 @@ namespace RevitAddin
                         // Copy scale — works when no template controls it, harmless otherwise
                         try { ceilingPlan.Scale = floorPlan.Scale; } catch { }
 
-                        // Copy crop region
+                        // Copy crop region — always via SetCropShape with a CurveLoop so the
+                        // shape maps correctly into the ceiling plan coordinate system.
+                        // (Directly copying CropBox fails because floor/ceiling plans have
+                        // different view coordinate frames.)
                         if (floorPlan.CropBoxActive)
                         {
                             ceilingPlan.CropBoxActive = true;
                             try
                             {
-                                var sourceManager = floorPlan.GetCropRegionShapeManager();
-                                if (sourceManager.ShapeSet)
+                                CurveLoop cropLoop = null;
+
+                                // Prefer the actual (possibly non-rectangular) crop shape
+                                try
                                 {
-                                    var cropShape = sourceManager.GetCropShape();
-                                    if (cropShape != null && cropShape.Count > 0)
-                                        ceilingPlan.GetCropRegionShapeManager().SetCropShape(cropShape[0]);
+                                    var sourceManager = floorPlan.GetCropRegionShapeManager();
+                                    if (sourceManager.ShapeSet)
+                                        cropLoop = sourceManager.GetCropShape().FirstOrDefault();
                                 }
-                                else
+                                catch (Autodesk.Revit.Exceptions.InvalidOperationException) { }
+
+                                // Fall back to a rectangular loop built from CropBox corners (Z=0)
+                                if (cropLoop == null)
                                 {
-                                    ceilingPlan.CropBox = floorPlan.CropBox;
+                                    BoundingBoxXYZ cb = floorPlan.CropBox;
+                                    XYZ p1 = new XYZ(cb.Min.X, cb.Min.Y, 0);
+                                    XYZ p2 = new XYZ(cb.Max.X, cb.Min.Y, 0);
+                                    XYZ p3 = new XYZ(cb.Max.X, cb.Max.Y, 0);
+                                    XYZ p4 = new XYZ(cb.Min.X, cb.Max.Y, 0);
+                                    cropLoop = new CurveLoop();
+                                    cropLoop.Append(Line.CreateBound(p1, p2));
+                                    cropLoop.Append(Line.CreateBound(p2, p3));
+                                    cropLoop.Append(Line.CreateBound(p3, p4));
+                                    cropLoop.Append(Line.CreateBound(p4, p1));
                                 }
+
+                                ceilingPlan.GetCropRegionShapeManager().SetCropShape(cropLoop);
                             }
-                            catch
-                            {
-                                try { ceilingPlan.CropBox = floorPlan.CropBox; } catch { }
-                            }
+                            catch { }
                         }
 
                         // Optionally copy view-owned annotation/detail elements
