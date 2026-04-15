@@ -32,9 +32,8 @@ namespace YourCompany.YourAddin
              * 1) Collect target views using InputResolver, filter out templates.
              *-----------------------------------------------------------------*/
             List<View> allViews = InputResolver.ResolveViews(uiDoc);
-            HashSet<View> targetViews = allViews
-                .Where(v => !v.IsTemplate)
-                .ToHashSet();
+            HashSet<View> targetViews = new HashSet<View>(allViews
+                .Where(v => !v.IsTemplate));
 
             if (targetViews.Count == 0)
             {
