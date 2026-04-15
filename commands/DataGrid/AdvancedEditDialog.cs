@@ -15,6 +15,7 @@ namespace RevitCommands
     {
         private readonly List<string> _originalValues;
         private readonly List<Dictionary<string, object>> _dataRows;
+        private readonly string _initialPattern;
 
         private WinForms.TextBox _txtPattern;
         private WinForms.TextBox _txtFind;
@@ -36,12 +37,26 @@ namespace RevitCommands
         public string MathOperationText => _txtMath.Text;
         public bool IsRegexMode => _isRegexMode;
 
+        /// <summary>Returns the transformed values as shown in the Preview panel.</summary>
+        public List<string> GetTransformedValues()
+        {
+            var results = new List<string>();
+            for (int i = 0; i < _originalValues.Count; i++)
+            {
+                string originalValue = _originalValues[i];
+                var dataRow = i < _dataRows.Count ? _dataRows[i] : null;
+                results.Add(TransformValue(originalValue, dataRow));
+            }
+            return results;
+        }
+
         #endregion
 
-        public AdvancedEditDialog(List<string> originalValues, List<Dictionary<string, object>> dataRows = null, string dialogTitle = "Advanced Editor")
+        public AdvancedEditDialog(List<string> originalValues, List<Dictionary<string, object>> dataRows = null, string dialogTitle = "Advanced Editor", string initialPattern = "{}")
         {
             _originalValues = originalValues ?? new List<string>();
             _dataRows = dataRows ?? new List<Dictionary<string, object>>();
+            _initialPattern = initialPattern ?? "{}";
 
             Text = dialogTitle;
             BuildUI();
@@ -103,7 +118,7 @@ namespace RevitCommands
 
             // Pattern (moved to top)
             grid.Controls.Add(MakeLabel("Pattern:"), 0, 0);
-            var patternBorderPanel = MakeBorderedTextBox(out _txtPattern, "{}");
+            var patternBorderPanel = MakeBorderedTextBox(out _txtPattern, _initialPattern);
             grid.Controls.Add(patternBorderPanel, 1, 0);
 
             grid.Controls.Add(MakeHint("Use {} for current value. Use $\"column name\" to reference other columns"), 1, 1);
