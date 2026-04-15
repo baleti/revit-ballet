@@ -7,7 +7,6 @@ using System.Windows.Forms;
 using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using WinFormsTextBox = System.Windows.Forms.TextBox;
 using WinFormsControl = System.Windows.Forms.Control;
 
 using RevitView = Autodesk.Revit.DB.View;
@@ -20,48 +19,38 @@ namespace RevitAddin
     {
         private RadioButton radioWithoutDetailing;
         private RadioButton radioWithDetailing;
-        private WinFormsTextBox txtPrefix;
-        private WinFormsTextBox txtSuffix;
         private Button okButton;
         private Button cancelButton;
 
         public bool WithDetailing { get; private set; } = false;
-        public string Prefix { get; private set; } = "";
-        public string Suffix { get; private set; } = "";
 
         public CeilingPlanOptionsForm()
         {
             Text = "Ceiling Plan from Floor Plan";
             FormBorderStyle = FormBorderStyle.FixedDialog;
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(310, 220);
+            ClientSize = new Size(310, 120);
             MaximizeBox = MinimizeBox = false;
 
             radioWithoutDetailing = new RadioButton
             {
                 Text = "Without Detailing",
-                Left = 20, Top = 20, Width = 270, Checked = true
+                Left = 20, Top = 15, Width = 270, Checked = true
             };
             radioWithDetailing = new RadioButton
             {
                 Text = "With Detailing (copy annotations from source)",
-                Left = 20, Top = 46, Width = 270
+                Left = 20, Top = 41, Width = 270
             };
-
-            var lblPrefix = new Label { Text = "Prefix:", Left = 20, Top = 90, Width = 55, TextAlign = ContentAlignment.MiddleLeft };
-            txtPrefix = new WinFormsTextBox { Left = 80, Top = 87, Width = 210 };
-
-            var lblSuffix = new Label { Text = "Suffix:", Left = 20, Top = 122, Width = 55, TextAlign = ContentAlignment.MiddleLeft };
-            txtSuffix = new WinFormsTextBox { Left = 80, Top = 119, Width = 210 };
 
             okButton = new Button
             {
-                Text = "OK", Left = 70, Top = 170, Width = 70,
+                Text = "OK", Left = 70, Top = 78, Width = 70,
                 DialogResult = DialogResult.OK
             };
             cancelButton = new Button
             {
-                Text = "Cancel", Left = 160, Top = 170, Width = 70,
+                Text = "Cancel", Left = 160, Top = 78, Width = 70,
                 DialogResult = DialogResult.Cancel
             };
 
@@ -71,8 +60,6 @@ namespace RevitAddin
             Controls.AddRange(new WinFormsControl[]
             {
                 radioWithoutDetailing, radioWithDetailing,
-                lblPrefix, txtPrefix,
-                lblSuffix, txtSuffix,
                 okButton, cancelButton
             });
         }
@@ -80,11 +67,8 @@ namespace RevitAddin
         protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
         {
             base.OnClosing(e);
-            if (DialogResult != DialogResult.OK) return;
-
-            WithDetailing = radioWithDetailing.Checked;
-            Prefix = txtPrefix.Text;
-            Suffix = txtSuffix.Text;
+            if (DialogResult == DialogResult.OK)
+                WithDetailing = radioWithDetailing.Checked;
         }
     }
 
@@ -148,16 +132,25 @@ namespace RevitAddin
                 return Result.Cancelled;
             }
 
-            // Show options dialog
+            // Step 1: detailing options
             bool withDetailing;
-            string prefix, suffix;
             using (var form = new CeilingPlanOptionsForm())
             {
                 if (form.ShowDialog() != DialogResult.OK)
                     return Result.Cancelled;
                 withDetailing = form.WithDetailing;
-                prefix = form.Prefix;
-                suffix = form.Suffix;
+            }
+
+            // Step 2: rename dialog — default pattern appends timestamp + " - Ceiling Plan"
+            string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+            string initialPattern = "{}_" + timestamp + " - Ceiling Plan";
+            var sourceNames = floorPlanViews.Select(v => v.Name.Trim('{', '}')).ToList();
+            List<string> newNames;
+            using (var renameDialog = new RevitCommands.AdvancedEditDialog(sourceNames, null, "Name Ceiling Plans", initialPattern))
+            {
+                if (renameDialog.ShowDialog() != DialogResult.OK)
+                    return Result.Cancelled;
+                newNames = renameDialog.GetTransformedValues();
             }
 
             // Snapshot of existing view names for uniqueness checks
@@ -173,17 +166,26 @@ namespace RevitAddin
                 trans.Start();
                 try
                 {
-                    foreach (var floorPlan in floorPlanViews)
+                    for (int i = 0; i < floorPlanViews.Count; i++)
                     {
+                        var floorPlan = floorPlanViews[i];
+
                         // Create the ceiling plan on the same level
                         ViewPlan ceilingPlan = ViewPlan.Create(doc, ceilingPlanFamilyType.Id, floorPlan.GenLevel.Id);
 
-                        // Name it
-                        string baseName = floorPlan.Name.Trim('{', '}');
-                        string newName = BuildName(baseName, prefix, suffix);
-                        newName = EnsureUniqueName(newName, existingNames);
+                        // Name it (use rename-dialog result, ensure unique)
+                        string newName = EnsureUniqueName(newNames[i], existingNames);
                         existingNames.Add(newName);
                         ceilingPlan.Name = newName;
+
+                        // Copy view template (carries scale, visibility, etc.)
+                        if (floorPlan.ViewTemplateId != ElementId.InvalidElementId)
+                        {
+                            try { ceilingPlan.ViewTemplateId = floorPlan.ViewTemplateId; } catch { }
+                        }
+
+                        // Copy scale — works when no template controls it, harmless otherwise
+                        try { ceilingPlan.Scale = floorPlan.Scale; } catch { }
 
                         // Copy crop region
                         if (floorPlan.CropBoxActive)
@@ -276,15 +278,6 @@ namespace RevitAddin
                 }
                 catch { }
             }
-        }
-
-        private static string BuildName(string baseName, string prefix, string suffix)
-        {
-            bool hasPrefix = !string.IsNullOrEmpty(prefix);
-            bool hasSuffix = !string.IsNullOrEmpty(suffix);
-            if (!hasPrefix && !hasSuffix)
-                return baseName + " - Ceiling Plan";
-            return (hasPrefix ? prefix : "") + baseName + (hasSuffix ? suffix : "");
         }
 
         private static string EnsureUniqueName(string name, HashSet<string> existingNames)
