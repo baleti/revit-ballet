@@ -191,42 +191,22 @@ namespace RevitAddin
                         try { ceilingPlan.DetailLevel = floorPlan.DetailLevel; } catch { }
                         try { ceilingPlan.DisplayStyle = floorPlan.DisplayStyle; } catch { }
 
-                        // Copy crop orientation + crop region.
-                        //
-                        // The floor plan's CropBox.Transform.BasisX/BasisY encode the view's
-                        // rotation (e.g. "by callout" views are rotated relative to project north).
-                        // We copy that orientation to the ceiling plan, only flipping BasisZ
-                        // because ceiling plans look up (+Z) while floor plans look down (-Z).
-                        //
-                        // Setting CropBox with the copied transform also handles the rectangular
-                        // crop bounds directly (same Min/Max in the now-matching local frame).
-                        // For non-rectangular shapes we then run SetCropShape, re-expressing
-                        // points through world space in case Revit adjusted the stored transform.
+                        // Copy crop region.
+                        // SetCropShape expects points in the TARGET view's local coordinate system.
+                        // Floor and ceiling plans have different local frames (CropBox.Transform
+                        // BasisX/BasisY differ), so re-express every point through world space:
+                        //   floor-local → world → ceiling-local
                         if (floorPlan.CropBoxActive)
                         {
+                            ceilingPlan.CropBoxActive = true;
                             try
                             {
-                                BoundingBoxXYZ floorCB = floorPlan.CropBox;
-                                Transform floorT = floorCB.Transform;
+                                Transform floorToWorld = floorPlan.CropBox.Transform;
+                                Transform worldToCeil  = ceilingPlan.CropBox.Transform.Inverse;
 
-                                // Build ceiling transform: same XY rotation, Z flipped
-                                Transform ceilT = Transform.CreateTranslation(XYZ.Zero);
-                                ceilT.BasisX  = floorT.BasisX;
-                                ceilT.BasisY  = floorT.BasisY;
-                                ceilT.BasisZ  = floorT.BasisZ.Negate();
-                                ceilT.Origin  = floorT.Origin;
+                                CurveLoop cropLoop = null;
 
-                                BoundingBoxXYZ ceilCB = new BoundingBoxXYZ();
-                                ceilCB.Transform = ceilT;
-                                ceilCB.Min = floorCB.Min;
-                                ceilCB.Max = floorCB.Max;
-
-                                ceilingPlan.CropBox = ceilCB;
-                                ceilingPlan.CropBoxActive = true;
-
-                                // Non-rectangular crop shape: re-express points
-                                // floor-local → world → ceiling-local (using the stored
-                                // transforms so Revit-adjusted values are respected)
+                                // Prefer the actual (possibly non-rectangular) crop shape
                                 try
                                 {
                                     var sm = floorPlan.GetCropRegionShapeManager();
@@ -235,31 +215,54 @@ namespace RevitAddin
                                         var srcLoop = sm.GetCropShape().FirstOrDefault();
                                         if (srcLoop != null)
                                         {
-                                            Transform f2w = floorPlan.CropBox.Transform;
-                                            Transform w2c = ceilingPlan.CropBox.Transform.Inverse;
-
                                             var srcPts = srcLoop
                                                 .Select(c => c.GetEndPoint(0))
                                                 .ToList();
                                             var dstCurves = new List<Curve>();
                                             for (int j = 0; j < srcPts.Count; j++)
                                             {
-                                                XYZ a  = srcPts[j];
-                                                XYZ b  = srcPts[(j + 1) % srcPts.Count];
-                                                XYZ wa = f2w.OfPoint(new XYZ(a.X, a.Y, 0));
-                                                XYZ wb = f2w.OfPoint(new XYZ(b.X, b.Y, 0));
-                                                XYZ ca = w2c.OfPoint(new XYZ(wa.X, wa.Y, 0));
-                                                XYZ cb2 = w2c.OfPoint(new XYZ(wb.X, wb.Y, 0));
+                                                XYZ a   = srcPts[j];
+                                                XYZ b   = srcPts[(j + 1) % srcPts.Count];
+                                                XYZ wa  = floorToWorld.OfPoint(new XYZ(a.X, a.Y, 0));
+                                                XYZ wb  = floorToWorld.OfPoint(new XYZ(b.X, b.Y, 0));
+                                                XYZ ca  = worldToCeil.OfPoint(new XYZ(wa.X, wa.Y, 0));
+                                                XYZ cb2 = worldToCeil.OfPoint(new XYZ(wb.X, wb.Y, 0));
                                                 dstCurves.Add(Line.CreateBound(
                                                     new XYZ(ca.X, ca.Y, 0),
                                                     new XYZ(cb2.X, cb2.Y, 0)));
                                             }
-                                            ceilingPlan.GetCropRegionShapeManager()
-                                                .SetCropShape(CurveLoop.Create(dstCurves));
+                                            cropLoop = CurveLoop.Create(dstCurves);
                                         }
                                     }
                                 }
                                 catch (Autodesk.Revit.Exceptions.InvalidOperationException) { }
+
+                                // Fall back to rectangular loop from CropBox corners
+                                if (cropLoop == null)
+                                {
+                                    BoundingBoxXYZ cb = floorPlan.CropBox;
+                                    XYZ[] floorLocal = {
+                                        new XYZ(cb.Min.X, cb.Min.Y, 0),
+                                        new XYZ(cb.Max.X, cb.Min.Y, 0),
+                                        new XYZ(cb.Max.X, cb.Max.Y, 0),
+                                        new XYZ(cb.Min.X, cb.Max.Y, 0)
+                                    };
+                                    cropLoop = new CurveLoop();
+                                    for (int j = 0; j < 4; j++)
+                                    {
+                                        XYZ a   = floorLocal[j];
+                                        XYZ b   = floorLocal[(j + 1) % 4];
+                                        XYZ wa  = floorToWorld.OfPoint(a);
+                                        XYZ wb  = floorToWorld.OfPoint(b);
+                                        XYZ ca  = worldToCeil.OfPoint(new XYZ(wa.X, wa.Y, 0));
+                                        XYZ cb2 = worldToCeil.OfPoint(new XYZ(wb.X, wb.Y, 0));
+                                        cropLoop.Append(Line.CreateBound(
+                                            new XYZ(ca.X, ca.Y, 0),
+                                            new XYZ(cb2.X, cb2.Y, 0)));
+                                    }
+                                }
+
+                                ceilingPlan.GetCropRegionShapeManager().SetCropShape(cropLoop);
                             }
                             catch { }
                         }
