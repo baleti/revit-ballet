@@ -191,6 +191,36 @@ namespace RevitAddin
                         try { ceilingPlan.DetailLevel = floorPlan.DetailLevel; } catch { }
                         try { ceilingPlan.DisplayStyle = floorPlan.DisplayStyle; } catch { }
 
+                        // Match source view rotation.
+                        // In Revit UI, "rotate crop region" rotates the view — the API
+                        // equivalent is RotateElement on the view element itself.
+                        // The floor plan's CropBox.Transform.BasisX encodes the rotation:
+                        //   angle = atan2(BasisX.Y, BasisX.X)
+                        // We rotate around a Z-axis through the crop centre so the
+                        // ceiling plan ends up oriented the same way as the floor plan.
+                        // SetCropShape below then positions the crop correctly in that
+                        // rotated coordinate system via the world-space transform.
+                        try
+                        {
+                            Transform floorT = floorPlan.CropBox.Transform;
+                            double rotAngle = Math.Atan2(floorT.BasisX.Y, floorT.BasisX.X);
+                            if (Math.Abs(rotAngle) > 1e-9)
+                            {
+                                BoundingBoxXYZ floorCB = floorPlan.CropBox;
+                                XYZ localCentre = new XYZ(
+                                    (floorCB.Min.X + floorCB.Max.X) / 2.0,
+                                    (floorCB.Min.Y + floorCB.Max.Y) / 2.0,
+                                    0);
+                                XYZ worldCentre = floorT.OfPoint(localCentre);
+                                Line rotAxis = Line.CreateUnbound(
+                                    new XYZ(worldCentre.X, worldCentre.Y, 0),
+                                    XYZ.BasisZ);
+                                ElementTransformUtils.RotateElement(
+                                    doc, ceilingPlan.Id, rotAxis, rotAngle);
+                            }
+                        }
+                        catch { }
+
                         // Copy crop region.
                         // SetCropShape expects points in the TARGET view's local coordinate system.
                         // Floor and ceiling plans have different local frames (CropBox.Transform
