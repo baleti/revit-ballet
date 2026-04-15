@@ -187,39 +187,75 @@ namespace RevitAddin
                         // Copy scale — works when no template controls it, harmless otherwise
                         try { ceilingPlan.Scale = floorPlan.Scale; } catch { }
 
-                        // Copy crop region — always via SetCropShape with a CurveLoop so the
-                        // shape maps correctly into the ceiling plan coordinate system.
-                        // (Directly copying CropBox fails because floor/ceiling plans have
-                        // different view coordinate frames.)
+                        // Copy crop region.
+                        // SetCropShape expects points in the TARGET view's local coordinate system.
+                        // Floor and ceiling plans have different local frames (their CropBox.Transform
+                        // BasisX/BasisY differ), so we must re-express every point through world space:
+                        //   floor-local → world → ceiling-local
                         if (floorPlan.CropBoxActive)
                         {
                             ceilingPlan.CropBoxActive = true;
                             try
                             {
+                                Transform floorToWorld = floorPlan.CropBox.Transform;
+                                Transform worldToCeil  = ceilingPlan.CropBox.Transform.Inverse;
+
                                 CurveLoop cropLoop = null;
 
                                 // Prefer the actual (possibly non-rectangular) crop shape
                                 try
                                 {
-                                    var sourceManager = floorPlan.GetCropRegionShapeManager();
-                                    if (sourceManager.ShapeSet)
-                                        cropLoop = sourceManager.GetCropShape().FirstOrDefault();
+                                    var sm = floorPlan.GetCropRegionShapeManager();
+                                    if (sm.ShapeSet)
+                                    {
+                                        var srcLoop = sm.GetCropShape().FirstOrDefault();
+                                        if (srcLoop != null)
+                                        {
+                                            var srcPts = srcLoop
+                                                .Select(c => c.GetEndPoint(0))
+                                                .ToList();
+                                            var dstCurves = new List<Curve>();
+                                            for (int j = 0; j < srcPts.Count; j++)
+                                            {
+                                                XYZ a = srcPts[j];
+                                                XYZ b = srcPts[(j + 1) % srcPts.Count];
+                                                XYZ wa = floorToWorld.OfPoint(new XYZ(a.X, a.Y, 0));
+                                                XYZ wb = floorToWorld.OfPoint(new XYZ(b.X, b.Y, 0));
+                                                XYZ ca = worldToCeil.OfPoint(new XYZ(wa.X, wa.Y, 0));
+                                                XYZ cb2 = worldToCeil.OfPoint(new XYZ(wb.X, wb.Y, 0));
+                                                dstCurves.Add(Line.CreateBound(
+                                                    new XYZ(ca.X, ca.Y, 0),
+                                                    new XYZ(cb2.X, cb2.Y, 0)));
+                                            }
+                                            cropLoop = CurveLoop.Create(dstCurves);
+                                        }
+                                    }
                                 }
                                 catch (Autodesk.Revit.Exceptions.InvalidOperationException) { }
 
-                                // Fall back to a rectangular loop built from CropBox corners (Z=0)
+                                // Fall back to a rectangular loop from CropBox corners
                                 if (cropLoop == null)
                                 {
                                     BoundingBoxXYZ cb = floorPlan.CropBox;
-                                    XYZ p1 = new XYZ(cb.Min.X, cb.Min.Y, 0);
-                                    XYZ p2 = new XYZ(cb.Max.X, cb.Min.Y, 0);
-                                    XYZ p3 = new XYZ(cb.Max.X, cb.Max.Y, 0);
-                                    XYZ p4 = new XYZ(cb.Min.X, cb.Max.Y, 0);
+                                    XYZ[] floorLocal = {
+                                        new XYZ(cb.Min.X, cb.Min.Y, 0),
+                                        new XYZ(cb.Max.X, cb.Min.Y, 0),
+                                        new XYZ(cb.Max.X, cb.Max.Y, 0),
+                                        new XYZ(cb.Min.X, cb.Max.Y, 0)
+                                    };
                                     cropLoop = new CurveLoop();
-                                    cropLoop.Append(Line.CreateBound(p1, p2));
-                                    cropLoop.Append(Line.CreateBound(p2, p3));
-                                    cropLoop.Append(Line.CreateBound(p3, p4));
-                                    cropLoop.Append(Line.CreateBound(p4, p1));
+                                    for (int j = 0; j < 4; j++)
+                                    {
+                                        XYZ a = floorLocal[j];
+                                        XYZ b = floorLocal[(j + 1) % 4];
+                                        XYZ wa = floorToWorld.OfPoint(a);
+                                        XYZ wb = floorToWorld.OfPoint(b);
+                                        XYZ ca = worldToCeil.OfPoint(new XYZ(wa.X, wa.Y, 0));
+                                        XYZ cb2 = worldToCeil.OfPoint(new XYZ(wb.X, wb.Y, 0));
+                                        cropLoop.Append(Line.CreateBound(
+                                            new XYZ(ca.X, ca.Y, 0),
+                                            new XYZ(cb2.X, cb2.Y, 0)));
+                                    }
                                 }
 
                                 ceilingPlan.GetCropRegionShapeManager().SetCropShape(cropLoop);
