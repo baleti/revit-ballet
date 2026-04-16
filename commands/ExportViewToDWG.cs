@@ -2,6 +2,7 @@ using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using RevitBallet.Commands;
+using RevitAddin;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -21,30 +22,19 @@ public class ExportViewToDWG : IExternalCommand
     {
         var uidoc = commandData.Application.ActiveUIDocument;
         var doc = uidoc.Document;
-        
-        // Get current selection using the custom method
-        var selectedIds = uidoc.GetSelectionIds();
-        if (!selectedIds.Any())
-        {
-            Autodesk.Revit.UI.TaskDialog.Show("No Selection", "Please select sheets or views to export.");
-            return Result.Cancelled;
-        }
-        
-        // Filter for sheets and views
-        var viewsAndSheets = new List<Autodesk.Revit.DB.View>();
-        foreach (var id in selectedIds)
-        {
-            var elem = doc.GetElement(id);
-            if (elem is Autodesk.Revit.DB.View view && view.CanBePrinted && 
-                !(view.ViewType == ViewType.Internal || view.IsTemplate))
-            {
-                viewsAndSheets.Add(view);
-            }
-        }
-        
+
+        // Use InputResolver to get views from selection or active view
+        var allViews = InputResolver.ResolveViews(uidoc);
+
+        // Filter for exportable views only (CanBePrinted, not internal, not template)
+        var viewsAndSheets = allViews
+            .Where(v => v.CanBePrinted &&
+                       !(v.ViewType == ViewType.Internal || v.IsTemplate))
+            .ToList();
+
         if (!viewsAndSheets.Any())
         {
-            Autodesk.Revit.UI.TaskDialog.Show("Invalid Selection", "No exportable views or sheets were selected.");
+            Autodesk.Revit.UI.TaskDialog.Show("Invalid Selection", "No exportable views available.");
             return Result.Cancelled;
         }
         
