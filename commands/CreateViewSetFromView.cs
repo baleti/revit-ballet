@@ -1,6 +1,7 @@
 using Autodesk.Revit.UI;
 using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
+using RevitAddin;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -15,30 +16,18 @@ public class CreateViewSetFromView : IExternalCommand
         UIApplication uiapp = commandData.Application;
         UIDocument uidoc = uiapp.ActiveUIDocument;
         Document doc = uidoc.Document;
-        
-        // 1️⃣ Get currently selected elements using SelectionModeManager
-        ICollection<ElementId> selectedIds = uidoc.GetSelectionIds();
-        
-        if (selectedIds == null || selectedIds.Count == 0)
-        {
-            TaskDialog.Show("Create View Set", "No elements are currently selected.");
-            return Result.Cancelled;
-        }
-        
-        // 2️⃣ Filter selection to get only views (including sheets)
-        List<View> selectedViews = new List<View>();
-        foreach (ElementId id in selectedIds)
-        {
-            Element elem = doc.GetElement(id);
-            if (elem is View view && !view.IsTemplate)
-            {
-                selectedViews.Add(view);
-            }
-        }
-        
+
+        // 1️⃣ Use InputResolver to get views from selection or active view
+        List<View> allViews = InputResolver.ResolveViews(uidoc);
+
+        // 2️⃣ Filter to non-template views only
+        List<View> selectedViews = allViews
+            .Where(v => !v.IsTemplate)
+            .ToList();
+
         if (selectedViews.Count == 0)
         {
-            TaskDialog.Show("Create View Set", "No views or sheets found in the current selection.");
+            TaskDialog.Show("Create View Set", "No valid views available.");
             return Result.Cancelled;
         }
         
