@@ -83,7 +83,7 @@
     <!-- Used for modern folder picker dialog in export commands -->
     <PackageReference Include="Microsoft.WindowsAPICodePack-Shell" Version="1.1.0" />
     <!-- Used by OpenRvtFilesInNewSessions.cs for reading OLE Structured Storage (.rvt files) -->
-    <PackageReference Include="OpenMcdf" Version="2.3.2" />
+    <PackageReference Include="OpenMcdf" Version="2.4.0" />
   </ItemGroup>
 
   <!-- System.Net.Http for .NET Framework (needed by SelectByCategoriesInNetwork.cs) -->
