@@ -75,8 +75,10 @@ namespace RevitBallet.Commands
         private const string NETWORK_FOLDER = "network";
         private const string DOCUMENTS_FILE = "documents";
         private const string TOKEN_FILE = "token";
+        private const string CONFIG_FILE = "config.toml";
 
         private TcpListener listener;
+        private IPAddress listenAddress = IPAddress.Loopback;
         private CancellationTokenSource cancellationTokenSource;
         private bool isRunning = false;
         private int serverPort;
@@ -145,15 +147,20 @@ namespace RevitBallet.Commands
             // Read or generate shared auth token (stored in network/token file)
             GenerateOrReadSharedToken();
 
+            // Read network configuration
+            var networkConfig = ReadNetworkConfig();
+            if (!IPAddress.TryParse(networkConfig.ListeningInterface, out listenAddress))
+                listenAddress = IPAddress.Loopback;
+
             // Find available port
-            serverPort = FindAvailablePort(PORT_START, PORT_END);
+            serverPort = FindAvailablePort(networkConfig.PortRangeStart, networkConfig.PortRangeStart + 100);
             if (serverPort == -1)
             {
-                throw new InvalidOperationException($"No available ports found between {PORT_START} and {PORT_END}");
+                throw new InvalidOperationException($"No available ports found starting at {networkConfig.PortRangeStart}");
             }
 
             cancellationTokenSource = new CancellationTokenSource();
-            listener = new TcpListener(IPAddress.Loopback, serverPort);
+            listener = new TcpListener(listenAddress, serverPort);
             listener.Start();
 
             // Create ExternalEvent handlers (must be done during API execution)
@@ -182,7 +189,7 @@ namespace RevitBallet.Commands
 #else
             var tlsVersions = "TLS 1.2";
 #endif
-            LogToRevit($"[SERVER] Started on port {serverPort} (Session: {sessionId.Substring(0, 8)})");
+            LogToRevit($"[SERVER] Started on {listenAddress}:{serverPort} (Session: {sessionId})");
             LogToRevit($"[SERVER] TLS Protocols: {tlsVersions}");
             LogToRevit($"[SERVER] .NET Version: {Environment.Version}");
         }
@@ -251,7 +258,7 @@ namespace RevitBallet.Commands
             {
                 try
                 {
-                    var testListener = new TcpListener(IPAddress.Loopback, port);
+                    var testListener = new TcpListener(listenAddress, port);
                     testListener.Start();
                     testListener.Stop();
                     return port;
@@ -345,6 +352,7 @@ namespace RevitBallet.Commands
                             SessionId = sessionId,
                             Port = serverPort,
                             Hostname = Environment.MachineName,
+                            ListenAddress = listenAddress.ToString(),
                             ProcessId = System.Diagnostics.Process.GetCurrentProcess().Id,
                             RegisteredAt = existingEntry?.RegisteredAt ?? now,
                             LastHeartbeat = now,
@@ -382,6 +390,7 @@ namespace RevitBallet.Commands
                     SessionId = sessionId,
                     Port = serverPort,
                     Hostname = Environment.MachineName,
+                    ListenAddress = listenAddress.ToString(),
                     ProcessId = System.Diagnostics.Process.GetCurrentProcess().Id,
                     RegisteredAt = now,
                     LastHeartbeat = now
@@ -439,6 +448,35 @@ namespace RevitBallet.Commands
             return Path.Combine(GetNetworkFolderPath(), TOKEN_FILE);
         }
 
+        private class NetworkConfig
+        {
+            public string ListeningInterface { get; set; } = "127.0.0.1";
+            public int PortRangeStart { get; set; } = PORT_START;
+        }
+
+        private NetworkConfig ReadNetworkConfig()
+        {
+            var config = new NetworkConfig();
+            var configPath = Path.Combine(GetNetworkFolderPath(), CONFIG_FILE);
+            if (!File.Exists(configPath)) return config;
+
+            try
+            {
+                foreach (var raw in File.ReadAllLines(configPath))
+                {
+                    var line = raw.Trim();
+                    if (line.StartsWith("#") || !line.Contains("=")) continue;
+                    var eq = line.IndexOf('=');
+                    var key = line.Substring(0, eq).Trim();
+                    var val = line.Substring(eq + 1).Trim().Trim('"');
+                    if (key == "listening_interface") config.ListeningInterface = val;
+                    else if (key == "port_range_start" && int.TryParse(val, out var p)) config.PortRangeStart = p;
+                }
+            }
+            catch { }
+
+            return config;
+        }
 
         public static List<DocumentEntry> GetActiveDocuments()
         {
