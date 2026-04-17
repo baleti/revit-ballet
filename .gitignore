@@ -47,5 +47,3 @@ deploy
 .claude/
 .worktrees/
 
-# using AGENTS.md and symlinking CLAUDE.md on-demand
-CLAUDE.md
