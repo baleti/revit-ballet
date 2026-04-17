@@ -21,6 +21,7 @@ namespace RevitBallet.Commands
         public string SessionId { get; set; }
         public int Port { get; set; }
         public string Hostname { get; set; }
+        public string ListenAddress { get; set; }
         public int ProcessId { get; set; }
         public DateTime RegisteredAt { get; set; }
         public DateTime LastHeartbeat { get; set; }
@@ -69,6 +70,7 @@ namespace RevitBallet.Commands
                         document_title TEXT NOT NULL,
                         port INTEGER NOT NULL,
                         hostname TEXT NOT NULL,
+                        listen_address TEXT NOT NULL DEFAULT '127.0.0.1',
                         process_id INTEGER NOT NULL,
                         registered_at TEXT NOT NULL,
                         last_heartbeat TEXT NOT NULL,
@@ -87,6 +89,17 @@ namespace RevitBallet.Commands
                     command.CommandText = createTableSql;
                     command.ExecuteNonQuery();
                 }
+
+                // Migration: add listen_address to existing databases that predate this column
+                try
+                {
+                    using (var command = connection.CreateCommand())
+                    {
+                        command.CommandText = "ALTER TABLE documents ADD COLUMN listen_address TEXT NOT NULL DEFAULT '127.0.0.1';";
+                        command.ExecuteNonQuery();
+                    }
+                }
+                catch { }
             }
         }
 
@@ -113,10 +126,10 @@ namespace RevitBallet.Commands
                     {
                         command.CommandText = @"
                             INSERT OR REPLACE INTO documents
-                            (session_id, document_path, document_title, port, hostname, process_id,
+                            (session_id, document_path, document_title, port, hostname, listen_address, process_id,
                              registered_at, last_heartbeat, last_sync, last_transaction)
                             VALUES
-                            (@sessionId, @documentPath, @documentTitle, @port, @hostname, @processId,
+                            (@sessionId, @documentPath, @documentTitle, @port, @hostname, @listenAddress, @processId,
                              @registeredAt, @lastHeartbeat, @lastSync, @lastTransaction)
                         ";
 
@@ -125,6 +138,7 @@ namespace RevitBallet.Commands
                         AddParameter(command, "@documentTitle", entry.DocumentTitle ?? "");
                         AddParameter(command, "@port", entry.Port);
                         AddParameter(command, "@hostname", entry.Hostname ?? "");
+                        AddParameter(command, "@listenAddress", entry.ListenAddress ?? "127.0.0.1");
                         AddParameter(command, "@processId", entry.ProcessId);
                         AddParameter(command, "@registeredAt", entry.RegisteredAt.ToString("o"));
                         AddParameter(command, "@lastHeartbeat", entry.LastHeartbeat.ToString("o"));
@@ -167,10 +181,10 @@ namespace RevitBallet.Commands
                             {
                                 command.CommandText = @"
                                     INSERT OR REPLACE INTO documents
-                                    (session_id, document_path, document_title, port, hostname, process_id,
+                                    (session_id, document_path, document_title, port, hostname, listen_address, process_id,
                                      registered_at, last_heartbeat, last_sync, last_transaction)
                                     VALUES
-                                    (@sessionId, @documentPath, @documentTitle, @port, @hostname, @processId,
+                                    (@sessionId, @documentPath, @documentTitle, @port, @hostname, @listenAddress, @processId,
                                      @registeredAt, @lastHeartbeat, @lastSync, @lastTransaction)
                                 ";
 
@@ -179,6 +193,7 @@ namespace RevitBallet.Commands
                                 AddParameter(command, "@documentTitle", entry.DocumentTitle ?? "");
                                 AddParameter(command, "@port", entry.Port);
                                 AddParameter(command, "@hostname", entry.Hostname ?? "");
+                                AddParameter(command, "@listenAddress", entry.ListenAddress ?? "127.0.0.1");
                                 AddParameter(command, "@processId", entry.ProcessId);
                                 AddParameter(command, "@registeredAt", entry.RegisteredAt.ToString("o"));
                                 AddParameter(command, "@lastHeartbeat", entry.LastHeartbeat.ToString("o"));
@@ -308,6 +323,7 @@ namespace RevitBallet.Commands
                                     DocumentTitle = reader["document_title"].ToString(),
                                     Port = Convert.ToInt32(reader["port"]),
                                     Hostname = reader["hostname"].ToString(),
+                                    ListenAddress = reader["listen_address"].ToString(),
                                     ProcessId = Convert.ToInt32(reader["process_id"]),
                                     RegisteredAt = DateTime.Parse(reader["registered_at"].ToString()),
                                     LastHeartbeat = DateTime.Parse(reader["last_heartbeat"].ToString()),
@@ -368,6 +384,7 @@ namespace RevitBallet.Commands
                                     DocumentTitle = reader["document_title"].ToString(),
                                     Port = Convert.ToInt32(reader["port"]),
                                     Hostname = reader["hostname"].ToString(),
+                                    ListenAddress = reader["listen_address"].ToString(),
                                     ProcessId = Convert.ToInt32(reader["process_id"]),
                                     RegisteredAt = DateTime.Parse(reader["registered_at"].ToString()),
                                     LastHeartbeat = DateTime.Parse(reader["last_heartbeat"].ToString()),
