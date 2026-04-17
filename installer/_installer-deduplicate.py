@@ -102,34 +102,11 @@ def main():
 
     found_years = set(d.name for d in year_dirs)
     print(f"Found {len(year_dirs)} year directories: {', '.join(d.name for d in year_dirs)}")
-    print()
 
-    # Check for missing year directories
     missing_year_dirs = sorted(set(EXPECTED_YEARS) - found_years)
     if missing_year_dirs:
-        print_error()
-        print_error("=" * 65)
-        print_error("ERROR: Missing build directories for some Revit years!")
-        print_error("=" * 65)
-        print_error()
-        print_error(f"Expected years: {', '.join(EXPECTED_YEARS)}")
-        print_error(f"Found years:    {', '.join(sorted(found_years))}")
-        print_error(f"Missing years:  {', '.join(missing_year_dirs)}")
-        print_error()
-        print_error("You need to build the commands project for all Revit versions.")
-        print_error("Run these commands from the repository root:")
-        print_error()
-        for year in missing_year_dirs:
-            print_error(f"  dotnet build commands/revit-ballet.csproj -p:RevitYear={year}")
-        print_error()
-        print_error("Or build all years at once:")
-        print_error("  for year in 2017 2018 2019 2020 2021 2022 2023 2024 2025 2026; do")
-        print_error("    dotnet build commands/revit-ballet.csproj -p:RevitYear=$year")
-        print_error("  done")
-        print_error()
-        print_error("After rebuilding, run this script again.")
-        print_error("=" * 65)
-        return 1
+        print(f"Note: {len(missing_year_dirs)} year(s) not built: {', '.join(missing_year_dirs)} (installer will include only built years)")
+    print()
 
     # Validate that all year directories have the required revit-ballet.dll
     print("Validating year directories...")
