@@ -1056,15 +1056,16 @@ public partial class CustomGUIs
         {
             // Get element from data row for validation
             RevitDB.Element elem = null;
-            if (_currentUIDoc != null && dataRow != null)
+            var currentUIDocTyped = CurrentUIDoc as Autodesk.Revit.UI.UIDocument;
+            if (currentUIDocTyped != null && dataRow != null)
             {
-                elem = GetElementFromEntry(CurrentUIDoc.Document, dataRow);
+                elem = GetElementFromEntry(currentUIDocTyped.Document, dataRow);
             }
 
             if (elem != null)
             {
                 // Run handler's validator
-                var validationResult = handler.Validate(elem, CurrentUIDoc.Document, originalValue, newValue);
+                var validationResult = handler.Validate(elem, currentUIDocTyped.Document, originalValue, newValue);
 
                 if (!validationResult.IsValid)
                 {

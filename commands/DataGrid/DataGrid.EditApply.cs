@@ -10,9 +10,10 @@ public partial class CustomGUIs
     // Using object type to avoid JIT loading RevitAPIUI.dll when not needed
     private static object _currentUIDoc = null;
 
-    // Helper property to safely cast to UIDocument when needed
-    // This triggers RevitAPIUI type loading only when actually accessed
-    private static UIDocument CurrentUIDoc => _currentUIDoc as UIDocument;
+    // Returns object to avoid UIDocument in the method signature — signatures are resolved at class load
+    // time, so a UIDocument return type would force RevitAPIUI to load even in standalone contexts.
+    // Callers cast inside their method bodies, which are JIT-resolved lazily.
+    private static object CurrentUIDoc => _currentUIDoc;
 
     // Track if we're running in Revit context (has API access) vs standalone
     private static bool _hasRevitApiAccess = true; // Default to true for backward compatibility
@@ -165,7 +166,7 @@ public partial class CustomGUIs
             else
             {
                 // Fall back to active document
-                entryDoc = CurrentUIDoc.Document;
+                entryDoc = ((Autodesk.Revit.UI.UIDocument)CurrentUIDoc).Document;
             }
 
             // Group by document
@@ -183,7 +184,7 @@ public partial class CustomGUIs
 
         // Process edits for each document separately with its own transaction
 
-        Document activeDoc = CurrentUIDoc.Document;
+        Document activeDoc = ((Autodesk.Revit.UI.UIDocument)CurrentUIDoc).Document;
 
         foreach (var docGroup in entriesByDocument)
         {
@@ -616,14 +617,15 @@ public partial class CustomGUIs
     {
         // AUTOMATIC SYSTEM: Try handler registry first, with fallback to dynamic parameter detection
         ColumnHandlerRegistry.EnsureInitialized();
-        var handler = ColumnHandlerRegistry.GetHandlerWithFallback(columnName, elem, CurrentUIDoc?.Document);
+        var currentUIDOcTyped = CurrentUIDoc as Autodesk.Revit.UI.UIDocument;
+        var handler = ColumnHandlerRegistry.GetHandlerWithFallback(columnName, elem, currentUIDOcTyped?.Document);
 
         if (handler != null && handler.IsEditable && handler.Setter != null)
         {
             try
             {
                 // Use handler to apply edit (includes both explicit and dynamic parameter handlers)
-                bool success = handler.ApplyEdit(elem, CurrentUIDoc.Document, newValue);
+                bool success = handler.ApplyEdit(elem, currentUIDOcTyped.Document, newValue);
                 return success;
             }
             catch (Exception ex)
