@@ -1389,3 +1389,18 @@ rm -rf revit-ballet/.git
 cp -ra revit-ballet-clean/.git revit-ballet
 this removed remaining untracked changes that survived previous incident
 lol, there is some comedic irony in this situation that I may see later
+** April
+*** 18
+**** =18:28= returning after a longer hiatus, had to finish architect exams (part 3)
+it had its moments, but overall disheartening, no realistic strategy to succeed commercially, very defensive (cost-based pricing)
+**** =18:30= changing folder structure and decentralizing repository
+effectively finishing what I started with worktrees
+***** removing deploy and runtime folders
+setting up a testing windows machine where deployments can be uploaded and tested in an isolated environment
+***** each machine will have a separate git repository rather than 
+it still pays off to use worktrees if multiple agents will work at the same time in the same machine
+i won't have to prepand branch names with hostname anymore as it will be self-evident
+  this should prove easier to track
+***** can then move git repo out of %appdata%/revit-ballet folder
+may place it anywhere, for convenience placing them in ~/revit-ballet
+moved runtime files from %appdata%/revit-ballet/runtime to %appdata%/revit-ballet
