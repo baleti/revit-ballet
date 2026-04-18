@@ -275,10 +275,11 @@ public partial class CustomGUIs
             return _selectionSetCache[selectionSetName];
 
         // Return empty set if no UIDocument is available
-        if (_currentUIDoc == null || CurrentUIDoc.Document == null)
+        var currentUIDocTyped = CurrentUIDoc as Autodesk.Revit.UI.UIDocument;
+        if (currentUIDocTyped == null || currentUIDocTyped.Document == null)
             return new HashSet<long>();
 
-        var doc = CurrentUIDoc.Document;
+        var doc = currentUIDocTyped.Document;
         var result = new HashSet<long>();
 
         try
