@@ -78,6 +78,7 @@ namespace InvokeAddinCommandInNetwork
 
         private GlobalHotkey hotkeyAltQ;
         private HotkeySequenceHandler sequenceHandler;
+        private string _detectedRevitVersion;
 
         public MessageOnlyWindow()
         {
@@ -507,7 +508,8 @@ namespace InvokeAddinCommandInNetwork
                 }
 
                 // Load Revit API DLLs
-                // Try loading just RevitAPI.dll first - we may not need RevitAPIUI.dll for DataGrid
+                // RevitAPIUI.dll is intentionally omitted — it requires Revit to be running.
+                // CustomGUIs no longer has UIDocument in any method signature, so it loads with just RevitAPI.dll.
                 string[] requiredDlls = { "RevitAPI.dll" };
 
                 foreach (string dllName in requiredDlls)
@@ -568,13 +570,12 @@ namespace InvokeAddinCommandInNetwork
         /// </summary>
         private string FindRevitInstallation()
         {
-            var versions = new[] { "2024", "2023", "2022", "2021", "2020" };
+            var versions = new[] { "2026", "2025", "2024", "2023", "2022", "2021", "2020" };
 
             foreach (var version in versions)
             {
                 try
                 {
-                    // Try HKEY_LOCAL_MACHINE\SOFTWARE\Autodesk\Revit\{version}
                     using (var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey($@"SOFTWARE\Autodesk\Revit\{version}"))
                     {
                         if (key != null)
@@ -583,6 +584,7 @@ namespace InvokeAddinCommandInNetwork
                             if (!string.IsNullOrEmpty(installLocation) && Directory.Exists(installLocation))
                             {
                                 Program.Log($"Found Revit {version} via registry");
+                                _detectedRevitVersion = version;
                                 return installLocation;
                             }
                         }
@@ -593,11 +595,11 @@ namespace InvokeAddinCommandInNetwork
                     // Try next version
                 }
 
-                // Try default installation path
                 string defaultPath = $@"C:\Program Files\Autodesk\Revit {version}";
                 if (Directory.Exists(defaultPath))
                 {
                     Program.Log($"Found Revit {version} at default path");
+                    _detectedRevitVersion = version;
                     return defaultPath;
                 }
             }
@@ -613,8 +615,11 @@ namespace InvokeAddinCommandInNetwork
         {
             string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
 
-            // Try to find matching Revit version DLL
-            var versions = new[] { "2026", "2025", "2024", "2023", "2022", "2021", "2020" };
+            // Use the same version as the detected Revit installation to avoid loading a .NET 8
+            // DLL (Revit 2025+) into this .NET 4.8 process.
+            var versions = _detectedRevitVersion != null
+                ? new[] { _detectedRevitVersion }
+                : new[] { "2024", "2023", "2022", "2021", "2020" };
 
             foreach (var version in versions)
             {
