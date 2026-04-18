@@ -1,3 +1,30 @@
+* DuplicateViewAndPlaceOnSheet should take currently active sheet if no sheet is selected
+* once you complete CeilingToFloor command try a new command that recreats plans on other floors
+* structure commands in invokeaddincommand differently
+instead of packing everything into command name break into columns
+e.g. instead of ExportViewToPDF -> ExportPDF, Input:View
+* pulling datagrid on room tags doesn't have "contents" column
+you could likely remove FilterTags then (unless it has something else)
+likely you should look into reviewing use of all other Filter* commands
+* add levels to more elements in datagrid
+it would be very useful when listing rooms for example
+* TagElement command (rename to just Tag) doesn't work with elements selected in a link
+not sure if it works with elements in project
+doesn't tag elements, nothing happens (when i have selected room from a alink and expected it to tag them)
+not sure if it's needed though, builtin revit TagAllNotTagged handles it seemeingly pretty well already (both selection and elements in being in link)
+* combine SplitFilledRegions SplitFloors (SplitCeilings - doesn't exist yet) into a single command
+* x y z controids not showing up when revti linked models are selected
+in datagrid
+* consider adding DeleteRoom and DeleteArea command
+selecting rooms/areas and pressing delete doesn't seem to work - they stay in the project somehow
+can only be deleted in a schedule
+* begin using your own shortcuts mechanism
+clashes with revit shortcuts are too annoying
+e.g. slv for selecting links in view
+consider adding some preview like pyrevit does, like a gutter in emacs?
+* caching issue in OpenSheetinDocument
+chaning sheet numbers via datagrid edit mode in for example SelectViews command doesn't updated sheet numbers in OpenSheetInDocument command
+may be a wider cache invalidation issue
 * try AI to assign elements to correct worksets
 sounds like a perfect use for ai, expand context at will (integrate other documents, paraemters, positions, etc.), simple non-geometric changes
 * constraints parameters not showing up in datagrid
