@@ -14,12 +14,12 @@ namespace RevitBalletInstaller
     internal static class Program
     {
         [DllImport("kernel32.dll")]
-        private static extern bool AttachConsole(int dwProcessId);
+        private static extern IntPtr GetConsoleWindow();
 
-        [DllImport("kernel32.dll")]
-        private static extern bool AllocConsole();
+        [DllImport("user32.dll")]
+        private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
-        private const int ATTACH_PARENT_PROCESS = -1;
+        private const int SW_HIDE = 0;
 
         [STAThread]
         static void Main(string[] args)
@@ -34,10 +34,13 @@ namespace RevitBalletInstaller
                                              arg.Equals("-q", StringComparison.OrdinalIgnoreCase) ||
                                              arg.Equals("--quiet", StringComparison.OrdinalIgnoreCase));
 
-            // In quiet mode, attach to parent console to enable stdout/stderr output
-            if (quietMode)
+            // In interactive mode, hide the console window (UI dialogs are used instead).
+            // In quiet/SSH mode the console window is left visible for stdout output.
+            if (!quietMode)
             {
-                AttachConsole(ATTACH_PARENT_PROCESS);
+                var consoleWindow = GetConsoleWindow();
+                if (consoleWindow != IntPtr.Zero)
+                    ShowWindow(consoleWindow, SW_HIDE);
             }
 
             if (isUninstaller)
@@ -112,7 +115,7 @@ namespace RevitBalletInstaller
                 // Deploy keyboard shortcuts (creates file if missing, or adds shortcuts if exists)
                 foreach (var installation in installations)
                 {
-                    DeployKeyboardShortcuts(installation);
+                    DeployKeyboardShortcuts(installation, quietMode);
                 }
 
                 RegisterUninstaller(targetDir);
@@ -976,7 +979,7 @@ namespace RevitBalletInstaller
             }
         }
 
-        private void DeployKeyboardShortcuts(RevitInstallation installation)
+        private void DeployKeyboardShortcuts(RevitInstallation installation, bool quietMode = false)
         {
             try
             {
@@ -1084,8 +1087,11 @@ namespace RevitBalletInstaller
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Failed to deploy keyboard shortcuts for Revit {installation.Year}: {ex.Message}",
-                    "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                if (!quietMode)
+                    MessageBox.Show($"Failed to deploy keyboard shortcuts for Revit {installation.Year}: {ex.Message}",
+                        "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                else
+                    Console.Error.WriteLine($"Warning: failed to deploy keyboard shortcuts for Revit {installation.Year}: {ex.Message}");
             }
         }
 
