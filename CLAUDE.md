@@ -13,10 +13,14 @@ Revit Ballet is a collection of custom commands for Revit. Two main components:
 
 ## Development Environment
 
-**IMPORTANT**: This codebase is co-located with `%APPDATA%/revit-ballet`:
-- The `runtime/` folder in this repository reflects **live usage** of the plugin
-- Examine runtime logs and data to verify code behavior and debug issues
-- **ALL runtime data MUST be stored in `runtime/`** — logs, network data, screenshots, diagnostics
+Runtime data lives on the Windows production machine at `%APPDATA%\revit-ballet\` (not in this repo). Access it via SSH — credentials are stored in agent private memory (not committed here). Key paths on Windows:
+- `network\token` — shared auth token
+- `documents` — live session registry (CSV)
+- `server.log` — server log
+- `screenshots\` — captured screenshots
+- `diagnostics\` — diagnostic files
+
+**ALL runtime data MUST be stored in `%APPDATA%\revit-ballet\`** — logs, network data, screenshots, diagnostics.
 
 ## ⚠️ Git Operations - Protect Uncommitted Work
 
@@ -43,7 +47,7 @@ Repo is accessed via case-insensitive Windows filesystems but git is case-sensit
 
 ### Diagnostic Logging
 
-For non-trivial operations (unit conversion, coordinate transforms, API quirks, perf), write diagnostics to `%appdata%/revit-ballet/runtime/diagnostics/` using `PathHelper.RuntimeDirectory`. Name files `{Operation}_{yyyyMMdd_HHmmss}.txt`. Log timestamps, element IDs, internal units (feet) AND display units, intermediate steps. **NEVER** write diagnostics to temp or document folders.
+For non-trivial operations (unit conversion, coordinate transforms, API quirks, perf), write diagnostics to `%appdata%\revit-ballet\diagnostics\` using `PathHelper.RuntimeDirectory`. Name files `{Operation}_{yyyyMMdd_HHmmss}.txt`. Log timestamps, element IDs, internal units (feet) AND display units, intermediate steps. **NEVER** write diagnostics to temp or document folders.
 
 ## Version Control Practices
 
@@ -68,40 +72,40 @@ Revit Ballet runs a Roslyn compiler-as-a-service so AI agents can execute C# in 
 - Each Revit instance runs its own HTTPS server, auto-started when Revit loads
 - Port range 23717-23817 (first available)
 - Shared 256-bit token across all sessions — first session generates it, others reuse
-- File-based discovery via `%appdata%/revit-ballet/runtime/`:
+- File-based discovery via `%appdata%\revit-ballet\`:
   - `documents` — CSV: `DocumentTitle,DocumentPath,SessionId,Port,Hostname,ProcessId,RegisteredAt,LastHeartbeat,LastSync`
-  - `network/token` — shared auth token
+  - `network\token` — shared auth token
 
 **Endpoints:**
 - `/roslyn` — execute C# scripts in Revit context
-- `/screenshot` — capture Revit window to `runtime/screenshots/`
+- `/screenshot` — capture Revit window to `%appdata%\revit-ballet\screenshots\`
 
-**Implementation:** `commands/RevitBallet.cs` initializes server; background thread marshals to UI via `ExternalEvent`; heartbeat every 30s, 2min dead-session timeout.
+**Implementation:** `commands/RevitBallet.cs` initializes server; background thread marshals to UI via `ExternalEvent`; heartbeat every 30s, 2min dead-session timeout. For server-level hangs, check `server.log` on Windows via SSH.
 
 ## Querying and Testing Revit Sessions
 
-**Canonical pattern — file-based query via helper script:**
+The Roslyn server runs on Windows at `127.0.0.1:PORT`. Access from Linux requires SSH port forwarding (credentials in private agent memory).
+
+**Canonical pattern — SSH tunnel + file-based query:**
 
 ```bash
-# Create helper script once per session
-cat > /tmp/revit-query.sh << 'EOF'
-#!/bin/bash
-TOKEN=$(cat runtime/network/token)
-PORT=$(grep -v '^#' runtime/documents | head -1 | cut -d',' -f4)
-curl -k -s -X POST https://127.0.0.1:$PORT/roslyn \
-  -H "X-Auth-Token: $TOKEN" \
-  --data-binary @"$1" | jq
-EOF
-chmod +x /tmp/revit-query.sh
+# Get token and port from Windows via SSH
+TOKEN=$(ssh daniel@192.168.231.1 -i ~/.ssh/hwo-18 \
+  'powershell -NoProfile -Command "Get-Content $env:APPDATA\revit-ballet\network\token"')
+PORT=$(ssh daniel@192.168.231.1 -i ~/.ssh/hwo-18 \
+  'powershell -NoProfile -Command "(Get-Content $env:APPDATA\revit-ballet\documents | Where-Object { $_ -notmatch \"^#\" } | Select-Object -First 1).Split(\",\")[3]"')
 
-# Write the C# query
+# Tunnel the port
+ssh -f -N -L ${PORT}:127.0.0.1:${PORT} daniel@192.168.231.1 -i ~/.ssh/hwo-18
+
+# Write C# query to a file and run it
 cat > /tmp/my-query.cs << 'EOF'
 var levels = new FilteredElementCollector(Doc).OfClass(typeof(Level)).Cast<Level>();
 Console.WriteLine("Total Levels: " + levels.Count());
 EOF
-
-# Run it
-bash /tmp/revit-query.sh /tmp/my-query.cs
+curl -k -s -X POST https://127.0.0.1:${PORT}/roslyn \
+  -H "X-Auth-Token: $TOKEN" \
+  --data-binary @/tmp/my-query.cs | jq
 ```
 
 **Why files?** Avoids bash escaping issues with quotes/operators and allows multi-line C#. Use `-k` for self-signed TLS (localhost only).
@@ -110,31 +114,29 @@ bash /tmp/revit-query.sh /tmp/my-query.cs
 
 **Bash tool quirk:** Claude Code's Bash tool can fail on multiple `$(...)` in one call. Workaround: put the script in a file and `bash` it, or use only one substitution per call.
 
-**Simple inline query (single line, no special chars):**
+**Tail server log:**
 ```bash
-TOKEN=$(cat runtime/network/token)
-PORT=$(grep -v '^#' runtime/documents | head -1 | cut -d',' -f4)
-curl -k -s -X POST https://127.0.0.1:$PORT/roslyn \
-  -H "X-Auth-Token: $TOKEN" \
-  -d 'Console.WriteLine("hello");' | jq -r '.Output'
+ssh daniel@192.168.231.1 -i ~/.ssh/hwo-18 \
+  'powershell -NoProfile -Command "Get-Content $env:APPDATA\revit-ballet\server.log -Tail 50"'
 ```
 
 ## Available Context
 
 Scripts have globals `UIApp`, `UIDoc`, `Doc`. Pre-imported: `System`, `System.Linq`, `System.Collections.Generic`, `Autodesk.Revit.DB`, `Autodesk.Revit.UI`.
 
-**Response format:** `{ Success, Output, Error, Diagnostics, ProcessingLog }`. `ProcessingLog` is a timestamped trace of compile/execute stages — check it for post-mortem when a query fails or hangs. For server-level hangs, `tail -f runtime/server.log`.
+**Response format:** `{ Success, Output, Error, Diagnostics, ProcessingLog }`. `ProcessingLog` is a timestamped trace of compile/execute stages — check it for post-mortem when a query fails or hangs. For server-level hangs, check `server.log` via SSH.
 
 **Script timeout:** 30 seconds. Timeouts return `Success: false` with an explanatory `Error` and the timeout marker in `ProcessingLog`.
 
 ### Screenshot Capture
 
 ```bash
-curl -k -X POST https://127.0.0.1:23717/screenshot \
-  -H "X-Auth-Token: $(cat runtime/network/token)" | jq
+# Tunnel port first, then:
+curl -k -X POST https://127.0.0.1:${PORT}/screenshot \
+  -H "X-Auth-Token: $TOKEN" | jq
 ```
 
-Captures the full Revit window to `%appdata%/revit-ballet/runtime/screenshots/{timestamp}-{sessionId}.png`. Auto-cleanup keeps last 20. Returns absolute path in `Output`.
+Captures the full Revit window to `%appdata%\revit-ballet\runtime\screenshots\{timestamp}-{sessionId}.png`. Auto-cleanup keeps last 20. Returns absolute path in `Output`.
 
 ## Error Handling
 
@@ -224,7 +226,7 @@ Commands use suffix naming to indicate scope:
 
 **Critical limitation**: `UIDocument.Selection.SetElementIds()` silently fails for element IDs from non-active documents — the call succeeds but selection stays empty. Revit's selection system is tied to the active UIDocument only.
 
-**Solution**: SQLite-based `SelectionStorage` at `runtime/selection.sqlite`. Stores `UniqueId` (stable across sessions), `DocumentTitle`, `DocumentPath`, and optional `SessionId` (for Network scope).
+**Solution**: SQLite-based `SelectionStorage` at `%appdata%\revit-ballet\selection.sqlite`. Stores `UniqueId` (stable across sessions), `DocumentTitle`, `DocumentPath`, and optional `SessionId` (for Network scope).
 
 **API** (`RevitBallet.Commands.SelectionStorage`):
 - `SaveSelection(items)` — replace
@@ -253,7 +255,7 @@ uidoc.SetReferences(references);
 
 **Never use** `uidoc.Selection.GetElementIds()` / `SetElementIds()` directly — bypasses SelectionModeManager.
 
-Implementation: `commands/SelectionModeManager.cs`. Mode persisted at `runtime/SelectionMode`; linked refs at `runtime/SelectionSet-LinkedModelReferences`.
+Implementation: `commands/SelectionModeManager.cs`. Mode persisted at `%appdata%\revit-ballet\SelectionMode`; linked refs at `%appdata%\revit-ballet\SelectionSet-LinkedModelReferences`.
 
 ## DataGrid Automatic Editable Columns
 
