@@ -1404,3 +1404,43 @@ i won't have to prepand branch names with hostname anymore as it will be self-ev
 ***** can then move git repo out of %appdata%/revit-ballet folder
 may place it anywhere, for convenience placing them in ~/revit-ballet
 moved runtime files from %appdata%/revit-ballet/runtime to %appdata%/revit-ballet
+*** 19
+**** =18:32= looking into memory system of claude code
+not happy about tying yourself this closely to proprietary system, but may have to
+need a solution to provide context that will get loaded on each start, but not commited to git, as well as context that gets loaded in every project
+come to think of it, this may as well be achieved with combinations of .gitignore rules and symlinks
+I guess we may depart from it in the future then, for now claude code stays as the main coding agent, so may as well follow its practices
+  bearing in mind that we can depart from them later if needed
+***** hierarchy
+****** commited to remote
+./CLAUDE.md
+****** not commited to remote
+./CLAUDE.local.md
+****** not commited to remote, shared across all projects
+~/.claude/CLAUDE.md
+***** =18:46= a more portable approach however may be to explicitely specify in standard CLAUDE.md to read files in .claude directory
+or elsewhere
+rather than tying yourself to a rigid naming structure
+***** =19:45= decided to rely on claude's memory mechanism instead
+****** completely separate from CLAUDE.md
+it should keep it clean 
+other developers may have other methods for deploying/debugging
+******* also injects context at startup
+but only a reduced portion, details can be read on demand
+******* shared across worktrees
+claude code recognizes folders that are worktrees and matches memories accordingly
+****** funny enough, that's what i started with
+****** another advantage is that it will be easier to turn it into a share for all virtual machines
+just because its' a folder rather than a single file
+****** a disadvantage is that it ties to claude code's proprietary mechanism
+however pi agent (for example) seemed to support this solution as well
+****** =20:03= there appear to be annoying bugs that block usage of memories across worktrees
+look trivial to solve, hopefully soon
+bug report: https://github.com/anthropics/claude-code/issues/34437
+apparently it doesn't affect worktrees nested in root git folder
+  hopefully this small design decision may spare me the trouble
+******* =20:28= good news, memory system does appear to be working with worktrees as intended
+confirmed it through structure of ~/.claude/projects and checked memories loaded by claude code instance in a worktree
+assuming that agent didn't lie about it, there doesn't seem to be a reliable way to test it as it's a (practically) proprietary code
+******** per-worktree folders in ~/.claude/projects store conversation history, not memories
+these are stored only per-git-repo
