@@ -1,8 +1,8 @@
-# Revit Ballet - AI Agent Integration & Code Conventions
+# Revit Ballet - Code Conventions & AI Integration
 
 > **Documentation Size Limit**: This file must stay under 20KB. Keep changes concise.
 
-This file provides guidance to AI agents (like Claude Code) when working with code in this repository and querying Revit sessions.
+This file provides guidance when working with code in this repository and querying Revit sessions.
 
 ## Project Overview
 
@@ -13,7 +13,7 @@ Revit Ballet is a collection of custom commands for Revit. Two main components:
 
 ## Development Environment
 
-Runtime data lives on the Windows production machine at `%APPDATA%\revit-ballet\` (not in this repo). Access it via SSH — credentials are stored in agent private memory (not committed here). Key paths on Windows:
+Runtime data lives on the production Windows machine at `%APPDATA%\revit-ballet\`. Key paths:
 - `network\token` — shared auth token
 - `documents` — live session registry (CSV)
 - `server.log` — server log
@@ -35,23 +35,9 @@ Runtime data lives on the Windows production machine at `%APPDATA%\revit-ballet\
 
 **Incident 2026-01-24**: agent replaced `.git` from a temp clone during a rebase workaround, destroying stash refs and losing a day of the user's work. Recovery was impossible. User's uncommitted work is more valuable than clean history.
 
-### Case-Insensitive Filesystems (CIFS/drvfs)
-
-Repo is accessed via case-insensitive Windows filesystems but git is case-sensitive. Key implications:
-
-- Use consistent casing in filenames (PascalCase for C# files)
-- Before rebasing, check for case-variant duplicates: `git ls-files | sort -f | uniq -di`
-- Prefer WSL drvfs over Linux CIFS for rebases
-- If `git reset --hard` / `checkout --` fail despite file existing (CIFS cache corruption), try `git update-index --skip-worktree <file>` temporarily
-- Git stash may show error messages but still succeed — always verify with `git stash list`
-
 ### Diagnostic Logging
 
 For non-trivial operations (unit conversion, coordinate transforms, API quirks, perf), write diagnostics to `%appdata%\revit-ballet\diagnostics\` using `PathHelper.RuntimeDirectory`. Name files `{Operation}_{yyyyMMdd_HHmmss}.txt`. Log timestamps, element IDs, internal units (feet) AND display units, intermediate steps. **NEVER** write diagnostics to temp or document folders.
-
-## Version Control Practices
-
-**One Agent Session = One Commit.** Accumulate all changes, commit once at the end with a descriptive message. Don't commit unrelated changes alongside your primary work — stage only files relevant to the session's goal. Verify with `git status` and `git diff --cached` before committing.
 
 ## Architecture
 
@@ -80,63 +66,21 @@ Revit Ballet runs a Roslyn compiler-as-a-service so AI agents can execute C# in 
 - `/roslyn` — execute C# scripts in Revit context
 - `/screenshot` — capture Revit window to `%appdata%\revit-ballet\screenshots\`
 
-**Implementation:** `commands/RevitBallet.cs` initializes server; background thread marshals to UI via `ExternalEvent`; heartbeat every 30s, 2min dead-session timeout. For server-level hangs, check `server.log` on Windows via SSH.
+**Implementation:** `commands/RevitBallet.cs` initializes server; background thread marshals to UI via `ExternalEvent`; heartbeat every 30s, 2min dead-session timeout.
 
-## Querying and Testing Revit Sessions
+## Querying Revit Sessions
 
-The Roslyn server runs on Windows at `127.0.0.1:PORT`. Access from Linux requires SSH port forwarding (credentials in private agent memory).
-
-**Canonical pattern — SSH tunnel + file-based query:**
-
-```bash
-# Get token and port from Windows via SSH
-TOKEN=$(ssh daniel@192.168.231.1 -i ~/.ssh/hwo-18 \
-  'powershell -NoProfile -Command "Get-Content $env:APPDATA\revit-ballet\network\token"')
-PORT=$(ssh daniel@192.168.231.1 -i ~/.ssh/hwo-18 \
-  'powershell -NoProfile -Command "(Get-Content $env:APPDATA\revit-ballet\documents | Where-Object { $_ -notmatch \"^#\" } | Select-Object -First 1).Split(\",\")[3]"')
-
-# Tunnel the port
-ssh -f -N -L ${PORT}:127.0.0.1:${PORT} daniel@192.168.231.1 -i ~/.ssh/hwo-18
-
-# Write C# query to a file and run it
-cat > /tmp/my-query.cs << 'EOF'
-var levels = new FilteredElementCollector(Doc).OfClass(typeof(Level)).Cast<Level>();
-Console.WriteLine("Total Levels: " + levels.Count());
-EOF
-curl -k -s -X POST https://127.0.0.1:${PORT}/roslyn \
-  -H "X-Auth-Token: $TOKEN" \
-  --data-binary @/tmp/my-query.cs | jq
-```
-
-**Why files?** Avoids bash escaping issues with quotes/operators and allows multi-line C#. Use `-k` for self-signed TLS (localhost only).
+The Roslyn server runs on Windows at `127.0.0.1:PORT`. Access from a remote dev machine requires port forwarding to reach it — see agent private memory for connection patterns specific to this setup.
 
 **ASCII only in query files.** Multi-byte UTF-8 (✓, ❌, ⚠) can corrupt `curl --data-binary` transmission (Content-Length mismatch → hung request). Use `OK`, `FAIL`, `WARNING` instead.
 
-**Bash tool quirk:** Claude Code's Bash tool can fail on multiple `$(...)` in one call. Workaround: put the script in a file and `bash` it, or use only one substitution per call.
-
-**Tail server log:**
-```bash
-ssh daniel@192.168.231.1 -i ~/.ssh/hwo-18 \
-  'powershell -NoProfile -Command "Get-Content $env:APPDATA\revit-ballet\server.log -Tail 50"'
-```
-
-## Available Context
+### Available Context
 
 Scripts have globals `UIApp`, `UIDoc`, `Doc`. Pre-imported: `System`, `System.Linq`, `System.Collections.Generic`, `Autodesk.Revit.DB`, `Autodesk.Revit.UI`.
 
-**Response format:** `{ Success, Output, Error, Diagnostics, ProcessingLog }`. `ProcessingLog` is a timestamped trace of compile/execute stages — check it for post-mortem when a query fails or hangs. For server-level hangs, check `server.log` via SSH.
+**Response format:** `{ Success, Output, Error, Diagnostics, ProcessingLog }`. `ProcessingLog` is a timestamped trace of compile/execute stages — check it when a query fails or hangs.
 
 **Script timeout:** 30 seconds. Timeouts return `Success: false` with an explanatory `Error` and the timeout marker in `ProcessingLog`.
-
-### Screenshot Capture
-
-```bash
-# Tunnel port first, then:
-curl -k -X POST https://127.0.0.1:${PORT}/screenshot \
-  -H "X-Auth-Token: $TOKEN" | jq
-```
-
-Captures the full Revit window to `%appdata%\revit-ballet\runtime\screenshots\{timestamp}-{sessionId}.png`. Auto-cleanup keeps last 20. Returns absolute path in `Output`.
 
 ## Error Handling
 
@@ -195,7 +139,7 @@ new FilteredElementCollector(Doc).OfClass(typeof(Level)).Cast<Level>();
 
 - HTTPS with TLS 1.2/1.3, self-signed certs
 - Localhost-only binding (127.0.0.1) — not network-accessible
-- 256-bit shared token at `runtime/network/token` (plain text)
+- 256-bit shared token at `network\token` (plain text)
 - Scripts have **full Revit API access** — can read, modify, delete model data
 - Intended for local dev/automation only. Do NOT expose to untrusted networks, share the token, or run Revit elevated while the server is up.
 
@@ -301,23 +245,6 @@ Create the `.cs` in `commands/` and tell the user it's ready but unregistered.
 ## Command Design Principles
 
 **Silent Completion.** Commands finish without success dialogs. No "Operation Complete" / summary popups. Dialogs are only for errors (failure the user needs to know about), required input (decision needed), or warnings (important conditions).
-
-## Worktree Cleanup (Agent Sessions)
-
-**Problem**: agents run with Bash CWD set to the worktree. Once it's deleted, all subsequent Bash commands fail with "Path does not exist" — even with `cd /other/path &&` prefixes.
-
-**Solution**: merge, remove worktree, delete branch in a **single Bash call**:
-```bash
-cd /home/user/revit-ballet && \
-  git merge BRANCH_NAME --no-ff -m "Merge branch 'BRANCH_NAME': description" && \
-  git worktree remove .worktrees/BRANCH_NAME && \
-  git branch -d BRANCH_NAME
-```
-After this completes the agent's bash tool will error, but the work is done.
-
-**If `ExitWorktree` is available** (only when `EnterWorktree` was used in the same session): `ExitWorktree(action: "remove")` cleans up before the directory is touched.
-
-**If bash breaks after cleanup**: do NOT assume it failed. The merge/remove/delete very likely all succeeded. Tell the user to check `git log --oneline --decorate` and `git branch -v` before asking for manual intervention.
 
 ## File Naming Conventions
 
