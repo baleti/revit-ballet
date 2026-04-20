@@ -49,6 +49,10 @@ namespace RevitBalletInstaller
                 }
             }
 
+            // --hot-reload: also copy DLLs to %appdata%\revit-ballet\hot-reload\{year}\
+            // so InvokeAddinCommand can pick them up immediately without restarting Revit
+            bool hotReload = args.Any(arg => arg.Equals("--hot-reload", StringComparison.OrdinalIgnoreCase));
+
             // In interactive mode, hide the console window (UI dialogs are used instead).
             // In quiet/SSH mode the console window is left visible for stdout output.
             if (!quietMode)
@@ -64,7 +68,7 @@ namespace RevitBalletInstaller
             }
             else
             {
-                new BalletInstaller().Run(quietMode, verbosity);
+                new BalletInstaller().Run(quietMode, verbosity, hotReload);
             }
         }
     }
@@ -79,6 +83,7 @@ namespace RevitBalletInstaller
         private Dictionary<string, FileMapping> fileMappings = null;
         private bool _quiet;
         private int _verbosity;
+        private bool _hotReload;
 
         private void Log(int level, string message)
         {
@@ -100,10 +105,11 @@ namespace RevitBalletInstaller
             public List<string> Years { get; set; }
         }
 
-        public void Run(bool quietMode = false, int verbosity = 1)
+        public void Run(bool quietMode = false, int verbosity = 1, bool hotReload = false)
         {
             _quiet = quietMode;
             _verbosity = verbosity;
+            _hotReload = hotReload;
 
             try
             {
@@ -809,6 +815,24 @@ namespace RevitBalletInstaller
                         State = InstallState.UpdatedNeedsRestart,
                         AddinsPath = actualUpdateFolder
                     });
+                }
+
+                if (_hotReload)
+                {
+                    try
+                    {
+                        string hotReloadDir = Path.Combine(
+                            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                            "revit-ballet", "hot-reload", installation.Year.ToString());
+                        Directory.CreateDirectory(hotReloadDir);
+                        ExtractResource(dllResource, Path.Combine(hotReloadDir, "revit-ballet.dll"));
+                        ExtractDependencies(installation.Year, hotReloadDir);
+                        Log(2, $"  [Revit {installation.Year}] Hot-reload dir updated -> {hotReloadDir}");
+                    }
+                    catch (Exception ex)
+                    {
+                        Log(2, $"  [Revit {installation.Year}] Hot-reload dir update failed: {ex.Message}");
+                    }
                 }
             }
         }
