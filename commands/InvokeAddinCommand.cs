@@ -28,43 +28,40 @@ public class InvokeAddinCommand : IExternalCommand
         // Detect Revit version
         string revitVersion = commandData.Application.Application.VersionNumber;
 
-        // Load from same location as Revit loads from (Addins folder)
-        // This allows us to benefit from the .update folder mechanism
-        string addinsBasePath = Path.Combine(
+        // Hot-reload dir: never locked by Revit, checked first so builds take effect immediately
+        string hotReloadDllPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "Autodesk",
-            "Revit",
-            "Addins",
-            revitVersion
+            "revit-ballet", "hot-reload", revitVersion, "revit-ballet.dll"
         );
 
-        string mainFolder = Path.Combine(addinsBasePath, "revit-ballet");
-        string mainDllPath = Path.Combine(mainFolder, "revit-ballet.dll");
-
-        // Check for update folders (same mechanism as Startup.cs)
-        var updateFolders = Directory.Exists(addinsBasePath)
-            ? Directory.GetDirectories(addinsBasePath, "revit-ballet.update*")
-            : new string[0];
-
-        // Prefer update folders if they exist (newer version)
-        if (updateFolders.Length > 0)
+        if (File.Exists(hotReloadDllPath))
         {
-            // Use the first update folder found (sorted by name, most recent timestamp first)
-            string updateFolder = updateFolders.OrderByDescending(f => f).First();
-            string updateDllPath = Path.Combine(updateFolder, "revit-ballet.dll");
+            currentDllPath = hotReloadDllPath;
+        }
+        else
+        {
+            // Fall back to Addins folder, preferring any pending .update folder
+            string addinsBasePath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "Autodesk", "Revit", "Addins", revitVersion
+            );
 
-            if (File.Exists(updateDllPath))
+            string mainDllPath = Path.Combine(addinsBasePath, "revit-ballet", "revit-ballet.dll");
+
+            var updateFolders = Directory.Exists(addinsBasePath)
+                ? Directory.GetDirectories(addinsBasePath, "revit-ballet.update*")
+                : new string[0];
+
+            if (updateFolders.Length > 0)
             {
-                currentDllPath = updateDllPath;
+                string updateDllPath = Path.Combine(
+                    updateFolders.OrderByDescending(f => f).First(), "revit-ballet.dll");
+                currentDllPath = File.Exists(updateDllPath) ? updateDllPath : mainDllPath;
             }
             else
             {
                 currentDllPath = mainDllPath;
             }
-        }
-        else
-        {
-            currentDllPath = mainDllPath;
         }
 
         if (!File.Exists(currentDllPath))
