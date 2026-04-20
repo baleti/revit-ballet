@@ -302,14 +302,6 @@ Create the `.cs` in `commands/` and tell the user it's ready but unregistered.
 
 **Silent Completion.** Commands finish without success dialogs. No "Operation Complete" / summary popups. Dialogs are only for errors (failure the user needs to know about), required input (decision needed), or warnings (important conditions).
 
-## Worktree Branch Naming (Agent Sessions)
-
-When a session starts in a worktree with an auto-generated branch name matching `claude\d?-\d+` (e.g. `claude3-152818212`), **immediately rename** to something descriptive:
-```bash
-git branch -m claude3-152818212 fix-installer-partial-build
-```
-Do this first so the PR and merge commit have meaningful names.
-
 ## Worktree Cleanup (Agent Sessions)
 
 **Problem**: agents run with Bash CWD set to the worktree. Once it's deleted, all subsequent Bash commands fail with "Path does not exist" — even with `cd /other/path &&` prefixes.

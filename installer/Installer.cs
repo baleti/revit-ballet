@@ -34,6 +34,21 @@ namespace RevitBalletInstaller
                                              arg.Equals("-q", StringComparison.OrdinalIgnoreCase) ||
                                              arg.Equals("--quiet", StringComparison.OrdinalIgnoreCase));
 
+            // --verbosity 0/1/2: controls output detail in quiet mode.
+            //   0 = one-line summary only
+            //   1 = grouped list (default)
+            //   2 = paths, file counts, registry operations
+            int verbosity = 1;
+            for (int i = 0; i < args.Length - 1; i++)
+            {
+                if (args[i].Equals("--verbosity", StringComparison.OrdinalIgnoreCase) ||
+                    args[i].Equals("-V", StringComparison.Ordinal))
+                {
+                    int.TryParse(args[i + 1], out verbosity);
+                    verbosity = Math.Max(0, Math.Min(2, verbosity));
+                }
+            }
+
             // In interactive mode, hide the console window (UI dialogs are used instead).
             // In quiet/SSH mode the console window is left visible for stdout output.
             if (!quietMode)
@@ -45,11 +60,11 @@ namespace RevitBalletInstaller
 
             if (isUninstaller)
             {
-                new BalletUninstaller().Run(quietMode);
+                new BalletUninstaller().Run(quietMode, verbosity);
             }
             else
             {
-                new BalletInstaller().Run(quietMode);
+                new BalletInstaller().Run(quietMode, verbosity);
             }
         }
     }
@@ -62,6 +77,14 @@ namespace RevitBalletInstaller
         private readonly List<RevitInstallation> installations = new List<RevitInstallation>();
         private readonly List<InstallationResult> installationResults = new List<InstallationResult>();
         private Dictionary<string, FileMapping> fileMappings = null;
+        private bool _quiet;
+        private int _verbosity;
+
+        private void Log(int level, string message)
+        {
+            if (_quiet && _verbosity >= level)
+                Console.WriteLine(message);
+        }
 
         private enum InstallState
         {
@@ -77,60 +100,63 @@ namespace RevitBalletInstaller
             public List<string> Years { get; set; }
         }
 
-        public void Run(bool quietMode = false)
+        public void Run(bool quietMode = false, int verbosity = 1)
         {
+            _quiet = quietMode;
+            _verbosity = verbosity;
+
             try
             {
                 bool alreadyInstalled = IsInstalled();
+                Log(2, $"Already installed: {alreadyInstalled}");
 
-                // Load file mapping from embedded resources
+                Log(2, "Loading file mapping...");
                 LoadFileMapping();
 
+                Log(2, "Detecting Revit installations...");
                 DetectRevitInstallations();
 
                 if (installations.Count == 0)
                 {
                     if (!quietMode)
-                    {
                         MessageBox.Show("No Revit installations found.",
                             "Revit Ballet", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    }
                     else
-                    {
                         Console.WriteLine("No Revit installations found.");
-                    }
                     return;
                 }
 
-                // If already installed, just update - no dialog needed
+                if (_verbosity >= 2)
+                {
+                    foreach (var inst in installations)
+                        Log(2, $"  Found: Revit {inst.Year} -> {inst.AddinsPath}");
+                }
 
                 string targetDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "revit-ballet");
+                Log(2, $"Target dir: {targetDir}");
                 Directory.CreateDirectory(targetDir);
 
-                // Extract .addin file and dll to each Revit version's Addins folder
+                Log(2, "Extracting files...");
                 InstallToRevitVersions(targetDir);
 
                 CopyInstallerForUninstall(targetDir);
 
-                // Deploy keyboard shortcuts (creates file if missing, or adds shortcuts if exists)
                 foreach (var installation in installations)
                 {
+                    Log(2, $"Deploying keyboard shortcuts for Revit {installation.Year}...");
                     DeployKeyboardShortcuts(installation, quietMode);
                 }
 
+                Log(2, "Registering uninstaller...");
                 RegisterUninstaller(targetDir);
 
-                // Register addins as trusted to avoid "Load Always/Load Once" prompts
+                Log(2, $"Registering trusted addins...");
                 RegisterTrustedAddins();
 
                 if (!quietMode)
-                {
                     ShowSuccessDialog();
-                }
                 else
-                {
                     OutputSuccessToConsole();
-                }
             }
             catch (Exception ex)
             {
@@ -141,7 +167,6 @@ namespace RevitBalletInstaller
                 }
                 else
                 {
-                    // In quiet mode, output error to stderr and exit with error code
                     Console.Error.WriteLine($"Installation error: {ex.Message}");
                     Console.Error.WriteLine(ex.StackTrace);
                     Environment.Exit(1);
@@ -298,7 +323,6 @@ namespace RevitBalletInstaller
 
         private void OutputSuccessToConsole()
         {
-            // Group results by state and sort by year (numerically)
             var freshInstalls = installationResults.Where(r => r.State == InstallState.FreshInstall)
                 .OrderBy(r => int.Parse(r.Year)).ToList();
             var updatedSuccessfully = installationResults.Where(r => r.State == InstallState.UpdatedSuccessfully)
@@ -306,12 +330,31 @@ namespace RevitBalletInstaller
             var needsRestart = installationResults.Where(r => r.State == InstallState.UpdatedNeedsRestart)
                 .OrderBy(r => int.Parse(r.Year)).ToList();
 
+            if (installationResults.Count == 0)
+            {
+                Console.WriteLine("Installation completed but no Revit versions were updated (missing DLL resources?).");
+                return;
+            }
+
+            if (_verbosity == 0)
+            {
+                // Single-line summary
+                var parts = new List<string>();
+                if (freshInstalls.Count > 0) parts.Add($"installed: {string.Join(", ", freshInstalls.Select(r => r.Year))}");
+                if (updatedSuccessfully.Count > 0) parts.Add($"updated: {string.Join(", ", updatedSuccessfully.Select(r => r.Year))}");
+                if (needsRestart.Count > 0) parts.Add($"pending restart: {string.Join(", ", needsRestart.Select(r => r.Year))}");
+                Console.WriteLine(string.Join("; ", parts));
+                return;
+            }
+
+            // Level 1+: grouped list
             if (freshInstalls.Count > 0)
             {
                 Console.WriteLine("Successfully installed to:");
                 foreach (var result in freshInstalls)
                 {
-                    Console.WriteLine($"  - Revit {result.Year}");
+                    string suffix = _verbosity >= 2 ? $" -> {result.AddinsPath}" : "";
+                    Console.WriteLine($"  - Revit {result.Year}{suffix}");
                 }
             }
 
@@ -320,7 +363,8 @@ namespace RevitBalletInstaller
                 Console.WriteLine("Successfully updated:");
                 foreach (var result in updatedSuccessfully)
                 {
-                    Console.WriteLine($"  - Revit {result.Year}");
+                    string suffix = _verbosity >= 2 ? $" -> {result.AddinsPath}" : "";
+                    Console.WriteLine($"  - Revit {result.Year}{suffix}");
                 }
             }
 
@@ -329,15 +373,10 @@ namespace RevitBalletInstaller
                 Console.WriteLine("Updated (restart Revit to use new version):");
                 foreach (var result in needsRestart)
                 {
-                    Console.WriteLine($"  - Revit {result.Year}");
+                    string suffix = _verbosity >= 2 ? $" -> {result.AddinsPath}" : "";
+                    Console.WriteLine($"  - Revit {result.Year}{suffix}");
                 }
                 Console.WriteLine("Restart Revit to load updates or use commands immediately via InvokeAddinCommand.");
-            }
-
-            if (installationResults.Count == 0)
-            {
-                Console.WriteLine("Installation completed, but no Revit versions were updated.");
-                Console.WriteLine("This might indicate missing DLL resources.");
             }
         }
 
@@ -675,7 +714,7 @@ namespace RevitBalletInstaller
 
                 if (dllResource == null)
                 {
-                    // Silently skip versions without DLLs
+                    Log(2, $"  [Revit {installation.Year}] No DLL resource found, skipping.");
                     continue;
                 }
 
@@ -686,18 +725,17 @@ namespace RevitBalletInstaller
                 Directory.CreateDirectory(mainFolder);
 
                 bool wasInstalled = File.Exists(Path.Combine(mainFolder, "revit-ballet.dll"));
+                Log(2, $"  [Revit {installation.Year}] {(wasInstalled ? "Updating" : "Fresh install")} -> {mainFolder}");
 
                 // Try to copy all files to main folder
                 try
                 {
-                    // Extract main DLL
                     string mainDllPath = Path.Combine(mainFolder, "revit-ballet.dll");
                     ExtractResourceSafe(dllResource, mainDllPath);
+                    Log(2, $"    revit-ballet.dll");
 
-                    // Extract dependencies
                     ExtractDependenciesSafe(installation.Year, mainFolder);
 
-                    // Successfully updated main folder - always update .addin file to ensure command definitions are current
                     string addinContent = GetResourceText(addinResource);
                     var doc = XDocument.Parse(addinContent);
 
@@ -711,48 +749,46 @@ namespace RevitBalletInstaller
                     }
 
                     doc.Save(addinPath);
+                    Log(2, $"    revit-ballet.addin -> {addinPath}");
 
                     installationResults.Add(new InstallationResult
                     {
                         Year = installation.Year,
-                        State = wasInstalled ? InstallState.UpdatedSuccessfully : InstallState.FreshInstall
+                        State = wasInstalled ? InstallState.UpdatedSuccessfully : InstallState.FreshInstall,
+                        AddinsPath = mainFolder
                     });
                 }
                 catch (IOException)
                 {
                     // Files are locked (Revit is running) - use update folder strategy
-                    // Try to clean up existing update folder first
                     string actualUpdateFolder = updateFolder;
+                    Log(2, $"  [Revit {installation.Year}] Files locked, using update folder...");
 
                     if (Directory.Exists(updateFolder))
                     {
                         try
                         {
-                            // Try to delete old update folder
                             Directory.Delete(updateFolder, true);
                         }
                         catch (IOException)
                         {
-                            // Update folder is also locked - use timestamped folder
                             actualUpdateFolder = Path.Combine(installation.AddinsPath,
                                 $"revit-ballet.update.{DateTime.Now:yyyyMMddHHmmss}");
                         }
                         catch (UnauthorizedAccessException)
                         {
-                            // Permission denied - use timestamped folder
                             actualUpdateFolder = Path.Combine(installation.AddinsPath,
                                 $"revit-ballet.update.{DateTime.Now:yyyyMMddHHmmss}");
                         }
                     }
 
                     Directory.CreateDirectory(actualUpdateFolder);
+                    Log(2, $"    update folder: {actualUpdateFolder}");
 
-                    // Extract to update folder
                     string updateDllPath = Path.Combine(actualUpdateFolder, "revit-ballet.dll");
                     ExtractResource(dllResource, updateDllPath);
                     ExtractDependencies(installation.Year, actualUpdateFolder);
 
-                    // Update .addin file to point to update folder
                     string addinContent = GetResourceText(addinResource);
                     var doc = XDocument.Parse(addinContent);
 
@@ -770,7 +806,8 @@ namespace RevitBalletInstaller
                     installationResults.Add(new InstallationResult
                     {
                         Year = installation.Year,
-                        State = InstallState.UpdatedNeedsRestart
+                        State = InstallState.UpdatedNeedsRestart,
+                        AddinsPath = actualUpdateFolder
                     });
                 }
             }
@@ -1212,12 +1249,13 @@ namespace RevitBalletInstaller
         {
             public string Year { get; set; }
             public InstallState State { get; set; }
+            public string AddinsPath { get; set; }
         }
     }
 
     public class BalletUninstaller
     {
-        public void Run(bool quietMode = false)
+        public void Run(bool quietMode = false, int verbosity = 1)
         {
             try
             {
