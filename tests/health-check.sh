@@ -98,8 +98,8 @@ check_installation() {
         log "Revit Ballet is installed"
 
         # Get version info if available
-        local dll_count=$(run_ps 'Get-ChildItem "$env:APPDATA\revit-ballet\commands\bin" -Recurse -Filter "revit-ballet.dll" -ErrorAction SilentlyContinue | Measure-Object | Select-Object -ExpandProperty Count')
-        info "Found $dll_count version-specific DLLs"
+        local dll_count=$(run_ps 'Get-ChildItem "$env:APPDATA\revit-ballet\hot-reload" -Recurse -Filter "revit-ballet.dll" -ErrorAction SilentlyContinue | Measure-Object | Select-Object -ExpandProperty Count')
+        info "Found $dll_count hot-reload DLL(s)"
 
         return 0
     else
