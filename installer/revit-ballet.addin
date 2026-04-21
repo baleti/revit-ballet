@@ -219,7 +219,7 @@
     <AddIn Type="Command">
         <Name>revit-ballet</Name>
         <Assembly>revit-ballet.dll</Assembly>
-        <FullClassName>ZoomSelected</FullClassName>
+        <FullClassName>ZoomToElement</FullClassName>
         <AddInId>5C8E2A7F-9B3D-4E6A-7C8F-2D9A1B4E6C9F</AddInId>
         <VendorId>revit-ballet</VendorId>
     </AddIn>
