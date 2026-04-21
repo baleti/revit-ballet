@@ -191,6 +191,27 @@
     <AddIn Type="Command">
         <Name>revit-ballet</Name>
         <Assembly>revit-ballet.dll</Assembly>
+        <FullClassName>SelectByMaterialInView</FullClassName>
+        <AddInId>1665CA00-4319-4C29-A9BA-0A6987706687</AddInId>
+        <VendorId>revit-ballet</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>revit-ballet</Name>
+        <Assembly>revit-ballet.dll</Assembly>
+        <FullClassName>SelectByMaterialInDocument</FullClassName>
+        <AddInId>2BC78EFB-453B-4370-BEC3-A2F54574CCF2</AddInId>
+        <VendorId>revit-ballet</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>revit-ballet</Name>
+        <Assembly>revit-ballet.dll</Assembly>
+        <FullClassName>SelectByMaterialInSession</FullClassName>
+        <AddInId>0ACB0B6B-1B0D-4824-9C95-5478BF65772A</AddInId>
+        <VendorId>revit-ballet</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>revit-ballet</Name>
+        <Assembly>revit-ballet.dll</Assembly>
         <FullClassName>SelectFamilyTypesInView</FullClassName>
         <AddInId>67484003-B7AD-48B0-8A38-46B475E051F1</AddInId>
         <VendorId>revit-ballet</VendorId>
