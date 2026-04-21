@@ -202,20 +202,7 @@
         <AddInId>69E4BD0F-FA62-4117-88FA-800C15164610</AddInId>
         <VendorId>revit-ballet</VendorId>
     </AddIn>
-    <AddIn Type="Command">
-        <Name>revit-ballet</Name>
-        <Assembly>revit-ballet.dll</Assembly>
-        <FullClassName>SelectFamilyTypesInSession</FullClassName>
-        <AddInId>1122F53E-A176-46D3-BDE9-F88BA550E792</AddInId>
-        <VendorId>revit-ballet</VendorId>
-    </AddIn>
-    <AddIn Type="Command">
-        <Name>revit-ballet</Name>
-        <Assembly>revit-ballet.dll</Assembly>
-        <FullClassName>SelectFamilyTypesInNetwork</FullClassName>
-        <AddInId>DDF2704F-DE95-442B-B0D1-6960A3DF8186</AddInId>
-        <VendorId>revit-ballet</VendorId>
-    </AddIn>
+
     <AddIn Type="Command">
         <Name>revit-ballet</Name>
         <Assembly>revit-ballet.dll</Assembly>
@@ -268,7 +255,7 @@
     <AddIn Type="Command">
         <Name>revit-ballet</Name>
         <Assembly>revit-ballet.dll</Assembly>
-        <FullClassName>SelectViewTemplatesOfSelectedViews</FullClassName>
+        <FullClassName>SelectViewTemplateOfView</FullClassName>
         <AddInId>CD8C8F66-E432-4267-AA58-B0731CDC7135</AddInId>
         <VendorId>revit-ballet</VendorId>
     </AddIn>
