@@ -33,8 +33,6 @@ Runtime data lives on the production Windows machine at `%APPDATA%\revit-ballet\
 
 **If rebase fails:** `git rebase --abort` and ask the user how to proceed. Do NOT try to "fix" it by manipulating `.git` directly.
 
-**Incident 2026-01-24**: agent replaced `.git` from a temp clone during a rebase workaround, destroying stash refs and losing a day of the user's work. Recovery was impossible. User's uncommitted work is more valuable than clean history.
-
 ### Diagnostic Logging
 
 For non-trivial operations (unit conversion, coordinate transforms, API quirks, perf), write diagnostics to `%appdata%\revit-ballet\diagnostics\` using `PathHelper.RuntimeDirectory`. Name files `{Operation}_{yyyyMMdd_HHmmss}.txt`. Log timestamps, element IDs, internal units (feet) AND display units, intermediate steps. **NEVER** write diagnostics to temp or document folders.

@@ -9,7 +9,7 @@ using Autodesk.Revit.DB.Electrical;
 using Autodesk.Revit.DB.Architecture;
 
 [Transaction(TransactionMode.Manual)]
-public class SelectFamilyTypesInViews : IExternalCommand
+public class SelectByFamilyTypesInView : IExternalCommand
 {
     public Result Execute(
         ExternalCommandData commandData,
@@ -19,55 +19,40 @@ public class SelectFamilyTypesInViews : IExternalCommand
         UIDocument uidoc = commandData.Application.ActiveUIDocument;
         Document doc = uidoc.Document;
 
-        // Get current selection using SelectionModeManager
-        ICollection<ElementId> currentSelection = uidoc.GetSelectionIds();
-
-        // Determine which views to collect elements from
-        List<View> viewsToProcess = new List<View>();
-
-        if (currentSelection != null && currentSelection.Count > 0)
-        {
-            // Check if any selected elements are views or viewports
-            foreach (ElementId id in currentSelection)
-            {
-                Element elem = doc.GetElement(id);
-
-                // Check if it's a View
-                if (elem is View view)
-                {
-                    viewsToProcess.Add(view);
-                }
-                // Check if it's a Viewport
-                else if (elem is Viewport viewport)
-                {
-                    // Get the view from the viewport
-                    ElementId viewId = viewport.ViewId;
-                    View viewFromViewport = doc.GetElement(viewId) as View;
-                    if (viewFromViewport != null)
-                    {
-                        viewsToProcess.Add(viewFromViewport);
-                    }
-                }
-            }
-        }
-
-        // If no views or viewports were selected, use the active view
-        if (viewsToProcess.Count == 0)
-        {
-            View activeView = uidoc.ActiveView;
-            viewsToProcess.Add(activeView);
-        }
-
         List<Dictionary<string, object>> typeEntries = new List<Dictionary<string, object>>();
         Dictionary<string, Element> typeElementMap = new Dictionary<string, Element>();
 
-        // Collect elements from all views to process
-        foreach (View view in viewsToProcess)
-        {
-            if (view == null)
-                continue;
+        // Check if any views are currently selected
+        ICollection<ElementId> currentSelection = uidoc.GetSelectionIds();
+        List<View> targetViews = new List<View>();
 
-            // Collect ALL elements in this view without category restrictions
+        bool hasSelectedViews = currentSelection.Any(id =>
+        {
+            Element elem = doc.GetElement(id);
+            return elem is View;
+        });
+
+        if (hasSelectedViews)
+        {
+            // Use selected views
+            targetViews = currentSelection
+                .Select(id => doc.GetElement(id))
+                .OfType<View>()
+                .ToList();
+        }
+        else
+        {
+            // Use current view only
+            targetViews.Add(doc.ActiveView);
+        }
+
+        // Track which views each family type appears in
+        Dictionary<string, HashSet<string>> typeToViewsMap = new Dictionary<string, HashSet<string>>();
+        Dictionary<string, List<ElementId>> typeToElementsMap = new Dictionary<string, List<ElementId>>();
+
+        // Collect ALL elements in the target views without category restrictions
+        foreach (View view in targetViews)
+        {
             var elementsInView = new FilteredElementCollector(doc, view.Id)
                 .WhereElementIsNotElementType()
                 .Where(e => e.Category != null && IsElementVisibleInView(e, view))
@@ -86,12 +71,13 @@ public class SelectFamilyTypesInViews : IExternalCommand
                     typeName = familyInstance.Symbol.Name;
                     familyName = familyInstance.Symbol.FamilyName;
                 }
-                else if (element is MEPCurve mepCurve)
+                else if (element is MEPCurve mepCurve) // Handles pipes, ducts, conduits, cable trays, etc.
                 {
                     typeElement = doc.GetElement(mepCurve.GetTypeId());
                     if (typeElement != null)
                     {
                         typeName = typeElement.Name;
+                        // Get more specific family name based on the MEPCurve type
                         if (element is Pipe)
                             familyName = "Pipe";
                         else if (element is Duct)
@@ -151,9 +137,10 @@ public class SelectFamilyTypesInViews : IExternalCommand
                 }
                 else if (element is Level level)
                 {
+                    // Levels don't have types in the same way
                     typeName = level.Name;
                     familyName = "Level";
-                    typeElement = element;
+                    typeElement = element; // Use the element itself as reference
                 }
                 else if (element is ReferencePlane refPlane)
                 {
@@ -181,6 +168,7 @@ public class SelectFamilyTypesInViews : IExternalCommand
                 }
                 else
                 {
+                    // For any other element type, try to get its type
                     ElementId typeId = element.GetTypeId();
                     if (typeId != null && typeId != ElementId.InvalidElementId)
                     {
@@ -188,6 +176,7 @@ public class SelectFamilyTypesInViews : IExternalCommand
                         if (typeElement != null)
                         {
                             typeName = typeElement.Name;
+                            // Try to get a meaningful family name
                             if (typeElement is FamilySymbol fs)
                             {
                                 familyName = fs.FamilyName;
@@ -200,6 +189,7 @@ public class SelectFamilyTypesInViews : IExternalCommand
                     }
                     else
                     {
+                        // For elements without types, use the element itself
                         typeName = element.Name;
                         familyName = element.GetType().Name;
                         typeElement = element;
@@ -208,21 +198,64 @@ public class SelectFamilyTypesInViews : IExternalCommand
 
                 if (typeElement != null && !string.IsNullOrEmpty(typeName))
                 {
+                    // Filter out DWG import symbols
+                    if (familyName.Contains("Import Symbol") ||
+                        (element.Category != null && element.Category.Name.Contains("Import Symbol")))
+                        continue;
+
                     string uniqueKey = $"{familyName}:{typeName}:{element.Category.Name}";
+
+                    // Track which views this type appears in
+                    if (!typeToViewsMap.ContainsKey(uniqueKey))
+                    {
+                        typeToViewsMap[uniqueKey] = new HashSet<string>();
+                        typeToElementsMap[uniqueKey] = new List<ElementId>();
+                    }
+                    typeToViewsMap[uniqueKey].Add(view.Name);
+
+                    // Store element ID for later selection
+                    if (!typeToElementsMap[uniqueKey].Contains(element.Id))
+                    {
+                        typeToElementsMap[uniqueKey].Add(element.Id);
+                    }
+
                     if (!typeElementMap.ContainsKey(uniqueKey))
                     {
-                        var entry = new Dictionary<string, object>
-                        {
-                            { "Type Name", typeName },
-                            { "Family", familyName },
-                            { "Category", element.Category.Name }
-                        };
-
                         typeElementMap[uniqueKey] = typeElement;
-                        typeEntries.Add(entry);
                     }
                 }
             }
+        }
+
+        // Build the type entries with view information
+        foreach (var kvp in typeElementMap)
+        {
+            string uniqueKey = kvp.Key;
+            string[] parts = uniqueKey.Split(':');
+            string familyName = parts[0];
+            string typeName = parts[1];
+            string categoryName = parts[2];
+
+            int count = typeToElementsMap[uniqueKey].Count;
+            string viewNames = string.Join(", ", typeToViewsMap[uniqueKey].OrderBy(v => v));
+
+            var entry = new Dictionary<string, object>
+            {
+                { "Type Name", typeName },
+                { "Family", familyName },
+                { "Category", categoryName },
+                { "Count", count },
+                { "_UniqueKey", uniqueKey },  // Store the original key for lookup after edits
+                { "ElementIdObject", kvp.Value.Id }  // Store ElementId for edit mode support
+            };
+
+            // Only add View column if multiple views are being queried
+            if (hasSelectedViews)
+            {
+                entry.Add("View", viewNames);
+            }
+
+            typeEntries.Add(entry);
         }
 
         // Sort by Category, then Family, then Type Name
@@ -232,26 +265,62 @@ public class SelectFamilyTypesInViews : IExternalCommand
             .ThenBy(e => e["Type Name"].ToString())
             .ToList();
 
-        // Display the list of unique types
-        var propertyNames = new List<string> { "Category", "Family", "Type Name" };
+        // Display the list of unique types with counts
+        // Set UIDocument for edit mode support
+        CustomGUIs.SetCurrentUIDocument(uidoc);
+
+        var propertyNames = hasSelectedViews
+            ? new List<string> { "Category", "Family", "Type Name", "Count", "View" }
+            : new List<string> { "Category", "Family", "Type Name", "Count" };
         var selectedEntries = CustomGUIs.DataGrid(typeEntries, propertyNames, false);
+
+        // Apply any pending edits (family/type renames)
+        if (CustomGUIs.HasPendingEdits() && !CustomGUIs.WasCancelled())
+        {
+            CustomGUIs.ApplyCellEditsToEntities();
+        }
 
         if (selectedEntries.Count == 0)
         {
             return Result.Cancelled;
         }
 
-        // Collect ElementIds of the selected types
-        List<ElementId> selectedTypeIds = selectedEntries
-            .Select(entry =>
-            {
-                string uniqueKey = $"{entry["Family"]}:{entry["Type Name"]}:{entry["Category"]}";
-                return typeElementMap[uniqueKey].Id;
-            })
-            .ToList();
+        // Find all instances of selected types
+        var selectedInstances = new List<ElementId>();
 
-        // Set the selection to the selected types
-        uidoc.SetSelectionIds(selectedTypeIds);
+        foreach (var entry in selectedEntries)
+        {
+            // Use the stored _UniqueKey to look up instances
+            if (entry.ContainsKey("_UniqueKey"))
+            {
+                string uniqueKey = entry["_UniqueKey"].ToString();
+
+                if (typeToElementsMap.ContainsKey(uniqueKey))
+                {
+                    selectedInstances.AddRange(typeToElementsMap[uniqueKey]);
+                }
+            }
+        }
+
+        // Combine with existing selection
+        List<ElementId> combinedSelection = new List<ElementId>(currentSelection);
+
+        foreach (var instanceId in selectedInstances)
+        {
+            if (!combinedSelection.Contains(instanceId))
+            {
+                combinedSelection.Add(instanceId);
+            }
+        }
+
+        if (combinedSelection.Any())
+        {
+            uidoc.SetSelectionIds(combinedSelection);
+        }
+        else
+        {
+            TaskDialog.Show("Selection", "No visible instances of the selected types were found in the target view(s).");
+        }
 
         return Result.Succeeded;
     }
@@ -266,8 +335,11 @@ public class SelectFamilyTypesInViews : IExternalCommand
 
     private bool IsElementVisibleInView(Element element, View view)
     {
+        // Check if element has a bounding box in the view
         BoundingBoxXYZ bbox = element.get_BoundingBox(view);
 
+        // Additional check for elements that might not have a bounding box
+        // but are still visible (like some annotation elements)
         if (bbox == null && element.IsHidden(view))
         {
             return false;
