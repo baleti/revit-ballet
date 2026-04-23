@@ -123,7 +123,6 @@ public class SwitchDocumentInNetwork : IExternalCommand
 
                 if (isCurrent)
                 {
-                    TaskDialog.Show("Info", "Selected session is the current session.");
                     executionLog.SetResult(Result.Succeeded);
                     return Result.Succeeded;
                 }

@@ -18,8 +18,8 @@ public class SelectViews : IExternalCommand
         // Get the currently active view
         View activeView = doc.ActiveView;
 
-        // Create a mapping for views that are placed on sheets (non-sheet views)
-        Dictionary<ElementId, ViewSheet> viewToSheetMap = new Dictionary<ElementId, ViewSheet>();
+        // Map viewId -> list of (Viewport, ViewSheet) placements. Legends appear on multiple sheets.
+        var viewToViewportsMap = new Dictionary<ElementId, List<(Viewport Viewport, ViewSheet Sheet)>>();
         FilteredElementCollector sheetCollector = new FilteredElementCollector(doc)
             .OfClass(typeof(ViewSheet));
         foreach (ViewSheet sheet in sheetCollector)
@@ -29,17 +29,18 @@ public class SelectViews : IExternalCommand
                 Viewport viewport = doc.GetElement(viewportId) as Viewport;
                 if (viewport != null)
                 {
-                    viewToSheetMap[viewport.ViewId] = sheet;
+                    if (!viewToViewportsMap.ContainsKey(viewport.ViewId))
+                        viewToViewportsMap[viewport.ViewId] = new List<(Viewport, ViewSheet)>();
+                    viewToViewportsMap[viewport.ViewId].Add((viewport, sheet));
                 }
             }
         }
 
-        // Get all views in the project, including view sheets.
+        // Get all views in the project, including view sheets and legends.
         List<View> allViews = new FilteredElementCollector(doc)
             .OfClass(typeof(View))
             .Cast<View>()
             .Where(v => !v.IsTemplate &&
-                        v.ViewType != ViewType.Legend &&
                         v.ViewType != ViewType.Schedule &&
                         v.ViewType != ViewType.ProjectBrowser &&
                         v.ViewType != ViewType.SystemBrowser)
@@ -55,41 +56,58 @@ public class SelectViews : IExternalCommand
 
         foreach (View view in allViews)
         {
-            // Assuming titles are unique; otherwise, you might need to use a different key.
             titleToViewMap[view.Title] = view;
-            Dictionary<string, object> viewInfo = new Dictionary<string, object>();
 
-            // Add browser organization columns first
-            BrowserOrganizationHelper.AddBrowserColumnsToDict(viewInfo, view, doc, browserColumns);
-
-            // Then add standard columns - differentiate between ViewSheet and regular views
             if (view is ViewSheet viewSheet)
             {
-                // For a sheet, show its sheet number and name separately
+                Dictionary<string, object> viewInfo = new Dictionary<string, object>();
+                BrowserOrganizationHelper.AddBrowserColumnsToDict(viewInfo, view, doc, browserColumns);
                 viewInfo["SheetNumber"] = viewSheet.SheetNumber;
                 viewInfo["Name"] = viewSheet.Name;
-                viewInfo["Sheet"] = ""; // Empty for sheets
+                viewInfo["Sheet"] = "";
+                viewInfo["ElementIdObject"] = view.Id;
+                viewData.Add(viewInfo);
             }
-            else
+            else if (view.ViewType == ViewType.Legend)
             {
-                viewInfo["SheetNumber"] = ""; // Empty for non-sheet views
-                viewInfo["Name"] = view.Name;
-
-                // Check if view is placed on a sheet
-                if (viewToSheetMap.TryGetValue(view.Id, out ViewSheet sheet))
+                // Each legend placement on a sheet is a separate row (keyed by viewport Id).
+                if (viewToViewportsMap.TryGetValue(view.Id, out var placements))
                 {
-                    // For non-sheet views placed on a sheet, display the sheet info.
-                    viewInfo["Sheet"] = $"{sheet.SheetNumber} - {sheet.Name}";
+                    foreach (var (viewport, sheet) in placements)
+                    {
+                        Dictionary<string, object> viewInfo = new Dictionary<string, object>();
+                        BrowserOrganizationHelper.AddBrowserColumnsToDict(viewInfo, view, doc, browserColumns);
+                        viewInfo["SheetNumber"] = sheet.SheetNumber;
+                        viewInfo["Name"] = view.Name;
+                        viewInfo["Sheet"] = $"{sheet.SheetNumber} - {sheet.Name}";
+                        viewInfo["ElementIdObject"] = viewport.Id;
+                        viewData.Add(viewInfo);
+                    }
                 }
                 else
                 {
+                    Dictionary<string, object> viewInfo = new Dictionary<string, object>();
+                    BrowserOrganizationHelper.AddBrowserColumnsToDict(viewInfo, view, doc, browserColumns);
+                    viewInfo["SheetNumber"] = "";
+                    viewInfo["Name"] = view.Name;
                     viewInfo["Sheet"] = "Not Placed";
+                    viewInfo["ElementIdObject"] = view.Id;
+                    viewData.Add(viewInfo);
                 }
             }
-
-            viewInfo["ElementIdObject"] = view.Id; // Required for edit support
-
-            viewData.Add(viewInfo);
+            else
+            {
+                Dictionary<string, object> viewInfo = new Dictionary<string, object>();
+                BrowserOrganizationHelper.AddBrowserColumnsToDict(viewInfo, view, doc, browserColumns);
+                viewInfo["SheetNumber"] = "";
+                viewInfo["Name"] = view.Name;
+                if (viewToViewportsMap.TryGetValue(view.Id, out var placements))
+                    viewInfo["Sheet"] = $"{placements[0].Sheet.SheetNumber} - {placements[0].Sheet.Name}";
+                else
+                    viewInfo["Sheet"] = "Not Placed";
+                viewInfo["ElementIdObject"] = view.Id;
+                viewData.Add(viewInfo);
+            }
         }
 
         // Sort by browser organization columns (if any), otherwise by Name
