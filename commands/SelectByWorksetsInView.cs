@@ -1,5 +1,5 @@
 //
-//  SelectByWorksetsInViews.cs
+//  SelectByWorksetsInView.cs
 //  Revit 2024 – C# 7.3
 //
 //  Selects every element that is **both**
@@ -22,7 +22,7 @@ using Autodesk.Revit.UI.Selection;
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 
 [Transaction(TransactionMode.Manual)]
-public class SelectByWorksetsInViews : IExternalCommand
+public class SelectByWorksetsInView : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData,
                               ref string message,

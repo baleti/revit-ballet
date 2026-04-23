@@ -24,6 +24,9 @@ public class InvokeLastAddinCommand : IExternalCommand
     {
         try
         {
+            // Clear per-invocation so new DLLs in hot-reload folder are always picked up
+            loadedAssemblies.Clear();
+
             // Detect Revit version
             string revitVersion = commandData.Application.Application.VersionNumber;
 

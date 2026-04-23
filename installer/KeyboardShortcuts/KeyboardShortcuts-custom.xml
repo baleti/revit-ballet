@@ -167,3 +167,6 @@
   <ShortcutItem CommandId="ID_OBJECTS_CURVE_RECT" Shortcuts="RR"/>
   <ShortcutItem CommandId="ID_EDIT_SELECT_PREVIOUS" Shortcuts="ZZ"/>
   <ShortcutItem CommandId="ID_DUPLICATE_SHEET_WITH_VIEWS" Shortcuts="DWV"/>
+  <ShortcutItem CommandId="1665CA00-4319-4C29-A9BA-0A6987706687" Shortcuts="SMV"/>
+  <ShortcutItem CommandId="2BC78EFB-453B-4370-BEC3-A2F54574CCF2" Shortcuts="SMD"/>
+  <ShortcutItem CommandId="0ACB0B6B-1B0D-4824-9C95-5478BF65772A" Shortcuts="SMS"/>

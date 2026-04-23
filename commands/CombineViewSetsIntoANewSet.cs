@@ -130,24 +130,31 @@ public class CombineViewSetsIntoANewSet : IExternalCommand
         {
             tx.Start();
 
-            DB.PrintManager pm = doc.PrintManager;
-            pm.PrintRange = DB.PrintRange.Select;                 // required for ViewSheetSetting :contentReference[oaicite:0]{index=0}
-            pm.PrintSetup.CurrentPrintSetting = pm.PrintSetup.InSession;
-
-            DB.ViewSheetSetting vss = pm.ViewSheetSetting;
-
             if (overwriteExisting)
             {
-                // make the old one current so we can edit & save it
-                vss.CurrentViewSheetSet = existingSet;            // settable :contentReference[oaicite:1]{index=1}
-                vss.CurrentViewSheetSet.Views = combined;
-                vss.Save();                                       // updates in-place
+                // ViewSheetSet.Views is directly settable — no PrintManager needed
+                existingSet.Views = combined;
             }
             else
             {
-                // work on the In-Session set and save with a new name
-                vss.CurrentViewSheetSet.Views = combined;
-                vss.SaveAs(newSetName);                           // creates new set
+                // Creating a new set requires PrintManager; catch printer config failures
+                try
+                {
+                    DB.PrintManager pm = doc.PrintManager;
+                    pm.PrintRange = DB.PrintRange.Select;
+                    pm.PrintSetup.CurrentPrintSetting = pm.PrintSetup.InSession;
+                    DB.ViewSheetSetting vss = pm.ViewSheetSetting;
+                    vss.CurrentViewSheetSet.Views = combined;
+                    vss.SaveAs(newSetName);
+                }
+                catch (Exception ex)
+                {
+                    tx.RollBack();
+                    message = $"Could not create new view-sheet set \"{newSetName}\": printer is not configured on this machine.\n\n" +
+                              "Workaround: create an empty set manually in Revit, then run this command again and choose Overwrite.\n\n" +
+                              $"Details: {ex.Message}";
+                    return Result.Failed;
+                }
             }
 
             tx.Commit();
