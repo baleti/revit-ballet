@@ -89,10 +89,11 @@ public class InvokeAddinCommand : IExternalCommand
                 foreach (var type in assembly.GetTypes().Where(t => typeof(IExternalCommand).IsAssignableFrom(t) && !t.IsInterface && !t.IsAbstract))
                 {
                     var className = type.Name;
-                    var meta = type.GetCustomAttributes(typeof(CommandMetaAttribute), false)
-                                   .Cast<CommandMetaAttribute>()
-                                   .FirstOrDefault();
-                    var input = meta?.Input ?? "";
+                    var metaAttr = type.GetCustomAttributes(false)
+                                       .FirstOrDefault(a => a.GetType().Name == "CommandMetaAttribute");
+                    var input = metaAttr != null
+                        ? (string)metaAttr.GetType().GetProperty("Input").GetValue(metaAttr)
+                        : "";
 
                     commandEntries.Add(new Dictionary<string, object>
                     {

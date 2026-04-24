@@ -8,7 +8,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 
 [Transaction(TransactionMode.Manual)]
-[CommandMeta("")]
+[CommandMeta("Room")]
 public class DirectShapesFromVisibleRooms : IExternalCommand
 {
     public Result Execute(ExternalCommandData data, ref string message, ElementSet elems)
