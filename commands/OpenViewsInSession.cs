@@ -86,7 +86,8 @@ public class OpenViewsInSession : IExternalCommand
                     {
                         dict["SheetNumber"] = sheet.SheetNumber;
                         dict["Name"] = sheet.Name;
-                        dict["Sheet"] = ""; // Empty for sheets
+                        dict["Sheet Number"] = "";
+                        dict["Sheet Title"] = "";
                     }
                     else
                     {
@@ -102,11 +103,13 @@ public class OpenViewsInSession : IExternalCommand
                         if (viewport != null)
                         {
                             ViewSheet containingSheet = doc.GetElement(viewport.SheetId) as ViewSheet;
-                            dict["Sheet"] = containingSheet != null ? containingSheet.Title : "";
+                            dict["Sheet Number"] = containingSheet != null ? containingSheet.SheetNumber : "";
+                            dict["Sheet Title"] = containingSheet != null ? containingSheet.Name : "";
                         }
                         else
                         {
-                            dict["Sheet"] = ""; // Empty for views not on sheets
+                            dict["Sheet Number"] = "";
+                            dict["Sheet Title"] = "";
                         }
                     }
 
@@ -181,7 +184,8 @@ public class OpenViewsInSession : IExternalCommand
 
             columns.Add("SheetNumber");
             columns.Add("Name");
-            columns.Add("Sheet");
+            columns.Add("Sheet Number");
+            columns.Add("Sheet Title");
 
             // Save to session cache for next time
             ViewDataCache.SaveSessionCache(uiApp.Application, gridData, columns);
