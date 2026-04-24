@@ -18,6 +18,7 @@ using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace FilterDoorsWithWallOffsets
 {
     [Transaction(TransactionMode.Manual)]
+    [CommandMeta("Any")]
     public class FilterDoorsWithWallOffsets : IExternalCommand
     {
         // Updated configuration file path and name

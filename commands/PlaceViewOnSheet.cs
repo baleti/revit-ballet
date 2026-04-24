@@ -19,6 +19,7 @@ namespace RevitAddin.Commands
     /// </summary>
     [Transaction(TransactionMode.Manual)]
     [Regeneration(RegenerationOption.Manual)]
+    [CommandMeta("")]
     public class PlaceViewOnSheet : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData, ref string message, DB.ElementSet _) // elements not used

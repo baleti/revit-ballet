@@ -441,6 +441,7 @@ public static class SelectionModeManager
 // DataGrid command - shows current mode and allows selection
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
+[CommandMeta("")]
 public class SwitchSelectionMode : IExternalCommand
 {
     // Wrapper class for displaying selection modes

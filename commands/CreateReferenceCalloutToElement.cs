@@ -9,6 +9,7 @@ using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace RevitDetailLines
 {
     [Transaction(TransactionMode.Manual)]
+    [CommandMeta("Any")]
     public class CreateReferenceCalloutToElement : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)

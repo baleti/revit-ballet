@@ -7,6 +7,7 @@ using System.Linq;
 
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
+[CommandMeta("Revision Cloud")]
 public class CopyRevisionCloudToSheetAndInheritRevision : IExternalCommand
 {
     public Result Execute(

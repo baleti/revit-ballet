@@ -8,6 +8,7 @@ using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace RevitAPICommands
 {
     [Transaction(TransactionMode.ReadOnly)]
+    [CommandMeta("")]
     public class SelectLastCreatedSection : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)

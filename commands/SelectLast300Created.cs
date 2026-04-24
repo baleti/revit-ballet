@@ -16,6 +16,7 @@ namespace YourAddinNamespace
     /// elements to the current Revit selection.
     /// </summary>
     [Transaction(TransactionMode.Manual)]
+    [CommandMeta("")]
     public class SelectLast300Created : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData,

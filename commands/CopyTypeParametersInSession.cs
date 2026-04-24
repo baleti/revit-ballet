@@ -12,6 +12,7 @@ using System.Linq;
 /// open documents within the current Revit session.
 /// </summary>
 [Transaction(TransactionMode.Manual)]
+[CommandMeta("Any")]
 public class CopyTypeParametersInSession : IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)

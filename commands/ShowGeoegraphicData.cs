@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Text;
 using System.Collections.Generic;
 using Autodesk.Revit.Attributes;
@@ -9,6 +9,7 @@ using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace MyRevitAddin
 {
     [Transaction(TransactionMode.ReadOnly)]
+    [CommandMeta("")]
     public class ShowGeoegraphicData : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)

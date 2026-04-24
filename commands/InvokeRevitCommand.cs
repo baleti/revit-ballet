@@ -9,6 +9,7 @@ using System.Windows.Forms;
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 
 [Transaction(TransactionMode.Manual)]
+[CommandMeta("")]
 public class InvokeRevitCommand : IExternalCommand
 {
     private const string FolderName = "revit-ballet/runtime";

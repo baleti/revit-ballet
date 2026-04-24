@@ -20,6 +20,7 @@ using Autodesk.Revit.UI.Selection;
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 
 [Transaction(TransactionMode.Manual)]
+[CommandMeta("")]
 public class SelectByWorksetsInDocument : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData,

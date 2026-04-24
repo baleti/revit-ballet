@@ -15,6 +15,7 @@ using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace RevitAddin
 {
     [Autodesk.Revit.Attributes.Transaction(Autodesk.Revit.Attributes.TransactionMode.Manual)]
+    [CommandMeta("Area")]
     public class CreateFilledRegionFromArea : IExternalCommand
     {
         // File path for storing preferences

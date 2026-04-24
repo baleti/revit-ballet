@@ -7,6 +7,7 @@ using System.Linq;
 using System;
 
 [Transaction(TransactionMode.ReadOnly)]
+[CommandMeta("")]
 public class ListSheetsWithRevisions : IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)

@@ -9,6 +9,7 @@ using Autodesk.Revit.DB.Electrical;
 using Autodesk.Revit.DB.Architecture;
 
 [Transaction(TransactionMode.Manual)]
+[CommandMeta("")]
 public class SelectFamilyTypesInView : IExternalCommand
 {
     public Result Execute(

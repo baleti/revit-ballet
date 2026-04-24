@@ -8,7 +8,8 @@ using System.Collections.Generic;
 using System.Linq;
 
 [Transaction(TransactionMode.Manual)]
-public class ListElementByCategory : IExternalCommand
+[CommandMeta("")]
+public class ListByCategory : IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
     {

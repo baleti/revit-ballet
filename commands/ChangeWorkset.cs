@@ -10,7 +10,8 @@ namespace RevitCommands
 {
     [Transaction(TransactionMode.Manual)]
     [Regeneration(RegenerationOption.Manual)]
-    public class ChangeWorksetOfElement : IExternalCommand
+    [CommandMeta("Any")]
+    public class ChangeWorkset : IExternalCommand
     {
         public Result Execute(
             ExternalCommandData commandData,

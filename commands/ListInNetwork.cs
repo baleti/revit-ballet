@@ -14,7 +14,8 @@ using System.Text;
 /// Uses SelectionStorage for cross-session selection tracking.
 /// </summary>
 [Transaction(TransactionMode.Manual)]
-public class ListElementInNetwork : IExternalCommand
+[CommandMeta("")]
+public class ListInNetwork : IExternalCommand
 {
     /// <summary>
     /// Marks this command as usable outside Revit context via network.

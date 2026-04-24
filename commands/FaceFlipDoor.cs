@@ -10,6 +10,7 @@ namespace RevitCommands
 {
     [Transaction(TransactionMode.Manual)]
     [Regeneration(RegenerationOption.Manual)]
+    [CommandMeta("Door")]
     public class FaceFlipDoor : IExternalCommand
     {
         public Result Execute(

@@ -8,6 +8,7 @@ using Autodesk.Revit.UI.Selection;
 
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
+[CommandMeta("Any")]
 public class DeselectOccluded : IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)

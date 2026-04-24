@@ -6,6 +6,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 
 [Transaction(TransactionMode.Manual)]
+[CommandMeta("")]
 public class ListSheetsWithAllParameters : IExternalCommand
 {
     public Result Execute(

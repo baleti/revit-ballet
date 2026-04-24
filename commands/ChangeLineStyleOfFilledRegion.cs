@@ -14,6 +14,7 @@ using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace RevitAddin
 {
     [Autodesk.Revit.Attributes.Transaction(Autodesk.Revit.Attributes.TransactionMode.Manual)]
+    [CommandMeta("Filled Region")]
     public class ChangeLineStyleOfFilledRegion : IExternalCommand
     {
         // File path for storing preferences

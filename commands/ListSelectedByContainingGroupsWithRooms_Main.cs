@@ -10,6 +10,7 @@ using Autodesk.Revit.UI.Selection;
 using Autodesk.Revit.DB.Architecture;
 
 [Transaction(TransactionMode.Manual)]
+[CommandMeta("Any")]
 public partial class ListSelectedByContainingGroupsWithRooms : IExternalCommand
 {
     // Diagnostic data collection

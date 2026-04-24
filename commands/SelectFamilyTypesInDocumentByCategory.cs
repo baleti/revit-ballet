@@ -12,6 +12,7 @@ using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace YourCompany.YourAddIn
 {
     [Transaction(TransactionMode.Manual)]
+    [CommandMeta("")]
     public class SelectFamilyTypesInDocumentByCategory : IExternalCommand
     {
         public Result Execute(

@@ -12,7 +12,8 @@ namespace RevitCommands
 {
     [Transaction(TransactionMode.Manual)]
     [Regeneration(RegenerationOption.Manual)]
-    public class DeleteDuplicateOfElement : IExternalCommand
+    [CommandMeta("Any")]
+    public class DeleteDuplicate : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
         {

@@ -9,6 +9,7 @@ using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace MyRevitAddin
 {
     [Transaction(TransactionMode.ReadOnly)]
+    [CommandMeta("")]
     public class SelectLevels : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)

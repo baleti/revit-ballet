@@ -7,7 +7,8 @@ using System.Linq;
 
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
-public class ZoomToElement : IExternalCommand
+[CommandMeta("Any")]
+public class ZoomTo : IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
     {

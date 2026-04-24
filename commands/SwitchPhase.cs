@@ -8,6 +8,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 
 [Transaction(TransactionMode.Manual)]
+[CommandMeta("")]
 public class SwitchPhase : IExternalCommand
 {
     // Wrapper class for displaying phases with a Number column.

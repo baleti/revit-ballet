@@ -8,6 +8,7 @@ using RevitBallet.Commands;
 using RevitAddin;
 
 [TransactionAttribute(TransactionMode.Manual)]
+[CommandMeta("View")]
 public class CopyCropRegion : IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)

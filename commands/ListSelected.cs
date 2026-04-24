@@ -1083,6 +1083,7 @@ public class ListSelectedInDocument : ListElementsBase
 }
 
 [Transaction(TransactionMode.Manual)]
+[CommandMeta("Any")]
 public class ListSelectedInView : IExternalCommand
 {
     public Result Execute(ExternalCommandData cData, ref string message, ElementSet elements)

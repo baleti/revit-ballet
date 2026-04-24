@@ -249,6 +249,7 @@ public static class ExtendedElementDataHelper
 /// Filter filled regions (and other selected elements) with sheet information and improved scope box detection
 /// </summary>
 [Transaction(TransactionMode.Manual)]
+[CommandMeta("Any")]
 public class FilterFilledRegions : IExternalCommand
 {
     public Result Execute(ExternalCommandData cData, ref string message, ElementSet elements)

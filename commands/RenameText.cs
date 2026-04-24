@@ -13,6 +13,7 @@ using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace MyRevitAddin
 {
     [Transaction(TransactionMode.Manual)]
+    [CommandMeta("Any")]
     public class RenameText : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)

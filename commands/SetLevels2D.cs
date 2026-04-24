@@ -4,6 +4,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 
 [Transaction(TransactionMode.Manual)]
+[CommandMeta("Level")]
 public class SetLevels2D : IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData, ref string message,ElementSet elements)

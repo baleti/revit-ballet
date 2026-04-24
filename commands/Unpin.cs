@@ -5,7 +5,8 @@ using Autodesk.Revit.DB;
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace MyRevitCommands
 {
-    public class UnpinElement : IExternalCommand
+    [CommandMeta("Any")]
+    public class Unpin : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
         {

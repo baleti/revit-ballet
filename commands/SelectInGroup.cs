@@ -9,6 +9,7 @@ using System.Windows.Forms;
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 
 [Transaction(TransactionMode.Manual)]
+[CommandMeta("Any")]
 public class SelectInGroup : IExternalCommand
 {
     // Categories and types to exclude

@@ -7,6 +7,7 @@ using RevitBallet.Commands;
 
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
+[CommandMeta("")]
 public class OpenViewsInSession : IExternalCommand
 {
     public Result Execute(

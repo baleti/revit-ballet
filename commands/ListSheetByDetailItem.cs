@@ -9,6 +9,7 @@ using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
+[CommandMeta("")]
 public class ListSheetByDetailItem : IExternalCommand
 {
     private HashSet<string> uniqueSheetNames;

@@ -7,6 +7,7 @@ using System.Linq;
 namespace RevitBallet.Commands
 {
     [Transaction(TransactionMode.Manual)]
+    [CommandMeta("")]
     public class SelectViewportOfSheet : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)

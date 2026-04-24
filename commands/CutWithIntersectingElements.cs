@@ -9,6 +9,7 @@ using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace RevitAddin
 {
     [Transaction(TransactionMode.Manual)]
+    [CommandMeta("")]
     public class testCutWithIntersectingElements : IExternalCommand
     {
         public Result Execute(

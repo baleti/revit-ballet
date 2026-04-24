@@ -7,6 +7,7 @@ using System.Linq;
 using RevitBallet.Commands;
 
 [Transaction(TransactionMode.Manual)]
+[CommandMeta("")]
 public class SelectOpenedViews : IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData,

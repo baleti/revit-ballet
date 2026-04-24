@@ -7,7 +7,8 @@ using System.Linq;
 using System.Text;
 
 [Transaction(TransactionMode.Manual)]
-public class AddTextNoteToElement : IExternalCommand
+[CommandMeta("Any")]
+public class AddTextNote : IExternalCommand
 {
     public Result Execute(
         ExternalCommandData commandData,

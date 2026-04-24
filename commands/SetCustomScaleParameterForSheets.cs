@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 [Transaction(TransactionMode.Manual)]
+[CommandMeta("")]
 public class SetCustomScaleParameterForSheets : IExternalCommand
 {
     public Result Execute(

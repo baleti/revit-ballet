@@ -7,6 +7,7 @@ using System.Linq;
 using RevitBallet.Commands;
 
 [Transaction(TransactionMode.Manual)]
+[CommandMeta("Any")]
 public class CopyElementToViewsInDocument : IExternalCommand
 {
     public Result Execute(

@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 [TransactionAttribute(TransactionMode.Manual)]
+[CommandMeta("")]
 public class SelectSchedules : IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)

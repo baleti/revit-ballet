@@ -8,6 +8,7 @@ using RevitBallet.Commands;
 
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
+[CommandMeta("")]
 public class OpenSheetsInDocument : IExternalCommand
 {
     public Result Execute(

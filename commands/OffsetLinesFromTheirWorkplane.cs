@@ -8,6 +8,7 @@ using Autodesk.Revit.UI;
 using Autodesk.Revit.UI.Selection;
 
 [Transaction(TransactionMode.Manual)]
+[CommandMeta("Any")]
 public class OffsetLinesFromTheirWorkplane : IExternalCommand
 {
     public Result Execute(

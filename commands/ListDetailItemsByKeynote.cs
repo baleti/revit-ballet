@@ -5,6 +5,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 
 [Transaction(TransactionMode.Manual)]
+[CommandMeta("")]
 public class ListDetailItemsByKeynote : IExternalCommand
 {
     public Result Execute(

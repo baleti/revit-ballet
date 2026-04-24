@@ -9,6 +9,7 @@ using Newtonsoft.Json;
 using RevitBallet.Commands;
 
 [Transaction(TransactionMode.ReadOnly)]
+[CommandMeta("Any")]
 public class CopyCrossSession : IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData, ref string message, Autodesk.Revit.DB.ElementSet elements)

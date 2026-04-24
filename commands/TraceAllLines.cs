@@ -9,6 +9,7 @@ using Autodesk.Revit.UI.Selection;
 using System.Collections.Generic;
 
 [Transaction(TransactionMode.Manual)]
+[CommandMeta("")]
 public class TraceAllLines : IExternalCommand
 {
     public Result Execute(

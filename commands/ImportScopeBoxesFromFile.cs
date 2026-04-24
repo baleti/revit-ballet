@@ -12,6 +12,7 @@ namespace RevitCommands
 {
     [Transaction(TransactionMode.Manual)]
     [Regeneration(RegenerationOption.Manual)]
+    [CommandMeta("")]
     public class ImportScopeBoxesFromFile : IExternalCommand
     {
         public Result Execute(

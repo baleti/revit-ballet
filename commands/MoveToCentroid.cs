@@ -15,7 +15,8 @@ namespace MoveElementToCentroid
 {
     [Transaction(TransactionMode.Manual)]
     [Regeneration(RegenerationOption.Manual)]
-    public class MoveElementToCentroid : IExternalCommand
+    [CommandMeta("Any")]
+    public class MoveToCentroid : IExternalCommand
     {
         private static readonly string StoreFile = PathHelper.GetRuntimeFilePath("MoveElementToCentroid");
 

@@ -11,6 +11,7 @@ using RevitBallet.Commands;
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 
 [Transaction(TransactionMode.Manual)]
+[CommandMeta("")]
 public class InvokeAddinCommand : IExternalCommand
 {
     private const string LastCommandFileName = "InvokeAddinCommand-history";
@@ -88,15 +89,20 @@ public class InvokeAddinCommand : IExternalCommand
                 foreach (var type in assembly.GetTypes().Where(t => typeof(IExternalCommand).IsAssignableFrom(t) && !t.IsInterface && !t.IsAbstract))
                 {
                     var className = type.Name;
+                    var meta = type.GetCustomAttributes(typeof(CommandMetaAttribute), false)
+                                   .Cast<CommandMetaAttribute>()
+                                   .FirstOrDefault();
+                    var input = meta?.Input ?? "";
 
                     commandEntries.Add(new Dictionary<string, object>
                     {
-                        { "Command", className }
+                        { "Command", className },
+                        { "Input", input }
                     });
                     commandTypes[className] = type.FullName;
                 }
 
-                List<string> propertyNames = new List<string> { "Command" };
+                List<string> propertyNames = new List<string> { "Command", "Input" };
                 var selectedCommand = CustomGUIs.DataGrid(commandEntries, propertyNames, false).FirstOrDefault();
 
                 if (selectedCommand != null)

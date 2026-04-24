@@ -10,6 +10,7 @@ using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 #endregion
 
 [Transaction(TransactionMode.Manual)]
+[CommandMeta("Any")]
 public class SetParametersOfFamilyTypes : IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)

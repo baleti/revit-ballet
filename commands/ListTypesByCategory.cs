@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 [Transaction(TransactionMode.Manual)]
+[CommandMeta("")]
 public class ListTypesByCategory : IExternalCommand
 {
     public Result Execute(

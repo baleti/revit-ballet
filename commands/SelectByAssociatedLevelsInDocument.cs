@@ -11,6 +11,7 @@ using Autodesk.Revit.UI;
 /// Adds to selection all elements in the active document that are associated with the selected levels.
 /// </summary>
 [Transaction(TransactionMode.ReadOnly)]
+[CommandMeta("")]
 public class SelectByAssociatedLevelsInDocument : IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
