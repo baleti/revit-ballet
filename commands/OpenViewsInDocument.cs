@@ -126,14 +126,12 @@ public class OpenViewsInDocument : IExternalCommand
                 // Then add standard columns
                 if (v is ViewSheet sheet)
                 {
-                    dict["SheetNumber"] = sheet.SheetNumber;
-                    dict["Name"] = sheet.Name;
-                    dict["Sheet Number"] = "";
+                    dict["Sheet Number"] = sheet.SheetNumber;
                     dict["Sheet Title"] = "";
+                    dict["Name"] = sheet.Name;
                 }
                 else
                 {
-                    dict["SheetNumber"] = ""; // Empty for non-sheet views
                     dict["Name"] = v.Name;
 
                     // Check if view is placed on a sheet using prebuilt dictionary
@@ -192,7 +190,6 @@ public class OpenViewsInDocument : IExternalCommand
             // Column headers (order determines column order) - browser columns first
             columns = new List<string>();
             columns.AddRange(browserColumns.Select(bc => bc.Name));
-            columns.Add("SheetNumber");
             columns.Add("Name");
             columns.Add("Sheet Number");
             columns.Add("Sheet Title");
