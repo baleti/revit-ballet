@@ -217,13 +217,20 @@ var selected = CustomGUIs.DataGrid(gridData, propertyNames, false);
 
 Full details: `commands/DataGrid/IMPLEMENTATION_SUMMARY.md`. Code across `DataGrid.ColumnHandlers.cs`, `.Validation.cs`, `.EditMode.cs`, `.EditApply.cs`, `.Main.cs`.
 
-## Testing Across Revit Versions
+## Building and Deploying
+
+**Always use `Build.sh`** — it anchors paths to its own location so it works correctly from git worktrees as well as the main tree. Never `cd ~/revit-ballet/commands` directly; that always targets the main tree and will silently build stale code when working in a worktree.
 
 ```bash
-cd ~/revit-ballet/commands && for i in {2026..2017}; do dotnet build -c Release -p:RevitYear=$i; done
+# Build all Revit versions + installer (run from repo root or any worktree)
+bash Build.sh
+
+# Deploy to Windows with hot-reload (commands available immediately via InvokeAddinCommand)
+scp -i ~/.ssh/hwo-18 installer/bin/Release/installer.exe daniel@192.168.231.1:'C:\Users\Daniel\Desktop\installer.exe'
+ssh daniel@192.168.231.1 -i ~/.ssh/hwo-18 'powershell -NoProfile -Command "C:\Users\Daniel\Desktop\installer.exe --quiet --hot-reload"'
 ```
 
-Recommended when modifying core functionality, Revit API interactions, or doing significant refactors.
+Always pass `--hot-reload` when deploying — without it, new commands are only available after restarting Revit.
 
 ## Key Files
 
