@@ -7,7 +7,6 @@ using Autodesk.Revit.UI;
 
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("")]
-[CommandMeta("")]
 public class HideWorksetsInViews : IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData,

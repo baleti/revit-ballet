@@ -45,7 +45,7 @@ namespace TransformElementSample
 
   [Transaction(TransactionMode.Manual)]
   [CommandMeta("Any")]
-  public class Transform : IExternalCommand
+  public class TransformSelected : IExternalCommand
   {
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
     {
