@@ -1,4 +1,4 @@
-﻿using Autodesk.Revit.Attributes;
+using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using System;
@@ -9,6 +9,7 @@ using WinForms = System.Windows.Forms;
 
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
+[CommandMeta("Any")]
 public class SelectViewWhereElementIsVisible : IExternalCommand
 {
     // View info class for DataGrid display

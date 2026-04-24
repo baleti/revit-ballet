@@ -8,6 +8,7 @@ using WinForms = System.Windows.Forms;
 namespace HideLevelBubbles
 {
     [Transaction(TransactionMode.Manual)]
+    [CommandMeta("Grid")]
     public class ToggleBubblesOfGrid : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)

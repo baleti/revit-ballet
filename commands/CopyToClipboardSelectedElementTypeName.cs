@@ -6,6 +6,7 @@ using System.Windows.Forms; // Needed for Clipboard.SetText
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 
 [Transaction(TransactionMode.Manual)]
+[CommandMeta("Any")]
 public class CopyToClipboardTypeNameOfElementInLinkedModel : IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)

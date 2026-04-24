@@ -15,6 +15,7 @@ namespace MyRevitAddin
     /// then shows a renaming dialog to update family names.
     /// </summary>
     [Transaction(TransactionMode.Manual)]
+    [CommandMeta("")]
     public class RenameFamilies : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)

@@ -11,6 +11,7 @@ using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace RevitCommands
 {
     [Transaction(TransactionMode.ReadOnly)]
+    [CommandMeta("Any")]
     public class ListBoundingBoxCoordinates : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData,

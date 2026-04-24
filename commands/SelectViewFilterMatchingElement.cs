@@ -10,6 +10,7 @@ namespace YourAddinNamespace
 {
     [Transaction(TransactionMode.Manual)]
     [Regeneration(RegenerationOption.Manual)]
+    [CommandMeta("Any")]
     public class SelectViewFilterMatchingElement : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData,

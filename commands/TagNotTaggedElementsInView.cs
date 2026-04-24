@@ -20,6 +20,7 @@ public enum TagAnchor
 
 #if REVIT2022 || REVIT2023 || REVIT2024 || REVIT2025 || REVIT2026
 [Transaction(TransactionMode.Manual)]
+[CommandMeta("")]
 public class TagNotTaggedElementsInView : IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)

@@ -9,7 +9,8 @@ using System.Windows.Forms;
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 
 [Transaction(TransactionMode.Manual)]
-public class ImportElementFromLinkedModel : IExternalCommand
+[CommandMeta("")]
+public class ImportFromLinkedModel : IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
     {

@@ -8,6 +8,7 @@ using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace YourNamespace
 {
     [Transaction(TransactionMode.ReadOnly)]
+    [CommandMeta("View")]
     public class SelectViewportOfView : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)

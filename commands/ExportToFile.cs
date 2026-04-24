@@ -12,7 +12,8 @@ namespace RevitCommands
 {
     [Transaction(TransactionMode.Manual)]
     [Regeneration(RegenerationOption.Manual)]
-    public class ExportElementToFile : IExternalCommand
+    [CommandMeta("Any")]
+    public class ExportToFile : IExternalCommand
     {
         public Result Execute(
             ExternalCommandData commandData,

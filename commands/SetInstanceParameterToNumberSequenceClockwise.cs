@@ -8,6 +8,7 @@ using System.Windows.Forms;
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 
 [Transaction(TransactionMode.Manual)]
+[CommandMeta("Any")]
 public class SetInstanceParameterToNumberSequenceClockwise : IExternalCommand
 {
     public class ParameterInfo

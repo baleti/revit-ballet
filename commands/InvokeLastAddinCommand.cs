@@ -9,6 +9,7 @@ using System.Linq;
 using System.Reflection;
 
 [Transaction(TransactionMode.Manual)]
+[CommandMeta("")]
 public class InvokeLastAddinCommand : IExternalCommand
 {
     private const string LastCommandFileName = "InvokeAddinCommand-history";

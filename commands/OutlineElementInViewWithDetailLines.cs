@@ -12,6 +12,7 @@ using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace RevitCustomCommands
 {
     [Transaction(TransactionMode.Manual)]
+    [CommandMeta("Any")]
     public class OutlineElementInViewWithDetailLines : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)

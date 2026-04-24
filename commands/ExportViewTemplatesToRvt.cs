@@ -8,6 +8,7 @@ using System.Linq;
 using System.Windows.Forms;
 
 [Transaction(TransactionMode.Manual)]
+[CommandMeta("")]
 public class ExportViewTemplatesToRvt : IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)

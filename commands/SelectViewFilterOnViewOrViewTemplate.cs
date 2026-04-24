@@ -565,6 +565,7 @@ namespace MyRevitCommands
    /// Falls back to active view if no selection
    /// </summary>
    [Transaction(TransactionMode.Manual)]
+   [CommandMeta("")]
    public class SelectViewFilterOnViewOrViewTemplate : IExternalCommand
    {
       public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)

@@ -20,6 +20,7 @@ using System.Net.Http;
 /// across all Revit sessions in the network.
 /// </summary>
 [Transaction(TransactionMode.Manual)]
+[CommandMeta("Any")]
 public class CopyTypeParametersInNetwork : IExternalCommand
 {
     /// <summary>

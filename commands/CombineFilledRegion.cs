@@ -11,6 +11,7 @@ using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace RevitCommands
 {
     [Transaction(TransactionMode.Manual)]
+    [CommandMeta("Filled Region")]
     public class CombineFilledRegion : IExternalCommand
     {
         private struct TagInfo

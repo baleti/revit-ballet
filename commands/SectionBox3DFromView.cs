@@ -7,6 +7,7 @@ using System.IO;
 using System;
 
 [Transaction(TransactionMode.Manual)]
+[CommandMeta("")]
 public class SectionBox3DFromView : IExternalCommand
 {
     private bool GetZoomToFitSetting()

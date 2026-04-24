@@ -360,6 +360,7 @@ namespace RevitAddin
     //  Revit external command
     // ─────────────────────────────────────────────────────────────
     [Transaction(TransactionMode.Manual)]
+    [CommandMeta("")]
     public class DuplicateSheet : IExternalCommand
     {
         public Result Execute(

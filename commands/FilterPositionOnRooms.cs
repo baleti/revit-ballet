@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -9,6 +9,7 @@ using Autodesk.Revit.DB.Architecture;
 using Autodesk.Revit.UI;
 
 [Transaction(TransactionMode.ReadOnly)]
+[CommandMeta("Any")]
 public class FilterPositionOnRooms : IExternalCommand
 {
     // Helper class to store element data along with its reference

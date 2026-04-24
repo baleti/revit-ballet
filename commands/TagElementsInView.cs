@@ -7,6 +7,7 @@ using System.Linq;
 
 #if REVIT2022 || REVIT2023 || REVIT2024 || REVIT2025 || REVIT2026
 [Transaction(TransactionMode.Manual)]
+[CommandMeta("Any")]
 public class TagElementsInViews : IExternalCommand
 {
     public Result Execute(

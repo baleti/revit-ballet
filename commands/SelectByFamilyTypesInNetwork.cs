@@ -13,6 +13,7 @@ using System.Threading.Tasks;
 
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
+[CommandMeta("")]
 public class SelectByFamilyTypesInNetwork : IExternalCommand
 {
     /// <summary>

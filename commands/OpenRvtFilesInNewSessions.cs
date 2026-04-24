@@ -8,6 +8,7 @@ using Autodesk.Revit.UI;
 namespace RevitBallet.Commands
 {
     [Transaction(TransactionMode.Manual)]
+    [CommandMeta("")]
     public class OpenRvtFilesInNewSessions : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)

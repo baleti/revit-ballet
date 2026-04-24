@@ -294,6 +294,7 @@ namespace MyRevitCommands
       }
   }
 
+  [CommandMeta("Any")]
   public class CreateSectionThroughElement : IExternalCommand
   {
       // Helper: Rotate baseDir about Z by the angle specified in localOption.

@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 [Transaction(TransactionMode.Manual)]
+[CommandMeta("")]
 public class SetRevisionsToSheetsWhereRevisionIsByCloud : IExternalCommand
 {
     public Result Execute(

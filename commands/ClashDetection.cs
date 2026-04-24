@@ -29,7 +29,8 @@ using RevitColor = Autodesk.Revit.DB.Color;
 /// </summary>
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
-public class ClashDetectionOfElement : IExternalCommand
+[CommandMeta("Any")]
+public class ClashDetection : IExternalCommand
 {
     // Configuration
     private const double CLASH_TOLERANCE = 0.001; // 1mm tolerance

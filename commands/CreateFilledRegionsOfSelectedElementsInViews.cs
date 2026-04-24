@@ -19,6 +19,7 @@ using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace RevitAddin
 {
     [Autodesk.Revit.Attributes.Transaction(Autodesk.Revit.Attributes.TransactionMode.Manual)]
+    [CommandMeta("Any")]
     public class CreateFilledRegionsOfSelectedElementsInSelectedViews : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)

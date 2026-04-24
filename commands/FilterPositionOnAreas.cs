@@ -7,6 +7,7 @@ using Autodesk.Revit.DB.Architecture;
 using Autodesk.Revit.UI;
 
 [Transaction(TransactionMode.ReadOnly)]
+[CommandMeta("Any")]
 public class FilterPositionOnAreas : IExternalCommand
 {
     // Helper class to store element data along with its reference

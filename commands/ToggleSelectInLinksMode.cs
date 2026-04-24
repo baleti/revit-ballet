@@ -55,6 +55,7 @@ public static class SelectInLinksMode
 }
 
 [Transaction(TransactionMode.Manual)]
+[CommandMeta("")]
 public class ToggleSelectInLinksMode : IExternalCommand
 {
     public Result Execute(ExternalCommandData cData, ref string message, ElementSet elements)

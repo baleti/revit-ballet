@@ -12,6 +12,7 @@ using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace MyCompany.RevitCommands
 {
   [Transaction(TransactionMode.Manual)]
+  [CommandMeta("Any")]
   public class DrawRevisionCloudAroundElementInSheetAndInheritRevision : IExternalCommand
   {
     private const double OFFSET_MODEL = 0.20;      // ft – halo in MODEL space

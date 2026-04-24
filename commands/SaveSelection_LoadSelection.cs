@@ -269,6 +269,7 @@ internal class SelectionSetWrapper
 // SaveSelection command
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
+[CommandMeta("Any")]
 public class SaveSelection : IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
@@ -371,6 +372,7 @@ public class SaveSelection : IExternalCommand
 // LoadSelection command
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
+[CommandMeta("")]
 public class LoadSelection : IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)

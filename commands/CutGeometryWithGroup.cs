@@ -5,6 +5,7 @@ using Autodesk.Revit.UI.Selection;
 using System.Collections.Generic;
 
 [Transaction(TransactionMode.Manual)]
+[CommandMeta("Any")]
 public class CutGeometryWithGroup : IExternalCommand
 {
   public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)

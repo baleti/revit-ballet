@@ -10,6 +10,7 @@ using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace MyCompany.RevitCommands
 {
     [Autodesk.Revit.Attributes.Transaction(Autodesk.Revit.Attributes.TransactionMode.Manual)]
+    [CommandMeta("Any")]
     public class FilterSheets : IExternalCommand
     {
         public Result Execute(

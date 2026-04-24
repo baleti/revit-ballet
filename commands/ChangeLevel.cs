@@ -11,7 +11,8 @@ using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace RevitAddin
 {
   [Transaction(TransactionMode.Manual)]
-  public class ChangeLevelOfElement : IExternalCommand
+  [CommandMeta("Any")]
+  public class ChangeLevel : IExternalCommand
   {
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
     {

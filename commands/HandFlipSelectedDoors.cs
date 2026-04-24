@@ -10,6 +10,7 @@ namespace RevitCommands
 {
     [Transaction(TransactionMode.Manual)]
     [Regeneration(RegenerationOption.Manual)]
+    [CommandMeta("Door")]
     public class HandFlipSelectedDoors : IExternalCommand
     {
         public Result Execute(

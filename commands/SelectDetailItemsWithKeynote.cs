@@ -4,6 +4,7 @@ using Autodesk.Revit.UI;
 using System.Linq;
 
 [Transaction(TransactionMode.Manual)]
+[CommandMeta("")]
 public class SelectDetailItemsWithKeynote : IExternalCommand
 {
     public Result Execute(

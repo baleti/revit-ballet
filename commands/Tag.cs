@@ -5,7 +5,8 @@ using System;
 using System.Collections.Generic;
 
 [Transaction(TransactionMode.Manual)]
-public class TagElement : IExternalCommand
+[CommandMeta("Any")]
+public class Tag : IExternalCommand
 {
     public Result Execute(
       ExternalCommandData commandData, 

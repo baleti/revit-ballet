@@ -7,6 +7,7 @@ using System;
 using System.Collections.Generic;
 
 [Transaction(TransactionMode.Manual)]
+[CommandMeta("")]
 public class DrawCircleAtOrigin : IExternalCommand
 {
     public Result Execute(

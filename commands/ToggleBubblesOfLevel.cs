@@ -174,6 +174,7 @@ namespace HideLevelBubbles
     }
 
     [Transaction(TransactionMode.Manual)]
+    [CommandMeta("Level")]
     public class ToggleBubblesOfLevel : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)

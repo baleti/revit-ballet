@@ -10,6 +10,7 @@ using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
+[CommandMeta("")]
 public class ListViewByDetailItem : IExternalCommand
 {
     private HashSet<string> uniqueViewNames;

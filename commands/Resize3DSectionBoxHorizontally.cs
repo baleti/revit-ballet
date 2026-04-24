@@ -6,6 +6,7 @@ using System.Windows.Forms; // For the input box
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 
 [Transaction(TransactionMode.Manual)]
+[CommandMeta("")]
 public class Resize3DSectionBoxHorizontally : IExternalCommand
 {
     public Result Execute(

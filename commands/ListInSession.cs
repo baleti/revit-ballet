@@ -11,7 +11,8 @@ using System.Linq;
 /// Uses SelectionStorage for cross-document selection tracking.
 /// </summary>
 [Transaction(TransactionMode.Manual)]
-public class ListElementInSession : IExternalCommand
+[CommandMeta("")]
+public class ListInSession : IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
     {

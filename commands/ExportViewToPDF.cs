@@ -17,6 +17,7 @@ using Microsoft.WindowsAPICodePack.Dialogs;
 #if REVIT2022 || REVIT2023 || REVIT2024 || REVIT2025 || REVIT2026
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
+[CommandMeta("")]
 public class ExportViewToPDF : IExternalCommand
 {
     [DllImport("user32.dll", CharSet = CharSet.Auto)]

@@ -6,6 +6,7 @@ using System.Linq;
 using System;
 
 [Transaction(TransactionMode.Manual)]
+[CommandMeta("Any")]
 public class SelectFamilyTypeInstancesInLinkedModels : IExternalCommand
 {
     public Result Execute(

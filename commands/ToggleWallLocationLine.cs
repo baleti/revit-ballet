@@ -6,6 +6,8 @@ using Autodesk.Revit.UI;
 using Autodesk.Revit.UI.Selection;
 
 [Transaction(TransactionMode.Manual)]
+[CommandMeta("")]
+[CommandMeta("Wall")]
 public class ToggleWallsLocationLineFromFinishFaceExteriorToFinishFaceInterior : IExternalCommand
 {
     public Result Execute(

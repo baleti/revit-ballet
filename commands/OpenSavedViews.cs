@@ -8,6 +8,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.Attributes;
 
 [Transaction(TransactionMode.Manual)]
+[CommandMeta("")]
 public class OpenSavedViews : IExternalCommand
 {
     public Result Execute(

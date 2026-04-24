@@ -247,6 +247,17 @@ When creating new commands, **do not** automatically register them. Never modify
 
 Create the `.cs` in `commands/` and tell the user it's ready but unregistered.
 
+## Command Metadata
+
+Every `IExternalCommand` class should carry a `[CommandMeta("...")]` attribute (defined in `CommandMetaAttribute.cs`, global namespace — no `using` needed). The `Input` string describes what the user must have ready before invoking the command and is shown as the **Input** column in `InvokeAddinCommand`'s DataGrid.
+
+Common values:
+- `""` — no prior selection needed; command opens its own picker/dialog
+- `"Any"` — one or more elements must be selected (any type)
+- `"Door"`, `"Wall"`, `"View"`, `"Grid"`, etc. — specific element type required
+
+New commands must include the attribute. When the required input is not yet known, use `""`.
+
 ## Command Design Principles
 
 **Silent Completion.** Commands finish without success dialogs. No "Operation Complete" / summary popups. Dialogs are only for errors (failure the user needs to know about), required input (decision needed), or warnings (important conditions).

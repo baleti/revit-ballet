@@ -14,6 +14,7 @@ namespace RevitCommands
 {
     [Transaction(TransactionMode.Manual)]
     [Regeneration(RegenerationOption.Manual)]
+    [CommandMeta("Viewport")]
     public class ResetTitleOfViewport : IExternalCommand
     {
         private const string SETTINGS_FOLDER = "revit-ballet/runtime";

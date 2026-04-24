@@ -7,6 +7,7 @@ using System.Linq;
 using System.Text;
 
 [Transaction(TransactionMode.Manual)]
+[CommandMeta("Any")]
 public class AddTextNoteToDoor : IExternalCommand
 {
     // Class to track text note placement information

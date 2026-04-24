@@ -12,6 +12,7 @@ using System.Windows.Forms;
 using System.Threading;
 
 [Transaction(TransactionMode.Manual)]
+[CommandMeta("Any")]
 public partial class CopyElementAlongContainingGroupByRoom : IExternalCommand
 {
     // Track room validation statistics

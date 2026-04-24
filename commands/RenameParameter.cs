@@ -703,7 +703,8 @@ namespace MyRevitAddin
     // 3. External command – rename parameters of selection (instances & types)
     // =============================================================================================
     [Transaction(TransactionMode.Manual)]
-    public class RenameParameterOfElement : IExternalCommand
+    [CommandMeta("Any")]
+    public class RenameParameter : IExternalCommand
     {
         public Result Execute(ExternalCommandData cData, ref string msg, ElementSet set)
         {

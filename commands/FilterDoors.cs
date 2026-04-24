@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 [Transaction(TransactionMode.ReadOnly)]
+[CommandMeta("Any")]
 public class FilterDoors : IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)

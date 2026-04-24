@@ -9,6 +9,7 @@ using System.Windows.Forms;
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 
 [Transaction(TransactionMode.ReadOnly)]
+[CommandMeta("Any")]
 public class DeselectRandomlySimplex : IExternalCommand
 {
     private class SimplexNoise

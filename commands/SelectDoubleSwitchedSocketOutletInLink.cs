@@ -7,6 +7,7 @@ using System.Linq;
 using System.Collections.Generic;
 
 [Transaction(TransactionMode.Manual)]
+[CommandMeta("")]
 public class HighlightDoubleSwitchedSocketOutletInLink : IExternalCommand, ISelectionFilter
 {
     private RevitLinkInstance Instance = null;
