@@ -7,7 +7,6 @@ using System.Linq;
 
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
-[CommandMeta("")]
 [CommandMeta("Any")]
 public class IsolateElementsInViews : IExternalCommand
 {
