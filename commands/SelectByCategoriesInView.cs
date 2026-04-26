@@ -61,6 +61,9 @@ public class SelectByCategoriesInView : IExternalCommand
         Dictionary<ElementId, List<ElementId>> regularElementsByCategory = new Dictionary<ElementId, List<ElementId>>();
         List<ElementId> elementsNotInGroups = new List<ElementId>();
         List<ElementId> sheetIds = new List<ElementId>();
+        List<ElementId> filterIds = new FilteredElementCollector(doc)
+            .OfClass(typeof(ParameterFilterElement))
+            .Select(e => e.Id).ToList();
         
         // Collect elements from all views to process
         foreach (View view in viewsToProcess)
@@ -333,6 +336,20 @@ public class SelectByCategoriesInView : IExternalCommand
                 { "ElementIds", sheetIds }
             };
             categoryList.Add(sheetsEntry);
+        }
+
+        if (filterIds.Count > 0)
+        {
+            var filtersEntry = new Dictionary<string, object>
+            {
+                { "Name", "View Filters" },
+                { "Count", filterIds.Count },
+                { "CategoryId", ElementId.InvalidElementId },
+                { "IsDirectShape", false },
+                { "IsViewFilter", true },
+                { "ElementIds", filterIds }
+            };
+            categoryList.Add(filtersEntry);
         }
 
         // Sort the list to keep Direct Shapes grouped with their parent categories

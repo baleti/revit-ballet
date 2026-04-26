@@ -29,6 +29,10 @@ public class SelectByCategoriesInDocument : IExternalCommand
         FilteredElementCollector sheetCollector = new FilteredElementCollector(doc);
         sheetIds = sheetCollector.OfClass(typeof(ViewSheet)).Select(s => s.Id).ToList();
 
+        List<ElementId> filterIds = new FilteredElementCollector(doc)
+            .OfClass(typeof(ParameterFilterElement))
+            .Select(e => e.Id).ToList();
+
         // Explicitly collect all views and view templates
         FilteredElementCollector viewCollector = new FilteredElementCollector(doc);
         foreach (View view in viewCollector.OfClass(typeof(View)).Cast<View>())
@@ -192,7 +196,21 @@ public class SelectByCategoriesInDocument : IExternalCommand
             };
             categoryList.Add(sheetsEntry);
         }
-        
+
+        if (filterIds.Count > 0)
+        {
+            var filtersEntry = new Dictionary<string, object>
+            {
+                { "Name", "View Filters" },
+                { "Count", filterIds.Count },
+                { "CategoryId", ElementId.InvalidElementId },
+                { "IsDirectShape", false },
+                { "IsViewFilter", true },
+                { "ElementIds", filterIds }
+            };
+            categoryList.Add(filtersEntry);
+        }
+
         // Sort the list to keep Direct Shapes grouped with their parent categories
         categoryList = categoryList.OrderBy(c => ((string)c["Name"]).Replace("Direct Shapes: ", "")).ToList();
         
