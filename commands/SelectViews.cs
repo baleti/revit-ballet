@@ -63,9 +63,9 @@ public class SelectViews : IExternalCommand
             {
                 Dictionary<string, object> viewInfo = new Dictionary<string, object>();
                 BrowserOrganizationHelper.AddBrowserColumnsToDict(viewInfo, view, doc, browserColumns);
-                viewInfo["SheetNumber"] = viewSheet.SheetNumber;
+                viewInfo["Sheet Number"] = viewSheet.SheetNumber;
+                viewInfo["Sheet Title"] = "";
                 viewInfo["Name"] = viewSheet.Name;
-                viewInfo["Sheet"] = "";
                 viewInfo["ElementIdObject"] = view.Id;
                 viewData.Add(viewInfo);
             }
@@ -78,9 +78,9 @@ public class SelectViews : IExternalCommand
                     {
                         Dictionary<string, object> viewInfo = new Dictionary<string, object>();
                         BrowserOrganizationHelper.AddBrowserColumnsToDict(viewInfo, view, doc, browserColumns);
-                        viewInfo["SheetNumber"] = sheet.SheetNumber;
+                        viewInfo["Sheet Number"] = sheet.SheetNumber;
+                        viewInfo["Sheet Title"] = sheet.Name;
                         viewInfo["Name"] = view.Name;
-                        viewInfo["Sheet"] = $"{sheet.SheetNumber} - {sheet.Name}";
                         viewInfo["ElementIdObject"] = viewport.Id;
                         viewData.Add(viewInfo);
                     }
@@ -89,9 +89,9 @@ public class SelectViews : IExternalCommand
                 {
                     Dictionary<string, object> viewInfo = new Dictionary<string, object>();
                     BrowserOrganizationHelper.AddBrowserColumnsToDict(viewInfo, view, doc, browserColumns);
-                    viewInfo["SheetNumber"] = "";
+                    viewInfo["Sheet Number"] = "";
+                    viewInfo["Sheet Title"] = "Not Placed";
                     viewInfo["Name"] = view.Name;
-                    viewInfo["Sheet"] = "Not Placed";
                     viewInfo["ElementIdObject"] = view.Id;
                     viewData.Add(viewInfo);
                 }
@@ -100,12 +100,17 @@ public class SelectViews : IExternalCommand
             {
                 Dictionary<string, object> viewInfo = new Dictionary<string, object>();
                 BrowserOrganizationHelper.AddBrowserColumnsToDict(viewInfo, view, doc, browserColumns);
-                viewInfo["SheetNumber"] = "";
                 viewInfo["Name"] = view.Name;
                 if (viewToViewportsMap.TryGetValue(view.Id, out var placements))
-                    viewInfo["Sheet"] = $"{placements[0].Sheet.SheetNumber} - {placements[0].Sheet.Name}";
+                {
+                    viewInfo["Sheet Number"] = placements[0].Sheet.SheetNumber;
+                    viewInfo["Sheet Title"] = placements[0].Sheet.Name;
+                }
                 else
-                    viewInfo["Sheet"] = "Not Placed";
+                {
+                    viewInfo["Sheet Number"] = "";
+                    viewInfo["Sheet Title"] = "Not Placed";
+                }
                 viewInfo["ElementIdObject"] = view.Id;
                 viewData.Add(viewInfo);
             }
@@ -136,9 +141,9 @@ public class SelectViews : IExternalCommand
         // Define the column headers - browser columns first, then standard columns.
         List<string> columns = new List<string>();
         columns.AddRange(browserColumns.Select(bc => bc.Name));
-        columns.Add("SheetNumber");
         columns.Add("Name");
-        columns.Add("Sheet");
+        columns.Add("Sheet Number");
+        columns.Add("Sheet Title");
 
         // Prepare initial selection indices (if active view was found)
         List<int> initialSelection = null;
