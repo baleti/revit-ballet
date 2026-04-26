@@ -66,37 +66,35 @@ public class SetRevisionToSheetOrCloud : IExternalCommand
         }
 
         // ─────────────────────────────────────────────
-        // 2. Use the elements currently selected in Revit
+        // 2. Resolve sheets / revision clouds from selection or picker
         // ─────────────────────────────────────────────
         ICollection<ElementId> pickIds = uiDoc.GetSelectionIds();
 
-        if (pickIds == null || pickIds.Count == 0)
-        {
-            TaskDialog.Show("Set Revision", "Select one or more sheets or revision clouds before running the command.");
-            return Result.Cancelled;
-        }
-
-        // Separate sheets and revision clouds from selection
         List<ViewSheet> targetSheets = new List<ViewSheet>();
         List<RevisionCloud> targetClouds = new List<RevisionCloud>();
 
         foreach (ElementId id in pickIds)
         {
             Element element = doc.GetElement(id);
-            if (element is ViewSheet sheet)
+            if (element is ViewSheet sheet) targetSheets.Add(sheet);
+            else if (element is RevisionCloud cloud) targetClouds.Add(cloud);
+            else if (element is Viewport vp && vp.SheetId != ElementId.InvalidElementId)
             {
-                targetSheets.Add(sheet);
-            }
-            else if (element is RevisionCloud cloud)
-            {
-                targetClouds.Add(cloud);
+                var vs2 = doc.GetElement(vp.SheetId) as ViewSheet;
+                if (vs2 != null && !targetSheets.Contains(vs2)) targetSheets.Add(vs2);
             }
         }
 
         if (targetSheets.Count == 0 && targetClouds.Count == 0)
         {
-            TaskDialog.Show("Set Revision", "No sheets or revision clouds were found in the current selection.");
-            return Result.Cancelled;
+            CustomGUIs.SetCurrentUIDocument(uiDoc);
+            var allSheets = new FilteredElementCollector(doc)
+                .OfClass(typeof(ViewSheet)).Cast<ViewSheet>().ToList();
+            var gridData = CustomGUIs.ConvertToDataGridFormat(allSheets, new List<string> { "Sheet Number", "Name" });
+            var chosen = CustomGUIs.DataGrid(gridData, new List<string> { "Sheet Number", "Name" }, false);
+            if (chosen == null) return Result.Cancelled;
+            targetSheets = CustomGUIs.ExtractOriginalObjects<ViewSheet>(chosen) ?? new List<ViewSheet>();
+            if (targetSheets.Count == 0) return Result.Succeeded;
         }
 
         // ─────────────────────────────────────────────

@@ -27,23 +27,28 @@ public class UnsetRevisionToSheet : IExternalCommand
         // ─────────────────────────────────────────────
         ICollection<ElementId> pickIds = uiDoc.GetSelectionIds();
 
-        if (pickIds == null || pickIds.Count == 0)
+        List<ViewSheet> targetSheets = new List<ViewSheet>();
+        foreach (ElementId id in pickIds)
         {
-            TaskDialog.Show("Unset Revision",
-                "Select one or more sheets before running the command.");
-            return Result.Cancelled;
+            Element e = doc.GetElement(id);
+            if (e is ViewSheet vs && !targetSheets.Contains(vs)) targetSheets.Add(vs);
+            else if (e is Viewport vp && vp.SheetId != ElementId.InvalidElementId)
+            {
+                var vs2 = doc.GetElement(vp.SheetId) as ViewSheet;
+                if (vs2 != null && !targetSheets.Contains(vs2)) targetSheets.Add(vs2);
+            }
         }
-
-        List<ViewSheet> targetSheets = pickIds
-            .Select(id => doc.GetElement(id))
-            .OfType<ViewSheet>()
-            .ToList();
 
         if (targetSheets.Count == 0)
         {
-            TaskDialog.Show("Unset Revision",
-                "No sheets were found in the current selection.");
-            return Result.Cancelled;
+            CustomGUIs.SetCurrentUIDocument(uiDoc);
+            var allSheets = new FilteredElementCollector(doc)
+                .OfClass(typeof(ViewSheet)).Cast<ViewSheet>().ToList();
+            var gridData = CustomGUIs.ConvertToDataGridFormat(allSheets, new List<string> { "Sheet Number", "Name" });
+            var chosen = CustomGUIs.DataGrid(gridData, new List<string> { "Sheet Number", "Name" }, false);
+            if (chosen == null) return Result.Cancelled;
+            targetSheets = CustomGUIs.ExtractOriginalObjects<ViewSheet>(chosen) ?? new List<ViewSheet>();
+            if (targetSheets.Count == 0) return Result.Succeeded;
         }
 
         // ─────────────────────────────────────────────
