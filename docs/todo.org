@@ -1,3 +1,20 @@
+* too many revision handling commands - clean that up
+* add ReplaceLegend command
+or think or some batter way of swapping legend, with autocompletion
+* split SelectViews into SelectViewInDocument and SelectViewInSession and SelectViewInNetwork
+* add command to datagrids
+** start with "remove duplicates"
+not so easy, this should produce a new table, which would require datagrids to be modeless first
+*** this effectively is a "pivot table"?
+it would require some logic what to do with other entries, average them, pick first, etc.
+*** potentially though it may not require modeless if you prefer to do it in the existing table
+* add some form of filtering columns by values rather than rows
+often you only want to show columsn that have specific values rather than rows
+* make referencing detil and referencing sheet cells editable in datagrids of section referencing other views
+right now there is no way to change them all at once in multiple elements in revit
+and doesn't work from datagrids
+* rename FilterDoorsWithWallOffsets to something more appropriate and make it work with wall elements in linked models
+* add text frame width/height/other properties to datagrid (Editable)
 * DuplicateViewAndPlaceOnSheet should take currently active sheet if no sheet is selected
 * once you complete CeilingToFloor command try a new command that recreats plans on other floors
 * structure commands in invokeaddincommand differently
