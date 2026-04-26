@@ -86,7 +86,7 @@ public class InvokeAddinCommand : IExternalCommand
 
                 var commandEntries = new List<Dictionary<string, object>>();
                 var commandTypes = new Dictionary<string, string>(); // Maps class name to full class name
-                foreach (var type in assembly.GetTypes().Where(t => typeof(IExternalCommand).IsAssignableFrom(t) && !t.IsInterface && !t.IsAbstract))
+                foreach (var type in assembly.GetTypes().Where(t => typeof(IExternalCommand).IsAssignableFrom(t) && !t.IsInterface && !t.IsAbstract).OrderBy(t => t.Name))
                 {
                     var className = type.Name;
                     var metaAttr = type.GetCustomAttributes(false)
