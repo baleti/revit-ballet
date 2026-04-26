@@ -7,6 +7,7 @@ using System.Linq;
 
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("View")]
+[CommandOutput("Viewport")]
 public class MoveSelectedViewsToSheet : IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)

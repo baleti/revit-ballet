@@ -12,6 +12,7 @@ namespace RevitCommands
 {
     [Transaction(TransactionMode.Manual)]
     [CommandMeta("Filled Region")]
+    [CommandOutput("Filled Region")]
     public class CombineFilledRegion : IExternalCommand
     {
         private struct TagInfo

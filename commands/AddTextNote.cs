@@ -8,6 +8,7 @@ using System.Text;
 
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("Any")]
+[CommandOutput("TextNote")]
 public class AddTextNote : IExternalCommand
 {
     public Result Execute(

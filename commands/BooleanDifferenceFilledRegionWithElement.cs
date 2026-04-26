@@ -23,6 +23,7 @@ namespace RevitAddin
 {
   [Autodesk.Revit.Attributes.Transaction(Autodesk.Revit.Attributes.TransactionMode.Manual)]
   [CommandMeta("Filled Region")]
+  [CommandOutput("Filled Region")]
   public class BooleanDifferenceFilledRegionWithElement : IExternalCommand
   {
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)

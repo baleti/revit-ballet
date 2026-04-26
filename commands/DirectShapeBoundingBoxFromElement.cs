@@ -6,6 +6,7 @@ using System.Linq;
 
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("Any")]
+[CommandOutput("DirectShape")]
 public class DirectShapeBoundingBoxFromElement : IExternalCommand
 {
     public Result Execute(ExternalCommandData data, ref string message, ElementSet elems)

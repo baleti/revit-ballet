@@ -8,6 +8,7 @@ using System.Text.RegularExpressions;
 
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("Area")]
+[CommandOutput("DirectShape")]
 public class DirectShapeFromArea : IExternalCommand
 {
     public Result Execute(ExternalCommandData data, ref string message, ElementSet elems)

@@ -95,15 +95,22 @@ public class InvokeAddinCommand : IExternalCommand
                         ? (string)metaAttr.GetType().GetProperty("Input").GetValue(metaAttr)
                         : "";
 
+                    var outputAttr = type.GetCustomAttributes(false)
+                                        .FirstOrDefault(a => a.GetType().Name == "CommandOutputAttribute");
+                    var output = outputAttr != null
+                        ? (string)outputAttr.GetType().GetProperty("Output").GetValue(outputAttr)
+                        : "";
+
                     commandEntries.Add(new Dictionary<string, object>
                     {
                         { "Command", className },
-                        { "Input", input }
+                        { "Input", input },
+                        { "Output", output }
                     });
                     commandTypes[className] = type.FullName;
                 }
 
-                List<string> propertyNames = new List<string> { "Command", "Input" };
+                List<string> propertyNames = new List<string> { "Command", "Input", "Output" };
                 var selectedCommand = CustomGUIs.DataGrid(commandEntries, propertyNames, false).FirstOrDefault();
 
                 if (selectedCommand != null)

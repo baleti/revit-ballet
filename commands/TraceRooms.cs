@@ -8,6 +8,7 @@ using System.Linq;
 
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("Room")]
+[CommandOutput("Filled Region")]
 public class TraceRooms : IExternalCommand
 {
     public Result Execute(

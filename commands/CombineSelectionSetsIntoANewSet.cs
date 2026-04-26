@@ -13,6 +13,7 @@ using System.Linq;
 
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("Selection Set")]
+[CommandOutput("Selection Set")]
 public class CombineSelectionSetsIntoANewSet : IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData,

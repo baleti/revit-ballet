@@ -10,6 +10,7 @@ namespace RevitCommands
 {
     [Transaction(TransactionMode.Manual)]
     [CommandMeta("Filled Region")]
+    [CommandOutput("Filled Region")]
     public class SplitFilledRegions : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
