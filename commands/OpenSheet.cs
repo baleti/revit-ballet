@@ -4,7 +4,7 @@ using Autodesk.Revit.Attributes;
 using System.Linq;
 
 [Transaction(TransactionMode.Manual)]
-[CommandMeta("")]
+[CommandMeta("Sheet")]
 public class OpenSheet : IExternalCommand
 {
     public Result Execute(

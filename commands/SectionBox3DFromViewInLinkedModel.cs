@@ -5,7 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 [Transaction(TransactionMode.Manual)]
-[CommandMeta("")]
+[CommandMeta("View")]
 public class SectionBox3DFromViewInLinkedModel : IExternalCommand
 {
     public Result Execute(

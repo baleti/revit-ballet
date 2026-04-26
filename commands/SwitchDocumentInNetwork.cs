@@ -10,7 +10,7 @@ using System.Runtime.InteropServices;
 using RevitBallet.Commands;
 
 [Transaction(TransactionMode.Manual)]
-[CommandMeta("")]
+[CommandMeta("Document")]
 public class SwitchDocumentInNetwork : IExternalCommand
 {
     /// <summary>

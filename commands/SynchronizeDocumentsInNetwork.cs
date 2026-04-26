@@ -15,7 +15,7 @@ using System.Net.Http;
 #endif
 
 [Transaction(TransactionMode.Manual)]
-[CommandMeta("")]
+[CommandMeta("Document")]
 public class SynchronizeDocumentsInNetwork : IExternalCommand
 {
     /// <summary>

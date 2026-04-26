@@ -6,7 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 [Transaction(TransactionMode.Manual)]
-[CommandMeta("")]
+[CommandMeta("Sheet")]
 public class SetRevisionsToCurrentSheet : IExternalCommand
 {
     public Result Execute(

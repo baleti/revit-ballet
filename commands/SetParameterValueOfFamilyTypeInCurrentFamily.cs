@@ -7,7 +7,7 @@ using System.Linq;
 using System;
 
 [Transaction(TransactionMode.Manual)]
-[CommandMeta("")]
+[CommandMeta("Family Type")]
 public class SetParameterValueOfFamilyTypeInCurrentFamily : IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)

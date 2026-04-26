@@ -7,7 +7,7 @@ using System.Linq;
 using RevitBallet.Commands;
 
 [Transaction(TransactionMode.Manual)]
-[CommandMeta("")]
+[CommandMeta("Document")]
 public class SynchronizeDocumentsInSession : IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)

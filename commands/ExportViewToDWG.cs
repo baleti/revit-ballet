@@ -16,7 +16,7 @@ using Microsoft.WindowsAPICodePack.Dialogs;
 
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
-[CommandMeta("")]
+[CommandMeta("View")]
 public class ExportViewToDWG : IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)

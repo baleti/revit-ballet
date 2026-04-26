@@ -7,7 +7,7 @@ using System.Linq;
 
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
-[CommandMeta("")]
+[CommandMeta("Sheet")]
 public class CreateDraftingViewsFromSheetNames : IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)

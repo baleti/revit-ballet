@@ -17,7 +17,7 @@ namespace YourCompany.YourAddin
 {
     [Transaction(TransactionMode.Manual)]
     [Regeneration(RegenerationOption.Manual)]
-    [CommandMeta("")]
+    [CommandMeta("View")]
     public class AssignViewTemplate : IExternalCommand
     {
         public Result Execute(

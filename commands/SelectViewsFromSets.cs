@@ -5,7 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 [TransactionAttribute(TransactionMode.Manual)]
-[CommandMeta("")]
+[CommandMeta("View")]
 public class SelectViewsFromSets : IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)

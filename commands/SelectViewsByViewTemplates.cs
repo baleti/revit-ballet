@@ -14,7 +14,7 @@ using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace MyRevitCommands
 {
     [Transaction(TransactionMode.Manual)]
-    [CommandMeta("")]
+    [CommandMeta("View")]
     public class SelectViewsByViewTemplates : IExternalCommand
     {
         public Result Execute(

@@ -259,7 +259,7 @@ namespace YourNamespace
     }
 
     [Transaction(TransactionMode.Manual)]
-    [CommandMeta("")]
+    [CommandMeta("View")]
     public class DuplicateViewAsDraftingView : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)

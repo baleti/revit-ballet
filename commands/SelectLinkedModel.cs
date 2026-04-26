@@ -7,7 +7,7 @@ using System.Linq;
 
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
-[CommandMeta("")]
+[CommandMeta("Linked Model")]
 public class SelectLinkedModels : IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)

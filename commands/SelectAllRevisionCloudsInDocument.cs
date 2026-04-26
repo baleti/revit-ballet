@@ -14,7 +14,7 @@ namespace MyRevitCommands
     /// current user selection.  Target framework: .NET 4.8; Language version: C# 7.3; Revit API 2024.
     /// </summary>
     [Transaction(TransactionMode.Manual)]
-    [CommandMeta("")]
+    [CommandMeta("Revision Cloud")]
     public class SelectAllRevisionCloudsInDocument : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)

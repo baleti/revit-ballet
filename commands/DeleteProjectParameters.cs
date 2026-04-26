@@ -8,7 +8,7 @@ using Autodesk.Revit.UI;
 namespace RevitBallet.Commands
 {
     [Transaction(TransactionMode.Manual)]
-    [CommandMeta("")]
+    [CommandMeta("Parameter")]
     public class DeleteProjectParameters : IExternalCommand
     {
         private class ProjectParameterData

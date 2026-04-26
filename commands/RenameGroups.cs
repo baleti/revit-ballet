@@ -8,7 +8,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 
 [Transaction(TransactionMode.Manual)]
-[CommandMeta("")]
+[CommandMeta("Model Group")]
 public class RenameGroups : IExternalCommand
 {
     private class GroupTypeInfo

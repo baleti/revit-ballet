@@ -118,7 +118,7 @@ namespace RevitAddin
     /// Number of duplicates = number of selected sheets.
     /// </summary>
     [Transaction(TransactionMode.Manual)]
-    [CommandMeta("")]
+    [CommandMeta("View")]
     public class DuplicateViewAndPlaceOnSheet : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)

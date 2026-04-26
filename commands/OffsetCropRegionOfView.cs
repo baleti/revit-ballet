@@ -14,7 +14,7 @@ using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace OffsetCropRegion
 {
     [Transaction(TransactionMode.Manual)]
-    [CommandMeta("")]
+    [CommandMeta("View")]
     public class OffsetCropRegionOfView : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)

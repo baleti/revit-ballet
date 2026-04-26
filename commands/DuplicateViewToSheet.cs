@@ -9,7 +9,7 @@ using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace MyRevitCommands
 {
     [Transaction(TransactionMode.Manual)]
-    [CommandMeta("")]
+    [CommandMeta("View")]
     public class DuplicateViewToSheet : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)

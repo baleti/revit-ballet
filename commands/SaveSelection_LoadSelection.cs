@@ -372,7 +372,7 @@ public class SaveSelection : IExternalCommand
 // LoadSelection command
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
-[CommandMeta("")]
+[CommandMeta("Selection Set")]
 public class LoadSelection : IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
