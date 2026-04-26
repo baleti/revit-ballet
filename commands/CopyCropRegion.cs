@@ -17,14 +17,30 @@ public class CopyCropRegion : IExternalCommand
         UIDocument uidoc = uiapp.ActiveUIDocument;
         Document doc = uidoc.Document;
 
-        // Use InputResolver to get views from selection or active view
-        List<View> selectedViews = InputResolver.ResolveViews(uidoc);
+        // Collect views/viewports from selection
+        List<View> selectedViews = new List<View>();
+        foreach (ElementId id in uidoc.GetSelectionIds())
+        {
+            Element elem = doc.GetElement(id);
+            if (elem is View v && !(v is ViewSchedule)) selectedViews.Add(v);
+            else if (elem is Viewport vp)
+            {
+                View vFromVp = doc.GetElement(vp.ViewId) as View;
+                if (vFromVp != null && !(vFromVp is ViewSchedule)) selectedViews.Add(vFromVp);
+            }
+        }
 
-        // Check if we have valid views
+        // Nothing in selection — show a picker so the user can choose source + targets
         if (selectedViews.Count == 0)
         {
-            TaskDialog.Show("Error", "No views available.");
-            return Result.Failed;
+            selectedViews = PickViews(doc, uidoc);
+            if (selectedViews == null || selectedViews.Count == 0) return Result.Cancelled;
+        }
+
+        if (selectedViews.Count < 2)
+        {
+            TaskDialog.Show("CopyCropRegion", "Select at least two views: one source and one or more targets.");
+            return Result.Cancelled;
         }
 
         // Determine the source view to get crop region from
@@ -32,7 +48,7 @@ public class CopyCropRegion : IExternalCommand
 
         if (selectedViews.Count == 1)
         {
-            // Single selection - use it as source
+            // Single selection - use it as source (unreachable after check above, kept for clarity)
             sourceView = selectedViews[0];
         }
         else
@@ -158,6 +174,32 @@ public class CopyCropRegion : IExternalCommand
         }
 
         return Result.Succeeded;
+    }
+
+    private List<View> PickViews(Document doc, UIDocument uidoc)
+    {
+        var allViews = new FilteredElementCollector(doc)
+            .OfClass(typeof(View)).Cast<View>()
+            .Where(v => !(v is ViewSchedule) && !v.IsTemplate)
+            .OrderBy(v => v.Name)
+            .ToList();
+
+        var items = allViews.Select(v => new Dictionary<string, object>
+        {
+            { "Name", v.Name },
+            { "Type", v.ViewType.ToString() },
+            { "ElementIdObject", v.Id },
+            { "__OriginalObject", v }
+        }).ToList();
+
+        CustomGUIs.SetCurrentUIDocument(uidoc);
+        var chosen = CustomGUIs.DataGrid(items, new List<string> { "Name", "Type" }, false);
+        if (chosen == null || chosen.Count == 0) return null;
+
+        return chosen
+            .Where(r => r.ContainsKey("__OriginalObject") && r["__OriginalObject"] is View)
+            .Select(r => (View)r["__OriginalObject"])
+            .ToList();
     }
 
     /// <summary>
