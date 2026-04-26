@@ -234,6 +234,13 @@
     <AddIn Type="Command">
         <Name>revit-ballet</Name>
         <Assembly>revit-ballet.dll</Assembly>
+        <FullClassName>SwitchDataGridDetailLevel</FullClassName>
+        <AddInId>B4F2A9E1-3C7D-4E8A-9F6B-2D1A4C8E7B3F</AddInId>
+        <VendorId>revit-ballet</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>revit-ballet</Name>
+        <Assembly>revit-ballet.dll</Assembly>
         <FullClassName>SwitchSelectionMode</FullClassName>
         <AddInId>8A9F2E3B-6D4C-4A7E-9A8F-3C1D2E7B4A9F</AddInId>
         <VendorId>revit-ballet</VendorId>

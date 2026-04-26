@@ -946,6 +946,13 @@ public abstract class ListElementsBase : IExternalCommand
                 propertyNames.Add("Contents");
             }
 
+            // Filter to base columns when detail level is Base
+            if (DataGridDetailLevelManager.CurrentLevel == DataGridDetailLevelManager.DetailLevel.Base)
+            {
+                var baseSet = new HashSet<string>(DataGridDetailLevelManager.BaseColumns);
+                propertyNames = propertyNames.Where(p => baseSet.Contains(p)).ToList();
+            }
+
             // Set the current UIDocument for edit operations
             CustomGUIs.SetCurrentUIDocument(uiDoc);
 
