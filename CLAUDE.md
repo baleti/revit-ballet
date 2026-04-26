@@ -247,6 +247,21 @@ When creating new commands, **do not** automatically register them. Never modify
 
 Create the `.cs` in `commands/` and tell the user it's ready but unregistered.
 
+## Keyboard Shortcut Entries Must Include CommandName and Paths
+
+Revit only binds shortcuts that have **both** `CommandName` and `Paths` populated in `KeyboardShortcuts.xml`. Bare entries (GUID + shortcut key only) are silently ignored at startup — Revit won't bind them and won't report an error.
+
+**Always** add `CommandName` and `Paths` when writing shortcut entries in `KeyboardShortcuts-custom.xml`:
+```xml
+<ShortcutItem CommandName="External &#xA;Tools:MyCommandName" CommandId="<guid>" Shortcuts="XX" Paths="Add-Ins&gt;External"/>
+```
+
+The `CommandName` format for external commands is `"External &#xA;Tools:<ClassName>"` (the `&#xA;` is a newline). `Paths` is `"Add-Ins&gt;External"` for all revit-ballet commands. `CommandId` GUIDs must be **lowercase** — Revit's shortcut matching is case-sensitive.
+
+Each `CommandId` must appear **once** in `KeyboardShortcuts-custom.xml` — duplicates cause a Revit import error on startup.
+
+Never edit Revit's `KeyboardShortcuts.xml` directly — Revit rewrites it on startup. Always update `KeyboardShortcuts-custom.xml` and run the installer.
+
 ## Command Metadata
 
 Every `IExternalCommand` class should carry a `[CommandMeta("...")]` attribute (defined in `CommandMetaAttribute.cs`, global namespace — no `using` needed). The `Input` string describes what the user must have ready before invoking the command and is shown as the **Input** column in `InvokeAddinCommand`'s DataGrid.
