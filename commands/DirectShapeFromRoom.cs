@@ -9,7 +9,6 @@ using System.Text.RegularExpressions;
 
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("Room")]
-[CommandOutput("DirectShape")]
 public class DirectShapeFromRoom : IExternalCommand
 {
     public Result Execute(ExternalCommandData data, ref string message, ElementSet elems)
@@ -21,8 +20,15 @@ public class DirectShapeFromRoom : IExternalCommand
         IList<Room> rooms = GetSelectedRooms(uidoc);
         if (rooms.Count == 0)
         {
-            message = "No rooms selected. Please select one or more rooms.";
-            return Result.Failed;
+            CustomGUIs.SetCurrentUIDocument(uidoc);
+            var allRooms = new FilteredElementCollector(doc)
+                .OfCategory(BuiltInCategory.OST_Rooms).OfClass(typeof(SpatialElement))
+                .Cast<Room>().Where(r => r.Area > 0).ToList();
+            var gridData = CustomGUIs.ConvertToDataGridFormat(allRooms, new List<string> { "Name" });
+            var chosen = CustomGUIs.DataGrid(gridData, new List<string> { "Name" }, false);
+            if (chosen == null) return Result.Cancelled;
+            rooms = CustomGUIs.ExtractOriginalObjects<Room>(chosen) ?? new List<Room>();
+            if (rooms.Count == 0) return Result.Succeeded;
         }
 
         // -------------------------------------------------- 2. create DirectShapes

@@ -34,8 +34,15 @@ namespace RevitCommands
 
             if (selectedFloors.Count == 0)
             {
-                TaskDialog.Show("Error", "Please select at least one floor.");
-                return Result.Failed;
+                CustomGUIs.SetCurrentUIDocument(uidoc);
+                var allFloors = new FilteredElementCollector(doc)
+                    .OfCategory(BuiltInCategory.OST_Floors).WhereElementIsNotElementType()
+                    .Cast<Floor>().ToList();
+                var gridData = CustomGUIs.ConvertToDataGridFormat(allFloors, new List<string> { "Name" });
+                var chosen = CustomGUIs.DataGrid(gridData, new List<string> { "Name" }, false);
+                if (chosen == null) return Result.Failed;
+                selectedFloors = CustomGUIs.ExtractOriginalObjects<Floor>(chosen) ?? new List<Floor>();
+                if (selectedFloors.Count == 0) return Result.Succeeded;
             }
 
             using (Transaction trans = new Transaction(doc, "Split Floors"))

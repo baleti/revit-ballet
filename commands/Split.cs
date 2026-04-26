@@ -20,22 +20,23 @@ namespace RevitCommands
             Selection sel = uidoc.Selection;
 
             // Get selected filled regions
-            ICollection<ElementId> selectedIds = sel.GetElementIds();
             List<FilledRegion> selectedRegions = new List<FilledRegion>();
-
-            foreach (ElementId id in selectedIds)
+            foreach (ElementId id in uidoc.GetSelectionIds())
             {
-                Element elem = doc.GetElement(id);
-                if (elem is FilledRegion region)
-                {
+                if (doc.GetElement(id) is FilledRegion region)
                     selectedRegions.Add(region);
-                }
             }
 
             if (selectedRegions.Count == 0)
             {
-                TaskDialog.Show("Error", "Please select at least one filled region.");
-                return Result.Failed;
+                CustomGUIs.SetCurrentUIDocument(uidoc);
+                var allRegions = new FilteredElementCollector(doc)
+                    .OfClass(typeof(FilledRegion)).Cast<FilledRegion>().ToList();
+                var gridData = CustomGUIs.ConvertToDataGridFormat(allRegions, new List<string> { "Name" });
+                var chosen = CustomGUIs.DataGrid(gridData, new List<string> { "Name" }, false);
+                if (chosen == null) return Result.Failed;
+                selectedRegions = CustomGUIs.ExtractOriginalObjects<FilledRegion>(chosen) ?? new List<FilledRegion>();
+                if (selectedRegions.Count == 0) return Result.Succeeded;
             }
 
             List<ElementId> newRegionIds = new List<ElementId>();

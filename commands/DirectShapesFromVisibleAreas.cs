@@ -8,7 +8,6 @@ using System.Text.RegularExpressions;
 
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("Area")]
-[CommandOutput("DirectShape")]
 public class DirectShapesFromVisibleAreas : IExternalCommand
 {
     public Result Execute(ExternalCommandData data, ref string message, ElementSet elems)
@@ -17,34 +16,42 @@ public class DirectShapesFromVisibleAreas : IExternalCommand
         Document   doc   = uidoc.Document;
         View       view  = doc.ActiveView;
 
-        // -------------------------------------------------- 1. collect visible areas
-        IList<Area> areas = GetVisibleAreas(doc, view);
-        if (areas.Count == 0)
-        {
-            message = "No visible areas in this view / section box.";
-            return Result.Failed;
-        }
+        // -------------------------------------------------- 1. selection-first, then visible-area picker
+        var chosen = uidoc.GetSelectionIds()
+            .Select(id => doc.GetElement(id))
+            .OfType<Area>()
+            .Where(a => a.Area > 0)
+            .ToList();
 
-        // -------------------------------------------------- 2. DataGrid picker
-        var table = areas.Select(a => new Dictionary<string, object>
-        {
-            ["Id"]     = a.Id.AsLong(),
-            ["Number"] = a.Number,
-            ["Name"]   = StripNumber(a.Name, a.Number),                // display name without number
-            ["Level"]  = (doc.GetElement(a.LevelId) as Level)?.Name ?? "",
-            ["Area"]   = $"{UnitUtils.ConvertFromInternalUnits(a.Area, UnitTypeId.SquareMeters):F2} m²"
-        }).ToList();
-
-        var visibleCols = new List<string> { "Id", "Number", "Name", "Level", "Area" };
-        var pick        = CustomGUIs.DataGrid(table, visibleCols, /*multiSelect*/ false);
-        if (pick == null || pick.Count == 0) return Result.Cancelled;
-
-        var pickedIds = pick.Select(d => (int)d["Id"]).ToHashSet();
-        var chosen    = areas.Where(a => pickedIds.Contains((int)a.Id.AsLong())).ToList();
         if (chosen.Count == 0)
         {
-            message = "Selected area not found.";
-            return Result.Failed;
+            IList<Area> areas = GetVisibleAreas(doc, view);
+            if (areas.Count == 0)
+            {
+                message = "No visible areas in this view / section box.";
+                return Result.Failed;
+            }
+
+            var table = areas.Select(a => new Dictionary<string, object>
+            {
+                ["Id"]     = a.Id.AsLong(),
+                ["Number"] = a.Number,
+                ["Name"]   = StripNumber(a.Name, a.Number),
+                ["Level"]  = (doc.GetElement(a.LevelId) as Level)?.Name ?? "",
+                ["Area"]   = $"{UnitUtils.ConvertFromInternalUnits(a.Area, UnitTypeId.SquareMeters):F2} m²"
+            }).ToList();
+
+            var visibleCols = new List<string> { "Id", "Number", "Name", "Level", "Area" };
+            var pick        = CustomGUIs.DataGrid(table, visibleCols, false);
+            if (pick == null || pick.Count == 0) return Result.Cancelled;
+
+            var pickedIds = pick.Select(d => (long)d["Id"]).ToHashSet();
+            chosen = areas.Where(a => pickedIds.Contains(a.Id.AsLong())).ToList();
+            if (chosen.Count == 0)
+            {
+                message = "Selected area not found.";
+                return Result.Failed;
+            }
         }
 
         // -------------------------------------------------- 3. create DirectShapes

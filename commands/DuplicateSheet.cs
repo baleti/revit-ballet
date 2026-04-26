@@ -360,8 +360,7 @@ namespace RevitAddin
     //  Revit external command
     // ─────────────────────────────────────────────────────────────
     [Transaction(TransactionMode.Manual)]
-    [CommandMeta("Sheet")]
-    [CommandOutput("Sheet")]
+    [CommandMeta("")]
     public class DuplicateSheet : IExternalCommand
     {
         public Result Execute(
@@ -394,8 +393,13 @@ namespace RevitAddin
 
             if (sheets.Count == 0)
             {
-                TaskDialog.Show("Duplicate Sheets", "No sheet view selected.");
-                return Result.Cancelled;
+                CustomGUIs.SetCurrentUIDocument(uiDoc);
+                var allSheets = new FilteredElementCollector(doc).OfClass(typeof(ViewSheet)).Cast<ViewSheet>().ToList();
+                var sheetGrid = CustomGUIs.ConvertToDataGridFormat(allSheets, new List<string> { "SheetNumber", "Name" });
+                var chosenSheets = CustomGUIs.DataGrid(sheetGrid, new List<string> { "SheetNumber", "Name" }, false);
+                if (chosenSheets == null) return Result.Cancelled;
+                sheets = CustomGUIs.ExtractOriginalObjects<ViewSheet>(chosenSheets) ?? new List<ViewSheet>();
+                if (sheets.Count == 0) return Result.Succeeded;
             }
 
             CustomSheetDuplicateOption option;

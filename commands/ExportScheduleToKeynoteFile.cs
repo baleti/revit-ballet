@@ -27,25 +27,32 @@ public class ExportScheduleToKeynoteFile : IExternalCommand
         ModelPath modelPath = extFileRef.GetAbsolutePath();
         string keynoteFilePath = ModelPathUtils.ConvertModelPathToUserVisiblePath(modelPath);
 
-        var schedules = new FilteredElementCollector(doc)
-            .OfClass(typeof(ViewSchedule))
-            .Cast<ViewSchedule>()
-            .Where(vs => !vs.Name.StartsWith("<") && !vs.Name.Contains("Keynote Legend"))
-            .Select(vs => new Dictionary<string, object>
-            {
-                { "Name", vs.Name },
-                { "Id", vs.Id.AsLong() }
-            })
-            .ToList();
+        // Selection-first: use selected or active schedule view without showing picker
+        ViewSchedule selectedSchedule = null;
+        foreach (ElementId sid in uiDoc.GetSelectionIds())
+        {
+            if (doc.GetElement(sid) is ViewSchedule vs && !vs.Name.StartsWith("<") && !vs.Name.Contains("Keynote Legend"))
+            { selectedSchedule = vs; break; }
+        }
+        if (selectedSchedule == null && uiDoc.ActiveView is ViewSchedule activeVs &&
+            !activeVs.Name.StartsWith("<") && !activeVs.Name.Contains("Keynote Legend"))
+            selectedSchedule = activeVs;
 
-        List<string> propertyNames = new List<string> { "Name", "Id" };
-        var selectedSchedules = CustomGUIs.DataGrid(schedules, propertyNames, false);
+        if (selectedSchedule == null)
+        {
+            var schedules = new FilteredElementCollector(doc)
+                .OfClass(typeof(ViewSchedule)).Cast<ViewSchedule>()
+                .Where(vs => !vs.Name.StartsWith("<") && !vs.Name.Contains("Keynote Legend"))
+                .Select(vs => new Dictionary<string, object> { { "Name", vs.Name }, { "Id", vs.Id.AsLong() } })
+                .ToList();
 
-        if (selectedSchedules.Count == 0)
-            return Result.Cancelled;
+            List<string> propertyNames = new List<string> { "Name", "Id" };
+            var selectedSchedules = CustomGUIs.DataGrid(schedules, propertyNames, false);
+            if (selectedSchedules.Count == 0) return Result.Cancelled;
 
-        var selectedScheduleId = Convert.ToInt32(selectedSchedules[0]["Id"]).ToElementId();
-        ViewSchedule selectedSchedule = doc.GetElement(selectedScheduleId) as ViewSchedule;
+            var selectedScheduleId = Convert.ToInt32(selectedSchedules[0]["Id"]).ToElementId();
+            selectedSchedule = doc.GetElement(selectedScheduleId) as ViewSchedule;
+        }
 
         if (selectedSchedule == null)
         {

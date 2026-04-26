@@ -256,5 +256,58 @@ namespace RevitAddin
 
             return elements;
         }
+
+        /// <summary>
+        /// Universal input resolution for typed elements.
+        ///
+        /// 1. Filters the current selection to elements of type T.
+        /// 2. If nothing matches, collects all candidates from the document via
+        ///    <paramref name="collect"/> and shows a DataGrid picker.
+        ///
+        /// Returns null when the user cancels the picker (caller should return Result.Cancelled).
+        /// Returns an empty list when there are no candidates at all.
+        /// </summary>
+        /// <typeparam name="T">The element type to resolve</typeparam>
+        /// <param name="uiDoc">The active UIDocument</param>
+        /// <param name="collect">
+        ///   Lambda that receives a FilteredElementCollector scoped to the active document
+        ///   and returns the candidate elements. Example:
+        ///   <code>fec => fec.OfClass(typeof(ViewSheet)).Cast&lt;ViewSheet&gt;()</code>
+        /// </param>
+        /// <param name="gridColumns">Column names to show in the DataGrid picker</param>
+        /// <param name="commandName">Optional title for the DataGrid window</param>
+        public static List<T> Resolve<T>(
+            UIDocument uiDoc,
+            Func<FilteredElementCollector, IEnumerable<T>> collect,
+            List<string> gridColumns,
+            string commandName = null) where T : Element
+        {
+            Document doc = uiDoc.Document;
+
+            // Try to satisfy from current selection first
+            ICollection<ElementId> selectedIds = uiDoc.GetSelectionIds();
+            if (selectedIds.Count > 0)
+            {
+                var fromSelection = selectedIds
+                    .Select(id => doc.GetElement(id))
+                    .OfType<T>()
+                    .ToList();
+                if (fromSelection.Count > 0)
+                    return fromSelection;
+            }
+
+            // Fallback: collect all candidates and show DataGrid picker
+            CustomGUIs.SetCurrentUIDocument(uiDoc);
+            var candidates = collect(new FilteredElementCollector(doc)).ToList();
+            if (candidates.Count == 0)
+                return new List<T>();
+
+            var gridData = CustomGUIs.ConvertToDataGridFormat(candidates, gridColumns);
+            var chosen = CustomGUIs.DataGrid(gridData, gridColumns, false, commandName: commandName);
+            if (chosen == null)
+                return null; // user cancelled
+
+            return CustomGUIs.ExtractOriginalObjects<T>(chosen) ?? new List<T>();
+        }
     }
 }

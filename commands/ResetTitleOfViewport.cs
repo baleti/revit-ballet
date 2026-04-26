@@ -75,9 +75,14 @@ namespace RevitCommands
 
                 if (selectedViewports.Count == 0)
                 {
-                    TaskDialog.Show("No Valid Selection", 
-                        "Please select one or more viewports on sheets, or views that are placed on sheets.");
-                    return Result.Cancelled;
+                    CustomGUIs.SetCurrentUIDocument(uiDoc);
+                    var allViewports = new FilteredElementCollector(doc)
+                        .OfClass(typeof(Viewport)).Cast<Viewport>().ToList();
+                    var gridData = CustomGUIs.ConvertToDataGridFormat(allViewports, new List<string> { "Name" });
+                    var chosen = CustomGUIs.DataGrid(gridData, new List<string> { "Name" }, false);
+                    if (chosen == null) return Result.Cancelled;
+                    selectedViewports = CustomGUIs.ExtractOriginalObjects<Viewport>(chosen) ?? new List<Viewport>();
+                    if (selectedViewports.Count == 0) return Result.Succeeded;
                 }
 
                 // Get last used value or default

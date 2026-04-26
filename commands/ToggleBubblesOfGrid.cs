@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
@@ -38,8 +39,13 @@ namespace HideLevelBubbles
 
             if (selectedGrids.Count == 0)
             {
-                message = "Please select one or more grid elements.";
-                return Result.Failed;
+                CustomGUIs.SetCurrentUIDocument(uiDoc);
+                var allGrids = new FilteredElementCollector(doc).OfClass(typeof(Grid)).Cast<Grid>().ToList();
+                var gridData = CustomGUIs.ConvertToDataGridFormat(allGrids, new List<string> { "Name" });
+                var chosen = CustomGUIs.DataGrid(gridData, new List<string> { "Name" }, false);
+                if (chosen == null) return Result.Cancelled;
+                selectedGrids = CustomGUIs.ExtractOriginalObjects<Grid>(chosen) ?? new List<Grid>();
+                if (selectedGrids.Count == 0) return Result.Succeeded;
             }
 
             // Display the dialog to capture user choices.
