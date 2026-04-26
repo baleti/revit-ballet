@@ -9,7 +9,7 @@ using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace RevitWorksetVisibilityCommands
 {
     [Transaction(TransactionMode.Manual)]
-    [CommandMeta("")]
+    [CommandMeta("Workset")]
     public class ShowWorksetsInCurrentView : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData,
@@ -95,7 +95,7 @@ namespace RevitWorksetVisibilityCommands
     }
 
     [Transaction(TransactionMode.Manual)]
-    [CommandMeta("")]
+    [CommandMeta("Workset")]
     public class SetGlobalVisibilityToWorksetInCurrentView : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData,
@@ -181,7 +181,7 @@ namespace RevitWorksetVisibilityCommands
     }
 
     [Transaction(TransactionMode.Manual)]
-    [CommandMeta("")]
+    [CommandMeta("Workset")]
     public class IsolateWorksetsInCurrentView : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData,

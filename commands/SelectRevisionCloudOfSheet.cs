@@ -7,7 +7,7 @@ using Autodesk.Revit.UI;
 
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
-[CommandMeta("")]
+[CommandMeta("Sheet")]
 public class SelectRevisionCloudOfSheet : IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)

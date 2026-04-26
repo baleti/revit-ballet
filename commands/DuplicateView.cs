@@ -222,7 +222,7 @@ namespace RevitAddin
     /// Command that duplicates views from selection or active view.
     /// </summary>
     [Transaction(TransactionMode.Manual)]
-    [CommandMeta("")]
+    [CommandMeta("View")]
     public class DuplicateView : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)

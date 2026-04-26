@@ -6,7 +6,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 
 [Transaction(TransactionMode.Manual)]
-[CommandMeta("")]
+[CommandMeta("Sheet")]
 public class DeleteRevisionCloudsFromSheets : IExternalCommand
 {
     public Result Execute(

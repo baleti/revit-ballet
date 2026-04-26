@@ -5,7 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 [Transaction(TransactionMode.Manual)]
-[CommandMeta("")]
+[CommandMeta("Detail Group")]
 public class SelectDetailGroups : IExternalCommand
 {
     public Result Execute(

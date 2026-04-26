@@ -5,7 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 [Transaction(TransactionMode.Manual)]
-[CommandMeta("")]
+[CommandMeta("Family Type")]
 public class SelectFamilyTypesInDocument : IExternalCommand
 {
     public Result Execute(

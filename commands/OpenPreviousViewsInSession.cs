@@ -8,7 +8,7 @@ using RevitBallet.Commands;
 
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
-[CommandMeta("")]
+[CommandMeta("View")]
 public class OpenPreviousViewsInSession : IExternalCommand
 {
     public Result Execute(

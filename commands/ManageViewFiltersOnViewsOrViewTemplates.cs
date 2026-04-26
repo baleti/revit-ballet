@@ -315,7 +315,7 @@ namespace MyRevitCommands
    // Command: AddFiltersToSelectedViewOrViewTemplates
    // Adds one or more project filters (with override settings) to the selected views (or their view templates).
    [Transaction(TransactionMode.Manual)]
-   [CommandMeta("")]
+   [CommandMeta("View Filter")]
    public class AddViewFilterToViewOrViewTemplate : IExternalCommand
    {
       public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
@@ -424,7 +424,7 @@ namespace MyRevitCommands
    // Command: SetFiltersOnSelectedViewsOrViewTemplates
    // Updates (or resets) override settings for filters already applied on the selected views (or their view templates).
    [Transaction(TransactionMode.Manual)]
-   [CommandMeta("")]
+   [CommandMeta("View Filter")]
    public class SetViewFilterOnViewOrViewTemplate : IExternalCommand
    {
       public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
@@ -522,7 +522,7 @@ namespace MyRevitCommands
    // Command: DeleteFiltersFromSelectedViewsOrViewTemplates
    // Removes filters (that are currently applied) from the selected views (or their view templates).
    [Transaction(TransactionMode.Manual)]
-   [CommandMeta("")]
+   [CommandMeta("View Filter")]
    public class DeleteViewFilterFromViewOrViewTemplate : IExternalCommand
    {
       public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)

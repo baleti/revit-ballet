@@ -26,7 +26,7 @@ namespace YourNamespace   // ← adjust
 
     [Transaction(TransactionMode.Manual)]
     [Regeneration(RegenerationOption.Manual)]
-    [CommandMeta("")]
+    [CommandMeta("View Filter")]
     public class SelectByViewFilterInViews : IExternalCommand
     {
         #region IExternalCommand

@@ -7,7 +7,7 @@ using System.Linq;
 using RevitBallet.Commands;
 
 [TransactionAttribute(TransactionMode.Manual)]
-[CommandMeta("")]
+[CommandMeta("View")]
 public class SelectViews : IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)

@@ -7,7 +7,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 
 [Transaction(TransactionMode.Manual)]
-[CommandMeta("")]
+[CommandMeta("Sheet")]
 public class SelectSheetsOrCloudsByRevisions : IExternalCommand
 {
     public Result Execute(

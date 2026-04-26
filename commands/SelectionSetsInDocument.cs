@@ -7,7 +7,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 
 [Transaction(TransactionMode.Manual)]
-[CommandMeta("")]
+[CommandMeta("Selection Set")]
 public class SelectionSetsInDocument : IExternalCommand
 {
     // Static initializer to register the Name column handler for SelectionFilterElement

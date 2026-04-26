@@ -7,7 +7,7 @@ using Autodesk.Revit.Attributes;
 #endregion
 
 [Transaction(TransactionMode.Manual)]
-[CommandMeta("")]
+[CommandMeta("Level")]
 public class StretchLevelsToCropRegionCommand : IExternalCommand
 {
    public Autodesk.Revit.UI.Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)

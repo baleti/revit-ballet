@@ -10,7 +10,7 @@ using RevitBallet.Commands;
 
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
-[CommandMeta("")]
+[CommandMeta("View")]
 public class OpenViewsInDocument : IExternalCommand
 {
     public Result Execute(
