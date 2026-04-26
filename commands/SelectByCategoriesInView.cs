@@ -64,6 +64,14 @@ public class SelectByCategoriesInView : IExternalCommand
         List<ElementId> filterIds = new FilteredElementCollector(doc)
             .OfClass(typeof(ParameterFilterElement))
             .Select(e => e.Id).ToList();
+
+        List<ElementId> sharedParamIds = new FilteredElementCollector(doc)
+            .OfClass(typeof(SharedParameterElement))
+            .Select(e => e.Id).ToList();
+
+        List<ElementId> globalParamIds = new FilteredElementCollector(doc)
+            .OfClass(typeof(GlobalParameter))
+            .Select(e => e.Id).ToList();
         
         // Collect elements from all views to process
         foreach (View view in viewsToProcess)
@@ -350,6 +358,30 @@ public class SelectByCategoriesInView : IExternalCommand
                 { "ElementIds", filterIds }
             };
             categoryList.Add(filtersEntry);
+        }
+
+        if (sharedParamIds.Count > 0)
+        {
+            categoryList.Add(new Dictionary<string, object>
+            {
+                { "Name", "Shared Parameters" },
+                { "Count", sharedParamIds.Count },
+                { "CategoryId", ElementId.InvalidElementId },
+                { "IsDirectShape", false },
+                { "ElementIds", sharedParamIds }
+            });
+        }
+
+        if (globalParamIds.Count > 0)
+        {
+            categoryList.Add(new Dictionary<string, object>
+            {
+                { "Name", "Global Parameters" },
+                { "Count", globalParamIds.Count },
+                { "CategoryId", ElementId.InvalidElementId },
+                { "IsDirectShape", false },
+                { "ElementIds", globalParamIds }
+            });
         }
 
         // Sort the list to keep Direct Shapes grouped with their parent categories
