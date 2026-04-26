@@ -361,6 +361,7 @@ namespace RevitAddin
     // ─────────────────────────────────────────────────────────────
     [Transaction(TransactionMode.Manual)]
     [CommandMeta("Sheet")]
+    [CommandOutput("Sheet")]
     public class DuplicateSheet : IExternalCommand
     {
         public Result Execute(

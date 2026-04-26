@@ -119,6 +119,7 @@ namespace RevitAddin
     /// </summary>
     [Transaction(TransactionMode.Manual)]
     [CommandMeta("View")]
+    [CommandOutput("View")]
     public class DuplicateViewAndPlaceOnSheet : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)

@@ -8,6 +8,7 @@ using System.Text;
 
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("Any")]
+[CommandOutput("TextNote")]
 public class AddTextNoteToDoor : IExternalCommand
 {
     // Class to track text note placement information

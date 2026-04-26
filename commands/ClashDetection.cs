@@ -30,6 +30,7 @@ using RevitColor = Autodesk.Revit.DB.Color;
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
 [CommandMeta("Any")]
+[CommandOutput("DirectShape")]
 public class ClashDetection : IExternalCommand
 {
     // Configuration

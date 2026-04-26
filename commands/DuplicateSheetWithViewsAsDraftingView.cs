@@ -11,6 +11,7 @@ namespace YourNamespace
 {
     [Transaction(TransactionMode.Manual)]
     [CommandMeta("Sheet")]
+    [CommandOutput("Sheet")]
     public class DuplicateSheetWithViewsAsDraftingView : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)

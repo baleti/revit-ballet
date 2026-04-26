@@ -6,6 +6,7 @@ using System.Collections.Generic;
 
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("Any")]
+[CommandOutput("Tag")]
 public class Tag : IExternalCommand
 {
     public Result Execute(
