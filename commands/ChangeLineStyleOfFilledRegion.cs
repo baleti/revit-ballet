@@ -170,29 +170,24 @@ namespace RevitAddin
             UIDocument uidoc = commandData.Application.ActiveUIDocument;
             Document doc = uidoc.Document;
 
-            // Require that at least one element is selected.
             ICollection<ElementId> selIds = uidoc.GetSelectionIds();
-            if (selIds == null || selIds.Count == 0)
-            {
-                MessageBox.Show("Please select one or more Filled Region elements first.", "No Selection");
-                return Result.Failed;
-            }
-
-            // Filter to get only FilledRegion elements from selection
             List<FilledRegion> selectedFilledRegions = new List<FilledRegion>();
             foreach (ElementId id in selIds)
             {
                 Element elem = doc.GetElement(id);
-                if (elem is FilledRegion fr)
-                {
-                    selectedFilledRegions.Add(fr);
-                }
+                if (elem is FilledRegion fr) selectedFilledRegions.Add(fr);
             }
 
             if (selectedFilledRegions.Count == 0)
             {
-                MessageBox.Show("No valid Filled Region elements selected. Please select one or more Filled Regions.", "No Valid Filled Regions");
-                return Result.Failed;
+                CustomGUIs.SetCurrentUIDocument(uidoc);
+                var allFR = new FilteredElementCollector(doc)
+                    .OfClass(typeof(FilledRegion)).Cast<FilledRegion>().ToList();
+                var gridData = CustomGUIs.ConvertToDataGridFormat(allFR, new List<string> { "Name" });
+                var chosen = CustomGUIs.DataGrid(gridData, new List<string> { "Name" }, false);
+                if (chosen == null) return Result.Cancelled;
+                selectedFilledRegions = CustomGUIs.ExtractOriginalObjects<FilledRegion>(chosen) ?? new List<FilledRegion>();
+                if (selectedFilledRegions.Count == 0) return Result.Succeeded;
             }
 
             // Load preferences

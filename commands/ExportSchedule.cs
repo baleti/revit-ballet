@@ -19,29 +19,33 @@ public class ExportSchedule : IExternalCommand
         UIDocument uiDoc = uiApp.ActiveUIDocument;
         Document doc = uiDoc.Document;
 
-        // Retrieve all schedule views in the document, excluding those that start with '<'
-        var schedules = new FilteredElementCollector(doc)
-            .OfClass(typeof(ViewSchedule))
-            .Cast<ViewSchedule>()
-            .Where(vs => !vs.Name.StartsWith("<") && !vs.Name.Contains("Keynote Legend"))
-            .Select(vs => new Dictionary<string, object>
-            {
-                { "Name", vs.Name },
-                { "Id", vs.Id.AsLong() }
-            })
-            .ToList();
-
-        // Show custom GUI to select a schedule
-        List<string> propertyNames = new List<string> { "Name", "Id" };
-        var selectedSchedules = CustomGUIs.DataGrid(schedules, propertyNames, false);
-
-        if (selectedSchedules.Count == 0)
+        // Selection-first: use selected or active schedule view without showing picker
+        ViewSchedule selectedSchedule = null;
+        foreach (ElementId sid in uiDoc.GetSelectionIds())
         {
-            return Result.Cancelled;
+            if (doc.GetElement(sid) is ViewSchedule vs && !vs.Name.StartsWith("<") && !vs.Name.Contains("Keynote Legend"))
+            { selectedSchedule = vs; break; }
         }
+        if (selectedSchedule == null && uiDoc.ActiveView is ViewSchedule activeVs &&
+            !activeVs.Name.StartsWith("<") && !activeVs.Name.Contains("Keynote Legend"))
+            selectedSchedule = activeVs;
 
-        var selectedScheduleId = Convert.ToInt32(selectedSchedules[0]["Id"]).ToElementId();
-        ViewSchedule selectedSchedule = doc.GetElement(selectedScheduleId) as ViewSchedule;
+        if (selectedSchedule == null)
+        {
+            // No selection — show DataGrid picker
+            var schedules = new FilteredElementCollector(doc)
+                .OfClass(typeof(ViewSchedule)).Cast<ViewSchedule>()
+                .Where(vs => !vs.Name.StartsWith("<") && !vs.Name.Contains("Keynote Legend"))
+                .Select(vs => new Dictionary<string, object> { { "Name", vs.Name }, { "Id", vs.Id.AsLong() } })
+                .ToList();
+
+            List<string> propertyNames = new List<string> { "Name", "Id" };
+            var selectedSchedules = CustomGUIs.DataGrid(schedules, propertyNames, false);
+            if (selectedSchedules.Count == 0) return Result.Cancelled;
+
+            var selectedScheduleId = Convert.ToInt32(selectedSchedules[0]["Id"]).ToElementId();
+            selectedSchedule = doc.GetElement(selectedScheduleId) as ViewSchedule;
+        }
 
         if (selectedSchedule != null)
         {

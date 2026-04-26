@@ -260,6 +260,7 @@ namespace YourNamespace
 
     [Transaction(TransactionMode.Manual)]
     [CommandMeta("View")]
+    [CommandOutput("View")]
     public class DuplicateViewAsDraftingView : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
@@ -267,50 +268,57 @@ namespace YourNamespace
             UIDocument uidoc = commandData.Application.ActiveUIDocument;
             Document doc = uidoc.Document;
 
-            // Collect eligible views.
-            List<View> views = new FilteredElementCollector(doc)
-                .OfClass(typeof(View))
-                .Cast<View>()
-                .Where(v => !v.IsTemplate && v.ViewType != ViewType.DraftingView)
-                .ToList();
-
-            // Prepare data for the custom GUI.
-            List<Dictionary<string, object>> entries = new List<Dictionary<string, object>>();
-            List<ViewSheet> sheets = new FilteredElementCollector(doc)
-                .OfClass(typeof(ViewSheet))
-                .Cast<ViewSheet>()
-                .ToList();
-
-            foreach (View v in views)
+            // Selection-first
+            List<Dictionary<string, object>> selectedEntries = null;
+            var selIds = uidoc.GetSelectionIds();
+            var viewsFromSel = new List<View>();
+            foreach (var sid in selIds)
             {
-                string title = $"{v.Name} ({v.ViewType.ToString()})";
-                ViewSheet sheetForView = sheets.FirstOrDefault(s => s.GetAllPlacedViews().Contains(v.Id));
-                string sheetName = "";
-                string sheetFolder = "";
-                if (sheetForView != null)
+                Element se = doc.GetElement(sid);
+                if (se is View sv && !sv.IsTemplate && sv.ViewType != ViewType.DraftingView)
+                    viewsFromSel.Add(sv);
+                else if (se is Viewport vp)
                 {
-                    sheetName = sheetForView.Name;
-                    Parameter sheetFolderParam = sheetForView.LookupParameter("Sheet Folder");
-                    if (sheetFolderParam != null)
-                        sheetFolder = sheetFolderParam.AsString() ?? "";
+                    var sv2 = doc.GetElement(vp.ViewId) as View;
+                    if (sv2 != null && !sv2.IsTemplate && sv2.ViewType != ViewType.DraftingView && !viewsFromSel.Contains(sv2))
+                        viewsFromSel.Add(sv2);
                 }
-                entries.Add(new Dictionary<string, object>
+            }
+            if (viewsFromSel.Count > 0)
+            {
+                selectedEntries = viewsFromSel.Select(v => new Dictionary<string, object>
                 {
                     { "Id", v.Id.AsLong() },
-                    { "Title", title },
-                    { "Sheet", sheetName },
-                    { "SheetFolder", sheetFolder }
-                });
+                    { "Title", $"{v.Name} ({v.ViewType})" },
+                    { "Sheet", "" },
+                    { "SheetFolder", "" }
+                }).ToList();
             }
-
-            List<string> propertyNames = new List<string> { "Id", "Title", "Sheet", "SheetFolder" };
-            // CustomGUIs.DataGrid is assumed to be defined elsewhere.
-            List<Dictionary<string, object>> selectedEntries = CustomGUIs.DataGrid(entries, propertyNames, false);
-
-            if (selectedEntries == null || selectedEntries.Count == 0)
+            else
             {
-                TaskDialog.Show("Duplicate Views As Drafting Views", "No views were selected.");
-                return Result.Cancelled;
+                // Collect eligible views.
+                List<View> views = new FilteredElementCollector(doc)
+                    .OfClass(typeof(View)).Cast<View>()
+                    .Where(v => !v.IsTemplate && v.ViewType != ViewType.DraftingView).ToList();
+                List<Dictionary<string, object>> entries = new List<Dictionary<string, object>>();
+                List<ViewSheet> sheets = new FilteredElementCollector(doc)
+                    .OfClass(typeof(ViewSheet)).Cast<ViewSheet>().ToList();
+                foreach (View v in views)
+                {
+                    string title = $"{v.Name} ({v.ViewType.ToString()})";
+                    ViewSheet sheetForView = sheets.FirstOrDefault(s => s.GetAllPlacedViews().Contains(v.Id));
+                    string sheetName = sheetForView?.Name ?? "";
+                    string sheetFolder = sheetForView?.LookupParameter("Sheet Folder")?.AsString() ?? "";
+                    entries.Add(new Dictionary<string, object>
+                    {
+                        { "Id", v.Id.AsLong() }, { "Title", title },
+                        { "Sheet", sheetName }, { "SheetFolder", sheetFolder }
+                    });
+                }
+                List<string> propertyNames = new List<string> { "Id", "Title", "Sheet", "SheetFolder" };
+                selectedEntries = CustomGUIs.DataGrid(entries, propertyNames, false);
+                if (selectedEntries == null || selectedEntries.Count == 0)
+                    return Result.Cancelled;
             }
 
             // Retrieve the drafting view family type.

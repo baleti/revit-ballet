@@ -11,6 +11,7 @@ namespace YourNamespace
 {
     [Transaction(TransactionMode.Manual)]
     [CommandMeta("Sheet")]
+    [CommandOutput("Sheet")]
     public class DuplicateSheetWithViewsAsDraftingView : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
@@ -18,40 +19,48 @@ namespace YourNamespace
             UIDocument uidoc = commandData.Application.ActiveUIDocument;
             Document doc = uidoc.Document;
 
-            // --- Collect only sheets (ViewSheet objects) ---
-            List<ViewSheet> sheets = new FilteredElementCollector(doc)
-                .OfClass(typeof(ViewSheet))
-                .Cast<ViewSheet>()
-                .ToList();
-
-            List<Dictionary<string, object>> entries = new List<Dictionary<string, object>>();
-            foreach (ViewSheet sheet in sheets)
+            // Selection-first
+            List<Dictionary<string, object>> selectedEntries = null;
+            var selIds = uidoc.GetSelectionIds();
+            var fromSel = new List<ViewSheet>();
+            foreach (var sid in selIds)
             {
-                // Build a verbose title: "SheetNumber - SheetName"
-                string title = $"{sheet.SheetNumber} - {sheet.Name}";
-                string sheetFolder = "";
-                Parameter folderParam = sheet.LookupParameter("Sheet Folder");
-                if (folderParam != null)
-                    sheetFolder = folderParam.AsString() ?? "";
-
-                // The dictionary keys order is controlled by the propertyNames list in the GUI.
-                // We'll put "Title" and "SheetFolder" first and "Id" as the last column.
-                entries.Add(new Dictionary<string, object>
+                Element se = doc.GetElement(sid);
+                if (se is ViewSheet vs && !fromSel.Contains(vs)) fromSel.Add(vs);
+                else if (se is Viewport vp && vp.SheetId != ElementId.InvalidElementId)
                 {
-                    { "Id", sheet.Id.AsLong() },
-                    { "Title", title },
-                    { "SheetFolder", sheetFolder }
-                });
+                    var vs2 = doc.GetElement(vp.SheetId) as ViewSheet;
+                    if (vs2 != null && !fromSel.Contains(vs2)) fromSel.Add(vs2);
+                }
             }
-
-            // Change the order of columns: Title, SheetFolder, then Id.
-            List<string> propertyNames = new List<string> { "Title", "SheetFolder", "Id" };
-            // CustomGUIs.DataGrid is assumed to be defined elsewhere.
-            List<Dictionary<string, object>> selectedEntries = CustomGUIs.DataGrid(entries, propertyNames, false);
-            if (selectedEntries == null || selectedEntries.Count == 0)
+            if (fromSel.Count > 0)
             {
-                TaskDialog.Show("Duplicate Sheets As Drafting Views", "No sheets were selected.");
-                return Result.Cancelled;
+                selectedEntries = fromSel.Select(s => new Dictionary<string, object>
+                {
+                    { "Id", s.Id.AsLong() },
+                    { "Title", $"{s.SheetNumber} - {s.Name}" },
+                    { "SheetFolder", s.LookupParameter("Sheet Folder")?.AsString() ?? "" }
+                }).ToList();
+            }
+            else
+            {
+                // --- Collect only sheets (ViewSheet objects) ---
+                List<ViewSheet> sheets = new FilteredElementCollector(doc)
+                    .OfClass(typeof(ViewSheet)).Cast<ViewSheet>().ToList();
+                List<Dictionary<string, object>> entries = new List<Dictionary<string, object>>();
+                foreach (ViewSheet sheet in sheets)
+                {
+                    entries.Add(new Dictionary<string, object>
+                    {
+                        { "Id", sheet.Id.AsLong() },
+                        { "Title", $"{sheet.SheetNumber} - {sheet.Name}" },
+                        { "SheetFolder", sheet.LookupParameter("Sheet Folder")?.AsString() ?? "" }
+                    });
+                }
+                List<string> propertyNames = new List<string> { "Title", "SheetFolder", "Id" };
+                selectedEntries = CustomGUIs.DataGrid(entries, propertyNames, false);
+                if (selectedEntries == null || selectedEntries.Count == 0)
+                    return Result.Cancelled;
             }
 
             // Retrieve the drafting view family type.

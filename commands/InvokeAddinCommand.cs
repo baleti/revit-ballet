@@ -87,7 +87,7 @@ public class InvokeAddinCommand : IExternalCommand
 
                 var commandEntries = new List<Dictionary<string, object>>();
                 var commandTypes = new Dictionary<string, string>(); // Maps class name to full class name
-                foreach (var type in assembly.GetTypes().Where(t => typeof(IExternalCommand).IsAssignableFrom(t) && !t.IsInterface && !t.IsAbstract))
+                foreach (var type in assembly.GetTypes().Where(t => typeof(IExternalCommand).IsAssignableFrom(t) && !t.IsInterface && !t.IsAbstract).OrderBy(t => t.Name))
                 {
                     var className = type.Name;
                     var metaAttr = type.GetCustomAttributes(false)
@@ -96,15 +96,22 @@ public class InvokeAddinCommand : IExternalCommand
                         ? (string)metaAttr.GetType().GetProperty("Input").GetValue(metaAttr)
                         : "";
 
+                    var outputAttr = type.GetCustomAttributes(false)
+                                        .FirstOrDefault(a => a.GetType().Name == "CommandOutputAttribute");
+                    var output = outputAttr != null
+                        ? (string)outputAttr.GetType().GetProperty("Output").GetValue(outputAttr)
+                        : "";
+
                     commandEntries.Add(new Dictionary<string, object>
                     {
                         { "Command", className },
-                        { "Input", input }
+                        { "Input", input },
+                        { "Output", output }
                     });
                     commandTypes[className] = type.FullName;
                 }
 
-                List<string> propertyNames = new List<string> { "Command", "Input" };
+                List<string> propertyNames = new List<string> { "Command", "Input", "Output" };
                 var selectedCommand = CustomGUIs.DataGrid(commandEntries, propertyNames, false).FirstOrDefault();
 
                 if (selectedCommand != null)

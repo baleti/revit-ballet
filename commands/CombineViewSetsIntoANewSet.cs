@@ -13,6 +13,7 @@ using System.Linq;
 
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("View Set")]
+[CommandOutput("View Set")]
 public class CombineViewSetsIntoANewSet : IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData,

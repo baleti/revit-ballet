@@ -8,6 +8,7 @@ using System.Linq;
 
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("View")]
+[CommandOutput("View")]
 public class DuplicateViewAndSectionBox3DFromLinkedModel : IExternalCommand
 {
     public Result Execute(

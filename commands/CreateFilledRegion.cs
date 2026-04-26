@@ -16,7 +16,8 @@ namespace RevitAddin
 {
     [Autodesk.Revit.Attributes.Transaction(Autodesk.Revit.Attributes.TransactionMode.Manual)]
     [CommandMeta("Area")]
-    public class CreateFilledRegionFromArea : IExternalCommand
+    [CommandOutput("Filled Region")]
+    public class CreateFilledRegion : IExternalCommand
     {
         // File path for storing preferences
         private static readonly string AppDataPath = Path.Combine(
