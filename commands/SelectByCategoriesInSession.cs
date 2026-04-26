@@ -20,13 +20,15 @@ public class SelectByCategoriesInSession : IExternalCommand
         Dictionary<ElementId, CategoryInfo> categoryInfoMap = new Dictionary<ElementId, CategoryInfo>();
 
 #if REVIT2024 || REVIT2025 || REVIT2026
-        ElementId filterSentinelId      = new ElementId(-3000001L);
-        ElementId sharedParamSentinelId = new ElementId(-3000002L);
-        ElementId globalParamSentinelId = new ElementId(-3000003L);
+        ElementId filterSentinelId       = new ElementId(-3000001L);
+        ElementId sharedParamSentinelId  = new ElementId(-3000002L);
+        ElementId globalParamSentinelId  = new ElementId(-3000003L);
+        ElementId projectParamSentinelId = new ElementId(-3000004L);
 #else
-        ElementId filterSentinelId      = new ElementId(-3000001);
-        ElementId sharedParamSentinelId = new ElementId(-3000002);
-        ElementId globalParamSentinelId = new ElementId(-3000003);
+        ElementId filterSentinelId       = new ElementId(-3000001);
+        ElementId sharedParamSentinelId  = new ElementId(-3000002);
+        ElementId globalParamSentinelId  = new ElementId(-3000003);
+        ElementId projectParamSentinelId = new ElementId(-3000004);
 #endif
 
         foreach (Document doc in app.Documents)
@@ -118,6 +120,17 @@ public class SelectByCategoriesInSession : IExternalCommand
                     categoryInfoMap[globalParamSentinelId] = new CategoryInfo
                         { CategoryId = globalParamSentinelId, CategoryName = "Global Parameters" };
                 categoryInfoMap[globalParamSentinelId].AddElement(doc, gp.Id, gp.UniqueId, false);
+            }
+
+            foreach (ParameterElement pp in new FilteredElementCollector(doc)
+                .WhereElementIsNotElementType()
+                .OfClass(typeof(ParameterElement)).Cast<ParameterElement>()
+                .Where(e => !(e is SharedParameterElement) && !(e is GlobalParameter)))
+            {
+                if (!categoryInfoMap.ContainsKey(projectParamSentinelId))
+                    categoryInfoMap[projectParamSentinelId] = new CategoryInfo
+                        { CategoryId = projectParamSentinelId, CategoryName = "Project Parameters" };
+                categoryInfoMap[projectParamSentinelId].AddElement(doc, pp.Id, pp.UniqueId, false);
             }
 
             // Collect all other elements
