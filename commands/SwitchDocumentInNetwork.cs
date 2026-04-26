@@ -60,7 +60,6 @@ public class SwitchDocumentInNetwork : IExternalCommand
     {
         UIApplication uiApp = commandData.Application;
 
-        using (var executionLog = CommandExecutionLogger.Start("SwitchDocumentInNetwork", commandData))
         using (var diagnostics = CommandDiagnostics.StartCommand("SwitchDocumentInNetwork", uiApp))
         {
             try
@@ -72,7 +71,6 @@ public class SwitchDocumentInNetwork : IExternalCommand
                 {
                     TaskDialog.Show("Error", "No active documents found in registry.");
                     diagnostics.LogError("No documents in registry");
-                    executionLog.SetResult(Result.Failed);
                     return Result.Failed;
                 }
 
@@ -113,7 +111,6 @@ public class SwitchDocumentInNetwork : IExternalCommand
                 if (selectedRows == null || selectedRows.Count == 0)
                 {
                     diagnostics.Log("User cancelled selection");
-                    executionLog.SetResult(Result.Cancelled);
                     return Result.Cancelled;
                 }
 
@@ -124,7 +121,7 @@ public class SwitchDocumentInNetwork : IExternalCommand
 
                 if (isCurrent)
                 {
-                    executionLog.SetResult(Result.Succeeded);
+                    TaskDialog.Show("Info", "Selected session is the current session.");
                     return Result.Succeeded;
                 }
 
@@ -135,7 +132,6 @@ public class SwitchDocumentInNetwork : IExternalCommand
                 {
                     TaskDialog.Show("Error", $"Could not find window for process ID {targetProcessId}.");
                     diagnostics.LogError($"Window not found for PID {targetProcessId}");
-                    executionLog.SetResult(Result.Failed);
                     return Result.Failed;
                 }
 
@@ -151,14 +147,12 @@ public class SwitchDocumentInNetwork : IExternalCommand
                 if (success)
                 {
                     diagnostics.Log($"Successfully switched to session {selectedRow["Session ID"]} (PID: {targetProcessId})");
-                    executionLog.SetResult(Result.Succeeded);
                     return Result.Succeeded;
                 }
                 else
                 {
                     TaskDialog.Show("Warning", "Window was found but could not be brought to foreground. It may be on another desktop or locked.");
                     diagnostics.LogError($"SetForegroundWindow failed for PID {targetProcessId}");
-                    executionLog.SetResult(Result.Failed);
                     return Result.Failed;
                 }
             }
@@ -166,7 +160,6 @@ public class SwitchDocumentInNetwork : IExternalCommand
             {
                 TaskDialog.Show("Error", $"Failed to switch session: {ex.Message}");
                 diagnostics.LogError($"Exception: {ex}");
-                executionLog.SetResult(Result.Failed);
                 return Result.Failed;
             }
         }
