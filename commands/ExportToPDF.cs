@@ -18,7 +18,7 @@ using Microsoft.WindowsAPICodePack.Dialogs;
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
 [CommandMeta("View")]
-public class ExportViewToPDF : IExternalCommand
+public class ExportToPDF : IExternalCommand
 {
     [DllImport("user32.dll", CharSet = CharSet.Auto)]
     public static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
