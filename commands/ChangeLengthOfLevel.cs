@@ -62,9 +62,13 @@ public class ChangeLengthOfLevel : IExternalCommand
             
             if (!levels.Any())
             {
-                TaskDialog.Show("No Levels Selected", 
-                    "Please select one or more level elements before running this command.");
-                return Result.Cancelled;
+                CustomGUIs.SetCurrentUIDocument(uidoc);
+                var allLevels = new FilteredElementCollector(doc).OfClass(typeof(Level)).Cast<Level>().ToList();
+                var levelGridData = CustomGUIs.ConvertToDataGridFormat(allLevels, new List<string> { "Name" });
+                var chosenLevels = CustomGUIs.DataGrid(levelGridData, new List<string> { "Name" }, false);
+                if (chosenLevels == null) return Result.Cancelled;
+                levels = CustomGUIs.ExtractOriginalObjects<Level>(chosenLevels) ?? new List<Level>();
+                if (!levels.Any()) return Result.Succeeded;
             }
             
             // If no views selected, use active view

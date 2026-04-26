@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
@@ -21,9 +22,18 @@ public class SetGrids2D : IExternalCommand
         {
             Element element = doc.GetElement(id);
             if (element is Grid grid)
-            {
                 selectedGrids.Add(grid);
-            }
+        }
+
+        if (selectedGrids.Count == 0)
+        {
+            CustomGUIs.SetCurrentUIDocument(uiDoc);
+            var allGrids = new FilteredElementCollector(doc).OfClass(typeof(Grid)).Cast<Grid>().ToList();
+            var gridData = CustomGUIs.ConvertToDataGridFormat(allGrids, new List<string> { "Name" });
+            var chosen = CustomGUIs.DataGrid(gridData, new List<string> { "Name" }, false);
+            if (chosen == null) return Result.Cancelled;
+            selectedGrids = CustomGUIs.ExtractOriginalObjects<Grid>(chosen) ?? new List<Grid>();
+            if (selectedGrids.Count == 0) return Result.Succeeded;
         }
 
         // Toggle DatumExtentType for selected grids

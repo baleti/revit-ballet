@@ -9,7 +9,6 @@ using System.Text.RegularExpressions;
 
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("Room")]
-[CommandOutput("DirectShape")]
 public class DirectShapesFromVisibleRooms : IExternalCommand
 {
     public Result Execute(ExternalCommandData data, ref string message, ElementSet elems)
@@ -18,34 +17,42 @@ public class DirectShapesFromVisibleRooms : IExternalCommand
         Document   doc   = uidoc.Document;
         View       view  = doc.ActiveView;
 
-        // -------------------------------------------------- 1. collect visible rooms
-        IList<Room> rooms = GetVisibleRooms(doc, view);
-        if (rooms.Count == 0)
-        {
-            message = "No visible rooms in this view / section box.";
-            return Result.Failed;
-        }
+        // -------------------------------------------------- 1. selection-first, then visible-room picker
+        var chosen = uidoc.GetSelectionIds()
+            .Select(id => doc.GetElement(id))
+            .OfType<Room>()
+            .Where(r => r.Area > 0)
+            .ToList();
 
-        // -------------------------------------------------- 2. DataGrid picker
-        var table = rooms.Select(r => new Dictionary<string, object>
-        {
-            ["Id"]     = r.Id.AsLong(),
-            ["Number"] = r.Number,
-            ["Name"]   = StripNumber(r.Name, r.Number),                // display name without number
-            ["Level"]  = (doc.GetElement(r.LevelId) as Level)?.Name ?? "",
-            ["Area"]   = $"{UnitUtils.ConvertFromInternalUnits(r.Area, UnitTypeId.SquareMeters):F2} m²"
-        }).ToList();
-
-        var visibleCols = new List<string> { "Id", "Number", "Name", "Level", "Area" };
-        var pick        = CustomGUIs.DataGrid(table, visibleCols, /*multiSelect*/ false);
-        if (pick == null || pick.Count == 0) return Result.Cancelled;
-
-        var pickedIds = pick.Select(d => (int)d["Id"]).ToHashSet();
-        var chosen    = rooms.Where(r => pickedIds.Contains((int)r.Id.AsLong())).ToList();
         if (chosen.Count == 0)
         {
-            message = "Selected room not found.";
-            return Result.Failed;
+            IList<Room> rooms = GetVisibleRooms(doc, view);
+            if (rooms.Count == 0)
+            {
+                message = "No visible rooms in this view / section box.";
+                return Result.Failed;
+            }
+
+            var table = rooms.Select(r => new Dictionary<string, object>
+            {
+                ["Id"]     = r.Id.AsLong(),
+                ["Number"] = r.Number,
+                ["Name"]   = StripNumber(r.Name, r.Number),
+                ["Level"]  = (doc.GetElement(r.LevelId) as Level)?.Name ?? "",
+                ["Area"]   = $"{UnitUtils.ConvertFromInternalUnits(r.Area, UnitTypeId.SquareMeters):F2} m²"
+            }).ToList();
+
+            var visibleCols = new List<string> { "Id", "Number", "Name", "Level", "Area" };
+            var pick        = CustomGUIs.DataGrid(table, visibleCols, false);
+            if (pick == null || pick.Count == 0) return Result.Cancelled;
+
+            var pickedIds = pick.Select(d => (long)d["Id"]).ToHashSet();
+            chosen = rooms.Where(r => pickedIds.Contains(r.Id.AsLong())).ToList();
+            if (chosen.Count == 0)
+            {
+                message = "Selected room not found.";
+                return Result.Failed;
+            }
         }
 
         // -------------------------------------------------- 3. create DirectShapes

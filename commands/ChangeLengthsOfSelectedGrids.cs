@@ -62,9 +62,13 @@ public class ChangeLengthOfSelectedGrids : IExternalCommand
             
             if (!grids.Any())
             {
-                TaskDialog.Show("No Grids Selected", 
-                    "Please select one or more grid elements before running this command.");
-                return Result.Cancelled;
+                CustomGUIs.SetCurrentUIDocument(uidoc);
+                var allGrids = new FilteredElementCollector(doc).OfClass(typeof(Grid)).Cast<Grid>().ToList();
+                var gridPickerData = CustomGUIs.ConvertToDataGridFormat(allGrids, new List<string> { "Name" });
+                var chosenGrids = CustomGUIs.DataGrid(gridPickerData, new List<string> { "Name" }, false);
+                if (chosenGrids == null) return Result.Cancelled;
+                grids = CustomGUIs.ExtractOriginalObjects<Grid>(chosenGrids) ?? new List<Grid>();
+                if (!grids.Any()) return Result.Succeeded;
             }
             
             // If no views selected, use active view

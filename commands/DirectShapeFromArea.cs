@@ -8,7 +8,6 @@ using System.Text.RegularExpressions;
 
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("Area")]
-[CommandOutput("DirectShape")]
 public class DirectShapeFromArea : IExternalCommand
 {
     public Result Execute(ExternalCommandData data, ref string message, ElementSet elems)
@@ -20,8 +19,15 @@ public class DirectShapeFromArea : IExternalCommand
         IList<Area> areas = GetSelectedAreas(uidoc);
         if (areas.Count == 0)
         {
-            message = "No areas selected. Please select one or more areas.";
-            return Result.Failed;
+            CustomGUIs.SetCurrentUIDocument(uidoc);
+            var allAreas = new FilteredElementCollector(doc)
+                .OfCategory(BuiltInCategory.OST_Areas).OfClass(typeof(SpatialElement))
+                .Cast<Area>().Where(a => a.Area > 0).ToList();
+            var gridData = CustomGUIs.ConvertToDataGridFormat(allAreas, new List<string> { "Name" });
+            var chosen = CustomGUIs.DataGrid(gridData, new List<string> { "Name" }, false);
+            if (chosen == null) return Result.Cancelled;
+            areas = CustomGUIs.ExtractOriginalObjects<Area>(chosen) ?? new List<Area>();
+            if (areas.Count == 0) return Result.Succeeded;
         }
 
         // -------------------------------------------------- 2. create DirectShapes
