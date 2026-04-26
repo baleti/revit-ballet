@@ -74,6 +74,7 @@ namespace RevitAddin
 
     [Transaction(TransactionMode.Manual)]
     [CommandMeta("")]
+    [CommandOutput("View")]
     public class CeilingPlanFromFloorPlan : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)

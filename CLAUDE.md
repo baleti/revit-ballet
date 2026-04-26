@@ -247,6 +247,35 @@ When creating new commands, **do not** automatically register them. Never modify
 
 Create the `.cs` in `commands/` and tell the user it's ready but unregistered.
 
+## Keyboard Shortcuts and Addin Manifest — Keeping Them in Sync
+
+**Three files must stay consistent:** `revit-ballet.addin`, `KeyboardShortcuts-custom.xml`, and the C# class name. When any one changes, update all three.
+
+### Addin manifest (`revit-ballet.addin`)
+Each command needs an entry with a stable `AddInId` (GUID) and a `FullClassName` that exactly matches the C# class name. If you rename a class, update `FullClassName` immediately — Revit will fail to initialize the add-in on startup if the class cannot be found, and the shortcut will silently not work.
+
+Remove manifest entries for classes that no longer exist.
+
+### Keyboard shortcuts (`KeyboardShortcuts-custom.xml`)
+
+Two kinds of shortcut entries:
+
+**Addin commands** (registered via `.addin` file — most revit-ballet commands, e.g. DD, DS):
+```xml
+<ShortcutItem CommandId="2a7e4f9b-3d6c-4e8a-7f2e-9c4d1a8b3e6f" Shortcuts="DD"/>
+```
+`CommandId` = the `AddInId` from the manifest (lowercase). No `CommandName`/`Paths` needed.
+
+**External-tool commands** (registered via Revit ribbon, e.g. SMV/SMD/SMS):
+```xml
+<ShortcutItem CommandName="External &#xA;Tools:SelectByMaterialInView" CommandId="<guid>" Shortcuts="SMV" Paths="Add-Ins&gt;External"/>
+```
+Both `CommandName` (`"External &#xA;Tools:<ClassName>"`) and `Paths` (`"Add-Ins&gt;External"`) are required — Revit silently ignores bare entries for this type.
+
+`CommandId` GUIDs must be **lowercase**. Each `CommandId` must appear **once** — duplicates cause a Revit import error.
+
+Never edit Revit's `KeyboardShortcuts.xml` directly — Revit rewrites it on startup. Always update `KeyboardShortcuts-custom.xml` and run the installer.
+
 ## Command Metadata
 
 Every `IExternalCommand` class should carry a `[CommandMeta("...")]` attribute (defined in `CommandMetaAttribute.cs`, global namespace — no `using` needed). The `Input` string describes what the user must have ready before invoking the command and is shown as the **Input** column in `InvokeAddinCommand`'s DataGrid.

@@ -7,6 +7,7 @@ using System.Linq;
 
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("Any")]
+[CommandOutput("Model Group")]
 public class CombineElementContainingModelGroup : IExternalCommand
 {
     public Result Execute(

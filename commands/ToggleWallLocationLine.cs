@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
@@ -28,11 +29,17 @@ public class ToggleWallsLocationLineFromFinishFaceExteriorToFinishFaceInterior :
             .OfType<Wall>()
             .ToList();
 
-        // If no walls are selected, do nothing
         if (selectedWalls.Count == 0)
         {
-            message = "No walls are selected.";
-            return Result.Cancelled;
+            CustomGUIs.SetCurrentUIDocument(uidoc);
+            var allWalls = new FilteredElementCollector(doc)
+                .OfCategory(BuiltInCategory.OST_Walls).WhereElementIsNotElementType()
+                .Cast<Wall>().ToList();
+            var gridData = CustomGUIs.ConvertToDataGridFormat(allWalls, new List<string> { "Name" });
+            var chosen = CustomGUIs.DataGrid(gridData, new List<string> { "Name" }, false);
+            if (chosen == null) return Result.Cancelled;
+            selectedWalls = CustomGUIs.ExtractOriginalObjects<Wall>(chosen) ?? new List<Wall>();
+            if (selectedWalls.Count == 0) return Result.Succeeded;
         }
 
         try

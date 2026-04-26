@@ -27,35 +27,26 @@ namespace RevitCommands
                 // Get the current selection
                 ICollection<ElementId> selectedIds = uidoc.GetSelectionIds();
 
-                if (selectedIds.Count == 0)
-                {
-                    TaskDialog.Show("Flip Door Facing", "No elements selected. Please select one or more doors.");
-                    return Result.Cancelled;
-                }
-
                 // Filter for door instances
                 List<FamilyInstance> doors = new List<FamilyInstance>();
-                
                 foreach (ElementId id in selectedIds)
                 {
                     Element elem = doc.GetElement(id);
-                    
-                    // Check if the element is a FamilyInstance and is a door
-                    if (elem is FamilyInstance familyInstance)
-                    {
-                        // Check if it's a door by category
-                        if (familyInstance.Category != null && 
-                            familyInstance.Category.Id.AsLong() == (int)BuiltInCategory.OST_Doors)
-                        {
-                            doors.Add(familyInstance);
-                        }
-                    }
+                    if (elem is FamilyInstance fi && fi.Category?.Id.AsLong() == (int)BuiltInCategory.OST_Doors)
+                        doors.Add(fi);
                 }
 
                 if (doors.Count == 0)
                 {
-                    TaskDialog.Show("Flip Door Facing", "No doors found in the selection. Please select one or more doors.");
-                    return Result.Cancelled;
+                    CustomGUIs.SetCurrentUIDocument(uidoc);
+                    var allDoors = new FilteredElementCollector(doc)
+                        .OfCategory(BuiltInCategory.OST_Doors).WhereElementIsNotElementType()
+                        .Cast<FamilyInstance>().ToList();
+                    var gridData = CustomGUIs.ConvertToDataGridFormat(allDoors, new List<string> { "Name" });
+                    var chosen = CustomGUIs.DataGrid(gridData, new List<string> { "Name" }, false);
+                    if (chosen == null) return Result.Cancelled;
+                    doors = CustomGUIs.ExtractOriginalObjects<FamilyInstance>(chosen) ?? new List<FamilyInstance>();
+                    if (doors.Count == 0) return Result.Succeeded;
                 }
 
                 // Start a transaction to flip the door facing

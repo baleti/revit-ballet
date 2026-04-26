@@ -30,35 +30,29 @@ public class SwapModelGroup : IExternalCommand
             return Result.Failed;
         }
 
-        // Get current selection using the SelectionModeManager extension method
         var selectedIds = uidoc.GetSelectionIds();
-
-        if (selectedIds.Count == 0)
-        {
-            TaskDialog.Show("Error", "No elements selected. Please select groups to swap.");
-            return Result.Failed;
-        }
-
-        // Get selected groups
         var selectedGroups = new List<Group>();
         foreach (var id in selectedIds)
         {
             var element = doc.GetElement(id);
-            if (element is Group group && group.GroupType != null)
-            {
-                // Only add model groups (not detail groups)
-                if (group.Category != null && 
-                    group.Category.Id.AsLong() == (int)BuiltInCategory.OST_IOSModelGroups)
-                {
-                    selectedGroups.Add(group);
-                }
-            }
+            if (element is Group group && group.GroupType != null &&
+                group.Category != null &&
+                group.Category.Id.AsLong() == (int)BuiltInCategory.OST_IOSModelGroups)
+                selectedGroups.Add(group);
         }
 
         if (selectedGroups.Count == 0)
         {
-            TaskDialog.Show("Error", "No model groups found in selection.");
-            return Result.Failed;
+            CustomGUIs.SetCurrentUIDocument(uidoc);
+            var allGroups = new FilteredElementCollector(doc)
+                .OfCategory(BuiltInCategory.OST_IOSModelGroups)
+                .WhereElementIsNotElementType()
+                .Cast<Group>().ToList();
+            var gridData = CustomGUIs.ConvertToDataGridFormat(allGroups, new List<string> { "Name" });
+            var chosen = CustomGUIs.DataGrid(gridData, new List<string> { "Name" }, false);
+            if (chosen == null) return Result.Cancelled;
+            selectedGroups = CustomGUIs.ExtractOriginalObjects<Group>(chosen) ?? new List<Group>();
+            if (selectedGroups.Count == 0) return Result.Succeeded;
         }
 
         // Get all model group types in the project

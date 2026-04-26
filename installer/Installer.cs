@@ -1085,7 +1085,19 @@ namespace RevitBalletInstaller
                     if (shortcutsRoot == null)
                         return;
 
+                    // Deduplicate by CommandId — keep last occurrence of each
+                    var allItems = shortcutsRoot.Descendants("ShortcutItem").ToList();
+                    var seen = new HashSet<string>();
                     bool modified = false;
+                    foreach (var item in allItems.AsEnumerable().Reverse())
+                    {
+                        string cid = item.Attribute("CommandId")?.Value?.ToLower() ?? "";
+                        if (!seen.Add(cid))
+                        {
+                            item.Remove();
+                            modified = true;
+                        }
+                    }
 
                     // Get addin shortcuts from resource
                     var addinShortcuts = resourceDoc.Descendants("ShortcutItem")

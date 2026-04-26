@@ -26,33 +26,30 @@ public class RenameGroups : IExternalCommand
         try
         {
             var selectedIds = uiDoc.GetSelectionIds();
-            if (selectedIds.Count == 0)
-            {
-                TaskDialog.Show("Error", "Please select group instances first.");
-                return Result.Cancelled;
-            }
-
-            // Collect unique group types from selected groups
             var groupTypeIds = new HashSet<ElementId>();
             foreach (ElementId id in selectedIds)
             {
                 Element elem = doc.GetElement(id);
-                if (elem is Group group)
-                {
-                    groupTypeIds.Add(group.GroupType.Id);
-                }
+                if (elem is Group g) groupTypeIds.Add(g.GroupType.Id);
+            }
+
+            if (groupTypeIds.Count == 0)
+            {
+                CustomGUIs.SetCurrentUIDocument(uiDoc);
+                var allGroups = new FilteredElementCollector(doc)
+                    .OfClass(typeof(Group)).Cast<Group>().ToList();
+                var gridData = CustomGUIs.ConvertToDataGridFormat(allGroups, new List<string> { "Name" });
+                var chosen = CustomGUIs.DataGrid(gridData, new List<string> { "Name" }, false);
+                if (chosen == null) return Result.Cancelled;
+                var pickedGroups = CustomGUIs.ExtractOriginalObjects<Group>(chosen) ?? new List<Group>();
+                foreach (var g in pickedGroups) groupTypeIds.Add(g.GroupType.Id);
+                if (groupTypeIds.Count == 0) return Result.Succeeded;
             }
 
             var groupTypes = groupTypeIds
                 .Select(id => doc.GetElement(id) as GroupType)
                 .Where(gt => gt != null)
                 .ToList();
-
-            if (groupTypes.Count == 0)
-            {
-                TaskDialog.Show("Error", "No model or detail groups selected.");
-                return Result.Cancelled;
-            }
 
             var groupTypeInfos = groupTypes
                 .Select(gt => new GroupTypeInfo { GroupType = gt, CurrentName = gt.Name })

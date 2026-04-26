@@ -20,9 +20,17 @@ public class SelectByCategoriesInSession : IExternalCommand
         Dictionary<ElementId, CategoryInfo> categoryInfoMap = new Dictionary<ElementId, CategoryInfo>();
 
 #if REVIT2024 || REVIT2025 || REVIT2026
-        ElementId filterSentinelId = new ElementId(-3000001L);
+        ElementId filterSentinelId       = new ElementId(-3000001L);
+        ElementId sharedParamSentinelId  = new ElementId(-3000002L);
+        ElementId globalParamSentinelId  = new ElementId(-3000003L);
+        ElementId projectParamSentinelId = new ElementId(-3000004L);
+        ElementId revisionSentinelId     = new ElementId(-3000005L);
 #else
-        ElementId filterSentinelId = new ElementId(-3000001);
+        ElementId filterSentinelId       = new ElementId(-3000001);
+        ElementId sharedParamSentinelId  = new ElementId(-3000002);
+        ElementId globalParamSentinelId  = new ElementId(-3000003);
+        ElementId projectParamSentinelId = new ElementId(-3000004);
+        ElementId revisionSentinelId     = new ElementId(-3000005);
 #endif
 
         foreach (Document doc in app.Documents)
@@ -96,6 +104,44 @@ public class SelectByCategoriesInSession : IExternalCommand
                     };
                 }
                 categoryInfoMap[filterSentinelId].AddElement(doc, pfe.Id, pfe.UniqueId, false);
+            }
+
+            foreach (SharedParameterElement sp in new FilteredElementCollector(doc)
+                .OfClass(typeof(SharedParameterElement)).Cast<SharedParameterElement>())
+            {
+                if (!categoryInfoMap.ContainsKey(sharedParamSentinelId))
+                    categoryInfoMap[sharedParamSentinelId] = new CategoryInfo
+                        { CategoryId = sharedParamSentinelId, CategoryName = "Shared Parameters" };
+                categoryInfoMap[sharedParamSentinelId].AddElement(doc, sp.Id, sp.UniqueId, false);
+            }
+
+            foreach (GlobalParameter gp in new FilteredElementCollector(doc)
+                .OfClass(typeof(GlobalParameter)).Cast<GlobalParameter>())
+            {
+                if (!categoryInfoMap.ContainsKey(globalParamSentinelId))
+                    categoryInfoMap[globalParamSentinelId] = new CategoryInfo
+                        { CategoryId = globalParamSentinelId, CategoryName = "Global Parameters" };
+                categoryInfoMap[globalParamSentinelId].AddElement(doc, gp.Id, gp.UniqueId, false);
+            }
+
+            foreach (ParameterElement pp in new FilteredElementCollector(doc)
+                .WhereElementIsNotElementType()
+                .OfClass(typeof(ParameterElement)).Cast<ParameterElement>()
+                .Where(e => !(e is SharedParameterElement) && !(e is GlobalParameter)))
+            {
+                if (!categoryInfoMap.ContainsKey(projectParamSentinelId))
+                    categoryInfoMap[projectParamSentinelId] = new CategoryInfo
+                        { CategoryId = projectParamSentinelId, CategoryName = "Project Parameters" };
+                categoryInfoMap[projectParamSentinelId].AddElement(doc, pp.Id, pp.UniqueId, false);
+            }
+
+            foreach (Revision rev in new FilteredElementCollector(doc)
+                .OfClass(typeof(Revision)).Cast<Revision>())
+            {
+                if (!categoryInfoMap.ContainsKey(revisionSentinelId))
+                    categoryInfoMap[revisionSentinelId] = new CategoryInfo
+                        { CategoryId = revisionSentinelId, CategoryName = "Revisions" };
+                categoryInfoMap[revisionSentinelId].AddElement(doc, rev.Id, rev.UniqueId, false);
             }
 
             // Collect all other elements

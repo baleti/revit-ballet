@@ -33,6 +33,25 @@ public class SelectByCategoriesInDocument : IExternalCommand
             .OfClass(typeof(ParameterFilterElement))
             .Select(e => e.Id).ToList();
 
+        List<ElementId> sharedParamIds = new FilteredElementCollector(doc)
+            .OfClass(typeof(SharedParameterElement))
+            .Select(e => e.Id).ToList();
+
+        List<ElementId> globalParamIds = new FilteredElementCollector(doc)
+            .OfClass(typeof(GlobalParameter))
+            .Select(e => e.Id).ToList();
+
+        List<ElementId> projectParamIds = new FilteredElementCollector(doc)
+            .WhereElementIsNotElementType()
+            .OfClass(typeof(ParameterElement))
+            .Cast<ParameterElement>()
+            .Where(e => !(e is SharedParameterElement) && !(e is GlobalParameter))
+            .Select(e => e.Id).ToList();
+
+        List<ElementId> revisionIds = new FilteredElementCollector(doc)
+            .OfClass(typeof(Revision))
+            .Select(e => e.Id).ToList();
+
         // Explicitly collect all views and view templates
         FilteredElementCollector viewCollector = new FilteredElementCollector(doc);
         foreach (View view in viewCollector.OfClass(typeof(View)).Cast<View>())
@@ -209,6 +228,54 @@ public class SelectByCategoriesInDocument : IExternalCommand
                 { "ElementIds", filterIds }
             };
             categoryList.Add(filtersEntry);
+        }
+
+        if (sharedParamIds.Count > 0)
+        {
+            categoryList.Add(new Dictionary<string, object>
+            {
+                { "Name", "Shared Parameters" },
+                { "Count", sharedParamIds.Count },
+                { "CategoryId", ElementId.InvalidElementId },
+                { "IsDirectShape", false },
+                { "ElementIds", sharedParamIds }
+            });
+        }
+
+        if (globalParamIds.Count > 0)
+        {
+            categoryList.Add(new Dictionary<string, object>
+            {
+                { "Name", "Global Parameters" },
+                { "Count", globalParamIds.Count },
+                { "CategoryId", ElementId.InvalidElementId },
+                { "IsDirectShape", false },
+                { "ElementIds", globalParamIds }
+            });
+        }
+
+        if (projectParamIds.Count > 0)
+        {
+            categoryList.Add(new Dictionary<string, object>
+            {
+                { "Name", "Project Parameters" },
+                { "Count", projectParamIds.Count },
+                { "CategoryId", ElementId.InvalidElementId },
+                { "IsDirectShape", false },
+                { "ElementIds", projectParamIds }
+            });
+        }
+
+        if (revisionIds.Count > 0)
+        {
+            categoryList.Add(new Dictionary<string, object>
+            {
+                { "Name", "Revisions" },
+                { "Count", revisionIds.Count },
+                { "CategoryId", ElementId.InvalidElementId },
+                { "IsDirectShape", false },
+                { "ElementIds", revisionIds }
+            });
         }
 
         // Sort the list to keep Direct Shapes grouped with their parent categories

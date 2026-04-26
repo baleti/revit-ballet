@@ -8,7 +8,7 @@ using RevitBallet.Commands;
 
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
-[CommandMeta("Sheet")]
+[CommandMeta("")]
 public class OpenSheetsInDocument : IExternalCommand
 {
     public Result Execute(
@@ -19,6 +19,30 @@ public class OpenSheetsInDocument : IExternalCommand
         UIDocument uidoc = commandData.Application.ActiveUIDocument;
         Document   doc   = uidoc.Document;
         View       activeView = uidoc.ActiveView;
+
+        // ── Selection-first: if sheets are selected, open them immediately ──
+        var preSelectedIds = uidoc.GetSelectionIds();
+        if (preSelectedIds.Count > 0)
+        {
+            var sheetsFromSelection = new List<ViewSheet>();
+            foreach (ElementId id in preSelectedIds)
+            {
+                var elem = doc.GetElement(id);
+                if (elem is ViewSheet vs)
+                    sheetsFromSelection.Add(vs);
+                else if (elem is Viewport vp)
+                {
+                    var s = doc.GetElement(vp.SheetId) as ViewSheet;
+                    if (s != null) sheetsFromSelection.Add(s);
+                }
+            }
+            if (sheetsFromSelection.Count > 0)
+            {
+                foreach (var sheet in sheetsFromSelection)
+                    uidoc.RequestViewChange(sheet);
+                return Result.Succeeded;
+            }
+        }
 
         // ─────────────────────────────────────────────────────────────
         // 1. Try to get cached sheet data (if document state hasn't changed)
