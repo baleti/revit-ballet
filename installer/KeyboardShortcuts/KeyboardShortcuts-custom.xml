@@ -32,10 +32,6 @@
   <ShortcutItem CommandId="67484003-b7ad-48b0-8a38-46b475e051f1" Shortcuts="STV"/>
   <ShortcutItem CommandId="69e4bd0f-fa62-4117-88fa-800c15164610" Shortcuts="STD"/>
   <ShortcutItem CommandId="1122f53e-a176-46d3-bde9-f88ba550e792" Shortcuts="STS"/>
-  <ShortcutItem CommandId="3c8e2f9a-7d4b-4e1a-9f8e-4c2d1a7b3e9f" Shortcuts="XV"/>
-  <ShortcutItem CommandId="2a7e4f9b-3d6c-4e8a-7f2e-9c4d1a8b3e6f" Shortcuts="XD"/>
-  <ShortcutItem CommandId="ba99a07d-da3f-4038-91c1-0b62ea28480c" Shortcuts="XS"/>
-  <ShortcutItem CommandId="11ba2669-8553-4c1e-9102-6ea40cc495a7" Shortcuts="XX"/>
   <ShortcutItem CommandId="9f3a7e2b-6d4c-4a1e-8f9e-3c2d4a7b1e9f" Shortcuts="EA"/>
   <ShortcutItem CommandId="5c8e2a7f-9b3d-4e6a-7c8f-2d9a1b4e6c9f" Shortcuts="ZS"/>
   <ShortcutItem CommandId="1d9f3a6e-7c4b-4e2a-9f8e-4c1d2a7b3e8f" Shortcuts="Q`"/>
@@ -167,8 +163,8 @@
   <ShortcutItem CommandId="ID_OBJECTS_CURVE_RECT" Shortcuts="RR"/>
   <ShortcutItem CommandId="ID_EDIT_SELECT_PREVIOUS" Shortcuts="ZZ"/>
   <ShortcutItem CommandId="ID_DUPLICATE_SHEET_WITH_VIEWS" Shortcuts="DWV"/>
-  <ShortcutItem CommandId="1665CA00-4319-4C29-A9BA-0A6987706687" Shortcuts="SMV"/>
-  <ShortcutItem CommandId="2BC78EFB-453B-4370-BEC3-A2F54574CCF2" Shortcuts="SMD"/>
-  <ShortcutItem CommandId="0ACB0B6B-1B0D-4824-9C95-5478BF65772A" Shortcuts="SMS"/>
+  <ShortcutItem CommandName="External &#xA;Tools:SelectByMaterialInView" CommandId="1665ca00-4319-4c29-a9ba-0a6987706687" Shortcuts="SMV" Paths="Add-Ins&gt;External"/>
+  <ShortcutItem CommandName="External &#xA;Tools:SelectByMaterialInDocument" CommandId="2bc78efb-453b-4370-bec3-a2f54574ccf2" Shortcuts="SMD" Paths="Add-Ins&gt;External"/>
+  <ShortcutItem CommandName="External &#xA;Tools:SelectByMaterialInSession" CommandId="0acb0b6b-1b0d-4824-9c95-5478bf65772a" Shortcuts="SMS" Paths="Add-Ins&gt;External"/>
   <ShortcutItem CommandId="2a7e4f9b-3d6c-4e8a-7f2e-9c4d1a8b3e6f" Shortcuts="DD"/>
   <ShortcutItem CommandId="b4f2a9e1-3c7d-4e8a-9f6b-2d1a4c8e7b3f" Shortcuts="DS"/>
