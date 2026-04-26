@@ -45,47 +45,59 @@ namespace MyRevitCommands
                 return Result.Cancelled;
             }
 
-            // Build DataGrid entries for views. Now include a combined "Sheet" column and a "Sheet Folder" column.
-            // Order: Title, Sheet (combined as SheetNumber - SheetName), Sheet Folder, then Id.
-            List<Dictionary<string, object>> viewEntries = new List<Dictionary<string, object>>();
-            foreach (View v in placedViews)
+            // Selection-first: check if selected views/viewports are in placedViews
+            HashSet<ElementId> placedViewIdSet = new HashSet<ElementId>(placedViews.Select(v => v.Id));
+            List<Dictionary<string, object>> selectedViewEntries = null;
+            var selIds = uidoc.GetSelectionIds();
+            var viewsFromSel = new List<View>();
+            foreach (var sid in selIds)
             {
-                // Retrieve the first associated viewport for this view.
-                Viewport vp = new FilteredElementCollector(doc).OfClass(typeof(Viewport))
-                    .Cast<Viewport>()
-                    .FirstOrDefault(x => x.ViewId == v.Id && x.SheetId != ElementId.InvalidElementId);
-                
-                string combinedSheet = "";
-                string sheetFolder = "";
-                if (vp != null)
-                {
-                    ViewSheet sheet = doc.GetElement(vp.SheetId) as ViewSheet;
-                    if (sheet != null)
-                    {
-                        // Combine sheet number and name into one string.
-                        combinedSheet = sheet.SheetNumber + " - " + sheet.Name;
-                        // Look up the sheet folder from the sheet.
-                        Parameter sheetFolderParam = sheet.LookupParameter("Sheet Folder");
-                        sheetFolder = sheetFolderParam?.AsString() ?? string.Empty;
-                    }
-                }
-                
-                viewEntries.Add(new Dictionary<string, object>
-                {
-                    { "Sheet", combinedSheet },
-                    { "View Title", v.Name },
-                    { "Sheet Folder", sheetFolder },
-                    { "Id", v.Id.AsLong() }
-                });
+                Element se = doc.GetElement(sid);
+                View candidate = null;
+                if (se is View sv && placedViewIdSet.Contains(sv.Id)) candidate = sv;
+                else if (se is Viewport vps && placedViewIdSet.Contains(vps.ViewId))
+                    candidate = doc.GetElement(vps.ViewId) as View;
+                if (candidate != null && !viewsFromSel.Contains(candidate))
+                    viewsFromSel.Add(candidate);
             }
-
-            // Define the order of columns for the first prompt.
-            List<string> viewPropertyNames = new List<string> { "Sheet", "View Title", "Sheet Folder", "Id" };
-            List<Dictionary<string, object>> selectedViewEntries = CustomGUIs.DataGrid(viewEntries, viewPropertyNames, false);
-            if (selectedViewEntries == null || selectedViewEntries.Count == 0)
+            if (viewsFromSel.Count > 0)
             {
-                TaskDialog.Show("Duplicate Views To Sheets", "No views were selected.");
-                return Result.Cancelled;
+                selectedViewEntries = viewsFromSel.Select(v => new Dictionary<string, object>
+                {
+                    { "Sheet", "" }, { "View Title", v.Name },
+                    { "Sheet Folder", "" }, { "Id", v.Id.AsLong() }
+                }).ToList();
+            }
+            else
+            {
+                // Build DataGrid entries for views.
+                List<Dictionary<string, object>> viewEntries = new List<Dictionary<string, object>>();
+                foreach (View v in placedViews)
+                {
+                    Viewport vp = new FilteredElementCollector(doc).OfClass(typeof(Viewport))
+                        .Cast<Viewport>()
+                        .FirstOrDefault(x => x.ViewId == v.Id && x.SheetId != ElementId.InvalidElementId);
+                    string combinedSheet = "";
+                    string sheetFolder = "";
+                    if (vp != null)
+                    {
+                        ViewSheet sheet = doc.GetElement(vp.SheetId) as ViewSheet;
+                        if (sheet != null)
+                        {
+                            combinedSheet = sheet.SheetNumber + " - " + sheet.Name;
+                            sheetFolder = sheet.LookupParameter("Sheet Folder")?.AsString() ?? string.Empty;
+                        }
+                    }
+                    viewEntries.Add(new Dictionary<string, object>
+                    {
+                        { "Sheet", combinedSheet }, { "View Title", v.Name },
+                        { "Sheet Folder", sheetFolder }, { "Id", v.Id.AsLong() }
+                    });
+                }
+                List<string> viewPropertyNames = new List<string> { "Sheet", "View Title", "Sheet Folder", "Id" };
+                selectedViewEntries = CustomGUIs.DataGrid(viewEntries, viewPropertyNames, false);
+                if (selectedViewEntries == null || selectedViewEntries.Count == 0)
+                    return Result.Cancelled;
             }
             // Build a set of selected view IDs.
             HashSet<ElementId> selectedViewIds = new HashSet<ElementId>();

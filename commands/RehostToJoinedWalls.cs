@@ -15,12 +15,23 @@ public class RehostToJoinedWalls : IExternalCommand
         UIDocument uidoc = commandData.Application.ActiveUIDocument;
         Document doc = uidoc.Document;
         
-        // Ensure at least one element is selected.
         ICollection<ElementId> selectedIds = uidoc.GetSelectionIds();
         if (selectedIds.Count == 0)
         {
-            message = "Please select one or more doors or windows before running the command.";
-            return Result.Failed;
+            CustomGUIs.SetCurrentUIDocument(uidoc);
+            var allHosted = new FilteredElementCollector(doc)
+                .WhereElementIsNotElementType()
+                .Cast<Element>()
+                .Where(e => e is FamilyInstance fi && fi.Category != null &&
+                    (fi.Category.Id.AsLong() == (int)BuiltInCategory.OST_Doors ||
+                     fi.Category.Id.AsLong() == (int)BuiltInCategory.OST_Windows))
+                .ToList();
+            var gridData = CustomGUIs.ConvertToDataGridFormat(allHosted, new List<string> { "Name" });
+            var chosen = CustomGUIs.DataGrid(gridData, new List<string> { "Name" }, false);
+            if (chosen == null) return Result.Cancelled;
+            var pickedElems = CustomGUIs.ExtractOriginalObjects<Element>(chosen) ?? new List<Element>();
+            if (pickedElems.Count == 0) return Result.Succeeded;
+            selectedIds = pickedElems.Select(e => e.Id).ToList();
         }
         
         // Setup geometry options.

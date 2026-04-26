@@ -33,23 +33,28 @@ namespace RevitCommands
             Document doc = uidoc.Document;
             Selection sel = uidoc.Selection;
 
-            // Get selected filled regions
             ICollection<ElementId> selectedIds = uidoc.GetSelectionIds();
             List<FilledRegion> selectedRegions = new List<FilledRegion>();
-
             foreach (ElementId id in selectedIds)
             {
                 Element elem = doc.GetElement(id);
-                if (elem is FilledRegion region)
-                {
-                    selectedRegions.Add(region);
-                }
+                if (elem is FilledRegion region) selectedRegions.Add(region);
             }
 
             if (selectedRegions.Count < 2)
             {
-                TaskDialog.Show("Error", "Please select at least two filled regions to combine.");
-                return Result.Failed;
+                CustomGUIs.SetCurrentUIDocument(uidoc);
+                var allFR = new FilteredElementCollector(doc)
+                    .OfClass(typeof(FilledRegion)).Cast<FilledRegion>().ToList();
+                var gridData = CustomGUIs.ConvertToDataGridFormat(allFR, new List<string> { "Name" });
+                var chosen = CustomGUIs.DataGrid(gridData, new List<string> { "Name" }, false);
+                if (chosen == null) return Result.Cancelled;
+                selectedRegions = CustomGUIs.ExtractOriginalObjects<FilledRegion>(chosen) ?? new List<FilledRegion>();
+                if (selectedRegions.Count < 2)
+                {
+                    TaskDialog.Show("Error", "Please select at least two filled regions to combine.");
+                    return Result.Cancelled;
+                }
             }
 
             // Verify all regions are in the same view

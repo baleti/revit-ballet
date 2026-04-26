@@ -18,6 +18,37 @@ public class DeleteRevisionCloudsFromSheets : IExternalCommand
         UIDocument uiDoc = uiApp.ActiveUIDocument;
         Document doc = uiDoc.Document;
 
+        // Selection-first
+        var selIds = uiDoc.GetSelectionIds();
+        if (selIds.Count > 0)
+        {
+            var fromSel = new List<ViewSheet>();
+            foreach (var sid in selIds)
+            {
+                Element se = doc.GetElement(sid);
+                if (se is ViewSheet vs && !fromSel.Contains(vs)) fromSel.Add(vs);
+                else if (se is Viewport vp && vp.SheetId != ElementId.InvalidElementId)
+                {
+                    var vs2 = doc.GetElement(vp.SheetId) as ViewSheet;
+                    if (vs2 != null && !fromSel.Contains(vs2)) fromSel.Add(vs2);
+                }
+            }
+            if (fromSel.Count > 0)
+            {
+                using (Transaction t = new Transaction(doc, "Delete Revision Clouds"))
+                {
+                    t.Start();
+                    foreach (var sheet in fromSel)
+                    {
+                        DeleteRevisionCloudsFromSheet(doc, sheet);
+                        DeleteRevisionCloudsFromViewsOnSheet(doc, sheet);
+                    }
+                    t.Commit();
+                }
+                return Result.Succeeded;
+            }
+        }
+
         // Collect all sheets in the project
         IList<ViewSheet> sheets = new FilteredElementCollector(doc)
             .OfClass(typeof(ViewSheet))
