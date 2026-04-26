@@ -7,7 +7,7 @@ using System.Linq;
 
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("Dimension")]
-public class SelectAssociatedFromDimension : IExternalCommand
+public class SelectAssociated : IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
     {
