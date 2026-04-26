@@ -19,6 +19,12 @@ public class SelectByCategoriesInSession : IExternalCommand
         // Build category counts across ALL open documents
         Dictionary<ElementId, CategoryInfo> categoryInfoMap = new Dictionary<ElementId, CategoryInfo>();
 
+#if REVIT2024 || REVIT2025 || REVIT2026
+        ElementId filterSentinelId = new ElementId(-3000001L);
+#else
+        ElementId filterSentinelId = new ElementId(-3000001);
+#endif
+
         foreach (Document doc in app.Documents)
         {
             if (doc.IsLinked) continue; // Skip linked documents
@@ -74,6 +80,22 @@ public class SelectByCategoriesInSession : IExternalCommand
                     }
                     categoryInfoMap[categoryId].AddElement(doc, view.Id, view.UniqueId, false);
                 }
+            }
+
+            // Collect view filters (ParameterFilterElement — project-level, no category)
+            foreach (ParameterFilterElement pfe in new FilteredElementCollector(doc)
+                .OfClass(typeof(ParameterFilterElement)).Cast<ParameterFilterElement>())
+            {
+                if (!categoryInfoMap.ContainsKey(filterSentinelId))
+                {
+                    categoryInfoMap[filterSentinelId] = new CategoryInfo
+                    {
+                        CategoryId = filterSentinelId,
+                        CategoryName = "View Filters",
+                        IsViewFilter = true
+                    };
+                }
+                categoryInfoMap[filterSentinelId].AddElement(doc, pfe.Id, pfe.UniqueId, false);
             }
 
             // Collect all other elements
@@ -135,7 +157,8 @@ public class SelectByCategoriesInSession : IExternalCommand
                     { "IsDirectShape", false },
                     { "IsView", categoryInfo.IsView },
                     { "IsViewTemplate", categoryInfo.IsViewTemplate },
-                    { "IsSheet", categoryInfo.IsSheet }
+                    { "IsSheet", categoryInfo.IsSheet },
+                    { "IsViewFilter", categoryInfo.IsViewFilter }
                 };
 
                 // Add count column for each document
@@ -292,6 +315,7 @@ public class SelectByCategoriesInSession : IExternalCommand
         public bool IsView { get; set; }
         public bool IsViewTemplate { get; set; }
         public bool IsSheet { get; set; }
+        public bool IsViewFilter { get; set; }
 
         // Document Title -> (ElementId -> UniqueId)
         public Dictionary<string, Dictionary<ElementId, string>> ElementsByDocument { get; set; }
