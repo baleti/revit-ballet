@@ -3,6 +3,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -126,7 +127,10 @@ public class InvokeAddinCommand : IExternalCommand
                         if (method != null)
                         {
                             object[] parameters = new object[] { commandData, message, elements };
-                            return (Result)method.Invoke(commandInstance, parameters);
+                            var sw = Stopwatch.StartNew();
+                            var result = (Result)method.Invoke(commandInstance, parameters);
+                            CommandUsageTracker.Record(commandClassName, result, sw.ElapsedMilliseconds);
+                            return result;
                         }
                     }
                 }
