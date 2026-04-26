@@ -4,6 +4,7 @@ using Autodesk.Revit.UI;
 using Autodesk.Revit.Attributes;
 
 [Transaction(TransactionMode.Manual)]
+[CommandMeta("")]
 public class MoveDimensionText : IExternalCommand
 {
     public Result Execute(

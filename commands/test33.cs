@@ -11,6 +11,7 @@ using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace RevitAddin
 {
   [Transaction(TransactionMode.Manual)]
+[CommandMeta("Any")]
   public class SwapFamilyTypeOfSelectedElements : IExternalCommand
   {
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)

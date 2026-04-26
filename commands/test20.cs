@@ -7,6 +7,7 @@ using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace RevitDetailLines
 {
     [Transaction(TransactionMode.Manual)]
+[CommandMeta("")]
     public class DrawXinViewCentreDetailLines : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)

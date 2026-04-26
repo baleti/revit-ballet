@@ -5,6 +5,7 @@ using System;
 using System.Linq;
 
 [Transaction(TransactionMode.Manual)]
+[CommandMeta("")]
 public class CreateDetailLines : IExternalCommand
 {
     public Result Execute(
