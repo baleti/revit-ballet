@@ -6,6 +6,7 @@ using System.Linq;
 using System;
 
 [Transaction(TransactionMode.Manual)]
+[CommandMeta("Any")]
 public class ViewsContainingElement : IExternalCommand
 {
     public Result Execute(

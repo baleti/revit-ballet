@@ -5,6 +5,7 @@ using Autodesk.Revit.UI.Selection;
 using System;
 
 [Transaction(TransactionMode.ReadOnly)]
+[CommandMeta("")]
 public class Print2DViewCropTransformation : IExternalCommand
 {
     public Result Execute(

@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Text;
 
 [Transaction(TransactionMode.Manual)]
+[CommandMeta("")]
 public class CreateLines : IExternalCommand
 {
     public Result Execute(

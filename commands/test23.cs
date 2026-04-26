@@ -4,6 +4,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 
 [Transaction(TransactionMode.ReadOnly)]
+[CommandMeta("")]
 public class ShowViewRange : IExternalCommand
 {
     public Result Execute(

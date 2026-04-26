@@ -10,6 +10,7 @@ using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 namespace RevitCommands
 {
     [Transaction(TransactionMode.Manual)]
+[CommandMeta("Any")]
     public class RelativeLocationsCommand : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)

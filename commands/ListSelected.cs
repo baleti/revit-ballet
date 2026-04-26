@@ -1075,6 +1075,7 @@ public abstract class ListElementsBase : IExternalCommand
 #region Concrete commands
 
 [Transaction(TransactionMode.Manual)]
+[CommandMeta("Any")]
 public class ListSelectedInDocument : ListElementsBase
 {
     public override bool SpanAllScreens      => false;

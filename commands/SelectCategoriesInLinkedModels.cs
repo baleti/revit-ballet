@@ -514,6 +514,7 @@ public abstract class SelectCategoriesInSelectedLinkedModelsBase : IExternalComm
 
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
+[CommandMeta("Linked Model")]
 public class SelectCategoriesInViewOfSelectedLinkedModels : SelectCategoriesInSelectedLinkedModelsBase
 {
     public override bool selectInView => true;
@@ -521,6 +522,7 @@ public class SelectCategoriesInViewOfSelectedLinkedModels : SelectCategoriesInSe
 
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
+[CommandMeta("Linked Model")]
 public class SelectCategoriesInDocumentOfSelectedLinkedModels : SelectCategoriesInSelectedLinkedModelsBase
 {
     public override bool selectInView => false;
