@@ -11,7 +11,7 @@ using Drawing = System.Drawing;
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
 [CommandMeta("Grid, Level")]
-public class ChangeLength : IExternalCommand
+public class Extend : IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
     {
