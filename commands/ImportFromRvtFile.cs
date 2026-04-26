@@ -13,7 +13,7 @@ namespace RevitCommands
     [Transaction(TransactionMode.Manual)]
     [Regeneration(RegenerationOption.Manual)]
     [CommandMeta("")]
-    public class ImportElementsFromFile : IExternalCommand
+    public class ImportFromRvtFile : IExternalCommand
     {
         public Result Execute(
             ExternalCommandData commandData,
