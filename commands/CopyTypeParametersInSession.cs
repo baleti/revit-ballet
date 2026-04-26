@@ -21,7 +21,6 @@ public class CopyTypeParametersInSession : IExternalCommand
         UIDocument uidoc = uiapp.ActiveUIDocument;
         Document activeDoc = uidoc.Document;
 
-        using (var executionLog = CommandExecutionLogger.Start("CopyTypeParametersInSession", commandData))
         using (var diagnostics = CommandDiagnostics.StartCommand("CopyTypeParametersInSession", uiapp))
         {
             try
@@ -31,7 +30,6 @@ public class CopyTypeParametersInSession : IExternalCommand
                 if (sourceTypes == null || sourceTypes.Count == 0)
                 {
                     diagnostics.Log("No types selected");
-                    executionLog.SetResult(Result.Cancelled);
                     return Result.Cancelled;
                 }
 
@@ -42,7 +40,6 @@ public class CopyTypeParametersInSession : IExternalCommand
                 if (sourceTypeData.Count == 0)
                 {
                     TaskDialog.Show("Info", "No editable parameters found on selected types.");
-                    executionLog.SetResult(Result.Cancelled);
                     return Result.Cancelled;
                 }
 
@@ -51,7 +48,6 @@ public class CopyTypeParametersInSession : IExternalCommand
                 if (targetDocuments.Count == 0)
                 {
                     TaskDialog.Show("Info", "No other open documents have matching types.");
-                    executionLog.SetResult(Result.Cancelled);
                     return Result.Cancelled;
                 }
 
@@ -60,7 +56,6 @@ public class CopyTypeParametersInSession : IExternalCommand
                 if (selectedDocuments == null || selectedDocuments.Count == 0)
                 {
                     diagnostics.Log("User cancelled document selection");
-                    executionLog.SetResult(Result.Cancelled);
                     return Result.Cancelled;
                 }
 
@@ -93,19 +88,16 @@ public class CopyTypeParametersInSession : IExternalCommand
                         (errors.Count > 10 ? $"\n... and {errors.Count - 10} more" : ""));
                 }
 
-                executionLog.SetResult(Result.Succeeded);
                 return Result.Succeeded;
             }
             catch (OperationCanceledException)
             {
-                executionLog.SetResult(Result.Cancelled);
                 return Result.Cancelled;
             }
             catch (Exception ex)
             {
                 TaskDialog.Show("Error", $"Failed to copy type parameters: {ex.Message}");
                 diagnostics.LogError($"Exception: {ex}");
-                executionLog.SetResult(Result.Failed);
                 return Result.Failed;
             }
         }

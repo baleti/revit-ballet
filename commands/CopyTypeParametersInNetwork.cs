@@ -34,7 +34,6 @@ public class CopyTypeParametersInNetwork : IExternalCommand
         UIDocument uidoc = uiapp.ActiveUIDocument;
         Document activeDoc = uidoc.Document;
 
-        using (var executionLog = CommandExecutionLogger.Start("CopyTypeParametersInNetwork", commandData))
         using (var diagnostics = CommandDiagnostics.StartCommand("CopyTypeParametersInNetwork", uiapp))
         {
             try
@@ -44,7 +43,6 @@ public class CopyTypeParametersInNetwork : IExternalCommand
                 if (!File.Exists(tokenPath))
                 {
                     TaskDialog.Show("Error", "Network token not found. Ensure Revit Ballet server is running.");
-                    executionLog.SetResult(Result.Failed);
                     return Result.Failed;
                 }
                 string authToken = File.ReadAllText(tokenPath).Trim();
@@ -54,7 +52,6 @@ public class CopyTypeParametersInNetwork : IExternalCommand
                 if (sourceTypes == null || sourceTypes.Count == 0)
                 {
                     diagnostics.Log("No types selected");
-                    executionLog.SetResult(Result.Cancelled);
                     return Result.Cancelled;
                 }
 
@@ -65,7 +62,6 @@ public class CopyTypeParametersInNetwork : IExternalCommand
                 if (sourceTypeData.Count == 0)
                 {
                     TaskDialog.Show("Info", "No editable parameters found on selected types.");
-                    executionLog.SetResult(Result.Cancelled);
                     return Result.Cancelled;
                 }
 
@@ -74,7 +70,6 @@ public class CopyTypeParametersInNetwork : IExternalCommand
                 if (networkDocuments.Count == 0)
                 {
                     TaskDialog.Show("Error", "No active documents found in registry.");
-                    executionLog.SetResult(Result.Failed);
                     return Result.Failed;
                 }
 
@@ -119,7 +114,6 @@ public class CopyTypeParametersInNetwork : IExternalCommand
                 if (targetDocuments.Count == 0)
                 {
                     TaskDialog.Show("Info", "No other documents found in the network.");
-                    executionLog.SetResult(Result.Cancelled);
                     return Result.Cancelled;
                 }
 
@@ -128,7 +122,6 @@ public class CopyTypeParametersInNetwork : IExternalCommand
                 if (selectedDocuments == null || selectedDocuments.Count == 0)
                 {
                     diagnostics.Log("User cancelled document selection");
-                    executionLog.SetResult(Result.Cancelled);
                     return Result.Cancelled;
                 }
 
@@ -191,19 +184,16 @@ public class CopyTypeParametersInNetwork : IExternalCommand
                         (localErrors.Count > 10 ? $"\n... and {localErrors.Count - 10} more" : ""));
                 }
 
-                executionLog.SetResult(Result.Succeeded);
                 return Result.Succeeded;
             }
             catch (OperationCanceledException)
             {
-                executionLog.SetResult(Result.Cancelled);
                 return Result.Cancelled;
             }
             catch (Exception ex)
             {
                 TaskDialog.Show("Error", $"Failed to copy type parameters: {ex.Message}");
                 diagnostics.LogError($"Exception: {ex}");
-                executionLog.SetResult(Result.Failed);
                 return Result.Failed;
             }
         }
