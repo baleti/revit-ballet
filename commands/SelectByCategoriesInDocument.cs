@@ -41,6 +41,13 @@ public class SelectByCategoriesInDocument : IExternalCommand
             .OfClass(typeof(GlobalParameter))
             .Select(e => e.Id).ToList();
 
+        List<ElementId> projectParamIds = new FilteredElementCollector(doc)
+            .WhereElementIsNotElementType()
+            .OfClass(typeof(ParameterElement))
+            .Cast<ParameterElement>()
+            .Where(e => !(e is SharedParameterElement) && !(e is GlobalParameter))
+            .Select(e => e.Id).ToList();
+
         // Explicitly collect all views and view templates
         FilteredElementCollector viewCollector = new FilteredElementCollector(doc);
         foreach (View view in viewCollector.OfClass(typeof(View)).Cast<View>())
@@ -240,6 +247,18 @@ public class SelectByCategoriesInDocument : IExternalCommand
                 { "CategoryId", ElementId.InvalidElementId },
                 { "IsDirectShape", false },
                 { "ElementIds", globalParamIds }
+            });
+        }
+
+        if (projectParamIds.Count > 0)
+        {
+            categoryList.Add(new Dictionary<string, object>
+            {
+                { "Name", "Project Parameters" },
+                { "Count", projectParamIds.Count },
+                { "CategoryId", ElementId.InvalidElementId },
+                { "IsDirectShape", false },
+                { "ElementIds", projectParamIds }
             });
         }
 
