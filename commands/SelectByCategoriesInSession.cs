@@ -24,11 +24,13 @@ public class SelectByCategoriesInSession : IExternalCommand
         ElementId sharedParamSentinelId  = new ElementId(-3000002L);
         ElementId globalParamSentinelId  = new ElementId(-3000003L);
         ElementId projectParamSentinelId = new ElementId(-3000004L);
+        ElementId revisionSentinelId     = new ElementId(-3000005L);
 #else
         ElementId filterSentinelId       = new ElementId(-3000001);
         ElementId sharedParamSentinelId  = new ElementId(-3000002);
         ElementId globalParamSentinelId  = new ElementId(-3000003);
         ElementId projectParamSentinelId = new ElementId(-3000004);
+        ElementId revisionSentinelId     = new ElementId(-3000005);
 #endif
 
         foreach (Document doc in app.Documents)
@@ -131,6 +133,15 @@ public class SelectByCategoriesInSession : IExternalCommand
                     categoryInfoMap[projectParamSentinelId] = new CategoryInfo
                         { CategoryId = projectParamSentinelId, CategoryName = "Project Parameters" };
                 categoryInfoMap[projectParamSentinelId].AddElement(doc, pp.Id, pp.UniqueId, false);
+            }
+
+            foreach (Revision rev in new FilteredElementCollector(doc)
+                .OfClass(typeof(Revision)).Cast<Revision>())
+            {
+                if (!categoryInfoMap.ContainsKey(revisionSentinelId))
+                    categoryInfoMap[revisionSentinelId] = new CategoryInfo
+                        { CategoryId = revisionSentinelId, CategoryName = "Revisions" };
+                categoryInfoMap[revisionSentinelId].AddElement(doc, rev.Id, rev.UniqueId, false);
             }
 
             // Collect all other elements

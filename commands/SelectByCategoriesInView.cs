@@ -79,7 +79,7 @@ public class SelectByCategoriesInView : IExternalCommand
             .Cast<ParameterElement>()
             .Where(e => !(e is SharedParameterElement) && !(e is GlobalParameter))
             .Select(e => e.Id).ToList();
-        
+
         // Collect elements from all views to process
         foreach (View view in viewsToProcess)
         {
@@ -198,6 +198,16 @@ public class SelectByCategoriesInView : IExternalCommand
             }
         }
         
+        // Collect revisions assigned to any selected sheets
+        var revisionIdSet = new HashSet<ElementId>();
+        foreach (View view in viewsToProcess)
+        {
+            if (view is ViewSheet sheet)
+                foreach (ElementId revId in sheet.GetAllRevisionIds())
+                    revisionIdSet.Add(revId);
+        }
+        List<ElementId> revisionIds = revisionIdSet.ToList();
+
         // Build a list of dictionaries for the DataGrid.
         List<Dictionary<string, object>> categoryList = new List<Dictionary<string, object>>();
 
@@ -400,6 +410,18 @@ public class SelectByCategoriesInView : IExternalCommand
                 { "CategoryId", ElementId.InvalidElementId },
                 { "IsDirectShape", false },
                 { "ElementIds", projectParamIds }
+            });
+        }
+
+        if (revisionIds.Count > 0)
+        {
+            categoryList.Add(new Dictionary<string, object>
+            {
+                { "Name", "Revisions" },
+                { "Count", revisionIds.Count },
+                { "CategoryId", ElementId.InvalidElementId },
+                { "IsDirectShape", false },
+                { "ElementIds", revisionIds }
             });
         }
 
