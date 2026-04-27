@@ -20,6 +20,7 @@
   <ShortcutItem CommandId="7a900755-ca93-4173-9bf6-3d59e06384fb" Shortcuts="WWS"/>
   <ShortcutItem CommandId="4a9e7c2d-5f3b-4e1a-8c7f-2d9e1a4b6c3f" Shortcuts="WDS"/>
   <ShortcutItem CommandId="b4d6e8a2-7c3f-4e1a-9b6e-2d4a7c8f3b1e" Shortcuts="WSX"/>
+  <ShortcutItem CommandId="138931d6-c8d1-40f3-aa1f-21198a8ec522" Shortcuts="WDX"/>
   <ShortcutItem CommandId="9a4f7c2e-6b3d-4e9a-7c2f-1d8b4e9a6c3f" Shortcuts="WC"/>
   <ShortcutItem CommandId="3c7e9a2d-4f6b-4a8e-9c7f-2d1b4a8e9c6f" Shortcuts="WQD"/>
   <ShortcutItem CommandId="db3fb0d8-3fc6-4d08-9b64-876eedd09260" Shortcuts="WQS"/>
