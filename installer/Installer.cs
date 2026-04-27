@@ -694,6 +694,23 @@ namespace RevitBalletInstaller
             return null;
         }
 
+        private static bool IsRevitRunning()
+        {
+            return System.Diagnostics.Process.GetProcessesByName("Revit").Length > 0;
+        }
+
+        private void CleanupUpdateFolders(string addinsPath)
+        {
+            try
+            {
+                foreach (string dir in Directory.GetDirectories(addinsPath, "revit-ballet.update*"))
+                {
+                    try { Directory.Delete(dir, true); } catch { }
+                }
+            }
+            catch { }
+        }
+
         private void InstallToRevitVersions(string sourceDir)
         {
             var assembly = Assembly.GetExecutingAssembly();
@@ -703,6 +720,9 @@ namespace RevitBalletInstaller
             {
                 throw new Exception("Required resource revit-ballet.addin not found in installer.");
             }
+
+            bool revitRunning = IsRevitRunning();
+            Log(2, $"Revit running: {revitRunning}");
 
             foreach (var installation in installations)
             {
@@ -733,15 +753,31 @@ namespace RevitBalletInstaller
                 bool wasInstalled = File.Exists(Path.Combine(mainFolder, "revit-ballet.dll"));
                 Log(2, $"  [Revit {installation.Year}] {(wasInstalled ? "Updating" : "Fresh install")} -> {mainFolder}");
 
-                // Try to copy all files to main folder
-                try
+                // Only try main folder when Revit is NOT running. When Revit is running,
+                // even if the main-folder DLL isn't locked (e.g. Revit loaded from an update
+                // folder), we must not flip the manifest back to main folder — that would
+                // silently swap in whatever DLL happens to be there.
+                bool useMainFolder = false;
+                if (!revitRunning)
                 {
-                    string mainDllPath = Path.Combine(mainFolder, "revit-ballet.dll");
-                    ExtractResourceSafe(dllResource, mainDllPath);
-                    Log(2, $"    revit-ballet.dll");
+                    try
+                    {
+                        string mainDllPath = Path.Combine(mainFolder, "revit-ballet.dll");
+                        ExtractResourceSafe(dllResource, mainDllPath);
+                        Log(2, $"    revit-ballet.dll");
 
-                    ExtractDependenciesSafe(installation.Year, mainFolder);
+                        ExtractDependenciesSafe(installation.Year, mainFolder);
+                        useMainFolder = true;
+                    }
+                    catch (IOException)
+                    {
+                        // Unexpectedly locked even with no Revit process — fall through to update folder
+                        Log(2, $"  [Revit {installation.Year}] Unexpected file lock, falling back to update folder");
+                    }
+                }
 
+                if (useMainFolder)
+                {
                     string addinContent = GetResourceText(addinResource);
                     var doc = XDocument.Parse(addinContent);
 
@@ -757,6 +793,9 @@ namespace RevitBalletInstaller
                     doc.Save(addinPath);
                     Log(2, $"    revit-ballet.addin -> {addinPath}");
 
+                    // Clean up stale update folders — Revit is not running so none are in use
+                    CleanupUpdateFolders(installation.AddinsPath);
+
                     installationResults.Add(new InstallationResult
                     {
                         Year = installation.Year,
@@ -764,11 +803,11 @@ namespace RevitBalletInstaller
                         AddinsPath = mainFolder
                     });
                 }
-                catch (IOException)
+                else
                 {
-                    // Files are locked (Revit is running) - use update folder strategy
+                    // Revit is running (or lock prevented main-folder write) — use update folder
                     string actualUpdateFolder = updateFolder;
-                    Log(2, $"  [Revit {installation.Year}] Files locked, using update folder...");
+                    Log(2, $"  [Revit {installation.Year}] Revit running, using update folder...");
 
                     if (Directory.Exists(updateFolder))
                     {
