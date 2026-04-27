@@ -240,13 +240,7 @@ internal static class WorksetToggleHelper
                 config.Close(toClose);
 
             ModelPath path = linkType.GetExternalFileReference().GetAbsolutePath();
-
-            using (var t = new Transaction(doc, title))
-            {
-                t.Start();
-                linkType.LoadFrom(path, config);
-                t.Commit();
-            }
+            linkType.LoadFrom(path, config);
         }
 
         return Result.Succeeded;
