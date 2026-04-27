@@ -93,13 +93,6 @@
     <AddIn Type="Command">
         <Name>revit-ballet</Name>
         <Assembly>revit-ballet.dll</Assembly>
-        <FullClassName>OpenView</FullClassName>
-        <AddInId>8E2F9A4B-7C3D-4A6E-9F8E-1D2C4B7A9E3F</AddInId>
-        <VendorId>revit-ballet</VendorId>
-    </AddIn>
-    <AddIn Type="Command">
-        <Name>revit-ballet</Name>
-        <Assembly>revit-ballet.dll</Assembly>
         <FullClassName>CloseCurrentView</FullClassName>
         <AddInId>9A4F7C2E-6B3D-4E9A-7C2F-1D8B4E9A6C3F</AddInId>
         <VendorId>revit-ballet</VendorId>
@@ -255,15 +248,43 @@
     <AddIn Type="Command">
         <Name>revit-ballet</Name>
         <Assembly>revit-ballet.dll</Assembly>
-        <FullClassName>OpenSheetsInDocument</FullClassName>
+        <FullClassName>OpenSheetInDocument</FullClassName>
         <AddInId>3E7A9D4F-8C2B-4E6A-9F7E-1D3C4A8B2E9F</AddInId>
         <VendorId>revit-ballet</VendorId>
     </AddIn>
     <AddIn Type="Command">
         <Name>revit-ballet</Name>
         <Assembly>revit-ballet.dll</Assembly>
-        <FullClassName>OpenSheetsInSession</FullClassName>
+        <FullClassName>OpenSheetInSession</FullClassName>
         <AddInId>6B4E9A2C-7F3D-4A8E-9C6F-2D1A4B7E8C9F</AddInId>
+        <VendorId>revit-ballet</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>revit-ballet</Name>
+        <Assembly>revit-ballet.dll</Assembly>
+        <FullClassName>OpenViewInDocument</FullClassName>
+        <AddInId>F3A7B2C9-4D6E-4A1F-8E3B-9C7D2A4F6E1B</AddInId>
+        <VendorId>revit-ballet</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>revit-ballet</Name>
+        <Assembly>revit-ballet.dll</Assembly>
+        <FullClassName>OpenViewInSession</FullClassName>
+        <AddInId>A2C4E6F8-3B7D-4E9A-8C1F-6D3A7B2E4C9F</AddInId>
+        <VendorId>revit-ballet</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>revit-ballet</Name>
+        <Assembly>revit-ballet.dll</Assembly>
+        <FullClassName>OpenViewInNetwork</FullClassName>
+        <AddInId>E9A3C7D1-6F4B-4A2E-9D8C-3E7A1B4F6C2D</AddInId>
+        <VendorId>revit-ballet</VendorId>
+    </AddIn>
+    <AddIn Type="Command">
+        <Name>revit-ballet</Name>
+        <Assembly>revit-ballet.dll</Assembly>
+        <FullClassName>OpenSheetInNetwork</FullClassName>
+        <AddInId>B4D6E8A2-7C3F-4E1A-9B6E-2D4A7C8F3B1E</AddInId>
         <VendorId>revit-ballet</VendorId>
     </AddIn>
     <AddIn Type="Command">
