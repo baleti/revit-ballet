@@ -7,8 +7,8 @@ using Autodesk.Revit.UI;
 
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 
-// CloseWorksets: hide worksets globally (no selection), hide in views (views selected),
-//               or report API limitation (links selected).
+// CloseWorksets: close/hide worksets in host doc (no selection), in views (views selected),
+//               or reload linked models with fewer open worksets (links selected).
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("")]
 public class CloseWorksets : IExternalCommand
@@ -17,8 +17,8 @@ public class CloseWorksets : IExternalCommand
         => WorksetToggleHelper.Run(commandData, ref message, closing: true);
 }
 
-// OpenWorksets: show worksets globally (no selection), show in views (views selected),
-//              or report API limitation (links selected).
+// OpenWorksets: open/show worksets in host doc (no selection), in views (views selected),
+//              or reload linked models with more open worksets (links selected).
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("")]
 public class OpenWorksets : IExternalCommand
@@ -51,7 +51,7 @@ internal static class WorksetToggleHelper
             .ToList();
 
         if (selectedLinks.Count > 0)
-            return HandleLinkedModels(closing);
+            return HandleLinkedModels(doc, selectedLinks, closing, ref message);
 
         var targetViews = ExtractTargetViews(doc, selectedIds);
         if (targetViews.Count > 0)
@@ -171,20 +171,85 @@ internal static class WorksetToggleHelper
         return Result.Succeeded;
     }
 
-    // ── Linked model case — not supported by the Revit API ───────────────────
-    // RevitLinkGraphicsSettings (the API class for linked model display overrides)
-    // does not expose workset-level visibility methods. This is confirmed against
-    // the Revit 2024 API DLL via reflection.
+    // ── Linked model open/close via reload ───────────────────────────────────
+    // RevitLinkType.LoadFrom(ModelPath, WorksetConfiguration) reloads the link
+    // with a new set of open worksets. Multiple instances of the same link type
+    // are processed once (they share one loaded document).
 
-    private static Result HandleLinkedModels(bool closing)
+    private static Result HandleLinkedModels(Document doc, List<RevitLinkInstance> selectedLinks, bool closing, ref string message)
     {
-        TaskDialog.Show(
-            closing ? "Close Worksets in Linked Models" : "Open Worksets in Linked Models",
-            "The Revit API does not support per-view workset visibility control for linked models.\n\n" +
-            "RevitLinkGraphicsSettings (the API class for linked model display overrides) " +
-            "has no workset-level methods.\n\n" +
-            "Use Visibility/Graphics Overrides > Revit Links tab > select the link > Custom > Worksets.");
-        return Result.Cancelled;
+        var processedTypeIds = new HashSet<ElementId>();
+
+        foreach (var linkInstance in selectedLinks)
+        {
+            ElementId typeId = linkInstance.GetTypeId();
+            if (!processedTypeIds.Add(typeId)) continue;
+
+            var linkType = doc.GetElement(typeId) as RevitLinkType;
+            if (linkType == null) continue;
+
+            var linkedDoc = linkInstance.GetLinkDocument();
+            if (linkedDoc == null) continue;
+
+            if (!linkedDoc.IsWorkshared)
+            {
+                TaskDialog.Show("Info", $"{linkType.Name}: not workshared, no worksets to change.");
+                continue;
+            }
+
+            var worksets = new FilteredWorksetCollector(linkedDoc)
+                .OfKind(WorksetKind.UserWorkset)
+                .ToWorksets()
+                .OrderBy(w => w.Name)
+                .ToList();
+
+            if (worksets.Count == 0)
+            {
+                TaskDialog.Show("Info", $"{linkType.Name}: no user worksets.");
+                continue;
+            }
+
+            var rows = worksets.Select(ws => new Dictionary<string, object>
+            {
+                { "Workset",   ws.Name },
+                { "Status",    ws.IsOpen ? "Open" : "Closed" },
+                { "WorksetId", ws.Id }
+            }).ToList();
+
+            string title = $"{(closing ? "Close" : "Open")} Worksets in {linkType.Name}";
+            var picked = CustomGUIs.DataGrid(rows, new List<string> { "Workset", "Status" }, false);
+            if (picked == null || picked.Count == 0) continue;
+
+            var selectedWsIds = picked
+                .Where(r => r.TryGetValue("WorksetId", out object v) && v is WorksetId)
+                .Select(r => (WorksetId)r["WorksetId"])
+                .ToHashSet();
+
+            // Build new WorksetConfiguration.
+            // Start with all worksets open, then close what should be closed.
+            var alreadyClosed = worksets.Where(ws => !ws.IsOpen).Select(ws => ws.Id).ToList();
+
+            List<WorksetId> toClose;
+            if (closing)
+                toClose = alreadyClosed.Concat(selectedWsIds).Distinct().ToList();
+            else
+                toClose = alreadyClosed.Except(selectedWsIds).ToList();
+
+            var config = new WorksetConfiguration(WorksetConfigurationOption.OpenAllWorksets);
+            if (toClose.Count > 0)
+                config.Close(toClose);
+
+            ModelPath path = linkType.GetExternalFileReference().GetAbsolutePath();
+
+            using (var t = new Transaction(doc, title))
+            {
+                t.Start();
+                linkType.LoadFrom(path, config);
+                t.Commit();
+            }
+        }
+
+        return Result.Succeeded;
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
