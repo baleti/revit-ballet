@@ -284,7 +284,7 @@ Common values:
 - `""` — no prior selection needed; command opens its own picker/dialog
 - `"Any"` — one or more elements must be selected (any type)
 - `"Door"`, `"Wall"`, `"View"`, `"Grid"`, etc. — specific element type required
-- `"Workset, View, Link"` — context-aware command: list the domain objects / optional selection types comma-separated when the command behaves differently based on what's selected (e.g. no selection → global, views selected → per-view, links selected → on linked model)
+- `"View, Link"` — context-aware command: list the optional selection types comma-separated when the command behaves differently based on what's selected (e.g. no selection → global, views selected → per-view, links selected → on linked model)
 
 New commands must include the attribute. When the required input is not yet known, use `""`.
 
