@@ -226,11 +226,22 @@ Full details: `commands/DataGrid/IMPLEMENTATION_SUMMARY.md`. Code across `DataGr
 bash Build.sh
 
 # Deploy to Windows with hot-reload (commands available immediately via InvokeAddinCommand)
-scp -i ~/.ssh/hwo-18 installer/bin/Release/installer.exe daniel@192.168.231.1:'C:\Users\Daniel\Desktop\installer.exe'
-ssh daniel@192.168.231.1 -i ~/.ssh/hwo-18 'powershell -NoProfile -Command "C:\Users\Daniel\Desktop\installer.exe --quiet --hot-reload"'
+scp -i ~/.ssh/hwo-18 installer/bin/Release/installer.exe daniel@192.168.231.1:installer.exe
+ssh daniel@192.168.231.1 -i ~/.ssh/hwo-18 'powershell -NoProfile -Command "& .\installer.exe --quiet --hot-reload"'
 ```
 
-Always pass `--hot-reload` when deploying — without it, new commands are only available after restarting Revit.
+### Hot-reload vs keyboard shortcuts — critical distinction
+
+`--hot-reload` copies the DLL to `%APPDATA%\revit-ballet\hot-reload\{year}\`. **Only `InvokeAddinCommand` checks that folder.** Keyboard shortcuts bypass hot-reload entirely — they invoke commands through the base DLL that Revit loaded at startup.
+
+**Consequence:** if you rename or add a command class, keyboard shortcuts will show a "Wrong Full Class Name" error until the base DLL on disk is updated. The `.addin` manifest (XML) updates immediately, but the DLL is locked while Revit runs, so the manifest and DLL go out of sync.
+
+**When renaming command classes or adding new ones:**
+1. Close all Revit instances first (so the DLL is not locked)
+2. Run the installer: `& .\installer.exe --quiet --hot-reload`
+3. Restart Revit — it will load the updated base DLL
+
+For hotfix-style changes that don't rename/add classes, hot-reload alone is sufficient and Revit can stay open.
 
 ## Key Files
 
