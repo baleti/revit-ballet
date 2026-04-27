@@ -43,12 +43,30 @@ internal static class WorksetToggleHelper
 
         ICollection<ElementId> selectedIds = uidoc.GetSelectionIds();
 
-        // Links take priority over views in selection
-        var selectedLinks = selectedIds
-            .Select(id => doc.GetElement(id))
-            .OfType<RevitLinkInstance>()
-            .Where(li => li.GetLinkDocument() != null)
-            .ToList();
+        // Links take priority over views in selection.
+        // Accept both RevitLinkInstance and RevitLinkType (e.g. from SelectFamilyTypesInDocument).
+        var selectedLinks = new List<RevitLinkInstance>();
+        var seenTypeIds   = new HashSet<ElementId>();
+
+        foreach (ElementId id in selectedIds)
+        {
+            Element elem = doc.GetElement(id);
+            if (elem is RevitLinkInstance li && li.GetLinkDocument() != null)
+            {
+                if (seenTypeIds.Add(li.GetTypeId()))
+                    selectedLinks.Add(li);
+            }
+            else if (elem is RevitLinkType && seenTypeIds.Add(id))
+            {
+                // Find any loaded instance of this type
+                RevitLinkInstance inst = new FilteredElementCollector(doc)
+                    .OfClass(typeof(RevitLinkInstance))
+                    .Cast<RevitLinkInstance>()
+                    .FirstOrDefault(x => x.GetTypeId() == id && x.GetLinkDocument() != null);
+                if (inst != null)
+                    selectedLinks.Add(inst);
+            }
+        }
 
         if (selectedLinks.Count > 0)
             return HandleLinkedModels(doc, selectedLinks, closing, ref message);
