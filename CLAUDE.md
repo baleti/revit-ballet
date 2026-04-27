@@ -232,16 +232,15 @@ ssh daniel@192.168.231.1 -i ~/.ssh/hwo-18 'powershell -NoProfile -Command "& .\i
 
 ### Hot-reload vs keyboard shortcuts — critical distinction
 
-`--hot-reload` copies the DLL to `%APPDATA%\revit-ballet\hot-reload\{year}\`. **Only `InvokeAddinCommand` checks that folder.** Keyboard shortcuts bypass hot-reload entirely — they invoke commands through the base DLL that Revit loaded at startup.
+`--hot-reload` copies the DLL to `%APPDATA%\revit-ballet\hot-reload\{year}\`. **Only `InvokeAddinCommand` checks that folder** (it sets up an `AssemblyResolve` hook scoped to the invocation). Keyboard shortcuts bypass hot-reload entirely — Revit invokes them using the DLL it loaded at startup.
 
-**Consequence:** if you rename or add a command class, keyboard shortcuts will show a "Wrong Full Class Name" error until the base DLL on disk is updated. The `.addin` manifest (XML) updates immediately, but the DLL is locked while Revit runs, so the manifest and DLL go out of sync.
+**When Revit is running and the DLL is locked**, the installer falls back to an update-folder strategy: it copies the new DLL to `Addins\revit-ballet.update\` and rewrites the `.addin` manifest to point there. The next Revit startup picks this up automatically — **you do not need to close Revit before running the installer**.
 
-**When renaming command classes or adding new ones:**
-1. Close all Revit instances first (so the DLL is not locked)
-2. Run the installer: `& .\installer.exe --quiet --hot-reload`
-3. Restart Revit — it will load the updated base DLL
+**What you DO need:** a full Revit restart (close the application, reopen it) after any deploy that renames or adds command classes. Until then, the running session still has the old DLL in memory and keyboard shortcuts will show "Wrong Full Class Name". `InvokeAddinCommand` works immediately via hot-reload without restart.
 
-For hotfix-style changes that don't rename/add classes, hot-reload alone is sufficient and Revit can stay open.
+Summary:
+- `InvokeAddinCommand` / `Q\`` — works immediately after deploy (hot-reload)
+- Keyboard shortcuts — require Revit restart after deploy
 
 ## Key Files
 
