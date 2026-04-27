@@ -190,75 +190,100 @@ internal static class WorksetToggleHelper
     }
 
     // ── Linked model open/close via reload ───────────────────────────────────
-    // RevitLinkType.LoadFrom(ModelPath, WorksetConfiguration) reloads the link
-    // with a new set of open worksets. Multiple instances of the same link type
-    // are processed once (they share one loaded document).
+    // Shows one DataGrid for all selected links. Workset names are the key;
+    // the Links column lists which link types have that workset (type name only,
+    // not instance name which includes location). Hidden for single-link.
 
     private static Result HandleLinkedModels(Document doc, List<RevitLinkInstance> selectedLinks, bool closing, ref string message)
     {
-        var processedTypeIds = new HashSet<ElementId>();
+        // Resolve type names and collect worksets from every link.
+        // worksetsByName: name → list of (workset, owning link instance)
+        var worksetsByName  = new Dictionary<string, List<(Workset ws, RevitLinkInstance link)>>();
+        var linkTypeNameFor = new Dictionary<ElementId, string>();
 
-        foreach (var linkInstance in selectedLinks)
+        foreach (var linkInst in selectedLinks)
         {
-            ElementId typeId = linkInstance.GetTypeId();
-            if (!processedTypeIds.Add(typeId)) continue;
-
-            var linkType = doc.GetElement(typeId) as RevitLinkType;
-            if (linkType == null) continue;
-
-            var linkedDoc = linkInstance.GetLinkDocument();
+            var linkedDoc = linkInst.GetLinkDocument();
             if (linkedDoc == null) continue;
 
             if (!linkedDoc.IsWorkshared)
             {
-                TaskDialog.Show("Info", $"{linkType.Name}: not workshared, no worksets to change.");
+                TaskDialog.Show("Info", $"{doc.GetElement(linkInst.GetTypeId())?.Name ?? linkInst.Name}: not workshared, skipping.");
                 continue;
             }
 
-            var worksets = new FilteredWorksetCollector(linkedDoc)
-                .OfKind(WorksetKind.UserWorkset)
-                .ToWorksets()
-                .OrderBy(w => w.Name)
-                .ToList();
+            ElementId typeId = linkInst.GetTypeId();
+            if (!linkTypeNameFor.ContainsKey(typeId))
+                linkTypeNameFor[typeId] = (doc.GetElement(typeId) as RevitLinkType)?.Name ?? linkInst.Name;
 
-            if (worksets.Count == 0)
+            foreach (Workset ws in new FilteredWorksetCollector(linkedDoc)
+                .OfKind(WorksetKind.UserWorkset).ToWorksets())
             {
-                TaskDialog.Show("Info", $"{linkType.Name}: no user worksets.");
-                continue;
+                if (!worksetsByName.TryGetValue(ws.Name, out var list))
+                    worksetsByName[ws.Name] = list = new List<(Workset, RevitLinkInstance)>();
+                list.Add((ws, linkInst));
             }
+        }
 
-            var rows = worksets.Select(ws => new Dictionary<string, object>
+        if (worksetsByName.Count == 0)
+        {
+            TaskDialog.Show("Info", "No user worksets found in the selected linked models.");
+            return Result.Cancelled;
+        }
+
+        bool multiLink = selectedLinks.Count > 1;
+
+        var rows = worksetsByName.OrderBy(kv => kv.Key).Select(kv =>
+        {
+            var entries = kv.Value;
+            string status = entries.All(e => e.ws.IsOpen)  ? "Open"  :
+                            entries.All(e => !e.ws.IsOpen) ? "Closed" : "Mixed";
+            var row = new Dictionary<string, object>
             {
-                { "Workset",   ws.Name },
-                { "Status",    ws.IsOpen ? "Open" : "Closed" },
-                { "WorksetId", ws.Id }
-            }).ToList();
+                { "Workset", kv.Key },
+                { "Status",  status }
+            };
+            if (multiLink)
+                row["Links"] = string.Join(", ", entries
+                    .Select(e => linkTypeNameFor[e.link.GetTypeId()])
+                    .Distinct().OrderBy(n => n));
+            return row;
+        }).ToList();
 
-            string title = $"{(closing ? "Close" : "Open")} Worksets in {linkType.Name}";
-            var picked = CustomGUIs.DataGrid(rows, new List<string> { "Workset", "Status" }, false);
-            if (picked == null || picked.Count == 0) continue;
+        var columns = multiLink
+            ? new List<string> { "Workset", "Status", "Links" }
+            : new List<string> { "Workset", "Status" };
 
-            var selectedWsIds = picked
-                .Where(r => r.TryGetValue("WorksetId", out object v) && v is WorksetId)
-                .Select(r => (WorksetId)r["WorksetId"])
-                .ToHashSet();
+        var picked = CustomGUIs.DataGrid(rows, columns, false);
+        if (picked == null || picked.Count == 0) return Result.Cancelled;
 
-            // Build new WorksetConfiguration.
-            // Use CloseAllWorksets as base and explicitly Open what should stay open —
-            // the inverse (OpenAllWorksets + Close) silently ignores the Close() calls.
-            IEnumerable<WorksetId> toOpen;
-            if (closing)
-                toOpen = worksets.Where(ws => ws.IsOpen && !selectedWsIds.Contains(ws.Id)).Select(ws => ws.Id);
-            else
-                toOpen = worksets.Where(ws => ws.IsOpen || selectedWsIds.Contains(ws.Id)).Select(ws => ws.Id);
+        var selectedNames = picked
+            .Select(r => r.TryGetValue("Workset", out object n) ? n as string : null)
+            .Where(n => n != null)
+            .ToHashSet();
+
+        // Apply one WorksetConfiguration reload per link.
+        foreach (var linkInst in selectedLinks)
+        {
+            var linkedDoc = linkInst.GetLinkDocument();
+            if (linkedDoc == null || !linkedDoc.IsWorkshared) continue;
+
+            var linkType = doc.GetElement(linkInst.GetTypeId()) as RevitLinkType;
+            if (linkType == null) continue;
+
+            var allWorksets = new FilteredWorksetCollector(linkedDoc)
+                .OfKind(WorksetKind.UserWorkset).ToWorksets().ToList();
+
+            // Use CloseAllWorksets + Open: OpenAllWorksets ignores Close() calls.
+            var toOpen = allWorksets
+                .Where(ws => closing ? (ws.IsOpen && !selectedNames.Contains(ws.Name))
+                                     : (ws.IsOpen || selectedNames.Contains(ws.Name)))
+                .Select(ws => ws.Id).ToList();
 
             var config = new WorksetConfiguration(WorksetConfigurationOption.CloseAllWorksets);
-            var toOpenList = toOpen.ToList();
-            if (toOpenList.Count > 0)
-                config.Open(toOpenList);
+            if (toOpen.Count > 0) config.Open(toOpen);
 
-            ModelPath path = linkType.GetExternalFileReference().GetAbsolutePath();
-            linkType.LoadFrom(path, config);
+            linkType.LoadFrom(linkType.GetExternalFileReference().GetAbsolutePath(), config);
         }
 
         return Result.Succeeded;
