@@ -226,18 +226,18 @@ internal static class WorksetToggleHelper
                 .ToHashSet();
 
             // Build new WorksetConfiguration.
-            // Start with all worksets open, then close what should be closed.
-            var alreadyClosed = worksets.Where(ws => !ws.IsOpen).Select(ws => ws.Id).ToList();
-
-            List<WorksetId> toClose;
+            // Use CloseAllWorksets as base and explicitly Open what should stay open —
+            // the inverse (OpenAllWorksets + Close) silently ignores the Close() calls.
+            IEnumerable<WorksetId> toOpen;
             if (closing)
-                toClose = alreadyClosed.Concat(selectedWsIds).Distinct().ToList();
+                toOpen = worksets.Where(ws => ws.IsOpen && !selectedWsIds.Contains(ws.Id)).Select(ws => ws.Id);
             else
-                toClose = alreadyClosed.Except(selectedWsIds).ToList();
+                toOpen = worksets.Where(ws => ws.IsOpen || selectedWsIds.Contains(ws.Id)).Select(ws => ws.Id);
 
-            var config = new WorksetConfiguration(WorksetConfigurationOption.OpenAllWorksets);
-            if (toClose.Count > 0)
-                config.Close(toClose);
+            var config = new WorksetConfiguration(WorksetConfigurationOption.CloseAllWorksets);
+            var toOpenList = toOpen.ToList();
+            if (toOpenList.Count > 0)
+                config.Open(toOpenList);
 
             ModelPath path = linkType.GetExternalFileReference().GetAbsolutePath();
             linkType.LoadFrom(path, config);
