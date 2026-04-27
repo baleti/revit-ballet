@@ -29,7 +29,7 @@ public static class DataGridDetailLevelManager
 
     public static readonly string[] BaseColumns = new[]
     {
-        "Name", "Type Name", "Family", "Category", "Group", "LinkName", "Id"
+        "Name", "Type Name", "Family", "Category", "Group", "LinkName", "Contents", "Id"
     };
 }
 
