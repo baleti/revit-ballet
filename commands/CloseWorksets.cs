@@ -35,12 +35,6 @@ internal static class WorksetToggleHelper
         if (uidoc == null) { message = "No active document."; return Result.Failed; }
         Document doc = uidoc.Document;
 
-        if (!doc.IsWorkshared)
-        {
-            TaskDialog.Show("Info", "This document is not workshared. Worksets are not available.");
-            return Result.Cancelled;
-        }
-
         ICollection<ElementId> selectedIds = uidoc.GetSelectionIds();
 
         // Links take priority over views in selection.
@@ -58,7 +52,6 @@ internal static class WorksetToggleHelper
             }
             else if (elem is RevitLinkType && seenTypeIds.Add(id))
             {
-                // Find any loaded instance of this type
                 RevitLinkInstance inst = new FilteredElementCollector(doc)
                     .OfClass(typeof(RevitLinkInstance))
                     .Cast<RevitLinkInstance>()
@@ -70,6 +63,13 @@ internal static class WorksetToggleHelper
 
         if (selectedLinks.Count > 0)
             return HandleLinkedModels(doc, selectedLinks, closing, ref message);
+
+        // Host-document paths require the document to be workshared.
+        if (!doc.IsWorkshared)
+        {
+            TaskDialog.Show("Info", "This document is not workshared. Worksets are not available.");
+            return Result.Cancelled;
+        }
 
         var targetViews = ExtractTargetViews(doc, selectedIds);
         if (targetViews.Count > 0)
