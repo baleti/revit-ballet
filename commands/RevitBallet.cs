@@ -25,6 +25,16 @@ namespace RevitBallet
             // Run all startup tasks (directory initialization and update migration)
             Startup.RunStartupTasks(application);
 
+            // Register pending-open handler (reads config written by OpenRvtDocumentInNewSession)
+            try
+            {
+                PendingOpenHandler.Register(application);
+            }
+            catch
+            {
+                // Silently fail - don't interrupt Revit startup
+            }
+
             // Initialize SQLite database for view history
             try
             {

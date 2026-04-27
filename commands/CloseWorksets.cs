@@ -257,10 +257,10 @@ internal static class WorksetToggleHelper
         var picked = CustomGUIs.DataGrid(rows, columns, false);
         if (picked == null || picked.Count == 0) return Result.Cancelled;
 
-        var selectedNames = picked
-            .Select(r => r.TryGetValue("Workset", out object n) ? n as string : null)
-            .Where(n => n != null)
-            .ToHashSet();
+        var selectedNames = new HashSet<string>(
+            picked
+                .Select(r => r.TryGetValue("Workset", out object n) ? n as string : null)
+                .Where(n => n != null));
 
         // Apply one WorksetConfiguration reload per link.
         foreach (var linkInst in selectedLinks)
