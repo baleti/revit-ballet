@@ -1,3 +1,87 @@
+* may be worth swapping spacebar in empty search field in datagrid to ctrl+space
+it would work also when searchbox is filled in
+it could not only confirm upmost selection, but also could confirm selection in general
+I'm getting tired of reaching to enter key on the other side of the keyboard
+* cache coherency issues of OpenSheetInDocument command
+changing BrowserOrganization doesn't invalidate it
+* look into replacing winforms based datagrids
+perhaps there is a faster alternative
+it's showing performance issues on larger datagrids
+make sure it will still be possible to copy/paste cells to excel
+* fix bug with focus of cells when going into edit mode in datagrid
+when pressing f2 to go edit mode and filtering datagrid and then pressing tab to move foucs from searchbar to datagrid the visible cells are not highlghted
+it seems that hgighlight/focus of the cells moves off-screen
+* add StashSelection command
+it should be a simple convenince shortcut to stash current selection to slots 0 1 2 3 etc
+i doubt through that you will be memorizing them so better have a separate command just to store in one named selection (currently "temp") 
+revit's saved selections used by default as backing storage (could have it externally as well)
+* see if split command can retain orientatoin and positions of hatches of floors
+and other elements
+right now they seem to be regeenerated randomly
+* add room-based commands
+i guess it's unusual for a typical project, because rooms themselves are defined by walls, but for interior design they work in reverse
+** SetWalls
+** SetFloor
+** DivideByRoom
+for example continuous floors can be divided into chunks contained in the rooms
+* generalize cut commands
+many to many
+should just take selection of elements and let you select in a list elements to use as cutters/cutees
+possibly some graphical selection, if revit api exposes adequate tools
+* add ReloadLink command
+don't want to search for a link in dialog, better to have a command just do it from current selection
+* perhaps a command that sets working plane to the "most orthogonal" (aka the one in front of you) plane of the section box
+it may be useful for measuring, you may consider a small offset (define small)
+* prevent SetRevisionToSheetOrCloud command from additinoally prompting user for selecting sheets
+input should already be correctly provided when invoking the command
+* change SetRevisionToSheetOrCloud command to SetRevision and add Sheet,Revision Cloud to input column
+* try creatin alt+tab like widget for revit
+api may provide some service to display thumbnails
+https://claude.ai/chat/8d62685e-f98e-4137-8eca-cad2b37de0cb
+* CopyElementToViewsInDocument doesn't copy correctly when crop region is rotated
+aka view is rotated
+* check if states of revit links can be preserved when exporting view template via ExportViewTemplate... command
+perhaps it will become redundant when I find a proper way to share elements across revit files
+* selectcateogyrinview is not listing detail groups in view when wviewport is selected
+* prevent editing of values in opensheetsindocument commands from opening sheets
+* make changing workset parameter more resilient
+it should omit items that are not working rather than abandoning entire operation altogether
+* see if you could modify source file path of revit model links
+should be a columns of datagrid
+* remove vsd vsx and vss shortcuts from OpenView* commands
+possibly split SelectView into scopes (document, session, network) and assign these to them instead
+need some guardrails around SelectviewInNetwork, at the very least for it to be non-blocking
+for that we'd need to make modeless windows first likely and handle all the repercussion involved
+* check if api allows you to export shared parameters to linked models
+it may be better to automate it as it can get fiddly with larger amount of links
+try saving groups as links and pushing coordinates to them in batch
+* rename SelectByAssociatedLevelsInDocument to SelectHostedByLevel
+make it use current selection if present rather than always prompting for a list
+also it doesn't work lol
+* LinkRevit
+literally same command, but make it link multiple in one go
+may need options for positioning (shared coordinates, porject bas epoitn etc.)
+** options to specify worksets
+* can't export revit links with ExportToRvtFile command
+* consolidate ExportViewTemplateToRvt and ExportToRvt commands
+add corresponding Import commands
+* commands for listing and possibly maanging shared coordinates
+understand how they work first
+* make SelectBySameTypeInLinkedModelsInDocument command select same instances of links in links
+aka links as attachments, right now it doesn't seem to work
+* bug in Dup/Place command
+views get duplicated in the original source sheet
+also by default it should place on active sheet (if no sheet selected)
+* remove {Shared,Global,Project} Parameters from SelectByCategoryInView
+* consider removing SelectByGroup and SelectByFamilyType
+it seems like SelectFamilyTypes and then select all in project is a catch-it-all
+* "cop crop" command isn't handling rotating of views
+views can be rotated when their crop region is rotated
+* add ceiling to Split command
+* fix base mode of datagrid
+added recently base mode of datagrid, but for many elements it's useless
+for example it's not displaying any useful information when viewports are selected
+review other types
 * too many revision handling commands - clean that up
 * add ReplaceLegend command
 or think or some batter way of swapping legend, with autocompletion
