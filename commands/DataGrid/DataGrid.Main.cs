@@ -169,6 +169,8 @@ public partial class CustomGUIs
         if (entries.Count == 0 && !allowCreateFromSearch)
             return new List<Dictionary<string, object>>();
 
+        ColumnHandlerRegistry.InvalidateViewportCache();
+
         // Auto-infer command name from call stack if not provided
         if (string.IsNullOrWhiteSpace(commandName))
         {
