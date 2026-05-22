@@ -1,6 +1,7 @@
 using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
+using RevitBallet.Commands;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -660,6 +661,23 @@ public static class ElementDataHelper
             data["Contents"] = contents;
         }
 
+        // Override any param-read values with the registered handler getter where one exists.
+        // This is needed for columns like "Referencing Detail" / "Referencing Sheet" whose raw
+        // parameter values are stale for callout annotation elements after ChangeReferencedView.
+        CustomGUIs.ColumnHandlerRegistry.EnsureInitialized();
+        foreach (var key in data.Keys.ToList())
+        {
+            var handler = CustomGUIs.ColumnHandlerRegistry.GetHandler(key);
+            if (handler?.Getter == null) continue;
+            try
+            {
+                object live = handler.Getter(element, elementDoc);
+                if (live != null)
+                    data[key] = live;
+            }
+            catch { }
+        }
+
         return data;
     }
 
@@ -1083,6 +1101,7 @@ public abstract class ListElementsBase : IExternalCommand
             return Result.Failed;
         }
     }
+
 }
 
 [Transaction(TransactionMode.Manual)]

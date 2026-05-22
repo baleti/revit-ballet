@@ -622,17 +622,8 @@ public partial class CustomGUIs
 
         if (handler != null && handler.IsEditable && handler.Setter != null)
         {
-            try
-            {
-                // Use handler to apply edit (includes both explicit and dynamic parameter handlers)
-                bool success = handler.ApplyEdit(elem, currentUIDOcTyped.Document, newValue);
-                return success;
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Handler for '{columnName}' failed: {ex.Message}");
-                return false;
-            }
+            // Let exceptions propagate — callers catch and display the message
+            return handler.ApplyEdit(elem, currentUIDOcTyped.Document, newValue);
         }
 
         // FALLBACK: Legacy switch-based system for backward compatibility
