@@ -159,8 +159,16 @@ public partial class CustomGUIs
         ResetEditMode(); // Reset edit mode state from previous sessions
         ResetEditsAppliedFlag(); // Reset flag tracking if edits were applied
 
+        // Performance telemetry - one summary line per grid session in
+        // runtime/addin.log (see docs/codebase-review-2026-07/datagrid-ui.md)
+        var perfTotal = System.Diagnostics.Stopwatch.StartNew();
+        long perfIndexMs, perfToShownMs = -1;
+        long perfFilterCount = 0, perfFilterTotalMs = 0, perfFilterMaxMs = 0;
+
         // Build search index upfront for performance
+        var perfIndexWatch = System.Diagnostics.Stopwatch.StartNew();
         BuildSearchIndex(entries, propertyNames);
+        perfIndexMs = perfIndexWatch.ElapsedMilliseconds;
 
         // State variables
         List<Dictionary<string, object>> selectedEntries = new List<Dictionary<string, object>>();
@@ -311,7 +319,13 @@ public partial class CustomGUIs
         Action UpdateFilteredGrid = () =>
         {
             // Use optimized filtering
+            var perfFilterWatch = System.Diagnostics.Stopwatch.StartNew();
             var filteredData = ApplyFilters(_cachedOriginalData, propertyNames, searchBox.Text, grid);
+            perfFilterWatch.Stop();
+            perfFilterCount++;
+            perfFilterTotalMs += perfFilterWatch.ElapsedMilliseconds;
+            if (perfFilterWatch.ElapsedMilliseconds > perfFilterMaxMs)
+                perfFilterMaxMs = perfFilterWatch.ElapsedMilliseconds;
 
             // Apply sorting
             workingSet = filteredData;
@@ -376,6 +390,7 @@ public partial class CustomGUIs
         // (must be done after form is shown so grid knows its dimensions)
         form.Shown += delegate
         {
+            if (perfToShownMs < 0) perfToShownMs = perfTotal.ElapsedMilliseconds;
             if (firstSelectedIndex >= 0)
             {
                 // Calculate visible rows count to center the selection
@@ -857,6 +872,13 @@ public partial class CustomGUIs
         }
         searchBox.Select();
         form.ShowDialog();
+
+        perfTotal.Stop();
+        Log.Info("DataGridPerf",
+            $"command={commandName ?? "?"} rows={entries.Count} cols={propertyNames.Count} " +
+            $"indexMs={perfIndexMs} toShownMs={perfToShownMs} " +
+            $"filters={perfFilterCount} filterAvgMs={(perfFilterCount > 0 ? perfFilterTotalMs / perfFilterCount : 0)} filterMaxMs={perfFilterMaxMs} " +
+            $"openMs={perfTotal.ElapsedMilliseconds}");
 
         // AUTOMATIC SYSTEM: Apply any pending edits before returning
         // This makes edit support fully automatic - commands don't need to call ApplyCellEditsToEntities
