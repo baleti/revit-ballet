@@ -3,7 +3,7 @@ using Autodesk.Revit.UI;
 using Autodesk.Revit.DB;
 
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
-namespace MyRevitCommands
+namespace RevitBallet.Commands
 {
     [CommandMeta("Any")]
     public class Unpin : IExternalCommand

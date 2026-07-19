@@ -5,6 +5,8 @@ using System.Collections.Generic;
 using System.Linq;
 
 // Extended wrapper class for category information with link context
+namespace RevitBallet.Commands;
+
 public class LinkedCategoryWrapper
 {
     public ElementId CategoryId { get; set; }

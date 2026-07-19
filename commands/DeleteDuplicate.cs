@@ -8,7 +8,7 @@ using Autodesk.Revit.DB.Architecture;
 using Autodesk.Revit.UI;
 
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
-namespace RevitCommands
+namespace RevitBallet.Commands
 {
     [Transaction(TransactionMode.Manual)]
     [Regeneration(RegenerationOption.Manual)]

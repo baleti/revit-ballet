@@ -6,6 +6,8 @@ using System.Collections.Generic;
 using System.Linq;
 using RevitBallet.Commands;
 
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("View")]
 public class SwitchViewInSession : IExternalCommand
@@ -37,7 +39,7 @@ public class SwitchViewInSession : IExternalCommand
                 continue;
 
             string projectName = doc.Title;
-            string sessionId = RevitBallet.LogViewChanges.GetSessionId();
+            string sessionId = LogViewChanges.GetSessionId();
             bool isActiveDoc = doc.Equals(activeDoc);
 
             // Get currently open view IDs
@@ -302,7 +304,7 @@ public class SwitchViewInSession : IExternalCommand
             try
             {
                 // Suppress logging to avoid recording the intermediate view when document opens
-                RevitBallet.LogViewChanges.SuppressLogging();
+                LogViewChanges.SuppressLogging();
 
                 // CRITICAL FIX: Call OpenDocumentFile first to prevent close/reopen cycle
                 // Per Revit API guidance: If OpenDocumentFile is called before OpenAndActivateDocument,
@@ -315,11 +317,11 @@ public class SwitchViewInSession : IExternalCommand
                 newUidoc.ActiveView = selectedView;
 
                 // Resume logging
-                RevitBallet.LogViewChanges.ResumeLogging();
+                LogViewChanges.ResumeLogging();
 
                 // Manually log the intended view activation to ensure it's recorded
                 // (even if selectedView was already the active view and didn't trigger ViewActivated)
-                string sessionId = RevitBallet.LogViewChanges.GetSessionId();
+                string sessionId = LogViewChanges.GetSessionId();
                 LogViewChangesDatabase.LogViewActivation(
                     sessionId: sessionId,
                     documentSessionId: sessionId,
@@ -334,7 +336,7 @@ public class SwitchViewInSession : IExternalCommand
             catch (Exception ex)
             {
                 // Make sure to resume logging even if an error occurs
-                RevitBallet.LogViewChanges.ResumeLogging();
+                LogViewChanges.ResumeLogging();
 
                 TaskDialog.Show("Error", $"Failed to switch to document '{targetDoc.Title}':\n\n{ex.Message}");
                 return Result.Failed;

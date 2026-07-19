@@ -5,6 +5,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.ReadOnly)]
 [CommandMeta("Any")]
 public class FilterDoors : IExternalCommand

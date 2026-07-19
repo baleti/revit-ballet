@@ -7,6 +7,8 @@ using System.Linq;
 using System.Data;
 using WinForms = System.Windows.Forms;
 
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
 [CommandMeta("Any")]

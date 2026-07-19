@@ -1026,7 +1026,10 @@ namespace RevitBallet.Commands
                     .AddImports("System.Linq")
                     .AddImports("System.Collections.Generic")
                     .AddImports("Autodesk.Revit.DB")
-                    .AddImports("Autodesk.Revit.UI");
+                    .AddImports("Autodesk.Revit.UI")
+                    // Addin helpers (SelectionStorage, PathHelper, ...) stay callable
+                    // from scripts without qualification after namespace unification
+                    .AddImports("RevitBallet.Commands");
 
                 var script = CSharpScript.Create(code, scriptOptions, typeof(ScriptGlobals));
                 var compilation = script.GetCompilation();

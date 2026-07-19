@@ -8,7 +8,7 @@ using System.Linq;
 using SWF = System.Windows.Forms;          // Windows-Forms alias
 
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
-namespace RevitCommands
+namespace RevitBallet.Commands
 {
     [Transaction(TransactionMode.ReadOnly)]
     [CommandMeta("Any")]

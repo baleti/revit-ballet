@@ -8,6 +8,8 @@ using Autodesk.Revit.DB.Plumbing;
 using Autodesk.Revit.DB.Electrical;
 using Autodesk.Revit.DB.Architecture;
 
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("Family Type")]
 public class SelectFamilyTypesInView : IExternalCommand

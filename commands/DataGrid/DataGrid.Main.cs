@@ -7,6 +7,8 @@ using System.Text;
 using System.Windows.Forms;
 using System.IO;
 
+namespace RevitBallet.Commands;
+
 public partial class CustomGUIs
 {
     // ──────────────────────────────────────────────────────────────
@@ -64,7 +66,7 @@ public partial class CustomGUIs
                 // 2. Method names matching common command patterns
                 // 3. Namespace RevitBallet
 
-                if (declaringType.Namespace == "RevitBallet" ||
+                if ((declaringType.Namespace != null && declaringType.Namespace.StartsWith("RevitBallet")) ||
                     declaringType.Name.EndsWith("Command") ||
                     method.Name.Contains("Execute"))
                 {

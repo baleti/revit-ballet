@@ -9,6 +9,8 @@ using System.Globalization;
 using WinForms = System.Windows.Forms;  // Alias for Windows Forms
 
 // Enum for tag anchor choices.
+namespace RevitBallet.Commands;
+
 public enum TagAnchor
 {
     Center,

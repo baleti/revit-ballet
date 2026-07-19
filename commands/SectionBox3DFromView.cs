@@ -6,6 +6,8 @@ using System.Linq;
 using System.IO;
 using System;
 
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("View")]
 public class SectionBox3DFromView : IExternalCommand

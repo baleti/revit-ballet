@@ -10,6 +10,8 @@ using RevitBallet.Commands;
 /// Utility class to manage the select-in-links mode state.
 /// This controls whether selection commands should search scope boxes within linked models.
 /// </summary>
+namespace RevitBallet.Commands;
+
 public static class SelectInLinksMode
 {
     private static readonly string StateFilePath = PathHelper.GetRuntimeFilePath("select-in-links-mode");

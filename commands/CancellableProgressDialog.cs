@@ -6,6 +6,8 @@ using System.Windows.Forms;
 /// Provides a cancellable progress dialog that appears after a delay
 /// Works with Revit's UI thread model by using a modeless form
 /// </summary>
+namespace RevitBallet.Commands;
+
 public class CancellableProgressDialog : IDisposable
 {
     private Form progressForm;

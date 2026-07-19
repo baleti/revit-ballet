@@ -11,7 +11,7 @@ using RevitViewport = Autodesk.Revit.DB.Viewport;
 #endregion
 
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
-namespace MyRevitCommands
+namespace RevitBallet.Commands
 {
     [Transaction(TransactionMode.Manual)]
     [CommandMeta("View")]

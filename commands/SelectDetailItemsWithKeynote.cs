@@ -3,6 +3,8 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using System.Linq;
 
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("Detail Item")]
 public class SelectDetailItemsWithKeynote : IExternalCommand

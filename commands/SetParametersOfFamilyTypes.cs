@@ -9,6 +9,8 @@ using Autodesk.Revit.UI;
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 #endregion
 
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("Any")]
 public class SetParametersOfFamilyTypes : IExternalCommand

@@ -10,6 +10,8 @@ using Autodesk.Revit.UI;
 /// Shows a datagrid with all levels in the current document.
 /// Adds to selection all elements in the active document that are associated with the selected levels.
 /// </summary>
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.ReadOnly)]
 [CommandMeta("Level")]
 public class SelectByAssociatedLevelsInDocument : IExternalCommand

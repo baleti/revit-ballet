@@ -7,7 +7,7 @@ using Autodesk.Revit.UI;
 using WinForms = System.Windows.Forms; // Alias for Windows Forms
 
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
-namespace HideLevelBubbles
+namespace RevitBallet.Commands
 {
     // Enum to choose the operation.
     public enum BubbleOperation

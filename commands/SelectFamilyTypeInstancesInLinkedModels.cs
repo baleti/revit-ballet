@@ -5,6 +5,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System;
 
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("Any")]
 public class SelectFamilyTypeInstancesInLinkedModels : IExternalCommand

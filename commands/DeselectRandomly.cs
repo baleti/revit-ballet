@@ -8,6 +8,8 @@ using System.Linq;
 using System.Windows.Forms;
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.ReadOnly)]
 [CommandMeta("Any")]
 public class DeselectRandomly : IExternalCommand

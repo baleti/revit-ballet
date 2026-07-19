@@ -6,6 +6,8 @@ using System;
 using System.Linq;
 using System.Collections.Generic;
 
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("")]
 public class HighlightDoubleSwitchedSocketOutletInLink : IExternalCommand, ISelectionFilter

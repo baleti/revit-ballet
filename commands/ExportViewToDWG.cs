@@ -2,7 +2,7 @@ using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using RevitBallet.Commands;
-using RevitAddin;
+
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -13,6 +13,8 @@ using System.Text.RegularExpressions;
 using Application = System.Windows.Forms.Application;
 using System.Runtime.InteropServices;
 using Microsoft.WindowsAPICodePack.Dialogs;
+
+namespace RevitBallet.Commands;
 
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]

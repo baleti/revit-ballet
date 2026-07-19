@@ -16,7 +16,7 @@ using RevitView = Autodesk.Revit.DB.View;
 using RevitViewSheet = Autodesk.Revit.DB.ViewSheet;
 
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
-namespace RevitAddin
+namespace RevitBallet.Commands
 {
     [Autodesk.Revit.Attributes.Transaction(Autodesk.Revit.Attributes.TransactionMode.Manual)]
     [CommandMeta("Any")]

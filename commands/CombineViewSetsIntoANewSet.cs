@@ -11,6 +11,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("View Set")]
 [CommandOutput("View Set")]

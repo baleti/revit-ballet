@@ -7,6 +7,8 @@ using System.IO;
 using System.Linq;
 
 // Structure to store linked reference information for selection sets
+namespace RevitBallet.Commands;
+
 internal class SelectionSetLinkedReferenceInfo
 {
     public int LinkInstanceId { get; set; }

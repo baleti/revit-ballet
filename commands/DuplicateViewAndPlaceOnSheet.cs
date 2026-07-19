@@ -7,14 +7,13 @@ using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using RevitBallet.Commands;
-using RevitAddin;
 
 // Aliases to disambiguate Revit types from Windows Forms types
 using RevitView = Autodesk.Revit.DB.View;
 using RevitViewport = Autodesk.Revit.DB.Viewport;
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 
-namespace RevitAddin
+namespace RevitBallet.Commands
 {
     /// <summary>
     /// A Windows Form that prompts the user to select a duplication option (without number of duplicates).

@@ -3,6 +3,8 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.Attributes;
 using System.Linq;
 
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("Sheet")]
 public class OpenSheet : IExternalCommand

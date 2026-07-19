@@ -5,6 +5,8 @@ using Autodesk.Revit.Attributes;
 using System.Collections.Generic;
 using System.Linq;
 
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("Dimension")]
 public class SelectAssociated : IExternalCommand

@@ -10,6 +10,8 @@ using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
 
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
 [CommandMeta("")]
@@ -73,7 +75,7 @@ public class SelectByCategoriesInNetwork : IExternalCommand
 
             // Step 2: Query selected documents for category COUNTS only (fast)
             // Use local API for current session, Roslyn for remote sessions
-            string currentSessionId = RevitBallet.RevitBallet.SessionId;
+            string currentSessionId = RevitBalletApplication.SessionId;
             var categoryCounts = QueryDocumentsForCategoryCounts(documentsToQuery, token, currentSessionId, uiapp);
 
             if (categoryCounts.Count == 0)

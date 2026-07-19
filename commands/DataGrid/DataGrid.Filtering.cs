@@ -5,6 +5,8 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
 
+namespace RevitBallet.Commands;
+
 public partial class CustomGUIs
 {
     // ──────────────────────────────────────────────────────────────

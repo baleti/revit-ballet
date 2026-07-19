@@ -10,6 +10,8 @@ using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
 
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
 [CommandMeta("")]
@@ -72,7 +74,7 @@ public class SelectByWorksetsInNetwork : IExternalCommand
             var documentsToQuery = selectedDocuments.Select(row => (DocumentInfo)row["_Document"]).ToList();
 
             // Step 2: Query selected documents for workset COUNTS only (fast)
-            string currentSessionId = RevitBallet.RevitBallet.SessionId;
+            string currentSessionId = RevitBalletApplication.SessionId;
             var worksetCounts = QueryDocumentsForWorksetCounts(documentsToQuery, token, currentSessionId, uiapp);
 
             if (worksetCounts.Count == 0)

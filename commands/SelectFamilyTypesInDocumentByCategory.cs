@@ -9,7 +9,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
-namespace YourCompany.YourAddIn
+namespace RevitBallet.Commands
 {
     [Transaction(TransactionMode.Manual)]
     [CommandMeta("Family Type")]

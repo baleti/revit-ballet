@@ -4,6 +4,8 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 
+namespace RevitBallet.Commands;
+
 public partial class CustomGUIs
 {
     // Store the current UIDocument for edit operations

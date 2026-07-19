@@ -11,6 +11,8 @@ using System.Linq;
 /// Copies type parameter values from selected types to matching types in other
 /// open documents within the current Revit session.
 /// </summary>
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("Any")]
 public class CopyTypeParametersInSession : IExternalCommand

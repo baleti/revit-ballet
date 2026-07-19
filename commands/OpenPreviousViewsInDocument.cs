@@ -6,6 +6,8 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using RevitBallet.Commands;
 
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
 [CommandMeta("View")]
@@ -21,7 +23,7 @@ public class OpenPreviousViewsInDocument : IExternalCommand
         View activeView = uidoc.ActiveView;
 
         // Get DocumentTitle for querying history
-        string currentSessionId = RevitBallet.LogViewChanges.GetSessionId();
+        string currentSessionId = LogViewChanges.GetSessionId();
         string documentTitle = doc.Title;
 
         // Get ALL view history from database for this document (all sessions, sorted by timestamp DESC)

@@ -5,7 +5,7 @@ using System.Text.RegularExpressions;
 using WinForms = System.Windows.Forms;
 using Drawing = System.Drawing;
 
-namespace RevitCommands
+namespace RevitBallet.Commands
 {
     /// <summary>
     /// Reusable advanced text editing dialog with pattern/find/replace functionality.

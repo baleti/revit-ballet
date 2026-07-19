@@ -6,7 +6,7 @@ using System;
 using System.Collections.Generic;
 using RevitBallet.Commands;
 
-namespace RevitBallet
+namespace RevitBallet.Commands
 {
     /// <summary>
     /// Logs view changes and maintains view history using SQLite database.

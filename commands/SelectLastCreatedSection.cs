@@ -5,7 +5,7 @@ using System.Linq;
 using System.Collections.Generic;
 
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
-namespace RevitAPICommands
+namespace RevitBallet.Commands
 {
     [Transaction(TransactionMode.ReadOnly)]
     [CommandMeta("")]

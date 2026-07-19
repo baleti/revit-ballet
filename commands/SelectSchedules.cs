@@ -5,6 +5,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
+namespace RevitBallet.Commands;
+
 [TransactionAttribute(TransactionMode.Manual)]
 [CommandMeta("Schedule")]
 public class SelectSchedules : IExternalCommand

@@ -6,6 +6,8 @@ using System.Collections.Generic;
 using System.Linq;
 using RevitBallet.Commands;
 
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("View")]
 public class SelectOpenedViews : IExternalCommand
@@ -21,7 +23,7 @@ public class SelectOpenedViews : IExternalCommand
         Document   doc   = uidoc.Document;
 
         // Get SessionId (ProcessId) and DocumentTitle for querying history
-        string sessionId = RevitBallet.LogViewChanges.GetSessionId();
+        string sessionId = LogViewChanges.GetSessionId();
         string documentTitle = doc.Title;
 
         /* ───────────────────────────────────────

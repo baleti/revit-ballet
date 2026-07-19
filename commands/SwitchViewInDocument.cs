@@ -6,6 +6,8 @@ using System.Collections.Generic;
 using System.Linq;
 using RevitBallet.Commands;
 
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("View")]
 public class SwitchViewInDocument : IExternalCommand
@@ -17,7 +19,7 @@ public class SwitchViewInDocument : IExternalCommand
         View activeView = uidoc.ActiveView;
 
         // Get SessionId (ProcessId) and DocumentTitle for querying history
-        string sessionId = RevitBallet.LogViewChanges.GetSessionId();
+        string sessionId = LogViewChanges.GetSessionId();
         string documentTitle = doc.Title;
 
         // Get view history from database

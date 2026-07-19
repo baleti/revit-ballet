@@ -11,7 +11,7 @@ using Autodesk.Revit.UI;
 using WinForms = System.Windows.Forms;
 
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
-namespace OffsetCropRegion
+namespace RevitBallet.Commands
 {
     [Transaction(TransactionMode.Manual)]
     [CommandMeta("View")]
@@ -80,7 +80,7 @@ namespace OffsetCropRegion
                 defaultSettings.UseFourOffsets = false;
 
             // Show the dialog.
-            OffsetInputForm form = new OffsetInputForm(defaultSettings);
+            CropRegionOffsetInputForm form = new CropRegionOffsetInputForm(defaultSettings);
             WinForms.DialogResult dr = form.ShowDialog();
             if (dr != WinForms.DialogResult.OK)
             {
@@ -334,7 +334,7 @@ namespace OffsetCropRegion
     /// "Offset All (mm)" that updates four individual fields (Top, Left, Bottom, Right) live.
     /// If not, it shows only one "Offset All (mm)" field.
     /// </summary>
-    public class OffsetInputForm : WinForms.Form
+    public class CropRegionOffsetInputForm : WinForms.Form
     {
         // Mode flag: if using four offsets.
         private bool _useFourOffsets;
@@ -406,7 +406,7 @@ namespace OffsetCropRegion
             }
         }
 
-        public OffsetInputForm(OffsetCropRegionSettings settings)
+        public CropRegionOffsetInputForm(OffsetCropRegionSettings settings)
         {
             _settings = settings;
             _useFourOffsets = settings.UseFourOffsets;

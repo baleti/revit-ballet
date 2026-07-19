@@ -6,7 +6,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
-namespace YourNamespace
+namespace RevitBallet.Commands
 {
     /// <summary>
     /// Contains a helper method for duplicating a view as a drafting view.

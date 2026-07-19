@@ -4,7 +4,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Architecture;
 
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
-namespace FilterDoorsWithWallOffsets
+namespace RevitBallet.Commands
 {
     public class DoorOrientation
     {

@@ -8,7 +8,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.Attributes;
 
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
-namespace MyRevitCommands
+namespace RevitBallet.Commands
 {
    /// <summary>
    /// Enhanced helper methods for filter commands with better information display

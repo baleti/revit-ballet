@@ -6,6 +6,8 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using RevitBallet.Commands;
 
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
 [CommandMeta("View")]
@@ -18,7 +20,7 @@ public class CloseViewsInDocument : IExternalCommand
         View activeView = uidoc.ActiveView;
 
         // Get SessionId for database operations
-        string sessionId = RevitBallet.LogViewChanges.GetSessionId();
+        string sessionId = LogViewChanges.GetSessionId();
 
         // Get all currently open views
         IList<UIView> UIViews = uidoc.GetOpenUIViews();

@@ -16,7 +16,7 @@ using WF = System.Windows.Forms; // alias WinForms to avoid API name clashes
 #endregion
 
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
-namespace SampleCommands
+namespace RevitBallet.Commands
 {
     [Transaction(TransactionMode.Manual)]
     [CommandMeta("")]

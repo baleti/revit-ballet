@@ -6,7 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
-namespace MyRevitCommands
+namespace RevitBallet.Commands
 {
     /// <summary>
     /// External command that adds every revision cloud in the entire project (including those whose

@@ -8,6 +8,8 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("")]
 public class InvokeLastAddinCommand : IExternalCommand

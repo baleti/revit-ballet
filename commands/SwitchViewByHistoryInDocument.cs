@@ -6,6 +6,8 @@ using System.Collections.Generic;
 using System.Linq;
 using RevitBallet.Commands;
 
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("View")]
 public class SwitchViewByHistoryInDocument : IExternalCommand
@@ -23,7 +25,7 @@ public class SwitchViewByHistoryInDocument : IExternalCommand
         }
 
         // Get session-wide view history from database
-        string sessionId = RevitBallet.RevitBallet.SessionId;
+        string sessionId = RevitBalletApplication.SessionId;
         var history = LogViewChangesDatabase.GetViewHistoryForSession(sessionId, limit: 1000);
 
         if (history.Count == 0)

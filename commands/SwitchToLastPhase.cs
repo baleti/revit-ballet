@@ -7,6 +7,8 @@ using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("")]
 public class SwitchToLastPhase : IExternalCommand

@@ -4,6 +4,8 @@ using Autodesk.Revit.UI;
 using System.Collections.Generic;
 using System.Linq;
 
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("Detail Group")]
 public class SelectDetailGroups : IExternalCommand

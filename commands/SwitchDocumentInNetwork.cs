@@ -9,6 +9,8 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using RevitBallet.Commands;
 
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("Document")]
 public class SwitchDocumentInNetwork : IExternalCommand
@@ -77,7 +79,7 @@ public class SwitchDocumentInNetwork : IExternalCommand
                 }
 
                 // Get current session ID for highlighting
-                string currentSessionId = RevitBallet.RevitBallet.SessionId;
+                string currentSessionId = RevitBalletApplication.SessionId;
 
                 // Prepare data for DataGrid
                 var gridData = new List<Dictionary<string, object>>();

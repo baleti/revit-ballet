@@ -7,6 +7,8 @@ using Autodesk.Revit.UI;
 /// <summary>
 /// Column handler registry and infrastructure for automatic editing
 /// </summary>
+namespace RevitBallet.Commands;
+
 public partial class CustomGUIs
 {
     /// <summary>

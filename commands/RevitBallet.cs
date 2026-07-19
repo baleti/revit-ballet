@@ -2,15 +2,15 @@ using System;
 using System.IO;
 using System.Reflection;
 using Autodesk.Revit.UI;
-using RevitBallet.Commands;
 
-namespace RevitBallet
+
+namespace RevitBallet.Commands
 {
     /// <summary>
     /// Main application entry point for revit-ballet.
     /// Handles startup and shutdown tasks for the Revit add-in.
     /// </summary>
-    public class RevitBallet : IExternalApplication
+    public class RevitBalletApplication : IExternalApplication
     {
         /// <summary>
         /// Session ID for this Revit process instance (ProcessId as string).

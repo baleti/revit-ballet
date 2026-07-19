@@ -5,7 +5,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using RevitBallet.Commands;
-using RevitAddin;
+
+namespace RevitBallet.Commands;
 
 [TransactionAttribute(TransactionMode.Manual)]
 [CommandMeta("View")]

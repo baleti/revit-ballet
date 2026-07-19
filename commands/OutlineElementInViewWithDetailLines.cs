@@ -9,7 +9,7 @@ using Forms = System.Windows.Forms;
 using System.Drawing;
 
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
-namespace RevitCustomCommands
+namespace RevitBallet.Commands
 {
     [Transaction(TransactionMode.Manual)]
     [CommandMeta("Any")]
