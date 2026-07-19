@@ -9,8 +9,8 @@ namespace RevitBallet.Commands;
 
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
-[CommandMeta("")]
-public class OpenView : IExternalCommand
+[CommandMeta("View")]
+public class OpenViewInDocument : IExternalCommand
 {
     public Result Execute(
         ExternalCommandData commandData,
@@ -21,7 +21,7 @@ public class OpenView : IExternalCommand
         Document doc = uidoc.Document;
         View activeView = uidoc.ActiveView;
 
-        // ── 1. Selection-first: if views are selected, open them immediately ──
+        // Selection-first: if views or viewports are selected, open them immediately
         var selectedIds = uidoc.GetSelectionIds();
         if (selectedIds.Count > 0)
         {
@@ -30,6 +30,7 @@ public class OpenView : IExternalCommand
             {
                 Element elem = doc.GetElement(id);
                 if (elem is View v &&
+                    !(v is ViewSheet) &&
                     !v.IsTemplate &&
                     v.ViewType != ViewType.ProjectBrowser &&
                     v.ViewType != ViewType.SystemBrowser)
@@ -39,11 +40,10 @@ public class OpenView : IExternalCommand
                 else if (elem is Viewport vp)
                 {
                     var viewFromVp = doc.GetElement(vp.ViewId) as View;
-                    if (viewFromVp != null)
+                    if (viewFromVp != null && !(viewFromVp is ViewSheet))
                         viewsFromSelection.Add(viewFromVp);
                 }
             }
-
             if (viewsFromSelection.Count > 0)
             {
                 foreach (View view in viewsFromSelection)
@@ -52,13 +52,12 @@ public class OpenView : IExternalCommand
             }
         }
 
-        // ── 2. No views selected — show picker (document scope) ──
+        // No views selected — show picker
         List<Dictionary<string, object>> gridData;
         List<string> columns;
 
-        if (ViewDataCache.TryGetDocumentCache(doc, out gridData, out columns))
+        if (ViewDataCache.TryGetDocumentCache(doc, "views", out gridData, out columns))
         {
-            // Reconstruct fresh View references from cached ElementIds
             foreach (var row in gridData)
             {
                 if (row.ContainsKey("ElementIdObject") && row["ElementIdObject"] is ElementId id)
@@ -74,6 +73,7 @@ public class OpenView : IExternalCommand
                 .OfClass(typeof(View))
                 .Cast<View>()
                 .Where(v =>
+                    !(v is ViewSheet) &&
                     !v.IsTemplate &&
                     v.ViewType != ViewType.ProjectBrowser &&
                     v.ViewType != ViewType.SystemBrowser)
@@ -82,7 +82,6 @@ public class OpenView : IExternalCommand
             List<BrowserOrganizationHelper.BrowserColumn> browserColumns =
                 BrowserOrganizationHelper.GetBrowserColumnsForViews(doc, allViews);
 
-            // Build ViewId → Viewport lookup for O(1) sheet-number resolution
             var viewIdToViewport = new FilteredElementCollector(doc)
                 .OfClass(typeof(Viewport))
                 .Cast<Viewport>()
@@ -94,28 +93,19 @@ public class OpenView : IExternalCommand
             {
                 var dict = new Dictionary<string, object>();
                 BrowserOrganizationHelper.AddBrowserColumnsToDict(dict, v, doc, browserColumns);
+                dict["Name"] = v.Name;
 
-                if (v is ViewSheet sheet)
+                Viewport viewport;
+                if (viewIdToViewport.TryGetValue(v.Id, out viewport))
                 {
-                    dict["Sheet Number"] = sheet.SheetNumber;
-                    dict["Sheet Title"] = "";
-                    dict["Name"] = sheet.Name;
+                    ViewSheet containingSheet = doc.GetElement(viewport.SheetId) as ViewSheet;
+                    dict["Sheet Number"] = containingSheet != null ? containingSheet.SheetNumber : "";
+                    dict["Sheet Title"] = containingSheet != null ? containingSheet.Name : "";
                 }
                 else
                 {
-                    dict["Name"] = v.Name;
-                    Viewport viewport;
-                    if (viewIdToViewport.TryGetValue(v.Id, out viewport))
-                    {
-                        ViewSheet containingSheet = doc.GetElement(viewport.SheetId) as ViewSheet;
-                        dict["Sheet Number"] = containingSheet != null ? containingSheet.SheetNumber : "";
-                        dict["Sheet Title"] = containingSheet != null ? containingSheet.Name : "";
-                    }
-                    else
-                    {
-                        dict["Sheet Number"] = "";
-                        dict["Sheet Title"] = "";
-                    }
+                    dict["Sheet Number"] = "";
+                    dict["Sheet Title"] = "";
                 }
 
                 dict["ElementIdObject"] = v.Id;
@@ -137,38 +127,22 @@ public class OpenView : IExternalCommand
             columns.Add("Sheet Number");
             columns.Add("Sheet Title");
 
-            // Cache without View object references (they become stale after sync)
             var cacheData = gridData.Select(row => {
                 var r = new Dictionary<string, object>(row);
                 r.Remove("__OriginalObject");
                 return r;
             }).ToList();
-            ViewDataCache.SaveDocumentCache(doc, cacheData, columns);
+            ViewDataCache.SaveDocumentCache(doc, "views", cacheData, columns);
         }
 
-        // Pre-select active view (or its containing sheet) in the grid
-        ElementId targetViewId = null;
-        if (activeView is ViewSheet)
-        {
-            targetViewId = activeView.Id;
-        }
-        else
-        {
-            Viewport activeVp = new FilteredElementCollector(doc)
-                .OfClass(typeof(Viewport))
-                .Cast<Viewport>()
-                .FirstOrDefault(vp => vp.ViewId.Equals(activeView.Id));
-
-            targetViewId = activeVp != null
-                ? (doc.GetElement(activeVp.SheetId) as ViewSheet)?.Id
-                : null;
-            targetViewId = targetViewId ?? activeView.Id;
-        }
-
-        int selectedIndex = gridData.FindIndex(row =>
-            row.ContainsKey("__OriginalObject") &&
-            row["__OriginalObject"] is View rv &&
-            rv.Id.Equals(targetViewId));
+        // Pre-select the active view if it is not a sheet
+        ElementId targetViewId = !(activeView is ViewSheet) ? activeView.Id : null;
+        int selectedIndex = targetViewId != null
+            ? gridData.FindIndex(row =>
+                row.ContainsKey("__OriginalObject") &&
+                row["__OriginalObject"] is View rv &&
+                rv.Id.Equals(targetViewId))
+            : -1;
 
         List<int> initialSelectionIndices = selectedIndex >= 0
             ? new List<int> { selectedIndex }
@@ -183,7 +157,7 @@ public class OpenView : IExternalCommand
         {
             CustomGUIs.ApplyCellEditsToEntities();
             editsWereApplied = true;
-            ViewDataCache.InvalidateDocument(doc);
+            ViewDataCache.InvalidateDocument(doc, "views");
         }
 
         if (!editsWereApplied)

@@ -116,45 +116,40 @@ namespace RevitBallet.Commands
 
         /// <summary>
         /// Phase 1: Copies files from update folder to main folder and updates .addin file.
+        /// Only flips the manifest back to main folder if the key DLL was actually copied —
+        /// if the copy fails (DLL locked by another Revit instance), we leave the manifest
+        /// pointing to the update folder so the next clean restart retries automatically.
         /// </summary>
         private static void PerformUpdateMigration(string mainFolder, string updateFolder, string addinPath)
         {
-            // Delete old files from main folder
-            if (Directory.Exists(mainFolder))
-            {
-                foreach (string file in Directory.GetFiles(mainFolder, "*.dll"))
-                {
-                    try
-                    {
-                        File.Delete(file);
-                    }
-                    catch
-                    {
-                        // Skip if can't delete
-                    }
-                }
-            }
-            else
-            {
+            if (!Directory.Exists(mainFolder))
                 Directory.CreateDirectory(mainFolder);
-            }
 
-            // Copy all files from update folder to main folder
-            foreach (string file in Directory.GetFiles(updateFolder))
+            // Copy all files from update folder to main folder.
+            // Track whether the key DLL copied successfully so we can decide whether to
+            // flip the manifest.  Non-DLL files (native interop etc.) are best-effort.
+            bool keyDllCopied = false;
+            foreach (string srcFile in Directory.GetFiles(updateFolder))
             {
-                string fileName = Path.GetFileName(file);
+                string fileName = Path.GetFileName(srcFile);
                 string destFile = Path.Combine(mainFolder, fileName);
                 try
                 {
-                    File.Copy(file, destFile, overwrite: true);
+                    File.Copy(srcFile, destFile, overwrite: true);
+                    if (fileName.Equals("revit-ballet.dll", StringComparison.OrdinalIgnoreCase))
+                        keyDllCopied = true;
                 }
                 catch
                 {
-                    // Skip if can't copy
+                    // File is still locked — leave it for the next restart.
                 }
             }
 
-            // Update .addin file to point to main folder
+            // Only redirect the manifest to the main folder once the key DLL is there.
+            // If the copy failed, keep the manifest pointing to the update folder so that
+            // the next Revit startup (after all instances are closed) retries Phase 1.
+            if (!keyDllCopied) return;
+
             if (File.Exists(addinPath))
             {
                 try
@@ -163,11 +158,8 @@ namespace RevitBallet.Commands
                     foreach (var assemblyElement in doc.Descendants("Assembly"))
                     {
                         string currentValue = assemblyElement.Value;
-                        // Handle both "revit-ballet.update" and "revit-ballet.update.TIMESTAMP" patterns
-                        // by replacing the entire update folder name with just "revit-ballet"
                         if (currentValue.Contains("revit-ballet.update"))
                         {
-                            // Use regex to replace revit-ballet.update or revit-ballet.update.* with revit-ballet
                             string updateFolderName = Path.GetFileName(updateFolder);
                             assemblyElement.Value = currentValue.Replace(updateFolderName, "revit-ballet");
                         }
@@ -176,7 +168,8 @@ namespace RevitBallet.Commands
                 }
                 catch
                 {
-                    // Skip if can't update addin file
+                    // Silently fail — worst case the manifest still points to the update folder,
+                    // which works fine and will be corrected on next startup.
                 }
             }
         }

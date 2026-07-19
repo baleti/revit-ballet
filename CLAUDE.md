@@ -226,11 +226,21 @@ Full details: `commands/DataGrid/IMPLEMENTATION_SUMMARY.md`. Code across `DataGr
 bash Build.sh
 
 # Deploy to Windows with hot-reload (commands available immediately via InvokeAddinCommand)
-scp -i ~/.ssh/hwo-18 installer/bin/Release/installer.exe daniel@192.168.231.1:'C:\Users\Daniel\Desktop\installer.exe'
-ssh daniel@192.168.231.1 -i ~/.ssh/hwo-18 'powershell -NoProfile -Command "C:\Users\Daniel\Desktop\installer.exe --quiet --hot-reload"'
+scp -i ~/.ssh/hwo-18 installer/bin/Release/installer.exe daniel@192.168.231.1:installer.exe
+ssh daniel@192.168.231.1 -i ~/.ssh/hwo-18 'powershell -NoProfile -Command "& .\installer.exe --quiet --hot-reload"'
 ```
 
-Always pass `--hot-reload` when deploying — without it, new commands are only available after restarting Revit.
+### Hot-reload vs keyboard shortcuts — critical distinction
+
+`--hot-reload` copies the DLL to `%APPDATA%\revit-ballet\hot-reload\{year}\`. **Only `InvokeAddinCommand` checks that folder** (it sets up an `AssemblyResolve` hook scoped to the invocation). Keyboard shortcuts bypass hot-reload entirely — Revit invokes them using the DLL it loaded at startup.
+
+**When Revit is running and the DLL is locked**, the installer falls back to an update-folder strategy: it copies the new DLL to `Addins\revit-ballet.update\` and rewrites the `.addin` manifest to point there. The next Revit startup picks this up automatically — **you do not need to close Revit before running the installer**.
+
+**What you DO need:** a full Revit restart (close the application, reopen it) after any deploy that renames or adds command classes. Until then, the running session still has the old DLL in memory and keyboard shortcuts will show "Wrong Full Class Name". `InvokeAddinCommand` works immediately via hot-reload without restart.
+
+Summary:
+- `InvokeAddinCommand` / `Q\`` — works immediately after deploy (hot-reload)
+- Keyboard shortcuts — require Revit restart after deploy
 
 ## Key Files
 
@@ -247,6 +257,35 @@ When creating new commands, **do not** automatically register them. Never modify
 
 Create the `.cs` in `commands/` and tell the user it's ready but unregistered.
 
+## Keyboard Shortcuts and Addin Manifest — Keeping Them in Sync
+
+**Three files must stay consistent:** `revit-ballet.addin`, `KeyboardShortcuts-custom.xml`, and the C# class name. When any one changes, update all three.
+
+### Addin manifest (`revit-ballet.addin`)
+Each command needs an entry with a stable `AddInId` (GUID) and a `FullClassName` that exactly matches the C# class name. If you rename a class, update `FullClassName` immediately — Revit will fail to initialize the add-in on startup if the class cannot be found, and the shortcut will silently not work.
+
+Remove manifest entries for classes that no longer exist.
+
+### Keyboard shortcuts (`KeyboardShortcuts-custom.xml`)
+
+Two kinds of shortcut entries:
+
+**Addin commands** (registered via `.addin` file — most revit-ballet commands, e.g. DD, DS):
+```xml
+<ShortcutItem CommandId="2a7e4f9b-3d6c-4e8a-7f2e-9c4d1a8b3e6f" Shortcuts="DD"/>
+```
+`CommandId` = the `AddInId` from the manifest (lowercase). No `CommandName`/`Paths` needed.
+
+**External-tool commands** (registered via Revit ribbon, e.g. SMV/SMD/SMS):
+```xml
+<ShortcutItem CommandName="External &#xA;Tools:SelectByMaterialInView" CommandId="<guid>" Shortcuts="SMV" Paths="Add-Ins&gt;External"/>
+```
+Both `CommandName` (`"External &#xA;Tools:<ClassName>"`) and `Paths` (`"Add-Ins&gt;External"`) are required — Revit silently ignores bare entries for this type.
+
+`CommandId` GUIDs must be **lowercase**. Each `CommandId` must appear **once** — duplicates cause a Revit import error.
+
+Never edit Revit's `KeyboardShortcuts.xml` directly — Revit rewrites it on startup. Always update `KeyboardShortcuts-custom.xml` and run the installer.
+
 ## Command Metadata
 
 Every `IExternalCommand` class should carry a `[CommandMeta("...")]` attribute (defined in `CommandMetaAttribute.cs`, global namespace — no `using` needed). The `Input` string describes what the user must have ready before invoking the command and is shown as the **Input** column in `InvokeAddinCommand`'s DataGrid.
@@ -255,6 +294,7 @@ Common values:
 - `""` — no prior selection needed; command opens its own picker/dialog
 - `"Any"` — one or more elements must be selected (any type)
 - `"Door"`, `"Wall"`, `"View"`, `"Grid"`, etc. — specific element type required
+- `"View, Link"` — context-aware command: list the optional selection types comma-separated when the command behaves differently based on what's selected (e.g. no selection → global, views selected → per-view, links selected → on linked model)
 
 New commands must include the attribute. When the required input is not yet known, use `""`.
 

@@ -74,14 +74,7 @@ public partial class CustomGUIs
             if (!IsEditable || Setter == null)
                 return false;
 
-            try
-            {
-                return Setter(elem, doc, newValue);
-            }
-            catch
-            {
-                return false;
-            }
+            return Setter(elem, doc, newValue);
         }
     }
 
@@ -1622,6 +1615,277 @@ public partial class CustomGUIs
                     }
                 }
             });
+
+            // Helper: find the viewport referenced by any element that carries Referencing Sheet/Detail params.
+            // Works for View elements (own viewport, or reference callout views) AND non-View annotation
+            // elements such as ViewReference callout heads (whose runtime type is base Element).
+            //   Case A: elem is a View directly placed on a sheet → return its own viewport.
+            //   Case B: all other cases → read RefSheet/RefDetail params and locate the viewport.
+            Func<Element, Document, Viewport> ResolveViewport = (e, d) =>
+            {
+                // Case A: element is directly placed on a sheet as a viewport (works for any element type)
+                Viewport own = new FilteredElementCollector(d)
+                    .OfClass(typeof(Viewport))
+                    .Cast<Viewport>()
+                    .FirstOrDefault(vp => vp.ViewId == e.Id);
+                if (own != null) return own;
+
+                // Case B: locate viewport via Referencing Sheet + Referencing Detail params
+                string refSheet = e.LookupParameter("Referencing Sheet")?.AsString()?.Trim();
+                string refDetail = e.LookupParameter("Referencing Detail")?.AsString()?.Trim();
+                if (string.IsNullOrEmpty(refSheet) || string.IsNullOrEmpty(refDetail)) return null;
+
+                ViewSheet sheet = new FilteredElementCollector(d)
+                    .OfClass(typeof(ViewSheet))
+                    .Cast<ViewSheet>()
+                    .FirstOrDefault(s => string.Equals(s.SheetNumber, refSheet, StringComparison.OrdinalIgnoreCase));
+                if (sheet == null) return null;
+
+                return sheet.GetAllViewports()
+                    .Select(id => d.GetElement(id) as Viewport)
+                    .FirstOrDefault(vp =>
+                    {
+                        if (vp == null) return false;
+                        Parameter dp = vp.get_Parameter(BuiltInParameter.VIEWPORT_DETAIL_NUMBER);
+                        return string.Equals(dp?.AsString(), refDetail, StringComparison.OrdinalIgnoreCase);
+                    });
+            };
+
+            // Referencing Label — directly writable string param (if present on this view type)
+            Register(new ColumnHandler
+            {
+                ColumnName = "Referencing Label",
+                IsEditable = true,
+                Description = "Reference label shown in the section/elevation callout marker",
+                Validator = ColumnValidators.MaxLength(256),
+                Getter = (elem, doc) =>
+                {
+                    Parameter param = elem.LookupParameter("Referencing Label");
+                    return param?.AsString() ?? null;
+                },
+                Setter = (elem, doc, newValue) =>
+                {
+                    string strValue = newValue?.ToString() ?? "";
+                    Parameter param = elem.LookupParameter("Referencing Label");
+                    if (param == null)            throw new InvalidOperationException("LookupParameter(\"Referencing Label\") returned null");
+                    if (param.IsReadOnly)         throw new InvalidOperationException("Param is read-only");
+                    if (param.StorageType != StorageType.String) throw new InvalidOperationException($"StorageType={param.StorageType}, expected String");
+                    param.Set(strValue);
+                    return true;
+                }
+            });
+
+            // Helper: rename mode = elem is a View placed directly on a sheet (has its own viewport).
+            // Redirect mode = everything else (ViewReference callout annotations, reference callout views).
+            //   Rename mode:   changing the value renames the viewport/sheet number in the model.
+            //   Redirect mode: changing the value redirects the callout to point at a different viewport.
+            Func<Element, Document, bool> IsRenameMode = (e, d) =>
+            {
+                return GetCachedViewports(d).Any(vp => vp.ViewId == e.Id);
+            };
+
+            // Helper: get the viewport currently referenced by an element — via ReferenceableViewUtils
+            // for callout annotations, or the element's own viewport for view elements.
+            Func<Element, Document, Viewport> GetReferencedViewport = (e, d) =>
+            {
+                try
+                {
+                    ElementId refId = ReferenceableViewUtils.GetReferencedViewId(d, e.Id);
+                    if (refId != null && refId != ElementId.InvalidElementId)
+                        return GetCachedViewports(d).FirstOrDefault(vp => vp.ViewId == refId);
+                }
+                catch { }
+                return GetCachedViewports(d).FirstOrDefault(vp => vp.ViewId == e.Id);
+            };
+
+            // Referencing Sheet
+            // Rename mode:   renames the ViewSheet the view's own viewport is on.
+            // Redirect mode: points the callout at a different sheet (must already exist).
+            Register(new ColumnHandler
+            {
+                ColumnName = "Referencing Sheet",
+                IsEditable = true,
+                RequiresUniqueName = false,
+                Description = "Sheet number of the sheet the referenced view is placed on",
+                Validator = (elem, doc, oldValue, newValue) =>
+                {
+                    string strValue = newValue?.ToString()?.Trim() ?? "";
+                    if (string.IsNullOrEmpty(strValue))
+                        return ValidationResult.Invalid("Sheet number cannot be empty.");
+
+                    if (IsRenameMode(elem, doc))
+                    {
+                        // Rename mode: check the new sheet number isn't taken by another sheet
+                        Viewport vp = ResolveViewport(elem, doc);
+                        ViewSheet currentSheet = vp != null ? doc.GetElement(vp.SheetId) as ViewSheet : null;
+                        if (currentSheet != null && string.Equals(currentSheet.SheetNumber, strValue, StringComparison.OrdinalIgnoreCase))
+                            return ValidationResult.Valid(); // no-op
+                        bool conflict = new FilteredElementCollector(doc).OfClass(typeof(ViewSheet)).Cast<ViewSheet>()
+                            .Any(s => s.Id != currentSheet?.Id && string.Equals(s.SheetNumber, strValue, StringComparison.OrdinalIgnoreCase));
+                        return conflict
+                            ? ValidationResult.Invalid($"Sheet number '{strValue}' is already used by another sheet.")
+                            : ValidationResult.Valid();
+                    }
+                    else
+                    {
+                        // Redirect mode: the target sheet must exist
+                        bool exists = new FilteredElementCollector(doc).OfClass(typeof(ViewSheet)).Cast<ViewSheet>()
+                            .Any(s => string.Equals(s.SheetNumber, strValue, StringComparison.OrdinalIgnoreCase));
+                        return exists
+                            ? ValidationResult.Valid()
+                            : ValidationResult.Invalid($"No sheet with number '{strValue}' exists.");
+                    }
+                },
+                Getter = (elem, doc) =>
+                {
+                    // For callout annotation elements (non-View base type), params are stale after
+                    // ChangeReferencedView — read live sheet number from the referenced viewport instead.
+                    // For actual View elements, "Referencing Sheet" param is the correct parent sheet.
+                    if (!(elem is Autodesk.Revit.DB.View))
+                    {
+                        Viewport vp = GetReferencedViewport(elem, doc);
+                        if (vp != null)
+                        {
+                            ViewSheet sheet = doc.GetElement(vp.SheetId) as ViewSheet;
+                            if (sheet != null) return sheet.SheetNumber;
+                        }
+                    }
+                    return elem.LookupParameter("Sheet Number")?.AsString()
+                        ?? elem.LookupParameter("Referencing Sheet")?.AsString();
+                },
+                Setter = (elem, doc, newValue) =>
+                {
+                    string strValue = newValue?.ToString() ?? "";
+
+                    if (IsRenameMode(elem, doc))
+                    {
+                        // Rename mode: rename the ViewSheet itself
+                        Viewport vp = ResolveViewport(elem, doc);
+                        if (vp == null) throw new InvalidOperationException("Could not find own viewport");
+                        ViewSheet sheet = doc.GetElement(vp.SheetId) as ViewSheet;
+                        if (sheet == null) throw new InvalidOperationException($"ViewSheet not found for SheetId={vp.SheetId}");
+                        sheet.SheetNumber = strValue;
+                        return true;
+                    }
+                    else
+                    {
+                        // Redirect mode: use ReferenceableViewUtils to point this annotation at a viewport
+                        // on the new sheet, keeping the same detail number (from Detail Number param)
+                        string detailNum = elem.LookupParameter("Detail Number")?.AsString()?.Trim();
+                        if (string.IsNullOrEmpty(detailNum))
+                            throw new InvalidOperationException("Detail Number param is empty — cannot determine which viewport to redirect to");
+                        ViewSheet newSheet = new FilteredElementCollector(doc).OfClass(typeof(ViewSheet)).Cast<ViewSheet>()
+                            .FirstOrDefault(s => string.Equals(s.SheetNumber, strValue, StringComparison.OrdinalIgnoreCase));
+                        if (newSheet == null)
+                            throw new InvalidOperationException($"Sheet '{strValue}' not found");
+                        Viewport targetVp = newSheet.GetAllViewports()
+                            .Select(id => doc.GetElement(id) as Viewport)
+                            .FirstOrDefault(vp =>
+                            {
+                                Parameter dp = vp?.get_Parameter(BuiltInParameter.VIEWPORT_DETAIL_NUMBER);
+                                return string.Equals(dp?.AsString(), detailNum, StringComparison.OrdinalIgnoreCase);
+                            });
+                        if (targetVp == null)
+                            throw new InvalidOperationException($"No viewport with detail number '{detailNum}' on sheet '{strValue}'");
+                        ReferenceableViewUtils.ChangeReferencedView(doc, elem.Id, targetVp.ViewId);
+                        return true;
+                    }
+                }
+            });
+
+            // Helper: look up the viewport currently referenced by an element via ReferenceableViewUtils,
+            // or fall back to the element's own viewport (if it has one).
+            // Referencing Detail
+            // Getter reads the live detail number of the referenced viewport via ReferenceableViewUtils so
+            // the value stays correct after ChangeReferencedView (params on the annotation element are stale).
+            // Setter tries ChangeReferencedView first; falls back to VIEWPORT_DETAIL_NUMBER rename for view
+            // elements where ChangeReferencedView is not supported. RequiresUniqueName is false because
+            // multiple callouts pointing to the same detail is valid.
+            Register(new ColumnHandler
+            {
+                ColumnName = "Referencing Detail",
+                IsEditable = true,
+                RequiresUniqueName = false,
+                Description = "Detail number of the viewport the callout refers to",
+                Validator = (elem, doc, oldValue, newValue) =>
+                {
+                    string strValue = newValue?.ToString()?.Trim() ?? "";
+                    if (string.IsNullOrEmpty(strValue))
+                        return ValidationResult.Invalid("Detail number cannot be empty.");
+
+                    string sheetNum = elem.LookupParameter("Sheet Number")?.AsString()?.Trim();
+                    if (string.IsNullOrEmpty(sheetNum))
+                        return ValidationResult.Invalid("Sheet Number param is empty — cannot validate redirect target.");
+                    ViewSheet placementSheet = new FilteredElementCollector(doc).OfClass(typeof(ViewSheet)).Cast<ViewSheet>()
+                        .FirstOrDefault(s => string.Equals(s.SheetNumber, sheetNum, StringComparison.OrdinalIgnoreCase));
+                    if (placementSheet == null)
+                        return ValidationResult.Invalid($"Sheet '{sheetNum}' not found.");
+                    bool targetExists = placementSheet.GetAllViewports()
+                        .Select(id => doc.GetElement(id) as Viewport)
+                        .Any(vp =>
+                        {
+                            Parameter dp = vp?.get_Parameter(BuiltInParameter.VIEWPORT_DETAIL_NUMBER);
+                            return string.Equals(dp?.AsString(), strValue, StringComparison.OrdinalIgnoreCase);
+                        });
+                    return targetExists
+                        ? ValidationResult.Valid()
+                        : ValidationResult.Invalid($"No viewport with detail number '{strValue}' found on sheet '{sheetNum}'.");
+                },
+                Getter = (elem, doc) =>
+                {
+                    // For callout annotation elements (non-View base type), params are stale after
+                    // ChangeReferencedView — read live detail number from the referenced viewport instead.
+                    // For actual View elements, "Referencing Detail" param is the correct parent detail.
+                    if (!(elem is Autodesk.Revit.DB.View))
+                    {
+                        Viewport vp = GetReferencedViewport(elem, doc);
+                        if (vp != null)
+                        {
+                            Parameter dp = vp.get_Parameter(BuiltInParameter.VIEWPORT_DETAIL_NUMBER);
+                            if (dp != null) return dp.AsString();
+                        }
+                    }
+                    return elem.LookupParameter("Detail Number")?.AsString()
+                        ?? elem.LookupParameter("Referencing Detail")?.AsString();
+                },
+                Setter = (elem, doc, newValue) =>
+                {
+                    string strValue = newValue?.ToString() ?? "";
+                    string sheetNum = elem.LookupParameter("Sheet Number")?.AsString()?.Trim();
+                    if (string.IsNullOrEmpty(sheetNum))
+                        throw new InvalidOperationException("Sheet Number param is empty — cannot determine placement sheet");
+                    ViewSheet placementSheet = new FilteredElementCollector(doc).OfClass(typeof(ViewSheet)).Cast<ViewSheet>()
+                        .FirstOrDefault(s => string.Equals(s.SheetNumber, sheetNum, StringComparison.OrdinalIgnoreCase));
+                    if (placementSheet == null)
+                        throw new InvalidOperationException($"Sheet '{sheetNum}' not found");
+                    Viewport targetVp = placementSheet.GetAllViewports()
+                        .Select(id => doc.GetElement(id) as Viewport)
+                        .FirstOrDefault(vp =>
+                        {
+                            Parameter dp = vp?.get_Parameter(BuiltInParameter.VIEWPORT_DETAIL_NUMBER);
+                            return string.Equals(dp?.AsString(), strValue, StringComparison.OrdinalIgnoreCase);
+                        });
+                    if (targetVp == null)
+                        throw new InvalidOperationException($"No viewport with detail number '{strValue}' on sheet '{sheetNum}'");
+
+                    // Views placed on sheets (e.g. ViewDrafting) are the referenced targets themselves —
+                    // ChangeReferencedView does not apply to them; skip silently.
+                    if (elem is Autodesk.Revit.DB.View)
+                        return true;
+
+                    // Revit throws Autodesk.Revit.Exceptions.ArgumentException (not System.ArgumentException)
+                    // when the element is not a referenceable view — catch Exception broadly.
+                    try
+                    {
+                        ReferenceableViewUtils.ChangeReferencedView(doc, elem.Id, targetVp.ViewId);
+                        return true;
+                    }
+                    catch (Exception ex)
+                    {
+                        throw new InvalidOperationException($"ChangeReferencedView failed: {ex.Message}", ex);
+                    }
+                }
+            });
         }
 
         /// <summary>
@@ -1749,6 +2013,23 @@ public partial class CustomGUIs
         /// <summary>
         /// Ensure handlers are initialized (called automatically when registry is first accessed)
         /// </summary>
+        // Viewport list cached for the duration of a single DataGrid call.
+        // Invalidated by DataGrid() entry point; rebuilt on first use per call.
+        private static List<Autodesk.Revit.DB.Viewport> _vpCache;
+
+        internal static void InvalidateViewportCache()
+        {
+            _vpCache = null;
+        }
+
+        private static List<Autodesk.Revit.DB.Viewport> GetCachedViewports(Document doc)
+        {
+            return _vpCache ?? (_vpCache = new FilteredElementCollector(doc)
+                .OfClass(typeof(Autodesk.Revit.DB.Viewport))
+                .Cast<Autodesk.Revit.DB.Viewport>()
+                .ToList());
+        }
+
         public static void EnsureInitialized()
         {
             if (!_initialized)

@@ -1,8 +1,6 @@
 using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using RevitBallet.Commands;
-
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -12,55 +10,97 @@ using System.Windows.Forms;
 using System.Text.RegularExpressions;
 using Application = System.Windows.Forms.Application;
 using System.Runtime.InteropServices;
+using System.Reflection;
+using System.Threading;
 using Microsoft.WindowsAPICodePack.Dialogs;
 
 namespace RevitBallet.Commands;
 
+#if REVIT2022 || REVIT2023 || REVIT2024 || REVIT2025 || REVIT2026
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
 [CommandMeta("View")]
-public class ExportViewToDWG : IExternalCommand
+public class ExportToPDF : IExternalCommand
 {
+    [DllImport("user32.dll", CharSet = CharSet.Auto)]
+    public static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
+
+    [DllImport("user32.dll")]
+    public static extern IntPtr FindWindowEx(IntPtr hwndParent, IntPtr hwndChildAfter, string lpszClass, string lpszWindow);
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool SetWindowText(IntPtr hWnd, string lpString);
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto)]
+    public static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+
+    private const uint BM_CLICK = 0x00F5;
+
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
     {
         var uidoc = commandData.Application.ActiveUIDocument;
         var doc = uidoc.Document;
 
-        // Use InputResolver to get views from selection or active view
-        var allViews = InputResolver.ResolveViews(uidoc);
+        // Get current selection
+        var selectedIds = uidoc.GetSelectionIds();
+        var viewsAndSheets = new List<Autodesk.Revit.DB.View>();
 
-        // Filter for exportable views only (CanBePrinted, not internal, not template)
-        var viewsAndSheets = allViews
-            .Where(v => v.CanBePrinted &&
-                       !(v.ViewType == ViewType.Internal || v.IsTemplate))
-            .ToList();
-
-        if (!viewsAndSheets.Any())
+        if (!selectedIds.Any())
         {
-            Autodesk.Revit.UI.TaskDialog.Show("Invalid Selection", "No exportable views available.");
-            return Result.Cancelled;
+            // No selection - use current active view
+            var currentView = uidoc.ActiveView;
+            if (currentView != null && currentView.CanBePrinted &&
+                !(currentView.ViewType == ViewType.Internal || currentView.IsTemplate))
+            {
+                viewsAndSheets.Add(currentView);
+            }
+            else
+            {
+                Autodesk.Revit.UI.TaskDialog.Show("Invalid View", "The current view cannot be exported to PDF.");
+                return Result.Cancelled;
+            }
+        }
+        else
+        {
+            // Filter selection for sheets and views
+            foreach (var id in selectedIds)
+            {
+                var elem = doc.GetElement(id);
+                if (elem is Autodesk.Revit.DB.View view && view.CanBePrinted &&
+                    !(view.ViewType == ViewType.Internal || view.IsTemplate))
+                {
+                    viewsAndSheets.Add(view);
+                }
+            }
+
+            if (!viewsAndSheets.Any())
+            {
+                Autodesk.Revit.UI.TaskDialog.Show("Invalid Selection", "No exportable views or sheets were selected.");
+                return Result.Cancelled;
+            }
         }
         
         // Show naming configuration dialog
-        using (var dialog = new DWGNamingDialog(doc, viewsAndSheets))
+        using (var dialog = new PDFNamingDialog(doc, viewsAndSheets))
         {
-            if (dialog.ShowDialog(new RevitWindow(Helpers.GetMainWindowHandle(commandData.Application))) != DialogResult.OK)
+            if (dialog.ShowDialog(new PDFRevitWindow(commandData.Application.MainWindowHandle)) != DialogResult.OK)
                 return Result.Cancelled;
             
-            // Get folder location using CommonOpenFileDialog
+            // Get folder location
             string exportFolder = null;
             var lastPath = dialog.GetLastExportPath();
 
             var folderDialog = new CommonOpenFileDialog
             {
-                Title = "Select folder for DWG export",
+                Title = "Select folder for PDF export",
                 IsFolderPicker = true,
                 InitialDirectory = lastPath,
                 EnsurePathExists = true,
                 EnsureFileExists = false
             };
 
-            if (folderDialog.ShowDialog(Helpers.GetMainWindowHandle(commandData.Application)) == CommonFileDialogResult.Ok)
+            if (folderDialog.ShowDialog(commandData.Application.MainWindowHandle) == CommonFileDialogResult.Ok)
             {
                 exportFolder = folderDialog.FileName;
             }
@@ -70,84 +110,105 @@ public class ExportViewToDWG : IExternalCommand
                 return Result.Cancelled;
             }
             
-            // Save the export path along with other settings
+            // Save settings
             dialog.SaveExportSettings(exportFolder);
             
-            // Get selected export options
-            var exportOptions = dialog.GetSelectedExportOptions();
-            if (exportOptions == null)
-            {
-                exportOptions = new DWGExportOptions();
-                exportOptions.MergedViews = false;
-            }
+            // Get base export settings (null for default)
+            var baseSettings = dialog.GetSelectedExportSettings();
+            string selectedPrinter = dialog.GetSelectedPrinter();
             
             var successCount = 0;
             var failedExports = new List<string>();
             var cancelled = false;
+
+            bool useNativePDF = Type.GetType("Autodesk.Revit.DB.PDFExportOptions, RevitAPI") != null;
             
-            // Option 1: Using custom progress dialog (comment out if using Option 2)
-            using (var progressDialog = new ExportProgressDialog(viewsAndSheets.Count))
+            using (var progressDialog = new PDFExportProgressDialog(viewsAndSheets.Count))
             {
-#if REVIT2017 || REVIT2018
-                // MainWindowHandle not available in Revit 2017-2018 - use Process instead
-                progressDialog.Show(new RevitWindow(System.Diagnostics.Process.GetCurrentProcess().MainWindowHandle));
-#else
-                progressDialog.Show(new RevitWindow(commandData.Application.MainWindowHandle));
-#endif
-                
-                using (var tx = new Transaction(doc, "Export Views to DWG"))
+                progressDialog.Show(new PDFRevitWindow(commandData.Application.MainWindowHandle));
+
+                for (int i = 0; i < viewsAndSheets.Count; i++)
                 {
-                    tx.Start();
-                    
-                    for (int i = 0; i < viewsAndSheets.Count; i++)
+                    if (progressDialog.IsCancelled)
                     {
-                        if (progressDialog.IsCancelled)
-                        {
-                            cancelled = true;
-                            break;
-                        }
-                        
-                        var view = viewsAndSheets[i];
-                        progressDialog.UpdateProgress(i, $"Exporting: {view.Name}");
-                        Application.DoEvents(); // Allow UI to update
-                        
-                        try
-                        {
-                            var fileName = dialog.GetFileName(view);
-                            var viewIds = new List<ElementId> { view.Id };
-                            
-                            doc.Export(exportFolder, fileName, viewIds, exportOptions);
-                            successCount++;
-                        }
-                        catch (Exception ex)
-                        {
-                            failedExports.Add($"{view.Name}: {ex.Message}");
-                        }
+                        cancelled = true;
+                        break;
                     }
-                    
-                    if (cancelled)
-                        tx.RollBack();
-                    else
-                        tx.Commit();
+
+                    var view = viewsAndSheets[i];
+                    var fileName = dialog.GetFileName(view);
+                    progressDialog.UpdateProgress(i, $"Exporting: {fileName}.pdf");
+                    Application.DoEvents();
+
+                    try
+                    {
+                        var viewIds = new List<ElementId> { view.Id };
+
+                        if (useNativePDF)
+                        {
+                            Type pdfOptionsType = Type.GetType("Autodesk.Revit.DB.PDFExportOptions, RevitAPI");
+                            dynamic options = Activator.CreateInstance(pdfOptionsType);
+
+                            if (baseSettings != null)
+                            {
+                                options = baseSettings.GetOptions();
+                            }
+
+                            options.FileName = fileName;
+                            options.Combine = true;
+
+                            MethodInfo exportMethod = typeof(Document).GetMethod("Export", new Type[] { typeof(string), typeof(IList<ElementId>), pdfOptionsType });
+                            exportMethod.Invoke(doc, new object[] { exportFolder, viewIds, options });
+                        }
+                        else
+                        {
+                            // Fallback to printing
+                            PrintManager pm = doc.PrintManager;
+                            pm.PrintToFile = true;
+                            string fullPath = Path.Combine(exportFolder, fileName + ".pdf");
+                            pm.PrintToFileName = fullPath;
+                            pm.SelectNewPrintDriver(selectedPrinter ?? "Microsoft Print to PDF");
+                            pm.Apply();
+                            pm.SubmitPrint(view);
+
+                            // Automate the save dialog
+                            IntPtr dlg = IntPtr.Zero;
+                            int attempts = 0;
+                            while (dlg == IntPtr.Zero && attempts < 50)
+                            {
+                                dlg = FindWindow("#32770", "Save Print Output As");
+                                Thread.Sleep(100);
+                                attempts++;
+                            }
+
+                            if (dlg != IntPtr.Zero)
+                            {
+                                IntPtr edit = FindWindowEx(dlg, IntPtr.Zero, "Edit", null);
+                                if (edit != IntPtr.Zero)
+                                {
+                                    SetWindowText(edit, fullPath);
+                                }
+
+                                IntPtr saveBtn = FindWindowEx(dlg, IntPtr.Zero, "Button", "&Save");
+                                if (saveBtn != IntPtr.Zero)
+                                {
+                                    SendMessage(saveBtn, BM_CLICK, IntPtr.Zero, IntPtr.Zero);
+                                }
+                            }
+                        }
+                        successCount++;
+                    }
+                    catch (Exception ex)
+                    {
+                        failedExports.Add($"{view.Name}: {ex.Message}");
+                    }
                 }
             }
             
             // Show results
             if (cancelled)
             {
-                Autodesk.Revit.UI.TaskDialog.Show("Export Cancelled", "DWG export was cancelled by user.");
-            }
-            else
-            {
-                var resultMessage = $"Successfully exported {successCount} of {viewsAndSheets.Count} views.";
-                if (failedExports.Any())
-                {
-                    resultMessage += $"\n\nFailed exports:\n{string.Join("\n", failedExports.Take(5))}";
-                    if (failedExports.Count > 5)
-                        resultMessage += $"\n...and {failedExports.Count - 5} more.";
-                }
-                
-                Autodesk.Revit.UI.TaskDialog.Show("Export Complete", resultMessage);
+                Autodesk.Revit.UI.TaskDialog.Show("Export Cancelled", "PDF export was cancelled by user.");
             }
         }
         
@@ -155,27 +216,37 @@ public class ExportViewToDWG : IExternalCommand
     }
 }
 
-// Dialog for configuring DWG naming
-public class DWGNamingDialog : System.Windows.Forms.Form
+public class PDFRevitWindow : IWin32Window
+{
+    public IntPtr Handle { get; private set; }
+    public PDFRevitWindow(IntPtr handle)
+    {
+        Handle = handle;
+    }
+}
+
+public class PDFNamingDialog : System.Windows.Forms.Form
 {
     private static readonly string AppDataPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "revit-ballet",
         "runtime"
     );
-    private static readonly string FormatHistoryFile = Path.Combine(AppDataPath, "ExportViewToDWG");
-    private static readonly string ExportSettingsFile = Path.Combine(AppDataPath, "ExportViewToDWG_Settings");
+    private static readonly string FormatHistoryFile = Path.Combine(AppDataPath, "ExportViewToPDF");
+    private static readonly string ExportSettingsFile = Path.Combine(AppDataPath, "ExportViewToPDF_Settings");
+    
+    private static readonly bool IsNativePDFAvailable = Type.GetType("Autodesk.Revit.DB.PDFExportOptions, RevitAPI") != null;
     
     private Document doc;
     private List<Autodesk.Revit.DB.View> views;
     private Dictionary<Autodesk.Revit.DB.View, Dictionary<string, string>> viewParameters;
     private List<string> availableParameters;
     private string formatString = "{Sheet Number}_{Sheet Name}";
-    private List<ExportDWGSettings> exportSettings;
+    private List<dynamic> exportSettings;
     private bool isPlaceholderActive = true;
     private List<string> formatHistory;
     private int lastCursorPosition = 0;
-    private Dictionary<string, string> pdfNamingPresets = new Dictionary<string, string>(); // Store PDF naming presets
+    private Dictionary<string, string> pdfNamingPresets; // Store PDF naming presets
     private Stack<string> undoStack = new Stack<string>(); // For undo functionality
     private Stack<string> redoStack = new Stack<string>(); // For redo functionality
     
@@ -185,45 +256,50 @@ public class DWGNamingDialog : System.Windows.Forms.Form
     private DataGridView dgvAvailableParams;
     private DataGridView dgvPreview;
     private System.Windows.Forms.ComboBox cmbExportOptions;
+    private System.Windows.Forms.ComboBox cmbPrinterDriver;
     private Button btnOK;
     private Button btnCancel;
     private SplitContainer splitMain;
     private System.Windows.Forms.Panel pnlTop;
     private System.Windows.Forms.Panel pnlLeft;
     
-    public DWGNamingDialog(Document doc, List<Autodesk.Revit.DB.View> views)
+    public PDFNamingDialog(Document doc, List<Autodesk.Revit.DB.View> views)
     {
         this.doc = doc;
         this.views = views;
         LoadExportSettings();
-#if REVIT2022 || REVIT2023 || REVIT2024 || REVIT2025 || REVIT2026
         LoadPDFNamingPresets();
-#endif
         InitializeParameters();
         LoadFormatHistory();
         InitializeUI();
         UpdatePreview();
     }
     
-#if REVIT2022 || REVIT2023 || REVIT2024 || REVIT2025 || REVIT2026
     private void LoadPDFNamingPresets()
     {
         pdfNamingPresets = new Dictionary<string, string>();
         
         try
         {
-            // Get the active PDF export settings
-            ExportPDFSettings activePdfSettings = ExportPDFSettings.GetActivePredefinedSettings(doc);
-            if (activePdfSettings != null)
+            Type pdfSettingsType = Type.GetType("Autodesk.Revit.DB.ExportPDFSettings, RevitAPI");
+            if (pdfSettingsType == null)
+                return;
+            
+            // Get the active PDF export settings using reflection
+            var getActiveMethod = pdfSettingsType.GetMethod("GetActivePredefinedSettings", new Type[] { typeof(Document) });
+            if (getActiveMethod != null)
             {
-                AddPDFNamingPreset("Active PDF Settings", activePdfSettings);
+                dynamic activePdfSettings = getActiveMethod.Invoke(null, new object[] { doc });
+                if (activePdfSettings != null)
+                {
+                    AddPDFNamingPreset("Active PDF Settings", activePdfSettings);
+                }
             }
             
             // Get all PDF export settings in the project
-            var collector = new FilteredElementCollector(doc)
-                .OfClass(typeof(ExportPDFSettings));
+            var collector = new FilteredElementCollector(doc).OfClass(pdfSettingsType);
             
-            foreach (ExportPDFSettings settings in collector)
+            foreach (dynamic settings in collector)
             {
                 var presetName = $"PDF: {settings.Name}";
                 AddPDFNamingPreset(presetName, settings);
@@ -236,12 +312,12 @@ public class DWGNamingDialog : System.Windows.Forms.Form
         }
     }
     
-    private void AddPDFNamingPreset(string presetName, ExportPDFSettings settings)
+    private void AddPDFNamingPreset(string presetName, dynamic settings)
     {
         try
         {
-            PDFExportOptions options = settings.GetOptions();
-            IList<TableCellCombinedParameterData> namingRules = options.GetNamingRule();
+            dynamic options = settings.GetOptions();
+            dynamic namingRules = options.GetNamingRule();
             
             if (namingRules != null && namingRules.Count > 0)
             {
@@ -258,13 +334,13 @@ public class DWGNamingDialog : System.Windows.Forms.Form
         }
     }
     
-    private string ConvertPDFNamingRuleToFormatString(IList<TableCellCombinedParameterData> namingRules)
+    private string ConvertPDFNamingRuleToFormatString(dynamic namingRules)
     {
         var formatParts = new List<string>();
         
         for (int i = 0; i < namingRules.Count; i++)
         {
-            var rule = namingRules[i];
+            dynamic rule = namingRules[i];
             var paramPart = "";
             
             // Add prefix if exists
@@ -280,29 +356,31 @@ public class DWGNamingDialog : System.Windows.Forms.Form
             var viewTypeId = BuiltInParameter.VIEW_TYPE.ToElementId();
             var invalidId = BuiltInParameter.INVALID.ToElementId();
             
+            ElementId paramId = rule.ParamId;
+            
             // Get the parameter part
-            if (rule.ParamId.Equals(sheetNumberId))
+            if (paramId.Equals(sheetNumberId))
             {
                 paramPart = "{Sheet Number}";
             }
-            else if (rule.ParamId.Equals(sheetNameId))
+            else if (paramId.Equals(sheetNameId))
             {
                 paramPart = "{Sheet Name}";
             }
-            else if (rule.ParamId.Equals(viewNameId))
+            else if (paramId.Equals(viewNameId))
             {
                 paramPart = "{View Name}";
             }
-            else if (rule.ParamId.Equals(viewTypeId))
+            else if (paramId.Equals(viewTypeId))
             {
                 paramPart = "{View Type}";
             }
-            else if (!rule.ParamId.Equals(invalidId) && rule.ParamId.AsLong() < 0)
+            else if (!paramId.Equals(invalidId) && paramId.AsLong() < 0)
             {
                 // For built-in parameters (negative IDs), try to convert to BuiltInParameter
                 try
                 {
-                    var builtInParam = (BuiltInParameter)rule.ParamId.AsLong();
+                    var builtInParam = (BuiltInParameter)paramId.AsLong();
                     var paramName = LabelUtils.GetLabelFor(builtInParam);
                     if (!string.IsNullOrEmpty(paramName))
                     {
@@ -312,17 +390,17 @@ public class DWGNamingDialog : System.Windows.Forms.Form
                 catch
                 {
                     // If conversion fails, try to get parameter name directly
-                    var param = doc.GetElement(rule.ParamId) as ParameterElement;
+                    var param = doc.GetElement(paramId) as ParameterElement;
                     if (param != null)
                     {
                         paramPart = $"{{{param.Name}}}";
                     }
                 }
             }
-            else if (rule.ParamId.AsLong() > 0)
+            else if (paramId.AsLong() > 0)
             {
                 // For custom parameters (positive IDs), get the parameter element
-                var param = doc.GetElement(rule.ParamId) as ParameterElement;
+                var param = doc.GetElement(paramId) as ParameterElement;
                 if (param != null)
                 {
                     paramPart = $"{{{param.Name}}}";
@@ -351,22 +429,20 @@ public class DWGNamingDialog : System.Windows.Forms.Form
         return string.Join("", formatParts);
     }
     
-#endif
     private void LoadExportSettings()
     {
-        exportSettings = new List<ExportDWGSettings>();
+        exportSettings = new List<dynamic>();
         
-        // Get all DWG export settings in the project
-        var collector = new FilteredElementCollector(doc)
-            .OfClass(typeof(ExportDWGSettings));
-        
-        foreach (ExportDWGSettings settings in collector)
+        Type pdfSettingsType = Type.GetType("Autodesk.Revit.DB.ExportPDFSettings, RevitAPI");
+        if (pdfSettingsType != null)
         {
-            exportSettings.Add(settings);
+            var collector = new FilteredElementCollector(doc).OfClass(pdfSettingsType);
+            
+            foreach (dynamic settings in collector)
+            {
+                exportSettings.Add(settings);
+            }
         }
-
-        // Sort the export settings alphabetically (case-insensitive)
-        exportSettings = exportSettings.OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase).ToList();
     }
     
     private void LoadFormatHistory()
@@ -569,7 +645,7 @@ public class DWGNamingDialog : System.Windows.Forms.Form
     
     private void InitializeUI()
     {
-        this.Text = "Configure DWG Export Naming";
+        this.Text = "Configure PDF Export Naming";
         this.Size = new System.Drawing.Size(1000, 700);
         this.StartPosition = FormStartPosition.CenterScreen;
         
@@ -628,7 +704,7 @@ public class DWGNamingDialog : System.Windows.Forms.Form
         
         var lblExportOptions = new Label
         {
-            Text = "DWG Export Settings:",
+            Text = "PDF Export Settings:",
             Location = new System.Drawing.Point(12, 95),
             Size = new System.Drawing.Size(120, 20)
         };
@@ -642,7 +718,7 @@ public class DWGNamingDialog : System.Windows.Forms.Form
         
         // Populate export options
         cmbExportOptions.Items.Add("<Default>");
-        foreach (var settings in exportSettings)
+        foreach (dynamic settings in exportSettings)
         {
             cmbExportOptions.Items.Add(settings.Name);
         }
@@ -664,6 +740,45 @@ public class DWGNamingDialog : System.Windows.Forms.Form
             lblPDFPresets, cmbPDFNamingPresets,
             lblExportOptions, cmbExportOptions
         });
+
+        if (!IsNativePDFAvailable)
+        {
+            var lblPrinter = new Label
+            {
+                Text = "PDF Printer Driver:",
+                Location = new System.Drawing.Point(12, 125),
+                Size = new System.Drawing.Size(120, 20)
+            };
+            
+            cmbPrinterDriver = new System.Windows.Forms.ComboBox
+            {
+                Location = new System.Drawing.Point(135, 125),
+                Size = new System.Drawing.Size(300, 25),
+                DropDownStyle = ComboBoxStyle.DropDownList
+            };
+            
+            foreach (string printer in System.Drawing.Printing.PrinterSettings.InstalledPrinters)
+            {
+                cmbPrinterDriver.Items.Add(printer);
+            }
+            
+            string savedPrinter = GetProjectSetting("printer driver");
+            if (!string.IsNullOrEmpty(savedPrinter) && cmbPrinterDriver.Items.Contains(savedPrinter))
+            {
+                cmbPrinterDriver.SelectedItem = savedPrinter;
+            }
+            else if (cmbPrinterDriver.Items.Count > 0)
+            {
+                cmbPrinterDriver.SelectedIndex = 0;
+            }
+            
+            lblPrinter.TabStop = false;
+            cmbPrinterDriver.TabIndex = 3;
+            
+            pnlTop.Controls.Add(lblPrinter);
+            pnlTop.Controls.Add(cmbPrinterDriver);
+            pnlTop.Height += 30; // Increase height for the new control
+        }
         
         pnlTop.Resize += (s, e) => {
             cmbFormatString.Width = pnlTop.ClientSize.Width - cmbFormatString.Left - 12;
@@ -736,7 +851,7 @@ public class DWGNamingDialog : System.Windows.Forms.Form
             Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
             ForeColor = SystemColors.GrayText,
             Text = "Filter Parameters",
-            TabIndex = 3,
+            TabIndex = 4,
             TabStop = true
         };
         txtSearch.TextChanged += TxtSearch_TextChanged;
@@ -1075,6 +1190,10 @@ public class DWGNamingDialog : System.Windows.Forms.Form
     {
         SaveFormatHistory();
         SaveProjectSetting("export settings", cmbExportOptions.SelectedItem?.ToString() ?? "<Default>");
+        if (cmbPrinterDriver != null)
+        {
+            SaveProjectSetting("printer driver", cmbPrinterDriver.SelectedItem?.ToString());
+        }
     }
     
     public string GetLastExportPath()
@@ -1085,6 +1204,10 @@ public class DWGNamingDialog : System.Windows.Forms.Form
     public void SaveExportSettings(string exportPath)
     {
         SaveProjectSetting("export settings", cmbExportOptions.SelectedItem?.ToString() ?? "<Default>");
+        if (cmbPrinterDriver != null)
+        {
+            SaveProjectSetting("printer driver", cmbPrinterDriver.SelectedItem?.ToString());
+        }
         SaveProjectSetting("last path", exportPath);
     }
     
@@ -1094,7 +1217,7 @@ public class DWGNamingDialog : System.Windows.Forms.Form
         dgvPreview.Columns.Clear();
         
         dgvPreview.Columns.Add("Original", "Original Name");
-        dgvPreview.Columns.Add("NewName", "DWG File Name");
+        dgvPreview.Columns.Add("NewName", "PDF File Name");
         
         // Set column widths
         dgvPreview.Columns[0].FillWeight = 30;
@@ -1103,7 +1226,7 @@ public class DWGNamingDialog : System.Windows.Forms.Form
         foreach (var view in views.Take(15)) // Show first 15 for performance
         {
             var originalName = view.Name;
-            var newName = GetFileName(view) + ".dwg"; // Add .dwg for preview
+            var newName = GetFileName(view) + ".pdf"; // Add .pdf for preview
             dgvPreview.Rows.Add(originalName, newName);
         }
         
@@ -1157,25 +1280,22 @@ public class DWGNamingDialog : System.Windows.Forms.Form
         return result;
     }
     
-    public DWGExportOptions GetSelectedExportOptions()
+    public dynamic GetSelectedExportSettings()
     {
         if (cmbExportOptions.SelectedIndex <= 0)
-            return null; // Use default
+            return null;
         
         var settingsName = cmbExportOptions.SelectedItem.ToString();
-        var settings = exportSettings.FirstOrDefault(s => s.Name == settingsName);
-        
-        if (settings != null)
-        {
-            return settings.GetDWGExportOptions();
-        }
-        
-        return null;
+        return exportSettings.FirstOrDefault(s => s.Name == settingsName);
+    }
+    
+    public string GetSelectedPrinter()
+    {
+        return cmbPrinterDriver?.SelectedItem?.ToString();
     }
 }
 
-// Progress dialog for export operation
-public class ExportProgressDialog : System.Windows.Forms.Form
+public class PDFExportProgressDialog : System.Windows.Forms.Form
 {
     private ProgressBar progressBar;
     private Label lblStatus;
@@ -1186,7 +1306,7 @@ public class ExportProgressDialog : System.Windows.Forms.Form
     
     public bool IsCancelled => isCancelled;
     
-    public ExportProgressDialog(int totalItems)
+    public PDFExportProgressDialog(int totalItems)
     {
         this.totalItems = totalItems;
         InitializeUI();
@@ -1194,8 +1314,8 @@ public class ExportProgressDialog : System.Windows.Forms.Form
     
     private void InitializeUI()
     {
-        this.Text = "Exporting to DWG";
-        this.Size = new System.Drawing.Size(450, 180); // Increased height
+        this.Text = "Exporting to PDF";
+        this.Size = new System.Drawing.Size(650, 180); // Wider dialog
         this.StartPosition = FormStartPosition.CenterScreen;
         this.FormBorderStyle = FormBorderStyle.FixedDialog;
         this.MaximizeBox = false;
@@ -1206,7 +1326,7 @@ public class ExportProgressDialog : System.Windows.Forms.Form
         {
             Text = "Preparing export...",
             Location = new System.Drawing.Point(12, 20),
-            Size = new System.Drawing.Size(410, 20),
+            Size = new System.Drawing.Size(610, 20),
             AutoEllipsis = true
         };
         
@@ -1220,7 +1340,7 @@ public class ExportProgressDialog : System.Windows.Forms.Form
         progressBar = new ProgressBar
         {
             Location = new System.Drawing.Point(12, 70),
-            Size = new System.Drawing.Size(410, 23),
+            Size = new System.Drawing.Size(610, 23),
             Minimum = 0,
             Maximum = totalItems,
             Value = 0,
@@ -1230,7 +1350,7 @@ public class ExportProgressDialog : System.Windows.Forms.Form
         btnCancel = new Button
         {
             Text = "Cancel",
-            Location = new System.Drawing.Point(347, 105), // Moved up slightly
+            Location = new System.Drawing.Point(547, 105), // Adjusted for wider dialog
             Size = new System.Drawing.Size(75, 23),
             DialogResult = DialogResult.Cancel
         };
@@ -1267,8 +1387,10 @@ public class ExportProgressDialog : System.Windows.Forms.Form
         lblProgress.Text = $"{current + 1} of {totalItems}";
         // Update percentage in title
         var percentage = (int)((current + 1) * 100.0 / totalItems);
-        this.Text = $"Exporting to DWG - {percentage}%";
+        this.Text = $"Exporting to PDF - {percentage}%";
         
         this.Refresh();
     }
 }
+
+#endif
