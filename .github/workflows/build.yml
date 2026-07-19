@@ -1,0 +1,40 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  # Compile the commands plugin for every supported Revit year.
+  # The Revit API comes from NuGet and EnableWindowsTargeting is set,
+  # so this runs on plain Linux — no Windows runner or Revit install needed.
+  commands:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        year: [2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Build Revit ${{ matrix.year }}
+        run: dotnet build commands -c Release -p:RevitYear=${{ matrix.year }}
+
+  # Full pipeline: all years + installer (mirrors local Build.sh exactly).
+  # Produces the installer.exe artifact.
+  installer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Build all years + installer
+        run: bash Build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installer
+          path: installer/bin/Release/installer.exe
