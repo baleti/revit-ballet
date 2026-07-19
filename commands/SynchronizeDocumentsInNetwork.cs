@@ -299,68 +299,13 @@ else
     {
         // Fire and forget - send request without waiting for response
         // Uses PostCommand(SynchronizeNow) to sync the active document in the remote session
-        string url = $"https://127.0.0.1:{port}/roslyn";
 
         diagnostics.Log($"Sending async sync request to 127.0.0.1:{port} ({hostname})");
 
-#if NET8_0_OR_GREATER
-        // Use Task.Run with HttpClient for .NET 8+
-        System.Threading.Tasks.Task.Run(async () =>
-        {
-            try
-            {
-                using (var handler = new HttpClientHandler())
-                {
-                    handler.ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true;
-
-                    using (var client = new HttpClient(handler))
-                    {
-                        client.Timeout = TimeSpan.FromMinutes(2);
-                        client.DefaultRequestHeaders.Add("X-Auth-Token", authToken);
-
-                        var content = new StringContent(SynchronizationScript, Encoding.UTF8, "text/plain");
-                        await client.PostAsync(url, content);
-                    }
-                }
-            }
-            catch
-            {
-                // Fire and forget - ignore errors
-            }
-        });
-#else
-        // Use ThreadPool for .NET Framework
-        System.Threading.ThreadPool.QueueUserWorkItem(_ =>
-        {
-            try
-            {
-                var request = (HttpWebRequest)WebRequest.Create(url);
-                request.Method = "POST";
-                request.ContentType = "text/plain";
-                request.Headers.Add("X-Auth-Token", authToken);
-                request.Timeout = 120000;
-                request.ServerCertificateValidationCallback = (sender, cert, chain, errors) => true;
-
-                byte[] bodyBytes = Encoding.UTF8.GetBytes(SynchronizationScript);
-                request.ContentLength = bodyBytes.Length;
-
-                using (var requestStream = request.GetRequestStream())
-                {
-                    requestStream.Write(bodyBytes, 0, bodyBytes.Length);
-                }
-
-                // Get response but don't process it
-                using (var response = request.GetResponse())
-                {
-                    // Just read to complete the request
-                }
-            }
-            catch
-            {
-                // Fire and forget - ignore errors
-            }
-        });
-#endif
+        // Fire-and-forget: result is intentionally discarded (transport
+        // failures are logged inside NetworkClient).
+        int portNumber = int.Parse(port);
+        System.Threading.Tasks.Task.Run(() => NetworkClient.ExecuteScriptAsync(portNumber, SynchronizationScript, authToken));
     }
 
 

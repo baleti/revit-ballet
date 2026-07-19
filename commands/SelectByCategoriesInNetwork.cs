@@ -1,14 +1,9 @@
 using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using RevitBallet.Commands;
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
-using System.Net.Http;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace RevitBallet.Commands;
 
@@ -28,14 +23,12 @@ public class SelectByCategoriesInNetwork : IExternalCommand
 
         try
         {
-            // Read network token
-            string tokenPath = Path.Combine(PathHelper.RuntimeDirectory, "network", "token");
-            if (!File.Exists(tokenPath))
+            string token = NetworkClient.GetSharedToken();
+            if (token == null)
             {
                 TaskDialog.Show("Error", "Network token not found. Ensure at least one Revit session is running.");
                 return Result.Failed;
             }
-            string token = File.ReadAllText(tokenPath).Trim();
 
             // Get active documents from registry
             var documents = DocumentRegistry.GetActiveDocuments();
@@ -71,7 +64,7 @@ public class SelectByCategoriesInNetwork : IExternalCommand
                 return Result.Cancelled;
 
             // Extract selected document objects
-            var documentsToQuery = selectedDocuments.Select(row => (DocumentInfo)row["_Document"]).ToList();
+            var documentsToQuery = selectedDocuments.Select(row => (DocumentEntry)row["_Document"]).ToList();
 
             // Step 2: Query selected documents for category COUNTS only (fast)
             // Use local API for current session, Roslyn for remote sessions
@@ -123,36 +116,7 @@ public class SelectByCategoriesInNetwork : IExternalCommand
             // Step 5: Query for actual elements in selected categories
             var selectedCategoryNames = selectedCategories.Select(c => (string)c["CategoryName"]).ToList();
 
-            // DIAGNOSTIC: Write comprehensive debug info
-            var diagnosticLines = new List<string>();
-            diagnosticLines.Add($"=== SelectByCategoriesInNetwork Diagnostic at {DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} ===");
-            diagnosticLines.Add($"Current Session ID: {currentSessionId}");
-            diagnosticLines.Add($"Documents to query: {documentsToQuery.Count}");
-            foreach (var docInfo in documentsToQuery)
-            {
-                diagnosticLines.Add($"  - SessionId: {docInfo.SessionId}, Doc: {docInfo.DocumentTitle}, Port: {docInfo.Port}");
-            }
-            diagnosticLines.Add($"Selected categories: {string.Join(", ", selectedCategoryNames)}");
-            diagnosticLines.Add("");
-
-            var categoryElements = QueryElementsForCategories(documentsToQuery, selectedCategoryNames, token, currentSessionId, uiapp, diagnosticLines);
-
-            // DIAGNOSTIC: Log what QueryElementsForCategories returned
-            diagnosticLines.Add($"QueryElementsForCategories returned {categoryElements.Count} categories");
-            foreach (var cat in categoryElements)
-            {
-                diagnosticLines.Add($"  Category '{cat.Key}': {cat.Value.Count} documents");
-                foreach (var doc in cat.Value)
-                {
-                    diagnosticLines.Add($"    Document '{doc.Key}': {doc.Value.Count} elements");
-                    if (doc.Value.Count > 0)
-                    {
-                        var firstElem = doc.Value[0];
-                        diagnosticLines.Add($"      First element: SessionId={firstElem.SessionId}, UniqueId={firstElem.UniqueId}");
-                    }
-                }
-            }
-            diagnosticLines.Add("");
+            var categoryElements = QueryElementsForCategories(documentsToQuery, selectedCategoryNames, token, currentSessionId, uiapp);
 
             // Step 6: Gather selection items from query results
             List<SelectionItem> selectionItems = new List<SelectionItem>();
@@ -176,31 +140,9 @@ public class SelectByCategoriesInNetwork : IExternalCommand
                 }
             }
 
-            // DEBUG: Log selection items before saving
-            diagnosticLines.Add($"Gathered {selectionItems.Count} selection items");
-            var bySession = selectionItems.GroupBy(s => s.SessionId);
-            foreach (var sessGroup in bySession)
-            {
-                diagnosticLines.Add($"  Session {sessGroup.Key}: {sessGroup.Count()} items");
-                var byDoc = sessGroup.GroupBy(s => s.DocumentTitle);
-                foreach (var docGroup in byDoc)
-                {
-                    diagnosticLines.Add($"    Document '{docGroup.Key}': {docGroup.Count()} items");
-                }
-            }
-            diagnosticLines.Add("");
-
-            System.Diagnostics.Debug.WriteLine($"SelectByCategoriesInNetwork: Collected {selectionItems.Count} selection items");
-            if (selectionItems.Count > 0)
-            {
-                System.Diagnostics.Debug.WriteLine($"First item: Doc={selectionItems[0].DocumentTitle}, SessionId={selectionItems[0].SessionId}, UniqueId={selectionItems[0].UniqueId}");
-            }
-
             // Load existing selection and merge
             var existingSelection = SelectionStorage.LoadSelection();
             var existingUniqueIds = new HashSet<string>(existingSelection.Select(s => $"{s.DocumentTitle}|{s.UniqueId}"));
-
-            System.Diagnostics.Debug.WriteLine($"Existing selection count: {existingSelection.Count}");
 
             // Add new items that don't already exist
             foreach (var item in selectionItems)
@@ -212,27 +154,8 @@ public class SelectByCategoriesInNetwork : IExternalCommand
                 }
             }
 
-            System.Diagnostics.Debug.WriteLine($"Total selection after merge: {existingSelection.Count}");
-
-            diagnosticLines.Add($"After merge: {existingSelection.Count} total items");
-            diagnosticLines.Add("");
-
             // Save selection
             SelectionStorage.SaveSelection(existingSelection);
-
-            System.Diagnostics.Debug.WriteLine($"Selection saved to storage");
-
-            diagnosticLines.Add($"Selection saved to storage");
-            diagnosticLines.Add("=== END DIAGNOSTIC ===");
-
-            // Diagnostic file writing disabled
-            // try
-            // {
-            //     string diagnosticPath = Path.Combine(PathHelper.RuntimeDirectory, "diagnostics", $"SelectByCategoriesInNetwork-Query-{DateTime.Now:yyyyMMdd-HHmmss-fff}.txt");
-            //     Directory.CreateDirectory(Path.GetDirectoryName(diagnosticPath));
-            //     File.WriteAllLines(diagnosticPath, diagnosticLines);
-            // }
-            // catch { }
 
             return Result.Succeeded;
         }
@@ -243,55 +166,8 @@ public class SelectByCategoriesInNetwork : IExternalCommand
         }
     }
 
-    private List<DocumentInfo> ParseDocumentsFile(string filePath)
-    {
-        var documents = new List<DocumentInfo>();
-
-        try
-        {
-            var lines = File.ReadAllLines(filePath);
-
-            foreach (var line in lines)
-            {
-                // Skip comments and empty lines
-                if (string.IsNullOrWhiteSpace(line) || line.StartsWith("#"))
-                    continue;
-
-                var parts = line.Split(',');
-                // Format: DocumentTitle,DocumentPath,SessionId,Port,Hostname,ProcessId,RegisteredAt,LastHeartbeat,LastSync
-                if (parts.Length < 8)
-                    continue;
-
-                var doc = new DocumentInfo
-                {
-                    DocumentTitle = parts[0].Trim(),
-                    DocumentPath = parts[1].Trim(),
-                    SessionId = parts[2].Trim(),
-                    Port = parts[3].Trim(),
-                    Hostname = parts[4].Trim(),
-                    ProcessId = int.Parse(parts[5].Trim()),
-                    RegisteredAt = DateTime.Parse(parts[6].Trim()),
-                    LastHeartbeat = DateTime.Parse(parts[7].Trim())
-                };
-
-                // Filter out stale documents (no heartbeat for > 2 minutes)
-                if ((DateTime.Now - doc.LastHeartbeat).TotalSeconds < 120 &&
-                    !string.IsNullOrWhiteSpace(doc.DocumentTitle))
-                {
-                    documents.Add(doc);
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            throw new Exception($"Failed to parse documents file: {ex.Message}", ex);
-        }
-
-        return documents;
-    }
-
     private Dictionary<string, Dictionary<string, int>> QueryDocumentsForCategoryCounts(
-        List<DocumentInfo> documents, string token, string currentSessionId, UIApplication uiapp)
+        List<DocumentEntry> documents, string token, string currentSessionId, UIApplication uiapp)
     {
         // Category -> Document Title -> Count
         var result = new Dictionary<string, Dictionary<string, int>>();
@@ -326,36 +202,22 @@ public class SelectByCategoriesInNetwork : IExternalCommand
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Failed to query local document: {ex.Message}");
+                Log.Warn("SelectByCategoriesInNetwork", $"Failed to query local document: {ex.Message}");
             }
         }
 
-        // Process remote documents via Roslyn - PARALLEL requests
+        // Process remote documents via Roslyn - parallel requests through the shared client
         var remoteDocuments = documents.Where(d => d.SessionId != currentSessionId && !string.IsNullOrWhiteSpace(d.DocumentTitle)).ToList();
         if (remoteDocuments.Count > 0)
         {
-            using (var handler = new HttpClientHandler())
+            var responses = NetworkClient.ExecuteOnDocuments(remoteDocuments, docInfo =>
             {
-                handler.ServerCertificateCustomValidationCallback = (sender, cert, chain, sslPolicyErrors) => true;
-
-                using (var client = new HttpClient(handler))
-                {
-                    client.Timeout = TimeSpan.FromSeconds(120);
-
-                    // Build all requests and send them in parallel
-                    var tasks = new List<Task<(DocumentInfo DocInfo, RoslynResponse Response)>>();
-
-                    foreach (var docInfo in remoteDocuments)
-                    {
-                        // Must find specific document by title - Doc may point to a different active document
-                        var escapedTitle = docInfo.DocumentTitle.Replace("\\", "\\\\").Replace("\"", "\\\"");
-                        var query = $@"var docTitle = ""{escapedTitle}"";
-Console.WriteLine(""DEBUG|Looking for document: "" + docTitle);
-Console.WriteLine(""DEBUG|Available documents: "" + UIApp.Application.Documents.Size);
+                // Must find specific document by title - Doc may point to a different active document
+                var escapedTitle = NetworkClient.EscapeForScript(docInfo.DocumentTitle);
+                return $@"var docTitle = ""{escapedTitle}"";
 Document targetDoc = null;
 foreach (Document d in UIApp.Application.Documents)
 {{
-    Console.WriteLine(""DEBUG|  Found: "" + d.Title + "" (IsLinked="" + d.IsLinked + "")"");
     if (!d.IsLinked && d.Title == docTitle)
     {{
         targetDoc = d;
@@ -371,50 +233,23 @@ else
     var collector = new FilteredElementCollector(targetDoc);
     var elements = collector.WhereElementIsNotElementType();
     var categoryGroups = elements.Where(e => e.Category != null).GroupBy(e => e.Category.Name).OrderBy(g => g.Key);
-    Console.WriteLine(""DEBUG|Found "" + categoryGroups.Count() + "" categories"");
     foreach (var group in categoryGroups)
     {{
         Console.WriteLine(""CATEGORY|"" + group.Key + ""|"" + group.Count());
     }}
 }}";
+            }, token);
 
-                        var task = SendRoslynRequestAsync(client, docInfo, query, token);
-                        tasks.Add(task);
-                    }
-
-                    // Wait for all requests to complete in parallel
-                    try
-                    {
-                        Task.WhenAll(tasks).Wait();
-                    }
-                    catch (AggregateException)
-                    {
-                        // Individual task exceptions are handled below
-                    }
-
-                    // Process all responses
-                    foreach (var task in tasks)
-                    {
-                        try
-                        {
-                            if (task.Status == TaskStatus.RanToCompletion)
-                            {
-                                var (docInfo, jsonResponse) = task.Result;
-                                if (jsonResponse != null && jsonResponse.Success && !string.IsNullOrWhiteSpace(jsonResponse.Output))
-                                {
-                                    ParseCategoryCountResponse(jsonResponse.Output, docInfo, result);
-                                }
-                                else
-                                {
-                                    System.Diagnostics.Debug.WriteLine($"Query returned no data for {docInfo.DocumentTitle}: Success={jsonResponse?.Success}, Error={jsonResponse?.Error}");
-                                }
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            System.Diagnostics.Debug.WriteLine($"Failed to process response: {ex.Message}");
-                        }
-                    }
+            foreach (var (docInfo, response) in responses)
+            {
+                if (response != null && response.Success && !string.IsNullOrWhiteSpace(response.Output))
+                {
+                    ParseCategoryCountResponse(response.Output, docInfo, result);
+                }
+                else
+                {
+                    Log.Warn("SelectByCategoriesInNetwork",
+                        $"Query returned no data for {docInfo.DocumentTitle}: Success={response?.Success}, Error={response?.Error}");
                 }
             }
         }
@@ -422,30 +257,7 @@ else
         return result;
     }
 
-    private async Task<(DocumentInfo DocInfo, RoslynResponse Response)> SendRoslynRequestAsync(
-        HttpClient client, DocumentInfo docInfo, string query, string token)
-    {
-        try
-        {
-            var content = new StringContent(query, Encoding.UTF8, "text/plain");
-            var request = new HttpRequestMessage(HttpMethod.Post, $"https://127.0.0.1:{docInfo.Port}/roslyn");
-            request.Headers.Add("X-Auth-Token", token);
-            request.Content = content;
-
-            var response = await client.SendAsync(request);
-            var responseText = await response.Content.ReadAsStringAsync();
-
-            var jsonResponse = Newtonsoft.Json.JsonConvert.DeserializeObject<RoslynResponse>(responseText);
-            return (docInfo, jsonResponse);
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Failed to query document {docInfo.SessionId} ({docInfo.DocumentTitle}): {ex.Message}");
-            return (docInfo, null);
-        }
-    }
-
-    private void ParseCategoryCountResponse(string output, DocumentInfo docInfo,
+    private void ParseCategoryCountResponse(string output, DocumentEntry docInfo,
         Dictionary<string, Dictionary<string, int>> result)
     {
         foreach (var line in output.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries))
@@ -470,11 +282,8 @@ else
     }
 
     private Dictionary<string, Dictionary<string, List<ElementInfo>>> QueryElementsForCategories(
-        List<DocumentInfo> documents, List<string> categoryNames, string token, string currentSessionId, UIApplication uiapp, List<string> diagnosticLines)
+        List<DocumentEntry> documents, List<string> categoryNames, string token, string currentSessionId, UIApplication uiapp)
     {
-        System.Diagnostics.Debug.WriteLine($"QueryElementsForCategories: documents={documents.Count}, categories={categoryNames.Count}, currentSessionId={currentSessionId}");
-        diagnosticLines.Add($"--- QueryElementsForCategories Start ---");
-
         // Category -> Document Title -> List of ElementInfo
         var result = new Dictionary<string, Dictionary<string, List<ElementInfo>>>();
 
@@ -486,11 +295,7 @@ else
         var categoryNamesSet = new HashSet<string>(categoryNames);
 
         // Process current session locally
-        var currentDocs = documents.Where(d => d.SessionId == currentSessionId).ToList();
-        System.Diagnostics.Debug.WriteLine($"Current session document matches: {currentDocs.Count}");
-        diagnosticLines.Add($"Local documents (SessionId={currentSessionId}): {currentDocs.Count}");
-
-        foreach (var docInfo in currentDocs)
+        foreach (var docInfo in documents.Where(d => d.SessionId == currentSessionId))
         {
             try
             {
@@ -528,43 +333,23 @@ else
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Failed to query elements for local document: {ex.Message}");
+                Log.Warn("SelectByCategoriesInNetwork", $"Failed to query elements for local document: {ex.Message}");
             }
         }
 
-        // Process remote documents via Roslyn - PARALLEL requests
+        // Process remote documents via Roslyn - parallel requests through the shared client
         var remoteDocuments = documents.Where(d => d.SessionId != currentSessionId && !string.IsNullOrWhiteSpace(d.DocumentTitle)).ToList();
-        System.Diagnostics.Debug.WriteLine($"Remote document matches: {remoteDocuments.Count}");
-        diagnosticLines.Add($"Remote documents: {remoteDocuments.Count}");
-        foreach (var rd in remoteDocuments)
-        {
-            System.Diagnostics.Debug.WriteLine($"  Remote document: {rd.SessionId}, Doc: {rd.DocumentTitle}, Port: {rd.Port}");
-            diagnosticLines.Add($"  - SessionId={rd.SessionId}, Doc={rd.DocumentTitle}, Port={rd.Port}");
-        }
-
         if (remoteDocuments.Count > 0)
         {
-            using (var handler = new HttpClientHandler())
+            var categoriesArray = "{ \"" + string.Join("\", \"", categoryNames.Select(c => c.Replace("\"", "\\\""))) + "\" }";
+
+            var responses = NetworkClient.ExecuteOnDocuments(remoteDocuments, docInfo =>
             {
-                handler.ServerCertificateCustomValidationCallback = (sender, cert, chain, sslPolicyErrors) => true;
+                var escapedTitle = NetworkClient.EscapeForScript(docInfo.DocumentTitle);
 
-                using (var client = new HttpClient(handler))
-                {
-                    client.Timeout = TimeSpan.FromSeconds(120);
-
-                    // Build all requests and send them in parallel
-                    var categoriesArray = "{ \"" + string.Join("\", \"", categoryNames.Select(c => c.Replace("\"", "\\\""))) + "\" }";
-                    var tasks = new List<Task<(DocumentInfo DocInfo, RoslynResponse Response)>>();
-
-                    diagnosticLines.Add($"  Sending {remoteDocuments.Count} requests in parallel...");
-
-                    foreach (var docInfo in remoteDocuments)
-                    {
-                        var escapedTitle = docInfo.DocumentTitle.Replace("\\", "\\\\").Replace("\"", "\\\"");
-
-                        // Must find specific document by title - Doc may point to a different active document
-                        // Use version-agnostic ElementId access (IntegerValue works on all versions)
-                        var query = $@"var docTitle = ""{escapedTitle}"";
+                // Must find specific document by title - Doc may point to a different active document
+                // Use version-agnostic ElementId access (IntegerValue works on all versions)
+                return $@"var docTitle = ""{escapedTitle}"";
 var categories = new string[] {categoriesArray};
 Document targetDoc = null;
 foreach (Document d in UIApp.Application.Documents)
@@ -593,87 +378,26 @@ else
         }}
     }}
 }}";
+            }, token);
 
-                        var task = SendRoslynRequestAsync(client, docInfo, query, token);
-                        tasks.Add(task);
-                    }
-
-                    // Wait for all requests to complete in parallel
-                    try
-                    {
-                        Task.WhenAll(tasks).Wait();
-                    }
-                    catch (AggregateException)
-                    {
-                        // Individual task exceptions are handled below
-                    }
-
-                    diagnosticLines.Add($"  All {tasks.Count} requests completed");
-
-                    // Process all responses
-                    foreach (var task in tasks)
-                    {
-                        try
-                        {
-                            if (task.Status == TaskStatus.RanToCompletion)
-                            {
-                                var (docInfo, jsonResponse) = task.Result;
-
-                                diagnosticLines.Add($"  Response from {docInfo.DocumentTitle}: Success={jsonResponse?.Success}, HasOutput={!string.IsNullOrWhiteSpace(jsonResponse?.Output)}");
-                                if (jsonResponse != null && !string.IsNullOrWhiteSpace(jsonResponse.Output))
-                                {
-                                    diagnosticLines.Add($"  Output preview: {jsonResponse.Output.Substring(0, Math.Min(500, jsonResponse.Output.Length))}");
-                                }
-                                if (jsonResponse != null && !string.IsNullOrWhiteSpace(jsonResponse.Error))
-                                {
-                                    diagnosticLines.Add($"  Error: {jsonResponse.Error}");
-                                }
-
-                                System.Diagnostics.Debug.WriteLine($"  Remote query response: Success={jsonResponse?.Success}, HasOutput={!string.IsNullOrWhiteSpace(jsonResponse?.Output)}");
-
-                                if (jsonResponse != null && jsonResponse.Success && !string.IsNullOrWhiteSpace(jsonResponse.Output))
-                                {
-                                    System.Diagnostics.Debug.WriteLine($"  Parsing elements response for document {docInfo.SessionId}");
-                                    ParseElementsResponse(jsonResponse.Output, docInfo, result);
-                                    System.Diagnostics.Debug.WriteLine($"  After parsing, result has {result.Count} categories");
-                                    diagnosticLines.Add($"  After parsing: {result.Values.Sum(d => d.Values.Sum(l => l.Count))} elements total");
-                                }
-                                else
-                                {
-                                    System.Diagnostics.Debug.WriteLine($"  Remote query failed or no output: Error={jsonResponse?.Error}");
-                                }
-                            }
-                            else if (task.IsFaulted)
-                            {
-                                System.Diagnostics.Debug.WriteLine($"Failed to query elements: {task.Exception?.Message}");
-                                diagnosticLines.Add($"  EXCEPTION: {task.Exception?.Message}");
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            System.Diagnostics.Debug.WriteLine($"Failed to process response: {ex.Message}");
-                            diagnosticLines.Add($"  EXCEPTION: {ex.Message}");
-                        }
-                    }
-                }
-            }
-        }
-
-        diagnosticLines.Add($"--- QueryElementsForCategories End ---");
-        System.Diagnostics.Debug.WriteLine($"QueryElementsForCategories completed: {result.Count} categories");
-        foreach (var cat in result)
-        {
-            System.Diagnostics.Debug.WriteLine($"  Category '{cat.Key}': {cat.Value.Count} documents");
-            foreach (var doc in cat.Value)
+            foreach (var (docInfo, response) in responses)
             {
-                System.Diagnostics.Debug.WriteLine($"    Doc '{doc.Key}': {doc.Value.Count} elements");
+                if (response != null && response.Success && !string.IsNullOrWhiteSpace(response.Output))
+                {
+                    ParseElementsResponse(response.Output, docInfo, result);
+                }
+                else
+                {
+                    Log.Warn("SelectByCategoriesInNetwork",
+                        $"Element query failed for {docInfo.DocumentTitle}: Success={response?.Success}, Error={response?.Error}");
+                }
             }
         }
 
         return result;
     }
 
-    private void ParseElementsResponse(string output, DocumentInfo docInfo,
+    private void ParseElementsResponse(string output, DocumentEntry docInfo,
         Dictionary<string, Dictionary<string, List<ElementInfo>>> result)
     {
         string currentCategory = null;
@@ -727,30 +451,11 @@ else
             return $"{(int)timeAgo.TotalDays}d ago";
     }
 
-    private class DocumentInfo
-    {
-        public string SessionId { get; set; }
-        public string Port { get; set; }
-        public string Hostname { get; set; }
-        public int ProcessId { get; set; }
-        public DateTime RegisteredAt { get; set; }
-        public DateTime LastHeartbeat { get; set; }
-        public string DocumentTitle { get; set; }
-        public string DocumentPath { get; set; }
-    }
-
     private class ElementInfo
     {
         public string UniqueId { get; set; }
         public int ElementIdValue { get; set; }
         public string DocumentPath { get; set; }
         public string SessionId { get; set; }
-    }
-
-    private class RoslynResponse
-    {
-        public bool Success { get; set; }
-        public string Output { get; set; }
-        public string Error { get; set; }
     }
 }

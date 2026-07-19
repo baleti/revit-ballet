@@ -5,11 +5,7 @@ using RevitBallet.Commands;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
 using System.Linq;
-using System.Net.Http;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace RevitBallet.Commands;
 
@@ -54,14 +50,12 @@ public class SelectByFamilyTypesInNetwork : IExternalCommand
         {
             var stepWatch = Stopwatch.StartNew();
 
-            // Read network token
-            string tokenPath = Path.Combine(PathHelper.RuntimeDirectory, "network", "token");
-            if (!File.Exists(tokenPath))
+            string token = NetworkClient.GetSharedToken();
+            if (token == null)
             {
                 TaskDialog.Show("Error", "Network token not found. Ensure at least one Revit session is running.");
                 return Result.Failed;
             }
-            string token = File.ReadAllText(tokenPath).Trim();
 
             // Get active documents from registry
             var documents = DocumentRegistry.GetActiveDocuments();
@@ -109,7 +103,7 @@ public class SelectByFamilyTypesInNetwork : IExternalCommand
             }
 
             // Extract selected document objects
-            var documentsToQuery = selectedDocuments.Select(row => (DocumentInfo)row["_Document"]).ToList();
+            var documentsToQuery = selectedDocuments.Select(row => (DocumentEntry)row["_Document"]).ToList();
             _diagnostics.Add($"         Selected {documentsToQuery.Count} documents to query");
             _diagnostics.Add("");
 
@@ -343,52 +337,8 @@ public class SelectByFamilyTypesInNetwork : IExternalCommand
         // catch { }
     }
 
-    private List<DocumentInfo> ParseDocumentsFile(string filePath)
-    {
-        var documents = new List<DocumentInfo>();
-
-        try
-        {
-            var lines = File.ReadAllLines(filePath);
-
-            foreach (var line in lines)
-            {
-                if (string.IsNullOrWhiteSpace(line) || line.StartsWith("#"))
-                    continue;
-
-                var parts = line.Split(',');
-                if (parts.Length < 8)
-                    continue;
-
-                var doc = new DocumentInfo
-                {
-                    DocumentTitle = parts[0].Trim(),
-                    DocumentPath = parts[1].Trim(),
-                    SessionId = parts[2].Trim(),
-                    Port = parts[3].Trim(),
-                    Hostname = parts[4].Trim(),
-                    ProcessId = int.Parse(parts[5].Trim()),
-                    RegisteredAt = DateTime.Parse(parts[6].Trim()),
-                    LastHeartbeat = DateTime.Parse(parts[7].Trim())
-                };
-
-                if ((DateTime.Now - doc.LastHeartbeat).TotalSeconds < 120 &&
-                    !string.IsNullOrWhiteSpace(doc.DocumentTitle))
-                {
-                    documents.Add(doc);
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            throw new Exception($"Failed to parse documents file: {ex.Message}", ex);
-        }
-
-        return documents;
-    }
-
     private Dictionary<FamilyTypeKey, Dictionary<string, int>> QueryDocumentsForFamilyTypeCounts(
-        List<DocumentInfo> documents, string token, string currentSessionId, UIApplication uiapp)
+        List<DocumentEntry> documents, string token, string currentSessionId, UIApplication uiapp)
     {
         // FamilyTypeKey -> Document Title -> Instance Count
         var result = new Dictionary<FamilyTypeKey, Dictionary<string, int>>();
@@ -465,7 +415,7 @@ public class SelectByFamilyTypesInNetwork : IExternalCommand
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Failed to query local document: {ex.Message}");
+                Log.Warn("SelectByFamilyTypesInNetwork", $"Failed to query local document: {ex.Message}");
             }
 
             localWatch.Stop();
@@ -480,58 +430,26 @@ public class SelectByFamilyTypesInNetwork : IExternalCommand
         var remoteDocuments = documents.Where(d => d.SessionId != currentSessionId && !string.IsNullOrWhiteSpace(d.DocumentTitle)).ToList();
         if (remoteDocuments.Count > 0)
         {
-            using (var handler = new HttpClientHandler())
-            {
-                handler.ServerCertificateCustomValidationCallback = (sender, cert, chain, sslPolicyErrors) => true;
-
-                using (var client = new HttpClient(handler))
+            var responses = NetworkClient.PostQueryOnDocuments(remoteDocuments, "/query/familytypes/counts",
+                docInfo => Newtonsoft.Json.JsonConvert.SerializeObject(new Dictionary<string, string>
                 {
-                    client.Timeout = TimeSpan.FromSeconds(120);
+                    { "documentTitle", docInfo.DocumentTitle }
+                }), token);
 
-                    var tasks = new List<Task<(DocumentInfo DocInfo, RoslynResponse Response, double ElapsedMs)>>();
+            foreach (var (docInfo, response, elapsedMs) in responses)
+            {
+                // Record timing
+                if (_documentTimings.ContainsKey(docInfo.DocumentTitle))
+                {
+                    _documentTimings[docInfo.DocumentTitle].CountQueryMs = elapsedMs;
+                }
 
-                    foreach (var docInfo in remoteDocuments)
+                if (response != null && response.Success && !string.IsNullOrWhiteSpace(response.Output))
+                {
+                    int typesFound = ParseFamilyTypeCountResponse(response.Output, docInfo, result);
+                    if (_documentTimings.ContainsKey(docInfo.DocumentTitle))
                     {
-                        var requestBody = Newtonsoft.Json.JsonConvert.SerializeObject(new Dictionary<string, string>
-                        {
-                            { "documentTitle", docInfo.DocumentTitle }
-                        });
-
-                        var task = SendQueryRequestWithTimingAsync(client, docInfo, "/query/familytypes/counts", requestBody, token);
-                        tasks.Add(task);
-                    }
-
-                    try { Task.WhenAll(tasks).Wait(); }
-                    catch (AggregateException) { }
-
-                    foreach (var task in tasks)
-                    {
-                        try
-                        {
-                            if (task.Status == TaskStatus.RanToCompletion)
-                            {
-                                var (docInfo, jsonResponse, elapsedMs) = task.Result;
-
-                                // Record timing
-                                if (_documentTimings.ContainsKey(docInfo.DocumentTitle))
-                                {
-                                    _documentTimings[docInfo.DocumentTitle].CountQueryMs = elapsedMs;
-                                }
-
-                                if (jsonResponse != null && jsonResponse.Success && !string.IsNullOrWhiteSpace(jsonResponse.Output))
-                                {
-                                    int typesFound = ParseFamilyTypeCountResponse(jsonResponse.Output, docInfo, result);
-                                    if (_documentTimings.ContainsKey(docInfo.DocumentTitle))
-                                    {
-                                        _documentTimings[docInfo.DocumentTitle].FamilyTypesFound = typesFound;
-                                    }
-                                }
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            System.Diagnostics.Debug.WriteLine($"Failed to process response: {ex.Message}");
-                        }
+                        _documentTimings[docInfo.DocumentTitle].FamilyTypesFound = typesFound;
                     }
                 }
             }
@@ -540,33 +458,7 @@ public class SelectByFamilyTypesInNetwork : IExternalCommand
         return result;
     }
 
-    private async Task<(DocumentInfo DocInfo, RoslynResponse Response, double ElapsedMs)> SendQueryRequestWithTimingAsync(
-        HttpClient client, DocumentInfo docInfo, string endpoint, string requestBody, string token)
-    {
-        var stopwatch = Stopwatch.StartNew();
-        try
-        {
-            var content = new StringContent(requestBody, Encoding.UTF8, "application/json");
-            var request = new HttpRequestMessage(HttpMethod.Post, $"https://127.0.0.1:{docInfo.Port}{endpoint}");
-            request.Headers.Add("X-Auth-Token", token);
-            request.Content = content;
-
-            var response = await client.SendAsync(request);
-            var responseText = await response.Content.ReadAsStringAsync();
-
-            stopwatch.Stop();
-            var jsonResponse = Newtonsoft.Json.JsonConvert.DeserializeObject<RoslynResponse>(responseText);
-            return (docInfo, jsonResponse, stopwatch.Elapsed.TotalMilliseconds);
-        }
-        catch (Exception ex)
-        {
-            stopwatch.Stop();
-            System.Diagnostics.Debug.WriteLine($"Failed to query document {docInfo.SessionId} ({docInfo.DocumentTitle}): {ex.Message}");
-            return (docInfo, null, stopwatch.Elapsed.TotalMilliseconds);
-        }
-    }
-
-    private int ParseFamilyTypeCountResponse(string output, DocumentInfo docInfo,
+    private int ParseFamilyTypeCountResponse(string output, DocumentEntry docInfo,
         Dictionary<FamilyTypeKey, Dictionary<string, int>> result)
     {
         int typesFound = 0;
@@ -597,7 +489,7 @@ public class SelectByFamilyTypesInNetwork : IExternalCommand
     }
 
     private Dictionary<FamilyTypeKey, Dictionary<string, List<ElementInfo>>> QueryElementsForFamilyTypes(
-        List<DocumentInfo> documents, List<FamilyTypeKey> familyTypeKeys, string token, string currentSessionId, UIApplication uiapp)
+        List<DocumentEntry> documents, List<FamilyTypeKey> familyTypeKeys, string token, string currentSessionId, UIApplication uiapp)
     {
         var result = new Dictionary<FamilyTypeKey, Dictionary<string, List<ElementInfo>>>();
 
@@ -685,7 +577,7 @@ public class SelectByFamilyTypesInNetwork : IExternalCommand
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Failed to query elements for local document: {ex.Message}");
+                Log.Warn("SelectByFamilyTypesInNetwork", $"Failed to query elements for local document: {ex.Message}");
             }
 
             localWatch.Stop();
@@ -708,59 +600,27 @@ public class SelectByFamilyTypesInNetwork : IExternalCommand
                 { "typeName", ft.TypeName }
             }).ToList();
 
-            using (var handler = new HttpClientHandler())
-            {
-                handler.ServerCertificateCustomValidationCallback = (sender, cert, chain, sslPolicyErrors) => true;
-
-                using (var client = new HttpClient(handler))
+            var responses = NetworkClient.PostQueryOnDocuments(remoteDocuments, "/query/familytypes/elements",
+                docInfo => Newtonsoft.Json.JsonConvert.SerializeObject(new Dictionary<string, object>
                 {
-                    client.Timeout = TimeSpan.FromSeconds(120);
+                    { "documentTitle", docInfo.DocumentTitle },
+                    { "familyTypes", Newtonsoft.Json.JsonConvert.SerializeObject(familyTypesList) }
+                }), token);
 
-                    var tasks = new List<Task<(DocumentInfo DocInfo, RoslynResponse Response, double ElapsedMs)>>();
+            foreach (var (docInfo, response, elapsedMs) in responses)
+            {
+                // Record timing
+                if (_documentTimings.ContainsKey(docInfo.DocumentTitle))
+                {
+                    _documentTimings[docInfo.DocumentTitle].ElementsQueryMs = elapsedMs;
+                }
 
-                    foreach (var docInfo in remoteDocuments)
+                if (response != null && response.Success && !string.IsNullOrWhiteSpace(response.Output))
+                {
+                    int elementsFound = ParseElementsResponse(response.Output, docInfo, familyTypeKeys, result);
+                    if (_documentTimings.ContainsKey(docInfo.DocumentTitle))
                     {
-                        var requestBody = Newtonsoft.Json.JsonConvert.SerializeObject(new Dictionary<string, object>
-                        {
-                            { "documentTitle", docInfo.DocumentTitle },
-                            { "familyTypes", Newtonsoft.Json.JsonConvert.SerializeObject(familyTypesList) }
-                        });
-
-                        var task = SendQueryRequestWithTimingAsync(client, docInfo, "/query/familytypes/elements", requestBody, token);
-                        tasks.Add(task);
-                    }
-
-                    try { Task.WhenAll(tasks).Wait(); }
-                    catch (AggregateException) { }
-
-                    foreach (var task in tasks)
-                    {
-                        try
-                        {
-                            if (task.Status == TaskStatus.RanToCompletion)
-                            {
-                                var (docInfo, jsonResponse, elapsedMs) = task.Result;
-
-                                // Record timing
-                                if (_documentTimings.ContainsKey(docInfo.DocumentTitle))
-                                {
-                                    _documentTimings[docInfo.DocumentTitle].ElementsQueryMs = elapsedMs;
-                                }
-
-                                if (jsonResponse != null && jsonResponse.Success && !string.IsNullOrWhiteSpace(jsonResponse.Output))
-                                {
-                                    int elementsFound = ParseElementsResponse(jsonResponse.Output, docInfo, familyTypeKeys, result);
-                                    if (_documentTimings.ContainsKey(docInfo.DocumentTitle))
-                                    {
-                                        _documentTimings[docInfo.DocumentTitle].ElementsFound = elementsFound;
-                                    }
-                                }
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            System.Diagnostics.Debug.WriteLine($"Failed to process response: {ex.Message}");
-                        }
+                        _documentTimings[docInfo.DocumentTitle].ElementsFound = elementsFound;
                     }
                 }
             }
@@ -769,7 +629,7 @@ public class SelectByFamilyTypesInNetwork : IExternalCommand
         return result;
     }
 
-    private int ParseElementsResponse(string output, DocumentInfo docInfo, List<FamilyTypeKey> familyTypeKeys,
+    private int ParseElementsResponse(string output, DocumentEntry docInfo, List<FamilyTypeKey> familyTypeKeys,
         Dictionary<FamilyTypeKey, Dictionary<string, List<ElementInfo>>> result)
     {
         int elementsFound = 0;
@@ -822,18 +682,6 @@ public class SelectByFamilyTypesInNetwork : IExternalCommand
             return $"{(int)timeAgo.TotalDays}d ago";
     }
 
-    private class DocumentInfo
-    {
-        public string SessionId { get; set; }
-        public string Port { get; set; }
-        public string Hostname { get; set; }
-        public int ProcessId { get; set; }
-        public DateTime RegisteredAt { get; set; }
-        public DateTime LastHeartbeat { get; set; }
-        public string DocumentTitle { get; set; }
-        public string DocumentPath { get; set; }
-    }
-
     private class FamilyTypeKey
     {
         public string Category { get; set; }
@@ -859,12 +707,5 @@ public class SelectByFamilyTypesInNetwork : IExternalCommand
         public int ElementIdValue { get; set; }
         public string DocumentPath { get; set; }
         public string SessionId { get; set; }
-    }
-
-    private class RoslynResponse
-    {
-        public bool Success { get; set; }
-        public string Output { get; set; }
-        public string Error { get; set; }
     }
 }
