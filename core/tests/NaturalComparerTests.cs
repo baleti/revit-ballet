@@ -10,9 +10,11 @@ namespace RevitBallet.Core.Tests
         private readonly NaturalComparer comparer = new NaturalComparer();
 
         [Theory]
+        [InlineData("A2", "A10")]     // numeric segments compare numerically
         [InlineData("2", "10")]       // pure numbers
         [InlineData("Level 1", "Level 2")]
         [InlineData("0.5", "2")]      // decimals
+        [InlineData("a1", "B2")]      // case-insensitive text segments
         public void Orders_FirstBeforeSecond(string smaller, string larger)
         {
             Assert.True(comparer.Compare(smaller, larger) < 0);
@@ -33,6 +35,13 @@ namespace RevitBallet.Core.Tests
             Assert.True(comparer.Compare("N/A", "5") > 0);
         }
 
+        [Fact]
+        public void SortsSheetNumbersNaturally()
+        {
+            var input = new List<object> { "A101", "A9", "A10", "A100" };
+            input.Sort((a, b) => comparer.Compare(a, b));
+            Assert.Equal(new object[] { "A9", "A10", "A100", "A101" }, input.ToArray());
+        }
     }
 
     public class TextMatchTests

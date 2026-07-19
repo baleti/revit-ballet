@@ -19,10 +19,11 @@ namespace RevitBallet.Core
             bool s1IsNonNumeric = IsNonNumericValue(s1);
             bool s2IsNonNumeric = IsNonNumericValue(s2);
 
-            // If both are non-numeric, compare as strings
+            // If both are non-numeric, compare naturally so embedded numbers
+            // sort numerically ("A9" before "A10")
             if (s1IsNonNumeric && s2IsNonNumeric)
             {
-                return string.Compare(s1, s2, StringComparison.OrdinalIgnoreCase);
+                return CompareNatural(s1, s2);
             }
 
             // If one is non-numeric and one is numeric, non-numeric comes last
@@ -85,7 +86,8 @@ namespace RevitBallet.Core
                 }
                 else
                 {
-                    int cmp = a[i].CompareTo(b[j]);
+                    // Case-insensitive, preserving the previous comparer's behavior
+                    int cmp = char.ToLowerInvariant(a[i]).CompareTo(char.ToLowerInvariant(b[j]));
                     if (cmp != 0) return cmp;
                     i++;
                     j++;
