@@ -41,9 +41,12 @@ namespace RevitBallet.Commands
                         serverInstance = new RevitBalletServer();
                         serverInstance.Start();
                     }
-                    catch
+                    catch (Exception ex)
                     {
-                        // Silently fail - server may already be running from previous load
+                        // Don't interrupt Revit startup - but leave a trail.
+                        // (May be benign: server already running from a previous load.)
+                        LogToRevit($"[SERVER] InitializeServer failed: {ex}");
+                        serverInstance = null;
                     }
                 }
             }
@@ -294,9 +297,10 @@ namespace RevitBallet.Commands
             {
                 DocumentRegistry.UpdateLastSync(serverInstance.sessionId, documentPath, DateTime.Now);
             }
-            catch
+            catch (Exception ex)
             {
-                // Silently fail - don't interrupt sync operation
+                // Don't interrupt sync operation
+                LogToRevit($"[SERVER] UpdateLastSyncTime failed: {ex.Message}");
             }
         }
 
@@ -313,9 +317,10 @@ namespace RevitBallet.Commands
             {
                 DocumentRegistry.UpdateLastTransaction(serverInstance.sessionId, documentPath, DateTime.Now);
             }
-            catch
+            catch (Exception ex)
             {
-                // Silently fail - don't interrupt transaction operation
+                // Don't interrupt transaction operation
+                LogToRevit($"[SERVER] UpdateLastTransactionTime failed: {ex.Message}");
             }
         }
 
@@ -515,7 +520,10 @@ namespace RevitBallet.Commands
                         return existingToken;
                     }
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    LogToRevit($"[SERVER] Failed to read shared token, generating a new one: {ex.Message}");
+                }
             }
 
             // Generate new token if none exists or reading failed
@@ -535,7 +543,12 @@ namespace RevitBallet.Commands
             {
                 File.WriteAllText(tokenPath, newToken);
             }
-            catch { }
+            catch (Exception ex)
+            {
+                // Other sessions won't be able to authenticate against this one
+                // until the token file is writable.
+                LogToRevit($"[SERVER] Failed to persist shared token: {ex}");
+            }
 
             return newToken;
         }

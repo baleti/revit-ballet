@@ -31,9 +31,7 @@ namespace RevitBallet
             }
             catch (Exception ex)
             {
-                // Log error but don't interrupt Revit startup
-                System.Diagnostics.Debug.WriteLine($"Failed to initialize view history database: {ex.Message}");
-                System.Diagnostics.Debug.WriteLine($"Stack trace: {ex.StackTrace}");
+                Log.Warn("Startup.ViewHistoryDatabase", ex);
             }
 
             // Initialize view logging
@@ -44,9 +42,9 @@ namespace RevitBallet
             {
                 RevitBalletServer.InitializeServer();
             }
-            catch
+            catch (Exception ex)
             {
-                // Silently fail - don't interrupt Revit startup
+                Log.Warn("Startup.Server", ex);
             }
 
             // Initialize DataGrid column handler registry for automatic editing
@@ -54,9 +52,9 @@ namespace RevitBallet
             {
                 CustomGUIs.ColumnHandlerRegistry.RegisterStandardHandlers();
             }
-            catch
+            catch (Exception ex)
             {
-                // Silently fail - don't interrupt Revit startup
+                Log.Warn("Startup.ColumnHandlerRegistry", ex);
             }
 
             // Subscribe to sync event to track last synchronization time
@@ -64,9 +62,9 @@ namespace RevitBallet
             {
                 application.ControlledApplication.DocumentSynchronizedWithCentral += OnDocumentSynchronized;
             }
-            catch
+            catch (Exception ex)
             {
-                // Silently fail - don't interrupt Revit startup
+                Log.Warn("Startup.SubscribeDocumentSynchronized", ex);
             }
 
             // Subscribe to DocumentChanged event to track last transaction time
@@ -74,9 +72,9 @@ namespace RevitBallet
             {
                 application.ControlledApplication.DocumentChanged += OnDocumentChanged;
             }
-            catch
+            catch (Exception ex)
             {
-                // Silently fail - don't interrupt Revit startup
+                Log.Warn("Startup.SubscribeDocumentChanged", ex);
             }
 
             return Result.Succeeded;
@@ -91,9 +89,9 @@ namespace RevitBallet
                 var docIdentifier = !string.IsNullOrEmpty(doc.PathName) ? doc.PathName : doc.Title;
                 RevitBalletServer.UpdateLastSyncTime(docIdentifier);
             }
-            catch
+            catch (Exception ex)
             {
-                // Silently fail
+                Log.Warn("OnDocumentSynchronized", ex);
             }
         }
 
@@ -109,9 +107,9 @@ namespace RevitBallet
                     RevitBalletServer.UpdateLastTransactionTime(docIdentifier);
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // Silently fail
+                Log.Warn("OnDocumentChanged", ex);
             }
         }
 
@@ -125,9 +123,9 @@ namespace RevitBallet
             {
                 application.ControlledApplication.DocumentSynchronizedWithCentral -= OnDocumentSynchronized;
             }
-            catch
+            catch (Exception ex)
             {
-                // Silently fail
+                Log.Warn("Shutdown.UnsubscribeDocumentSynchronized", ex);
             }
 
             // Unsubscribe from DocumentChanged event
@@ -135,9 +133,9 @@ namespace RevitBallet
             {
                 application.ControlledApplication.DocumentChanged -= OnDocumentChanged;
             }
-            catch
+            catch (Exception ex)
             {
-                // Silently fail
+                Log.Warn("Shutdown.UnsubscribeDocumentChanged", ex);
             }
 
             // Terminate the server
@@ -145,9 +143,9 @@ namespace RevitBallet
             {
                 RevitBalletServer.TerminateServer();
             }
-            catch
+            catch (Exception ex)
             {
-                // Silently fail
+                Log.Warn("Shutdown.Server", ex);
             }
 
             return Result.Succeeded;
