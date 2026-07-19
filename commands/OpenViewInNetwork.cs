@@ -10,6 +10,8 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using RevitBallet.Commands;
 
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
 [CommandMeta("")]
@@ -33,13 +35,12 @@ public class OpenViewInNetwork : IExternalCommand
     {
         UIApplication uiApp = commandData.Application;
 
-        string tokenPath = Path.Combine(PathHelper.RuntimeDirectory, "network", "token");
-        if (!File.Exists(tokenPath))
+        string token = NetworkClient.GetSharedToken();
+        if (token == null)
         {
             TaskDialog.Show("Error", "Network token not found. Ensure Revit Ballet server is running.");
             return Result.Failed;
         }
-        string token = File.ReadAllText(tokenPath).Trim();
 
         var sessions = DocumentRegistry.GetActiveDocuments();
         if (sessions.Count == 0)
@@ -48,7 +49,7 @@ public class OpenViewInNetwork : IExternalCommand
             return Result.Failed;
         }
 
-        string currentSessionId = RevitBallet.RevitBallet.SessionId;
+        string currentSessionId = RevitBalletApplication.SessionId;
 
         // Query each session for its non-sheet views
         var gridData = new List<Dictionary<string, object>>();
@@ -255,44 +256,9 @@ Console.WriteLine(""OPENED|"" + {elementIdValue});
         return result;
     }
 
-    private RoslynResponse SendRoslynQuery(string port, string token, string script)
+    private RoslynResult SendRoslynQuery(string port, string token, string script)
     {
-        string url = $"https://127.0.0.1:{port}/roslyn";
-#if NET8_0_OR_GREATER
-        using (var handler = new System.Net.Http.HttpClientHandler())
-        {
-            handler.ServerCertificateCustomValidationCallback = (m, c, ch, e) => true;
-            using (var client = new System.Net.Http.HttpClient(handler))
-            {
-                client.Timeout = TimeSpan.FromSeconds(30);
-                client.DefaultRequestHeaders.Add("X-Auth-Token", token);
-                var content = new System.Net.Http.StringContent(script, Encoding.UTF8, "text/plain");
-                var resp = client.PostAsync(url, content).Result;
-                var text = resp.Content.ReadAsStringAsync().Result;
-                return Newtonsoft.Json.JsonConvert.DeserializeObject<RoslynResponse>(text);
-            }
-        }
-#else
-        var request = (HttpWebRequest)WebRequest.Create(url);
-        request.Method = "POST";
-        request.ContentType = "text/plain";
-        request.Headers.Add("X-Auth-Token", token);
-        request.Timeout = 30000;
-        request.ServerCertificateValidationCallback = (s, c, ch, e) => true;
-        byte[] body = Encoding.UTF8.GetBytes(script);
-        request.ContentLength = body.Length;
-        using (var stream = request.GetRequestStream())
-            stream.Write(body, 0, body.Length);
-        using (var response = request.GetResponse())
-        using (var reader = new StreamReader(response.GetResponseStream()))
-            return Newtonsoft.Json.JsonConvert.DeserializeObject<RoslynResponse>(reader.ReadToEnd());
-#endif
+        return NetworkClient.ExecuteScript(int.Parse(port), script, token);
     }
 
-    private class RoslynResponse
-    {
-        public bool Success { get; set; }
-        public string Output { get; set; }
-        public string Error { get; set; }
-    }
 }

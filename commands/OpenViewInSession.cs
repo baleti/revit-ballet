@@ -5,6 +5,8 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using RevitBallet.Commands;
 
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
 [CommandMeta("")]

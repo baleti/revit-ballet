@@ -7,6 +7,8 @@ using WinForms = System.Windows.Forms;
 
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 
+namespace RevitBallet.Commands;
+
 public enum BubbleOperation { Hide, Show }
 public enum BubbleOption    { End0, End1, Both }
 

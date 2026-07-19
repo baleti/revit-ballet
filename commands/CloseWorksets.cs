@@ -9,6 +9,8 @@ using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 
 // CloseWorksets: close/hide worksets in host doc (no selection), in views (views selected),
 //               or reload linked models with fewer open worksets (links selected).
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("View, Link")]
 public class CloseWorksets : IExternalCommand

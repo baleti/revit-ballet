@@ -6,7 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
-namespace RevitCommands
+namespace RevitBallet.Commands
 {
     [Transaction(TransactionMode.Manual)]
     [CommandMeta("Filled Region")]

@@ -9,13 +9,13 @@ using System.Text.RegularExpressions;
 
 using RevitDirectShape = Autodesk.Revit.DB.DirectShape;
 
-namespace RevitCommands
+namespace RevitBallet.Commands
 {
 
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("Area, Room")]
 [CommandOutput("DirectShape")]
-public class DirectShape : IExternalCommand
+public class CreateDirectShape : IExternalCommand
 {
     public Result Execute(ExternalCommandData data, ref string message, ElementSet elems)
     {
