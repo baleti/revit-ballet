@@ -17,6 +17,8 @@ using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 // Opens one or more .rvt files, each in a new Revit process, using settings stored in
 // %appdata%/revit-ballet/OpenRvtDocumentInNewSession.toml.
 // Per CLAUDE.md policy: not registered in addin manifest or keyboard shortcuts.
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("")]
 public class OpenRvtDocumentInNewSession : IExternalCommand
