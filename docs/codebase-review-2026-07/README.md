@@ -62,19 +62,19 @@ which also makes it unit-testable.
 
 ## Priority list
 
-Ordered by value-to-effort ratio. Items 1–3 are mechanical and low-risk.
+Ordered by value-to-effort ratio. Status as of 2026-07-19.
 
-| # | Action | Effort | Payoff |
-|---|---|---|---|
-| 1 | Add GitHub Actions CI: matrix compile across all 10 Revit years | Hours | Every push verified; catches per-year breaks |
-| 2 | Namespace unification to `RevitBallet.*` (scripted rename) | Hours | Discoverability, no tutorial leftovers, safe scripting-server reflection |
-| 3 | Central `Log.Warn(ex)` helper; replace bare `catch {}` incrementally | Hours–days | Field failures become diagnosable |
-| 4 | Extract `NetworkClient` + `SessionRegistry`; collapse InNetwork duplication | Days | −2,000+ lines, one place to fix TLS/token/discovery |
-| 5 | Finish InputResolver adoption per the existing standardization plan | Days | −~3,000 lines across Select*/Filter* families |
-| 6 | Extract UI-agnostic `RevitBallet.Core` (filter engine, sorting, column model) | 1–2 weeks | Unit tests on Linux CI; DataGrid backend becomes swappable |
-| 7 | Convert `CustomGUIs` static state to an instance session object | With #6 | Reentrancy, testability |
-| 8 | DataGrid perceived-latency work (profile first; warm form cache, streamed rows) | After #6 | Faster feel without framework risk |
-| 9 | Optional: WebView2 grid prototype behind the Core interface | Exploratory | Answers the flexibility question empirically |
+| # | Action | Status |
+|---|---|---|
+| 1 | Add GitHub Actions CI: matrix compile across all 10 Revit years | DONE — `.github/workflows/build.yml` (matrix + installer + tests) |
+| 2 | Namespace unification to `RevitBallet.*` (scripted rename) | DONE — everything under `RevitBallet.Commands`; manifest updated |
+| 3 | Central `Log.Warn(ex)` helper; replace bare `catch {}` incrementally | DONE for infrastructure (`Log.cs`, startup, server); command-level catches remain to migrate opportunistically |
+| 4 | Extract `NetworkClient`; collapse InNetwork duplication | DONE — `commands/NetworkClient.cs`; DocumentRegistry is the single registry (also fixed an InvalidCastException in SelectByCategories/Worksets InNetwork) |
+| 5 | Finish InputResolver adoption per the existing standardization plan | OPEN — continue per `command-standardization-plan.org` |
+| 6 | Extract UI-agnostic `RevitBallet.Core` (filter engine, sorting, naming) | DONE — `core/` with 65 xunit tests in CI (caught a real natural-sort bug, now fixed) |
+| 7 | Convert `CustomGUIs` static state to an instance session object | OPEN — needs a session with Revit runtime verification |
+| 8 | DataGrid perceived-latency work (profile first; warm form cache, streamed rows) | Telemetry landed (`DataGridPerf` lines in runtime/addin.log); optimize after real-usage numbers |
+| 9 | Optional: WebView2 grid prototype behind the Core interface | Deferred by decision — revisit after #8 numbers |
 
 Items the review deliberately skipped: full integration testing (needs Revit VMs, per
 your instruction), installer deep-dive, and per-command functional review of all 282
