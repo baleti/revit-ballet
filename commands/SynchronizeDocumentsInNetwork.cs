@@ -57,7 +57,6 @@ else
     {
         UIApplication uiApp = commandData.Application;
 
-        using (var executionLog = CommandExecutionLogger.Start("SynchronizeDocumentsInNetwork", commandData))
         using (var diagnostics = CommandDiagnostics.StartCommand("SynchronizeDocumentsInNetwork", uiApp))
         {
             try
@@ -69,7 +68,6 @@ else
                 {
                     TaskDialog.Show("Error", "No active documents found in registry.");
                     diagnostics.LogError("No documents in registry");
-                    executionLog.SetResult(Result.Failed);
                     return Result.Failed;
                 }
 
@@ -82,7 +80,6 @@ else
                 {
                     TaskDialog.Show("Error", "Could not read authentication token from network registry.");
                     diagnostics.LogError("Auth token not found");
-                    executionLog.SetResult(Result.Failed);
                     return Result.Failed;
                 }
 
@@ -125,7 +122,6 @@ else
                 if (selectedRows == null || selectedRows.Count == 0)
                 {
                     diagnostics.Log("User cancelled selection");
-                    executionLog.SetResult(Result.Cancelled);
                     return Result.Cancelled;
                 }
 
@@ -149,7 +145,6 @@ else
                 if (documentsBySession.Count == 0)
                 {
                     TaskDialog.Show("Info", "No documents selected for synchronization (only Home Page entries selected).");
-                    executionLog.SetResult(Result.Cancelled);
                     return Result.Cancelled;
                 }
 
@@ -209,18 +204,15 @@ else
                         string.Join("\n", errorMessages) +
                         (remoteRequestsSent > 0 ? $"\n\n({remoteRequestsSent} remote sync request(s) sent in background)" : ""));
 
-                    executionLog.SetResult(Result.Failed);
                     return Result.Failed;
                 }
 
-                executionLog.SetResult(Result.Succeeded);
                 return Result.Succeeded;
             }
             catch (Exception ex)
             {
                 TaskDialog.Show("Error", $"Failed to synchronize network documents: {ex.Message}");
                 diagnostics.LogError($"Exception: {ex}");
-                executionLog.SetResult(Result.Failed);
                 return Result.Failed;
             }
         }

@@ -1,6 +1,7 @@
 using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
+using RevitBallet.Commands;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -9,12 +10,12 @@ namespace RevitBallet.Commands;
 
 public static class ElementDataHelper
 {
-    public static List<Dictionary<string, object>> GetElementData(UIDocument uiDoc, bool selectedOnly = false, bool includeParameters = false)
+    public static List<Dictionary<string, object>> GetElementData(UIDocument uiDoc, bool selectedOnly = false, bool includeParameters = false, bool baseMode = false)
     {
-        return GetElementData(uiDoc, selectedOnly, includeParameters, null, null);
+        return GetElementData(uiDoc, selectedOnly, includeParameters, null, null, baseMode);
     }
 
-    public static List<Dictionary<string, object>> GetElementData(UIDocument uiDoc, bool selectedOnly, bool includeParameters, Func<bool> checkCancellation, CancellableProgressDialog progressDialog = null)
+    public static List<Dictionary<string, object>> GetElementData(UIDocument uiDoc, bool selectedOnly, bool includeParameters, Func<bool> checkCancellation, CancellableProgressDialog progressDialog = null, bool baseMode = false)
     {
         Document doc = uiDoc.Document;
         var elementData = new List<Dictionary<string, object>>();
@@ -90,7 +91,7 @@ public static class ElementDataHelper
                 if (element != null)
                 {
                     processedElements.Add(id);
-                    var data = GetElementDataDictionary(element, doc, null, null, null, includeParameters, scopeBoxes, linkedScopeBoxes);
+                    var data = GetElementDataDictionary(element, doc, null, null, null, includeParameters, scopeBoxes, linkedScopeBoxes, baseMode);
                     elementData.Add(data);
                 }
 
@@ -125,7 +126,7 @@ public static class ElementDataHelper
                                 if (linkedElement != null)
                                 {
                                     // Store the linked instance and element ID for later reference creation
-                                    var data = GetElementDataDictionary(linkedElement, linkedDoc, linkedInstance.Name, linkedInstance, linkedElement.Id, includeParameters, scopeBoxes, linkedScopeBoxes);
+                                    var data = GetElementDataDictionary(linkedElement, linkedDoc, linkedInstance.Name, linkedInstance, linkedElement.Id, includeParameters, scopeBoxes, linkedScopeBoxes, baseMode);
                                     elementData.Add(data);
                                 }
                             }
@@ -141,7 +142,7 @@ public static class ElementDataHelper
                             if (element != null)
                             {
                                 processedElements.Add(reference.ElementId);
-                                var data = GetElementDataDictionary(element, doc, null, null, null, includeParameters, scopeBoxes, linkedScopeBoxes);
+                                var data = GetElementDataDictionary(element, doc, null, null, null, includeParameters, scopeBoxes, linkedScopeBoxes, baseMode);
                                 elementData.Add(data);
                             }
                         }
@@ -174,7 +175,7 @@ public static class ElementDataHelper
                 Element element = doc.GetElement(id);
                 if (element != null)
                 {
-                    var data = GetElementDataDictionary(element, doc, null, null, null, includeParameters, scopeBoxes, linkedScopeBoxes);
+                    var data = GetElementDataDictionary(element, doc, null, null, null, includeParameters, scopeBoxes, linkedScopeBoxes, baseMode);
                     elementData.Add(data);
                 }
 
@@ -268,7 +269,7 @@ public static class ElementDataHelper
     /// - Renaming types (via ElementType.Name property)
     /// - Validation and transactions
     /// </summary>
-    private static Dictionary<string, object> GetElementDataDictionary(Element element, Document elementDoc, string linkName, RevitLinkInstance linkInstance, ElementId linkedElementId, bool includeParameters, List<Element> scopeBoxes, List<Tuple<Element, RevitLinkInstance>> linkedScopeBoxes)
+    private static Dictionary<string, object> GetElementDataDictionary(Element element, Document elementDoc, string linkName, RevitLinkInstance linkInstance, ElementId linkedElementId, bool includeParameters, List<Element> scopeBoxes, List<Tuple<Element, RevitLinkInstance>> linkedScopeBoxes, bool baseMode = false)
     {
         string groupName = string.Empty;
         if (element.GroupId != null && element.GroupId != ElementId.InvalidElementId && element.GroupId.AsLong() != -1)
@@ -331,7 +332,10 @@ public static class ElementDataHelper
             }
         }
 
-        // Add scope box information
+        // Scope boxes, view properties, crop region, and centroid are skipped in Base mode
+        if (!baseMode)
+        {
+
         var containingScopeBoxes = new List<string>();
         try
         {
@@ -616,6 +620,8 @@ public static class ElementDataHelper
             data["Z Centroid"] = null;
         }
 
+        } // end if (!baseMode)
+
         // Include parameters if requested
         if (includeParameters)
         {
@@ -655,6 +661,23 @@ public static class ElementDataHelper
         if (!string.IsNullOrEmpty(contents))
         {
             data["Contents"] = contents;
+        }
+
+        // Override any param-read values with the registered handler getter where one exists.
+        // This is needed for columns like "Referencing Detail" / "Referencing Sheet" whose raw
+        // parameter values are stale for callout annotation elements after ChangeReferencedView.
+        CustomGUIs.ColumnHandlerRegistry.EnsureInitialized();
+        foreach (var key in data.Keys.ToList())
+        {
+            var handler = CustomGUIs.ColumnHandlerRegistry.GetHandler(key);
+            if (handler?.Getter == null) continue;
+            try
+            {
+                object live = handler.Getter(element, elementDoc);
+                if (live != null)
+                    data[key] = live;
+            }
+            catch { }
         }
 
         return data;
@@ -879,7 +902,8 @@ public abstract class ListElementsBase : IExternalCommand
                 progress.Start();
                 try
                 {
-                    elementData = ElementDataHelper.GetElementData(uiDoc, UseSelectedElements, IncludeParameters, () => progress.IsCancelled, progress);
+                    bool baseMode = DataGridDetailLevelManager.CurrentLevel == DataGridDetailLevelManager.DetailLevel.Base;
+                    elementData = ElementDataHelper.GetElementData(uiDoc, UseSelectedElements, baseMode ? false : IncludeParameters, () => progress.IsCancelled, progress, baseMode);
                 }
                 catch (OperationCanceledException)
                 {
@@ -1079,6 +1103,7 @@ public abstract class ListElementsBase : IExternalCommand
             return Result.Failed;
         }
     }
+
 }
 
 [Transaction(TransactionMode.Manual)]
