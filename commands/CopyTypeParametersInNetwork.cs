@@ -42,15 +42,13 @@ public class CopyTypeParametersInNetwork : IExternalCommand
         {
             try
             {
-                // Read auth token
-                string tokenPath = Path.Combine(PathHelper.RuntimeDirectory, "network", "token");
-                if (!File.Exists(tokenPath))
+                string authToken = NetworkClient.GetSharedToken();
+                if (authToken == null)
                 {
                     TaskDialog.Show("Error", "Network token not found. Ensure Revit Ballet server is running.");
                     executionLog.SetResult(Result.Failed);
                     return Result.Failed;
                 }
-                string authToken = File.ReadAllText(tokenPath).Trim();
 
                 // Step 1: Get source types from selection or prompt user
                 var sourceTypes = GetSourceTypes(uidoc, activeDoc, diagnostics);
@@ -445,60 +443,10 @@ public class CopyTypeParametersInNetwork : IExternalCommand
     /// <summary>
     /// Parses the documents file.
     /// </summary>
-    private List<DocumentInfo> ParseDocumentsFile(string filePath)
-    {
-        var documents = new List<DocumentInfo>();
-
-        try
-        {
-            var lines = File.ReadAllLines(filePath);
-
-            foreach (var line in lines)
-            {
-                if (string.IsNullOrWhiteSpace(line) || line.StartsWith("#"))
-                    continue;
-
-                var parts = line.Split(',');
-                // Format: DocumentTitle,DocumentPath,SessionId,Port,Hostname,ProcessId,RegisteredAt,LastHeartbeat,LastSync
-                if (parts.Length < 8)
-                    continue;
-
-                var doc = new DocumentInfo
-                {
-                    DocumentTitle = parts[0].Trim(),
-                    DocumentPath = parts[1].Trim(),
-                    SessionId = parts[2].Trim(),
-                    Port = parts[3].Trim(),
-                    Hostname = parts[4].Trim(),
-                    ProcessId = int.Parse(parts[5].Trim()),
-                    RegisteredAt = DateTime.Parse(parts[6].Trim()),
-                    LastHeartbeat = DateTime.Parse(parts[7].Trim())
-                };
-
-                // Filter out stale documents (no heartbeat for > 2 minutes)
-                if ((DateTime.Now - doc.LastHeartbeat).TotalSeconds <= 120 &&
-                    !string.IsNullOrWhiteSpace(doc.DocumentTitle))
-                {
-                    documents.Add(doc);
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            throw new Exception($"Failed to parse documents file: {ex.Message}", ex);
-        }
-
-        return documents;
-    }
-
-    /// <summary>
-    /// Finds documents across the network that have matching types.
-    /// Queries remote sessions in PARALLEL for performance.
-    /// </summary>
     private List<NetworkDocumentInfo> FindNetworkDocumentsWithMatchingTypes(
         Autodesk.Revit.ApplicationServices.Application app,
         Document activeDoc,
-        List<DocumentInfo> documents,
+        List<DocumentEntry> documents,
         string currentSessionId,
         List<TypeParameterData> sourceTypeData,
         string authToken,
@@ -537,7 +485,7 @@ public class CopyTypeParametersInNetwork : IExternalCommand
                     DocumentTitle = doc.Title,
                     DocumentPath = doc.PathName ?? "",
                     Hostname = docEntry.Hostname,
-                    Port = docEntry.Port,
+                    Port = docEntry.Port.ToString(),
                     MatchingTypeCount = matchCount,
                     IsLocal = true
                 });
@@ -566,7 +514,7 @@ public class CopyTypeParametersInNetwork : IExternalCommand
                             DocumentTitle = docInfo.DocumentTitle,
                             DocumentPath = docInfo.DocumentPath,
                             Hostname = docInfo.Hostname,
-                            Port = docInfo.Port,
+                            Port = docInfo.Port.ToString(),
                             MatchingTypeCount = matchCount,
                             IsLocal = false
                         });
@@ -610,7 +558,7 @@ public class CopyTypeParametersInNetwork : IExternalCommand
     }
 
     private int QueryRemoteDocumentForMatchingTypes(
-        DocumentInfo docInfo,
+        DocumentEntry docInfo,
         HashSet<string> sourceTypeKeys,
         string authToken,
         CommandDiagnostics.DiagnosticSession diagnostics)
@@ -657,7 +605,7 @@ foreach (var typeElem in elementTypes)
 Console.WriteLine(""MATCH_COUNT|"" + matchCount);
 ";
 
-            var response = SendRoslynQuery(docInfo.Port, authToken, query);
+            var response = SendRoslynQuery(docInfo.Port.ToString(), authToken, query);
             if (response.Success && !string.IsNullOrEmpty(response.Output))
             {
                 // Parse match count from output
@@ -1048,63 +996,10 @@ Console.WriteLine(""MATCH_COUNT|"" + matchCount);
         }
         catch { }
 
-        string url = $"https://127.0.0.1:{docInfo.Port}/roslyn";
-
-#if NET8_0_OR_GREATER
-        // Fire-and-forget using Task.Run
-        Task.Run(async () =>
-        {
-            try
-            {
-                using (var handler = new HttpClientHandler())
-                {
-                    handler.ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true;
-
-                    using (var client = new HttpClient(handler))
-                    {
-                        client.Timeout = TimeSpan.FromMinutes(5);
-                        client.DefaultRequestHeaders.Add("X-Auth-Token", authToken);
-
-                        var content = new StringContent(script, Encoding.UTF8, "text/plain");
-                        await client.PostAsync(url, content);
-                    }
-                }
-            }
-            catch
-            {
-                // Fire and forget - ignore errors
-            }
-        });
-#else
-        // Fire-and-forget using ThreadPool
-        System.Threading.ThreadPool.QueueUserWorkItem(_ =>
-        {
-            try
-            {
-                var request = (HttpWebRequest)WebRequest.Create(url);
-                request.Method = "POST";
-                request.ContentType = "text/plain";
-                request.Headers.Add("X-Auth-Token", authToken);
-                request.Timeout = 300000; // 5 minutes
-                request.ServerCertificateValidationCallback = (sender, cert, chain, errors) => true;
-
-                byte[] bodyBytes = Encoding.UTF8.GetBytes(script);
-                request.ContentLength = bodyBytes.Length;
-
-                using (var requestStream = request.GetRequestStream())
-                {
-                    requestStream.Write(bodyBytes, 0, bodyBytes.Length);
-                }
-
-                // Just get the response to complete the request, don't process it
-                using (request.GetResponse()) { }
-            }
-            catch
-            {
-                // Fire and forget - ignore errors
-            }
-        });
-#endif
+        // Fire-and-forget: result is intentionally discarded (transport
+        // failures are logged inside NetworkClient).
+        int port = int.Parse(docInfo.Port);
+        Task.Run(() => NetworkClient.ExecuteScriptAsync(port, script, authToken));
     }
 
     /// <summary>
@@ -1221,65 +1116,12 @@ Console.WriteLine(""MATCH_COUNT|"" + matchCount);
         return sb.ToString();
     }
 
-    private RoslynResponse SendRoslynQuery(string port, string authToken, string query)
+    private RoslynResult SendRoslynQuery(string port, string authToken, string query)
     {
-        string url = $"https://127.0.0.1:{port}/roslyn";
-
-#if NET8_0_OR_GREATER
-        using (var handler = new HttpClientHandler())
-        {
-            handler.ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true;
-
-            using (var client = new HttpClient(handler))
-            {
-                client.Timeout = TimeSpan.FromSeconds(120);
-                client.DefaultRequestHeaders.Add("X-Auth-Token", authToken);
-
-                var content = new StringContent(query, Encoding.UTF8, "text/plain");
-                var response = client.PostAsync(url, content).Result;
-                var responseText = response.Content.ReadAsStringAsync().Result;
-
-                return Newtonsoft.Json.JsonConvert.DeserializeObject<RoslynResponse>(responseText);
-            }
-        }
-#else
-        var request = (HttpWebRequest)WebRequest.Create(url);
-        request.Method = "POST";
-        request.ContentType = "text/plain";
-        request.Headers.Add("X-Auth-Token", authToken);
-        request.Timeout = 120000;
-        request.ServerCertificateValidationCallback = (sender, cert, chain, errors) => true;
-
-        byte[] bodyBytes = Encoding.UTF8.GetBytes(query);
-        request.ContentLength = bodyBytes.Length;
-
-        using (var requestStream = request.GetRequestStream())
-        {
-            requestStream.Write(bodyBytes, 0, bodyBytes.Length);
-        }
-
-        using (var response = request.GetResponse())
-        using (var reader = new StreamReader(response.GetResponseStream()))
-        {
-            var responseText = reader.ReadToEnd();
-            return Newtonsoft.Json.JsonConvert.DeserializeObject<RoslynResponse>(responseText);
-        }
-#endif
+        return NetworkClient.ExecuteScript(int.Parse(port), query, authToken);
     }
 
     #region Helper Classes
-
-    private class DocumentInfo
-    {
-        public string DocumentTitle { get; set; }
-        public string DocumentPath { get; set; }
-        public string SessionId { get; set; }
-        public string Port { get; set; }
-        public string Hostname { get; set; }
-        public int ProcessId { get; set; }
-        public DateTime RegisteredAt { get; set; }
-        public DateTime LastHeartbeat { get; set; }
-    }
 
     private class TypeParameterData
     {
@@ -1315,14 +1157,6 @@ Console.WriteLine(""MATCH_COUNT|"" + matchCount);
         public int SuccessCount { get; set; }
         public int FailCount { get; set; }
         public List<string> Errors { get; set; } = new List<string>();
-    }
-
-    private class RoslynResponse
-    {
-        public bool Success { get; set; }
-        public string Output { get; set; }
-        public string Error { get; set; }
-        public string[] Diagnostics { get; set; }
     }
 
     #endregion

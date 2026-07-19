@@ -1,14 +1,9 @@
 using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using RevitBallet.Commands;
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
-using System.Net.Http;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace RevitBallet.Commands;
 
@@ -28,14 +23,12 @@ public class SelectByWorksetsInNetwork : IExternalCommand
 
         try
         {
-            // Read network token
-            string tokenPath = Path.Combine(PathHelper.RuntimeDirectory, "network", "token");
-            if (!File.Exists(tokenPath))
+            string token = NetworkClient.GetSharedToken();
+            if (token == null)
             {
                 TaskDialog.Show("Error", "Network token not found. Ensure at least one Revit session is running.");
                 return Result.Failed;
             }
-            string token = File.ReadAllText(tokenPath).Trim();
 
             // Get active documents from registry
             var documents = DocumentRegistry.GetActiveDocuments();
@@ -71,7 +64,7 @@ public class SelectByWorksetsInNetwork : IExternalCommand
                 return Result.Cancelled;
 
             // Extract selected document objects
-            var documentsToQuery = selectedDocuments.Select(row => (DocumentInfo)row["_Document"]).ToList();
+            var documentsToQuery = selectedDocuments.Select(row => (DocumentEntry)row["_Document"]).ToList();
 
             // Step 2: Query selected documents for workset COUNTS only (fast)
             string currentSessionId = RevitBalletApplication.SessionId;
@@ -176,50 +169,6 @@ public class SelectByWorksetsInNetwork : IExternalCommand
         }
     }
 
-    private List<DocumentInfo> ParseDocumentsFile(string filePath)
-    {
-        var documents = new List<DocumentInfo>();
-
-        try
-        {
-            var lines = File.ReadAllLines(filePath);
-
-            foreach (var line in lines)
-            {
-                if (string.IsNullOrWhiteSpace(line) || line.StartsWith("#"))
-                    continue;
-
-                var parts = line.Split(',');
-                if (parts.Length < 8)
-                    continue;
-
-                var doc = new DocumentInfo
-                {
-                    DocumentTitle = parts[0].Trim(),
-                    DocumentPath = parts[1].Trim(),
-                    SessionId = parts[2].Trim(),
-                    Port = parts[3].Trim(),
-                    Hostname = parts[4].Trim(),
-                    ProcessId = int.Parse(parts[5].Trim()),
-                    RegisteredAt = DateTime.Parse(parts[6].Trim()),
-                    LastHeartbeat = DateTime.Parse(parts[7].Trim())
-                };
-
-                if ((DateTime.Now - doc.LastHeartbeat).TotalSeconds < 120 &&
-                    !string.IsNullOrWhiteSpace(doc.DocumentTitle))
-                {
-                    documents.Add(doc);
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            throw new Exception($"Failed to parse documents file: {ex.Message}", ex);
-        }
-
-        return documents;
-    }
-
     private int GetTypeSortOrder(string type)
     {
         switch (type)
@@ -233,7 +182,7 @@ public class SelectByWorksetsInNetwork : IExternalCommand
     }
 
     private Dictionary<WorksetKey, Dictionary<string, int>> QueryDocumentsForWorksetCounts(
-        List<DocumentInfo> documents, string token, string currentSessionId, UIApplication uiapp)
+        List<DocumentEntry> documents, string token, string currentSessionId, UIApplication uiapp)
     {
         // WorksetKey -> Document Title -> Element Count
         var result = new Dictionary<WorksetKey, Dictionary<string, int>>();
@@ -277,28 +226,18 @@ public class SelectByWorksetsInNetwork : IExternalCommand
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Failed to query local document: {ex.Message}");
+                Log.Warn("SelectByWorksetsInNetwork", $"Failed to query local document: {ex.Message}");
             }
         }
 
-        // Process remote documents via Roslyn - PARALLEL requests
+        // Process remote documents via Roslyn - parallel requests through the shared client
         var remoteDocuments = documents.Where(d => d.SessionId != currentSessionId && !string.IsNullOrWhiteSpace(d.DocumentTitle)).ToList();
         if (remoteDocuments.Count > 0)
         {
-            using (var handler = new HttpClientHandler())
+            var responses = NetworkClient.ExecuteOnDocuments(remoteDocuments, docInfo =>
             {
-                handler.ServerCertificateCustomValidationCallback = (sender, cert, chain, sslPolicyErrors) => true;
-
-                using (var client = new HttpClient(handler))
-                {
-                    client.Timeout = TimeSpan.FromSeconds(120);
-
-                    var tasks = new List<Task<(DocumentInfo DocInfo, RoslynResponse Response)>>();
-
-                    foreach (var docInfo in remoteDocuments)
-                    {
-                        var escapedTitle = docInfo.DocumentTitle.Replace("\\", "\\\\").Replace("\"", "\\\"");
-                        var query = $@"var docTitle = ""{escapedTitle}"";
+                var escapedTitle = NetworkClient.EscapeForScript(docInfo.DocumentTitle);
+                return $@"var docTitle = ""{escapedTitle}"";
 Document targetDoc = null;
 foreach (Document d in UIApp.Application.Documents)
 {{
@@ -343,32 +282,13 @@ else
         Console.WriteLine(""WORKSET|"" + ws.Name + ""|"" + wsType + ""|"" + pair.Value);
     }}
 }}";
+            }, token);
 
-                        var task = SendRoslynRequestAsync(client, docInfo, query, token);
-                        tasks.Add(task);
-                    }
-
-                    try { Task.WhenAll(tasks).Wait(); }
-                    catch (AggregateException) { }
-
-                    foreach (var task in tasks)
-                    {
-                        try
-                        {
-                            if (task.Status == TaskStatus.RanToCompletion)
-                            {
-                                var (docInfo, jsonResponse) = task.Result;
-                                if (jsonResponse != null && jsonResponse.Success && !string.IsNullOrWhiteSpace(jsonResponse.Output))
-                                {
-                                    ParseWorksetCountResponse(jsonResponse.Output, docInfo, result);
-                                }
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            System.Diagnostics.Debug.WriteLine($"Failed to process response: {ex.Message}");
-                        }
-                    }
+            foreach (var (docInfo, response) in responses)
+            {
+                if (response != null && response.Success && !string.IsNullOrWhiteSpace(response.Output))
+                {
+                    ParseWorksetCountResponse(response.Output, docInfo, result);
                 }
             }
         }
@@ -388,30 +308,7 @@ else
         }
     }
 
-    private async Task<(DocumentInfo DocInfo, RoslynResponse Response)> SendRoslynRequestAsync(
-        HttpClient client, DocumentInfo docInfo, string query, string token)
-    {
-        try
-        {
-            var content = new StringContent(query, Encoding.UTF8, "text/plain");
-            var request = new HttpRequestMessage(HttpMethod.Post, $"https://127.0.0.1:{docInfo.Port}/roslyn");
-            request.Headers.Add("X-Auth-Token", token);
-            request.Content = content;
-
-            var response = await client.SendAsync(request);
-            var responseText = await response.Content.ReadAsStringAsync();
-
-            var jsonResponse = Newtonsoft.Json.JsonConvert.DeserializeObject<RoslynResponse>(responseText);
-            return (docInfo, jsonResponse);
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Failed to query document {docInfo.SessionId} ({docInfo.DocumentTitle}): {ex.Message}");
-            return (docInfo, null);
-        }
-    }
-
-    private void ParseWorksetCountResponse(string output, DocumentInfo docInfo,
+    private void ParseWorksetCountResponse(string output, DocumentEntry docInfo,
         Dictionary<WorksetKey, Dictionary<string, int>> result)
     {
         foreach (var line in output.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries))
@@ -438,7 +335,7 @@ else
     }
 
     private Dictionary<WorksetKey, Dictionary<string, List<ElementInfo>>> QueryElementsForWorksets(
-        List<DocumentInfo> documents, List<WorksetKey> worksetKeys, string token, string currentSessionId, UIApplication uiapp)
+        List<DocumentEntry> documents, List<WorksetKey> worksetKeys, string token, string currentSessionId, UIApplication uiapp)
     {
         var result = new Dictionary<WorksetKey, Dictionary<string, List<ElementInfo>>>();
 
@@ -496,31 +393,21 @@ else
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Failed to query elements for local document: {ex.Message}");
+                Log.Warn("SelectByWorksetsInNetwork", $"Failed to query elements for local document: {ex.Message}");
             }
         }
 
-        // Process remote documents via Roslyn - PARALLEL requests
+        // Process remote documents via Roslyn - parallel requests through the shared client
         var remoteDocuments = documents.Where(d => d.SessionId != currentSessionId && !string.IsNullOrWhiteSpace(d.DocumentTitle)).ToList();
         if (remoteDocuments.Count > 0)
         {
             // Build workset names filter for query
-            var worksetNamesArray = "new HashSet<string> { " + string.Join(", ", worksetKeys.Select(w => $"\"{EscapeForCSharp(w.Name)}\"")) + " }";
+            var worksetNamesArray = "new HashSet<string> { " + string.Join(", ", worksetKeys.Select(w => $"\"{NetworkClient.EscapeForScript(w.Name)}\"")) + " }";
 
-            using (var handler = new HttpClientHandler())
+            var responses = NetworkClient.ExecuteOnDocuments(remoteDocuments, docInfo =>
             {
-                handler.ServerCertificateCustomValidationCallback = (sender, cert, chain, sslPolicyErrors) => true;
-
-                using (var client = new HttpClient(handler))
-                {
-                    client.Timeout = TimeSpan.FromSeconds(120);
-
-                    var tasks = new List<Task<(DocumentInfo DocInfo, RoslynResponse Response)>>();
-
-                    foreach (var docInfo in remoteDocuments)
-                    {
-                        var escapedTitle = docInfo.DocumentTitle.Replace("\\", "\\\\").Replace("\"", "\\\"");
-                        var query = $@"var docTitle = ""{escapedTitle}"";
+                var escapedTitle = NetworkClient.EscapeForScript(docInfo.DocumentTitle);
+                return $@"var docTitle = ""{escapedTitle}"";
 var worksetNames = {worksetNamesArray};
 Document targetDoc = null;
 foreach (Document d in UIApp.Application.Documents)
@@ -551,32 +438,13 @@ else
         Console.WriteLine(""ELEMENT|"" + ws.Name + ""|"" + e.UniqueId + ""|"" + e.Id.IntegerValue);
     }}
 }}";
+            }, token);
 
-                        var task = SendRoslynRequestAsync(client, docInfo, query, token);
-                        tasks.Add(task);
-                    }
-
-                    try { Task.WhenAll(tasks).Wait(); }
-                    catch (AggregateException) { }
-
-                    foreach (var task in tasks)
-                    {
-                        try
-                        {
-                            if (task.Status == TaskStatus.RanToCompletion)
-                            {
-                                var (docInfo, jsonResponse) = task.Result;
-                                if (jsonResponse != null && jsonResponse.Success && !string.IsNullOrWhiteSpace(jsonResponse.Output))
-                                {
-                                    ParseElementsResponse(jsonResponse.Output, docInfo, worksetKeys, result);
-                                }
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            System.Diagnostics.Debug.WriteLine($"Failed to process response: {ex.Message}");
-                        }
-                    }
+            foreach (var (docInfo, response) in responses)
+            {
+                if (response != null && response.Success && !string.IsNullOrWhiteSpace(response.Output))
+                {
+                    ParseElementsResponse(response.Output, docInfo, worksetKeys, result);
                 }
             }
         }
@@ -584,12 +452,7 @@ else
         return result;
     }
 
-    private string EscapeForCSharp(string value)
-    {
-        return value.Replace("\\", "\\\\").Replace("\"", "\\\"");
-    }
-
-    private void ParseElementsResponse(string output, DocumentInfo docInfo, List<WorksetKey> worksetKeys,
+    private void ParseElementsResponse(string output, DocumentEntry docInfo, List<WorksetKey> worksetKeys,
         Dictionary<WorksetKey, Dictionary<string, List<ElementInfo>>> result)
     {
         foreach (var line in output.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries))
@@ -634,18 +497,6 @@ else
             return $"{(int)timeAgo.TotalDays}d ago";
     }
 
-    private class DocumentInfo
-    {
-        public string SessionId { get; set; }
-        public string Port { get; set; }
-        public string Hostname { get; set; }
-        public int ProcessId { get; set; }
-        public DateTime RegisteredAt { get; set; }
-        public DateTime LastHeartbeat { get; set; }
-        public string DocumentTitle { get; set; }
-        public string DocumentPath { get; set; }
-    }
-
     private class WorksetKey
     {
         public string Name { get; set; }
@@ -670,12 +521,5 @@ else
         public int ElementIdValue { get; set; }
         public string DocumentPath { get; set; }
         public string SessionId { get; set; }
-    }
-
-    private class RoslynResponse
-    {
-        public bool Success { get; set; }
-        public string Output { get; set; }
-        public string Error { get; set; }
     }
 }
