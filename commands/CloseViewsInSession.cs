@@ -6,6 +6,8 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using RevitBallet.Commands;
 
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
 [CommandMeta("View")]
@@ -24,7 +26,7 @@ public class CloseViewsInSession : IExternalCommand
         }
 
         // Get SessionId for database operations
-        string sessionId = RevitBallet.LogViewChanges.GetSessionId();
+        string sessionId = LogViewChanges.GetSessionId();
 
         // ─────────────────────────────────────────────────────────────
         // 1. Collect open views from ALL open documents in the session

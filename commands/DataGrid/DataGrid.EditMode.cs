@@ -7,6 +7,8 @@ using System.Windows.Forms;
 using System.Drawing;
 using RevitDB = Autodesk.Revit.DB;
 
+namespace RevitBallet.Commands;
+
 public partial class CustomGUIs
 {
     // Edit mode state extracted from DataGrid2_Helpers.cs
@@ -318,7 +320,7 @@ public partial class CustomGUIs
             }
         }
 
-        using (var advancedForm = new RevitCommands.AdvancedEditDialog(currentValues, dataRows, "Edit Cells"))
+        using (var advancedForm = new AdvancedEditDialog(currentValues, dataRows, "Edit Cells"))
         {
             if (advancedForm.ShowDialog() == DialogResult.OK)
             {
@@ -361,7 +363,7 @@ public partial class CustomGUIs
     }
 
     /// <summary>Bridge method to use AdvancedEditDialog with corrected precedence logic</summary>
-    private static string TransformValue(string originalValue, RevitCommands.AdvancedEditDialog dialog, Dictionary<string, object> dataRow)
+    private static string TransformValue(string originalValue, AdvancedEditDialog dialog, Dictionary<string, object> dataRow)
     {
         // Use the same transformation logic as AdvancedEditDialog.TransformValue
         // This matches the order in AdvancedEditDialog.cs TransformValue method

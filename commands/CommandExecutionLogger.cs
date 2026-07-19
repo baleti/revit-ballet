@@ -5,6 +5,8 @@ using System.IO;
 /// <summary>
 /// Logs command execution for debugging and analysis
 /// </summary>
+namespace RevitBallet.Commands;
+
 public static class CommandExecutionLogger
 {
     /// <summary>

@@ -5,7 +5,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
-namespace YourNamespace
+namespace RevitBallet.Commands
 {
     [Transaction(TransactionMode.ReadOnly)]
     [CommandMeta("View")]

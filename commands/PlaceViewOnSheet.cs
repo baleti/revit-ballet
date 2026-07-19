@@ -10,7 +10,7 @@ using Autodesk.Revit.UI;
 using DB = Autodesk.Revit.DB;
 
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
-namespace RevitAddin.Commands
+namespace RevitBallet.Commands
 {
     /// <summary>
     /// Prompts the user to map views to sheets using an editable DataGrid with two columns.

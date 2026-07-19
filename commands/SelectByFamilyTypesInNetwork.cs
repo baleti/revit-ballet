@@ -11,6 +11,8 @@ using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
 
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
 [CommandMeta("")]
@@ -112,7 +114,7 @@ public class SelectByFamilyTypesInNetwork : IExternalCommand
             _diagnostics.Add("");
 
             // Initialize timing entries for each document
-            string currentSessionId = RevitBallet.RevitBallet.SessionId;
+            string currentSessionId = RevitBalletApplication.SessionId;
             foreach (var doc in documentsToQuery)
             {
                 _documentTimings[doc.DocumentTitle] = new DocumentTiming

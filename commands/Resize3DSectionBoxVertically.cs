@@ -5,6 +5,8 @@ using System;
 using System.Windows.Forms; // For the input box
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("")]
 public class Resize3DSectionBoxVertically : IExternalCommand

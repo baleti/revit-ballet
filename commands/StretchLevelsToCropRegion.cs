@@ -6,6 +6,8 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.Attributes;
 #endregion
 
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("Level")]
 public class StretchLevelsToCropRegionCommand : IExternalCommand

@@ -5,6 +5,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("Model Group")]
 public class SwapModelGroup : IExternalCommand

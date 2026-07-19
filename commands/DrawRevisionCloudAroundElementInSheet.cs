@@ -9,7 +9,7 @@ using System.Text;
 #endregion
 
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
-namespace MyCompany.RevitCommands
+namespace RevitBallet.Commands
 {
   [Transaction(TransactionMode.Manual)]
   [CommandMeta("Any")]

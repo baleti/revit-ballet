@@ -5,6 +5,8 @@ using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.ReadOnly)]
 [CommandMeta("Any")]
 public class FilterPosition : IExternalCommand

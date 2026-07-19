@@ -13,7 +13,7 @@ using RevitView = Autodesk.Revit.DB.View;
 using RevitViewport = Autodesk.Revit.DB.Viewport;
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 
-namespace RevitAddin
+namespace RevitBallet.Commands
 {
     internal class CeilingPlanOptionsForm : System.Windows.Forms.Form
     {
@@ -148,7 +148,7 @@ namespace RevitAddin
             string initialPattern = "{}_" + timestamp + " - Ceiling Plan";
             var sourceNames = floorPlanViews.Select(v => v.Name.Trim('{', '}')).ToList();
             List<string> newNames;
-            using (var renameDialog = new RevitCommands.AdvancedEditDialog(sourceNames, null, "Name Ceiling Plans", initialPattern))
+            using (var renameDialog = new AdvancedEditDialog(sourceNames, null, "Name Ceiling Plans", initialPattern))
             {
                 if (renameDialog.ShowDialog() != DialogResult.OK)
                     return Result.Cancelled;

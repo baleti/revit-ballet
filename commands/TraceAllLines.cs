@@ -8,6 +8,8 @@ using Autodesk.Revit.UI;
 using Autodesk.Revit.UI.Selection;
 using System.Collections.Generic;
 
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("")]
 public class TraceAllLines : IExternalCommand

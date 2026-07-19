@@ -5,6 +5,8 @@ using System;
 using System.Linq;
 using RevitBallet.Commands;
 
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("")]
 public class SwitchToLastView : IExternalCommand
@@ -26,7 +28,7 @@ public class SwitchToLastView : IExternalCommand
             }
 
             // Get session-wide view history (all documents, most recent first)
-            string sessionId = RevitBallet.RevitBallet.SessionId;
+            string sessionId = RevitBalletApplication.SessionId;
             var history = LogViewChangesDatabase.GetViewHistoryForSession(sessionId, limit: 100);
 
             diagnostics.Log($"Retrieved {history.Count} entries from view history");
@@ -163,7 +165,7 @@ public class SwitchToLastView : IExternalCommand
                 try
                 {
                     // Suppress logging to avoid recording the intermediate view when document opens
-                    RevitBallet.LogViewChanges.SuppressLogging();
+                    LogViewChanges.SuppressLogging();
 
                     // CRITICAL FIX: Call OpenDocumentFile first to prevent close/reopen cycle
                     // Per Revit API guidance: If OpenDocumentFile is called before OpenAndActivateDocument,
@@ -227,7 +229,7 @@ public class SwitchToLastView : IExternalCommand
                     }
 
                     // Resume logging
-                    RevitBallet.LogViewChanges.ResumeLogging();
+                    LogViewChanges.ResumeLogging();
 
                     diagnosticLines.Add($"    Manually logging view activation");
 
@@ -253,7 +255,7 @@ public class SwitchToLastView : IExternalCommand
                 catch (Exception ex)
                 {
                     // Make sure to resume logging even if an error occurs
-                    RevitBallet.LogViewChanges.ResumeLogging();
+                    LogViewChanges.ResumeLogging();
 
                     diagnosticLines.Add($"    ERROR: {ex.Message}");
                     diagnosticLines.Add($"    Trying next entry...");

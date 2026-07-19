@@ -15,7 +15,7 @@ using RevitBallet.Commands;
 // using YourNamespaceContainingCustomGUIs;
 
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
-namespace FilterDoorsWithWallOffsets
+namespace RevitBallet.Commands
 {
     [Transaction(TransactionMode.Manual)]
     [CommandMeta("Any")]

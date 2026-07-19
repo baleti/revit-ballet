@@ -6,6 +6,8 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using Autodesk.Revit.UI.Selection;
 
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
 [CommandMeta("Any")]

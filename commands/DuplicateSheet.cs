@@ -10,7 +10,7 @@ using Autodesk.Revit.UI;
 using WinForms = System.Windows.Forms;
 
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
-namespace RevitAddin
+namespace RevitBallet.Commands
 {
     // ─────────────────────────────────────────────────────────────
     //  Custom Sheet Duplication Options

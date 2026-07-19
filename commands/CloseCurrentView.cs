@@ -5,6 +5,8 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using RevitBallet.Commands;
 
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
 [CommandMeta("")]
@@ -16,7 +18,7 @@ public class CloseCurrentView : IExternalCommand
         Document doc = uidoc.Document;
 
         // Get SessionId for database operations
-        string sessionId = RevitBallet.LogViewChanges.GetSessionId();
+        string sessionId = LogViewChanges.GetSessionId();
 
         // Remove the current view from history
         string activeViewTitle = uidoc.ActiveView.Title;

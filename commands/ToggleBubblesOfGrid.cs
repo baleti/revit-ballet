@@ -6,7 +6,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using WinForms = System.Windows.Forms;
 
-namespace HideLevelBubbles
+namespace RevitBallet.Commands
 {
     [Transaction(TransactionMode.Manual)]
     [CommandMeta("Grid")]

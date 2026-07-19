@@ -4,6 +4,8 @@ using Autodesk.Revit.Attributes;
 using System.Collections.Generic;
 using System.Linq;
 
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("Model Group")]
 public class SelectModelGroupsWithParameters : IExternalCommand

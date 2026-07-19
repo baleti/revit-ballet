@@ -8,6 +8,8 @@ using System.Linq;
 using System.Windows.Forms;
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("")]
 public class InvokeRevitCommand : IExternalCommand

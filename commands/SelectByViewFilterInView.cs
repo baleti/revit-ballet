@@ -12,7 +12,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
-namespace YourNamespace   // ← adjust
+namespace RevitBallet.Commands
 {
     public class FilterWrapper
     {

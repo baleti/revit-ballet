@@ -14,6 +14,8 @@ using RevitBallet.Commands;
 using System.Net.Http;
 #endif
 
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("Document")]
 public class SynchronizeDocumentsInNetwork : IExternalCommand
@@ -72,7 +74,7 @@ else
                 }
 
                 // Get current session ID
-                string currentSessionId = RevitBallet.RevitBallet.SessionId;
+                string currentSessionId = RevitBalletApplication.SessionId;
 
                 // Read shared auth token
                 string authToken = RevitBalletServer.GetSharedAuthToken();

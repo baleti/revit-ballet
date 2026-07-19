@@ -6,6 +6,8 @@ using System.Collections.Generic;
 using System.Linq;
 using RevitBallet.Commands;
 
+namespace RevitBallet.Commands;
+
 [TransactionAttribute(TransactionMode.Manual)]
 [CommandMeta("View")]
 public class SelectViews : IExternalCommand

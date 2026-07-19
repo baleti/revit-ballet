@@ -21,6 +21,8 @@ using Autodesk.Revit.UI.Selection;
 
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("")]
 public class SelectByWorksetsInView : IExternalCommand

@@ -4,7 +4,7 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 
-namespace RevitAddin
+namespace RevitBallet.Commands
 {
     /// <summary>
     /// Provides standardized input resolution for commands following the canonical

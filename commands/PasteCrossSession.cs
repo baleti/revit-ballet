@@ -8,6 +8,8 @@ using Autodesk.Revit.UI;
 using Newtonsoft.Json;
 using RevitBallet.Commands;
 
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("")]
 public class PasteCrossSession : IExternalCommand

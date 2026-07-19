@@ -10,7 +10,7 @@ using Autodesk.Revit.UI.Selection;
 
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 #if REVIT2022 || REVIT2023 || REVIT2024 || REVIT2025 || REVIT2026
-namespace RevitCommands
+namespace RevitBallet.Commands
 {
     [Transaction(TransactionMode.Manual)]
     [Regeneration(RegenerationOption.Manual)]
@@ -89,7 +89,7 @@ namespace RevitCommands
                 double offsetMm = GetLastOffsetValue();
 
                 // Prompt user for offset distance
-                using (OffsetInputForm inputForm = new OffsetInputForm(offsetMm))
+                using (ResetTitleOffsetInputForm inputForm = new ResetTitleOffsetInputForm(offsetMm))
                 {
                     if (inputForm.ShowDialog() != System.Windows.Forms.DialogResult.OK)
                     {
@@ -222,7 +222,7 @@ namespace RevitCommands
     }
 
     // Simple input form for offset value
-    public class OffsetInputForm : System.Windows.Forms.Form
+    public class ResetTitleOffsetInputForm : System.Windows.Forms.Form
     {
         private System.Windows.Forms.TextBox textBox;
         private System.Windows.Forms.Button okButton;
@@ -231,7 +231,7 @@ namespace RevitCommands
         
         public double OffsetValue { get; private set; }
 
-        public OffsetInputForm(double defaultValue)
+        public ResetTitleOffsetInputForm(double defaultValue)
         {
             InitializeComponents(defaultValue);
         }

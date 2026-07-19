@@ -6,6 +6,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 
+namespace RevitBallet.Commands;
+
 public static class DataGridDetailLevelManager
 {
     private static readonly string ModeFilePath = PathHelper.GetRuntimeFilePath("DataGridDetailLevel");

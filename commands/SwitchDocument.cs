@@ -6,6 +6,8 @@ using System.Collections.Generic;
 using System.Linq;
 using RevitBallet.Commands;
 
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("Document")]
 public class SwitchDocument : IExternalCommand
@@ -23,7 +25,7 @@ public class SwitchDocument : IExternalCommand
         }
 
         // Get SessionId once for all database operations
-        string sessionId = RevitBallet.LogViewChanges.GetSessionId();
+        string sessionId = LogViewChanges.GetSessionId();
 
         // Collect all open documents with their last viewed view
         var documentsData = new List<Dictionary<string, object>>();
@@ -138,7 +140,7 @@ public class SwitchDocument : IExternalCommand
         try
         {
             // Suppress logging to avoid recording the intermediate view when document opens
-            RevitBallet.LogViewChanges.SuppressLogging();
+            LogViewChanges.SuppressLogging();
 
             // CRITICAL FIX: Call OpenDocumentFile first to prevent close/reopen cycle
             // Per Revit API guidance: If OpenDocumentFile is called before OpenAndActivateDocument,
@@ -176,7 +178,7 @@ public class SwitchDocument : IExternalCommand
             }
 
             // Resume logging
-            RevitBallet.LogViewChanges.ResumeLogging();
+            LogViewChanges.ResumeLogging();
 
             // Manually log the final view activation to ensure it's recorded
             // (even if it was already the active view and didn't trigger ViewActivated)
@@ -197,7 +199,7 @@ public class SwitchDocument : IExternalCommand
         catch (Exception ex)
         {
             // Make sure to resume logging even if an error occurs
-            RevitBallet.LogViewChanges.ResumeLogging();
+            LogViewChanges.ResumeLogging();
 
             TaskDialog.Show("Error", $"Failed to switch to document '{targetDoc.Title}':\n\n{ex.Message}");
             return Result.Failed;

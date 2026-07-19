@@ -6,7 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
-namespace MyRevitCommands
+namespace RevitBallet.Commands
 {
     /// <summary>
     /// Adds every *visible* revision cloud in the project to the current selection.

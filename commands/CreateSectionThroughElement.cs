@@ -11,7 +11,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.Attributes;
 
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
-namespace MyRevitCommands
+namespace RevitBallet.Commands
 {
   // Holds settings plus project name.
   public class SectionSettings

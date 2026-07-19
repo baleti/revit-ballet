@@ -5,6 +5,8 @@ using Autodesk.Revit.UI.Selection;
 using System.Windows.Forms; // Needed for Clipboard.SetText
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("Any")]
 public class CopyToClipboardTypeNameOfElementInLinkedModel : IExternalCommand

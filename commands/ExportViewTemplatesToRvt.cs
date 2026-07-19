@@ -7,6 +7,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Windows.Forms;
 
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("View Template")]
 public class ExportViewTemplatesToRvt : IExternalCommand

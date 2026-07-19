@@ -5,6 +5,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
+namespace RevitBallet.Commands;
+
 public static class ElementDataHelper
 {
     public static List<Dictionary<string, object>> GetElementData(UIDocument uiDoc, bool selectedOnly = false, bool includeParameters = false)

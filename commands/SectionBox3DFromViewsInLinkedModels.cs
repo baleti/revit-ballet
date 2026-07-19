@@ -5,6 +5,8 @@ using Autodesk.Revit.Exceptions;
 using System.Collections.Generic;
 using System.Linq;
 
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("View")]
 public class SectionBox3DFromViewsInLinkedModels : IExternalCommand

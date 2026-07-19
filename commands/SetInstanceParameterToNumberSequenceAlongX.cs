@@ -7,6 +7,8 @@ using Autodesk.Revit.UI;
 using System.Windows.Forms;
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("Any")]
 public class SetInstanceParameterToNumberSequenceAlongX : IExternalCommand

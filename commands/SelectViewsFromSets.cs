@@ -4,6 +4,8 @@ using Autodesk.Revit.Attributes;
 using System.Collections.Generic;
 using System.Linq;
 
+namespace RevitBallet.Commands;
+
 [TransactionAttribute(TransactionMode.Manual)]
 [CommandMeta("View")]
 public class SelectViewsFromSets : IExternalCommand

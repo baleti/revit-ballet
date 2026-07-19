@@ -10,10 +10,9 @@ using Autodesk.Revit.UI;
 using Autodesk.Revit.Attributes;
 using System.Collections.Generic;
 using System.Linq;
-using RevitAddin;
 
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
-namespace YourCompany.YourAddin
+namespace RevitBallet.Commands
 {
     [Transaction(TransactionMode.Manual)]
     [Regeneration(RegenerationOption.Manual)]

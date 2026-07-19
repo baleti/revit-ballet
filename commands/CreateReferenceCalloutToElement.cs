@@ -6,7 +6,7 @@ using System.Collections.Generic;
 using System;
 
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
-namespace RevitDetailLines
+namespace RevitBallet.Commands
 {
     [Transaction(TransactionMode.Manual)]
     [CommandMeta("Any")]

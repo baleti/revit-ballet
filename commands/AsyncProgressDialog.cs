@@ -5,6 +5,8 @@ using System.Windows.Forms;
 /// Async progress dialog that doesn't block the work thread.
 /// Work thread just updates a counter, dialog polls it on a timer.
 /// </summary>
+namespace RevitBallet.Commands;
+
 public class AsyncProgressDialog : IDisposable
 {
     private Form progressForm;

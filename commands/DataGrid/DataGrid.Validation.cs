@@ -6,6 +6,8 @@ using Autodesk.Revit.DB;
 /// <summary>
 /// Validation infrastructure for DataGrid column editing
 /// </summary>
+namespace RevitBallet.Commands;
+
 public partial class CustomGUIs
 {
     /// <summary>

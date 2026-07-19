@@ -7,7 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
-namespace YourAddinNamespace
+namespace RevitBallet.Commands
 {
     /// <summary>
     /// Presents the 50 elements with the highest ElementId values

@@ -8,6 +8,8 @@ using System.Linq;
 /// <summary>
 /// A row in the FIRST grid (filter list). Displays only FilterName and number of Views.
 /// </summary>
+namespace RevitBallet.Commands;
+
 public class FilterGridRow
 {
     public string FilterName { get; set; }

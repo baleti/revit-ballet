@@ -10,10 +10,9 @@ using Autodesk.Revit.Attributes;
 // Aliases to disambiguate Windows Forms and Drawing types.
 using WinForms = System.Windows.Forms;
 using Drawing = System.Drawing;
-using RevitAddin;
 
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
-namespace MyRevitCommands
+namespace RevitBallet.Commands
 {
    /// <summary>
    /// Shared helper methods for filter commands.

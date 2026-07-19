@@ -4,6 +4,8 @@ using Autodesk.Revit.UI;
 using System;
 using System.Collections.Generic;
 
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("Any")]
 [CommandOutput("Tag")]

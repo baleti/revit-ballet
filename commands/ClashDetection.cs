@@ -27,6 +27,8 @@ using RevitColor = Autodesk.Revit.DB.Color;
 /// <summary>
 /// Optimized ClashDetectionOfElement with spatial indexing and parallel processing support
 /// </summary>
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.Manual)]
 [Regeneration(RegenerationOption.Manual)]
 [CommandMeta("Any")]

@@ -11,7 +11,7 @@ using RevitBallet.Commands;
 using WF = System.Windows.Forms;
 
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
-namespace MoveElementToCentroid
+namespace RevitBallet.Commands
 {
     [Transaction(TransactionMode.Manual)]
     [Regeneration(RegenerationOption.Manual)]

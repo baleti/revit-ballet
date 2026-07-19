@@ -19,6 +19,8 @@ using System.Net.Http;
 /// Copies type parameter values from selected types to matching types in documents
 /// across all Revit sessions in the network.
 /// </summary>
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("Any")]
 public class CopyTypeParametersInNetwork : IExternalCommand
@@ -79,7 +81,7 @@ public class CopyTypeParametersInNetwork : IExternalCommand
                     return Result.Failed;
                 }
 
-                string currentSessionId = RevitBallet.RevitBallet.SessionId;
+                string currentSessionId = RevitBalletApplication.SessionId;
                 diagnostics.Log($"Current session: {currentSessionId}, Found {networkDocuments.Count} document(s) in network");
 
                 // Step 4: Find sessions/documents with matching types

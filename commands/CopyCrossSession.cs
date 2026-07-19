@@ -8,6 +8,8 @@ using Autodesk.Revit.UI;
 using Newtonsoft.Json;
 using RevitBallet.Commands;
 
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.ReadOnly)]
 [CommandMeta("Any")]
 public class CopyCrossSession : IExternalCommand

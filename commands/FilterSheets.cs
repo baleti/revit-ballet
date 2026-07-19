@@ -7,7 +7,7 @@ using Autodesk.Revit.UI;
 #endregion
 
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
-namespace MyCompany.RevitCommands
+namespace RevitBallet.Commands
 {
     [Autodesk.Revit.Attributes.Transaction(Autodesk.Revit.Attributes.TransactionMode.Manual)]
     [CommandMeta("Any")]

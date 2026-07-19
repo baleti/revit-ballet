@@ -9,6 +9,8 @@ using Autodesk.Revit.UI;
 /// Revit 2024+ changed ElementId from int-based to long-based, introducing breaking changes.
 /// This compatibility layer ensures code works across Revit 2017-2026+.
 /// </summary>
+namespace RevitBallet.Commands;
+
 public static class RevitApiCompatibility
 {
 #if REVIT2011 || REVIT2012 || REVIT2013 || REVIT2014 || REVIT2015 || REVIT2016 || REVIT2017 || REVIT2018 || REVIT2019 || REVIT2020 || REVIT2021 || REVIT2022 || REVIT2023

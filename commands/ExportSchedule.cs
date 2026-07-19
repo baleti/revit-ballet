@@ -9,6 +9,8 @@ using System.Linq;
 using System.Windows.Forms;
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("Schedule")]
 public class ExportSchedule : IExternalCommand

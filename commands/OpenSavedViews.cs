@@ -7,6 +7,8 @@ using Autodesk.Revit.UI;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.Attributes;
 
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("")]
 public class OpenSavedViews : IExternalCommand

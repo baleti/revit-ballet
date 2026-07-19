@@ -10,6 +10,8 @@ using System.Reflection;
 using RevitBallet.Commands;
 
 // Static class to manage selection mode using SelectionSets
+namespace RevitBallet.Commands;
+
 public static class SelectionModeManager
 {
     private static readonly string ModeFilePath = PathHelper.GetRuntimeFilePath("SelectionMode");

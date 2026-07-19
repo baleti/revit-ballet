@@ -6,6 +6,8 @@ using System.Collections.Generic;
 using System.Linq;
 using RevitBallet.Commands;
 
+namespace RevitBallet.Commands;
+
 [Transaction(TransactionMode.Manual)]
 [CommandMeta("Document")]
 public class SynchronizeDocumentsInSession : IExternalCommand
