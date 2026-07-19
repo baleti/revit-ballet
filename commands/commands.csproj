@@ -67,6 +67,11 @@
     <DebugType>none</DebugType>
   </PropertyGroup>
 
+  <!-- UI-agnostic core logic (filter engine, sorting, naming) -->
+  <ItemGroup>
+    <ProjectReference Include="..\core\RevitBallet.Core.csproj" />
+  </ItemGroup>
+
   <!-- Revit API from NuGet (all versions in one package) -->
   <ItemGroup>
     <PackageReference Include="Revit_All_Main_Versions_API_x64" Version="$(RevitAPIVersion)" ExcludeAssets="runtime" />

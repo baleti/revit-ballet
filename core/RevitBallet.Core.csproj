@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- net46 for Revit 2017-2024 consumers (net46 cannot consume netstandard2.0),
+         netstandard2.0 for Revit 2025+ (net8) and the test project -->
+    <TargetFrameworks>net46;netstandard2.0</TargetFrameworks>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <RootNamespace>RevitBallet.Core</RootNamespace>
+    <AssemblyName>RevitBallet.Core</AssemblyName>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+
+  <!-- The test project lives in a subdirectory and has its own .csproj -->
+  <ItemGroup>
+    <Compile Remove="tests\**\*.cs" />
+    <None Remove="tests\**\*" />
+  </ItemGroup>
+</Project>

@@ -6,6 +6,16 @@ on:
   pull_request:
 
 jobs:
+  # Unit tests for RevitBallet.Core (filter engine, sorting, naming).
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - run: dotnet test core/tests
+
   # Compile the commands plugin for every supported Revit year.
   # The Revit API comes from NuGet and EnableWindowsTargeting is set,
   # so this runs on plain Linux — no Windows runner or Revit install needed.
