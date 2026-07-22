@@ -1,3 +1,126 @@
+* select by view filters
+list available filtrs, perhaps add column to how many elements it would catch, but that may be expensive
+* see if it's possible via revit api to change phase of rooms
+it may be useful as rooms seem to disappear across phases
+otherwise this field is grayed out (not editable) in revit ui
+* add line patterns to categories in seelctbycategoryin{*}
+* add centroid values to ifc links (datagrid)
+not that ifc links weren't completely broken in revit anyway
+* add query engine
+before integrating it properly, while testing, create a new command query that will execute they query language
+it perhaps may be modeless from get go? perhaps it could show datagrid differently than using winforms datagrid
+** have the query language generalize select by commands
+e.g. selecy by phases shouldn't need to be a new command
+** modern alternatives like kql, prql make syntax more practical
+** include both this shorthand and full sql syntaxes
+full sql may prove useful
+consider linq?
+* make ClashDetection work with links
+right now it doesn't treat selected revit link models as a group
+it should consider all 3d elements of selected model (combined with elements selected in the project)
+* could you create a command that lists all graphical overrides affecting selected elements?
+don't think that type of information would be available
+perhaps could be recomputed?
+worth trying, be comprehensive, there are large amount of graphical overrides in revit
+would be valueable especially for detecting if elements have any local overrides
+  meaning overrides per single view
+* rename HideInView to HideInViewTemporary
+add another command that does HideInView (equivalent to EH shortcut)
+* finish InvokeAddinCommandInNetwork program
+a separate executable
+make it register alt+x windows shortcut only when a revit window is in focus
+another shortcut when any other window is in focus (perhaps alt-` ?)
+* in f2 rename dialog math field should be composable with pattern matching
+you maybe should rethink this dialog in general
+make it more composable, perhaps instead of a single dialog have a system of operators in the datagrid
+otherwise math is almost useless, most values are mixed up with other text
+* add Sheet to input of DuplicateViewAndPlaceOnSheet command
+* instead of having separate command for SelectBy{Group,Family,Link,...}In{View,Document,Network} have just SelectByCategoryIn{...} and another command to transform view to "drill into" categories working effectively as the other functions and more
+datagrids should be like a "web browser" (stupidest analogy), views should be navigated through back and forth, no separate windows required
+if you made them pure they could be cached easier (revit likely wont make it easy)
+* remove CopyToClipboardTypeNameOfElementInLinkedModel command
+copy from datagrids instead
+* simplified 3d views of the model
+navigating revit model is often too slow for read-only tasks
+think how much more efficient webview or blenderbim are
+try generating in a separate window simplified views of the model, e.g room graph/topology
+* generalize SelectViewportFromView and SelectViewFromViewport
+inheritance navigation, find a practical interface
+likely another datagrid
+everything is a datagrid
+* remove SelectViewTemplates and add "used by" column to datagrrid when templates are selected
+no need for a dedicated command when canonical selectbycategory exists
+** may find another more general way to streamline it
+* add View Template to input of AddViewFilterToViewOrViewTemplate
+in addition to view filter
+** make it not prompt for view filter if view filter was already in selection
+* datagrid changes
+** add multiline filtering 
+value $name
+distinct $column1
+add $column2
+** add slash commands (/command)
+*** IRC convention
+after a much longer deliberation this seems like the right thing to do
+used across so many projects these days (discord, claude chat)
+*** add compostability
+e.g. /command1/command2
+you may be tempted to use pipe | symbol instead, but that would be annoying to locate on the keyboard each time
+nested slashes also look a lot like paths, which maybe makes sense
+*** also #channel convention exists
+not sure how that would fit though
+*** multiline for more complex pipelines?
+/update1 $column1 <mark
+/update2 $column2 >mark
+this really starts to turn into a programming language/scripting than an ad-hoc tool
+**** example sequence of commands
+scope box != null
+where elevation from level = 2500 set elevation from level = 1780
+** consider integration with dynamo
+commands show up in dynamo graph, but more importantly dynamo blocks to be reusable in revit-ballet
+** just finished a longer deliberation on how to use stream processing/category theory/unix philosophy to structure operations into a composable graph
+[2026-06-07 Sun 18:16]
+tldr replicate houdini
+make history of revit-ballet operations explicit
+*** search field queries should be operands composable in a graph
+avoid sverchok linear graph, control flow should be composable
+**** likely unix-style pipelines
+perhaps what's now search field could be a dsl/repl
+just like ctrl+r is assigned to activate regex mode
+*** linq selectors?
+thinkgin of autogenerated xpath or something more appropriate for revit
+althgough decided that nested datastructures are likely inappropriate for human consumption 
+* make ImportRvtFile ask to overwrite existing types
+now if elements have same name it doesn't overwrite and no option to do it
+* remove SelectAssociatedDimensions and SelectAssociatedTagOfElement and keep SelectAssociated command
+have it handle all these types
+* add LoadFamily command to InvokeRevitCommand command
+* revamp datagrid system
+in headers they should show category of elements they are displaying
+e.g. selecting viewports should say that in header
+i know this can be inferred from columns, but interface-wise this will become useful when transforming the grid
+** dialog showing schema graph to traverse graph and open new corresponding grids
+* get Split command to work with ceilings
+* CopyElementToViewInDocument is slower than SelectView command to show datagrid with views
+check why, these datagrids should ideally be the same, so performance should be the same
+* consider adding scioe column to invokeaddincommand datagrid
+a lot of columns have variants for different scope InDocument InView
+it may be worth being explcit about it
+* add ability to create a binder pdf in ExportPDF command
+add ability to create both
+  to save time you will want a command that binds exported PDFs together
+    rather than reexporting them again
+  that's very against unix philosophy but "ces la vie" (i misspelled that)
+* rename CreateViewSetFromView to CreateViewSet
+View as input is already stated in input column
+* add ability to move columns around in datagrid and have corresponding commands remember previous arrangements
+would need to add a command in datagrids to reset column positions
+would need to come up with a good command invocation inside datagrids generally
+likely with ` key, perhaps alt+`
+* consider pulling doom emacs on revit and using SPC as leader for all shortcuts
+wonder if it gets tedious
+i need to avoid clashes with other shortcuts
+SPC seems to be unsued in most situations
 * may be worth swapping spacebar in empty search field in datagrid to ctrl+space
 it would work also when searchbox is filled in
 it could not only confirm upmost selection, but also could confirm selection in general
