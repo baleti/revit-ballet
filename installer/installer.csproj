@@ -18,8 +18,6 @@
     <EmbeddedResource Include="revit-ballet.addin"/>
 
     <!-- Embed merged keyboard shortcuts for each Revit version -->
-    <EmbeddedResource Include="bin\keyboard-shortcuts-merged\KeyboardShortcuts-2018.xml"/>
-    <EmbeddedResource Include="bin\keyboard-shortcuts-merged\KeyboardShortcuts-2019.xml"/>
     <EmbeddedResource Include="bin\keyboard-shortcuts-merged\KeyboardShortcuts-2020.xml"/>
     <EmbeddedResource Include="bin\keyboard-shortcuts-merged\KeyboardShortcuts-2021.xml"/>
     <EmbeddedResource Include="bin\keyboard-shortcuts-merged\KeyboardShortcuts-2022.xml"/>

@@ -611,9 +611,7 @@ public class SelectViewWhereElementIsVisible : IExternalCommand
                 view.ViewType == ViewType.Undefined ||
                 view.ViewType == ViewType.Internal ||
                 view.ViewType == ViewType.Report ||
-#if !REVIT2017 && !REVIT2018 && !REVIT2019
                 view.ViewType == ViewType.SystemsAnalysisReport ||
-#endif
                 view.ViewType == ViewType.CostReport ||
                 view.ViewType == ViewType.LoadsReport ||
                 view is ViewSheet ||

@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <!-- net46 for Revit 2017-2024 consumers (net46 cannot consume netstandard2.0),
+    <!-- net46 for Revit 2020-2024 consumers (net46 cannot consume netstandard2.0),
          netstandard2.0 for Revit 2025+ (net8) and the test project -->
     <TargetFrameworks>net46;netstandard2.0</TargetFrameworks>
     <LangVersion>latest</LangVersion>

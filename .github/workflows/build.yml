@@ -24,7 +24,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        year: [2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026]
+        year: [2020, 2021, 2022, 2023, 2024, 2025, 2026]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4

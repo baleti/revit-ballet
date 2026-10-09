@@ -13,7 +13,7 @@ namespace RevitBallet.Commands;
 
 public static class RevitApiCompatibility
 {
-#if REVIT2011 || REVIT2012 || REVIT2013 || REVIT2014 || REVIT2015 || REVIT2016 || REVIT2017 || REVIT2018 || REVIT2019 || REVIT2020 || REVIT2021 || REVIT2022 || REVIT2023
+#if REVIT2020 || REVIT2021 || REVIT2022 || REVIT2023
     /// <summary>
     /// Gets the numeric value of an ElementId as a long.
     /// In Revit 2024+, use ElementId.Value directly.
@@ -103,7 +103,7 @@ public static class RevitApiCompatibility
     }
 #endif
 
-#if REVIT2011 || REVIT2012 || REVIT2013 || REVIT2014 || REVIT2015 || REVIT2016 || REVIT2017 || REVIT2018 || REVIT2019 || REVIT2020 || REVIT2021 || REVIT2022
+#if REVIT2020 || REVIT2021 || REVIT2022
     /// <summary>
     /// Gets projection to sheet transform for a viewport (Revit 2022 and earlier).
     /// In Revit 2023+, Viewport.GetProjectionToSheetTransform() is built-in.

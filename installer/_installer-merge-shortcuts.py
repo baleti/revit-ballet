@@ -72,7 +72,7 @@ def main():
     print(f"Merging {len(custom_shortcuts)} custom shortcuts into base files...")
 
     # Process each year
-    years = [2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026]
+    years = [2020, 2021, 2022, 2023, 2024, 2025, 2026]
 
     for year in years:
         base_file = shortcuts_dir / f"KeyboardShortcuts-{year}.xml"

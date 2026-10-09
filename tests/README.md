@@ -10,7 +10,7 @@ Linux Hypervisor (Host)
 │   ├── runtime/network/sessions
 │   ├── runtime/network/token
 │   └── runtime/server.log
-├── QEMU/KVM VM (Windows with Revit 2017-2026)
+├── QEMU/KVM VM (Windows with Revit 2020-2026)
 │   ├── %APPDATA%/revit-ballet/ (mounted from host via virtio-fs)
 │   ├── Revit processes running revit-ballet addin
 │   ├── revit-ballet servers (HTTPS on ports 23717+)
@@ -64,7 +64,7 @@ ls /usr/lib/qemu/virtiofsd
 
 ### On Windows VM
 
-1. **Revit** versions 2017-2026 installed
+1. **Revit** versions 2020-2026 installed
 2. **revit-ballet** installed (via `installer.exe /q`)
 3. **SSH server** running with PowerShell as default shell
 4. **SSH key** configured at `~/.ssh/WinDev2407Eval-revit` (private key on host)

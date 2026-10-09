@@ -40,9 +40,8 @@ For non-trivial operations (unit conversion, coordinate transforms, API quirks, 
 ## Architecture
 
 ### Multi-Version Revit Support
-Supports Revit 2017-2026 via conditional compilation on `RevitYear`:
-- 2017-2018: .NET Framework 4.6
-- 2019-2020: .NET Framework 4.7
+Supports Revit 2020-2026 via conditional compilation on `RevitYear`:
+- 2020: .NET Framework 4.7
 - 2021-2024: .NET Framework 4.8
 - 2025-2026: .NET 8.0 Windows
 

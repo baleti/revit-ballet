@@ -138,29 +138,21 @@ namespace RevitBallet.Commands
 
         private GraphicsStyle GetBoundaryLineStyle(Document doc, FilledRegion region)
         {
-#if REVIT2017
-            return null;
-#else
             foreach (ElementId depId in region.GetDependentElements(null))
             {
                 if (doc.GetElement(depId) is CurveElement curveElem)
                     return curveElem.LineStyle as GraphicsStyle;
             }
             return null;
-#endif
         }
 
         private void SetBoundaryLineStyle(Document doc, FilledRegion newRegion, GraphicsStyle style)
         {
-#if REVIT2017
-            return;
-#else
             foreach (ElementId depId in newRegion.GetDependentElements(null))
             {
                 if (doc.GetElement(depId) is CurveElement curveElem)
                     curveElem.LineStyle = style;
             }
-#endif
         }
 
 #if REVIT2022 || REVIT2023 || REVIT2024 || REVIT2025 || REVIT2026

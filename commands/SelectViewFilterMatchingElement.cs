@@ -90,10 +90,6 @@ namespace RevitBallet.Commands
                      .OfClass(typeof(ParameterFilterElement))
                      .Cast<ParameterFilterElement>())
             {
-#if REVIT2017 || REVIT2018
-                // GetElementFilter() not available in Revit 2017-2018 - skip this filter
-                continue;
-#else
                 var catIds   = new HashSet<ElementId>(pf.GetCategories());
                 var epFilter = pf.GetElementFilter();
 
@@ -136,7 +132,6 @@ namespace RevitBallet.Commands
                 }
 
                 rows.Add(row);
-#endif
             }
 
             if (!rows.Any())
