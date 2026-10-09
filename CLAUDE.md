@@ -14,9 +14,9 @@ Revit Ballet is a collection of custom commands for Revit. Two main components:
 ## Development Environment
 
 Runtime data lives on the production Windows machine at `%APPDATA%\revit-ballet\`. Key paths:
-- `network\token` — shared auth token
-- `documents` — live session registry (CSV)
-- `server.log` — server log
+- `runtime\network\token` — shared auth token
+- `runtime\documents` — live session registry (CSV)
+- `runtime\server.log` — server log
 - `screenshots\` — captured screenshots
 - `diagnostics\` — diagnostic files
 
@@ -41,7 +41,7 @@ For non-trivial operations (unit conversion, coordinate transforms, API quirks, 
 
 ### Multi-Version Revit Support
 Supports Revit 2020-2026 via conditional compilation on `RevitYear`:
-- 2020: .NET Framework 4.7
+- 2020: .NET Framework 4.7.2
 - 2021-2024: .NET Framework 4.8
 - 2025-2026: .NET 8.0 Windows
 
@@ -56,8 +56,8 @@ Revit Ballet runs a Roslyn compiler-as-a-service so AI agents can execute C# in 
 - Port range 23717-23817 (first available)
 - Shared 256-bit token across all sessions — first session generates it, others reuse
 - File-based discovery via `%appdata%\revit-ballet\`:
-  - `documents` — CSV: `DocumentTitle,DocumentPath,SessionId,Port,Hostname,ProcessId,RegisteredAt,LastHeartbeat,LastSync`
-  - `network\token` — shared auth token
+  - `runtime\documents` — CSV: `DocumentTitle,DocumentPath,SessionId,Port,Hostname,ProcessId,RegisteredAt,LastHeartbeat,LastSync`
+  - `runtime\network\token` — shared auth token
 
 **Endpoints:**
 - `/roslyn` — execute C# scripts in Revit context
@@ -240,6 +240,10 @@ ssh daniel@192.168.231.1 -i ~/.ssh/hwo-18 'powershell -NoProfile -Command "& .\i
 Summary:
 - `InvokeAddinCommand` / `Q\`` — works immediately after deploy (hot-reload)
 - Keyboard shortcuts — require Revit restart after deploy
+
+## VM Testing / CI
+
+End-to-end tests run against an offline Windows+Revit VM: `tests/vm/ci.sh` (overlay of a read-only baseline image, installs the built installer, runs `/roslyn` checks per Revit year). Supported Revit: 2020-2026. Full description: `docs/vm-testing.md`.
 
 ## Key Files
 

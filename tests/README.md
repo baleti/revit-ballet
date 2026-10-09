@@ -1,3 +1,5 @@
+> **Superseded for VM CI:** see `docs/vm-testing.md` and `tests/vm/` (plain qemu, overlay-per-run, no libvirt/virtiofs). The notes below describe the earlier virtiofs design.
+
 # Revit Ballet Integration Testing
 
 This directory contains integration and end-to-end tests for Revit Ballet, designed to run on a Linux hypervisor with Windows VMs via vsock.

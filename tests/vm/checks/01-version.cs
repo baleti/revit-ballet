@@ -1,0 +1,1 @@
+return UIApp.Application.VersionNumber;
