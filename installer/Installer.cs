@@ -535,7 +535,8 @@ namespace RevitBalletInstaller
 
             // Create installation entries - ALWAYS use AppData for installation (no admin required)
             // Only create installation entries for years that are actually installed
-            var verifiedYears = detectedYears.Where(y => installedYears.Contains(y)).ToHashSet();
+            // Revit 2020 is the oldest supported version; ignore older installs
+            var verifiedYears = detectedYears.Where(y => installedYears.Contains(y) && int.TryParse(y, out int yy) && yy >= 2020).ToHashSet();
 
             string userAppData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
 
