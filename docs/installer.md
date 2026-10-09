@@ -11,7 +11,7 @@ The installer is a self-contained Windows Forms executable (`installer.exe`) tha
 cd ~/revit-ballet/commands
 dotnet build -c Release -p:RevitYear=2024    # single version
 # or all versions:
-for i in {2026..2017}; do dotnet build -c Release -p:RevitYear=$i; done
+for i in {2026..2020}; do dotnet build -c Release -p:RevitYear=$i; done
 
 # 2. Build installer (embeds built DLLs as resources, deduplicates shared files)
 cd ~/revit-ballet/installer
@@ -41,7 +41,7 @@ ssh daniel@192.168.231.1 -i ~/.ssh/hwo-18 'powershell -NoProfile -Command "C:\Us
 
 ## What the Installer Does
 
-1. **Detects Revit installations** — scans `%appdata%\Autodesk\Revit\Addins\{year}\` for years 2017–2026
+1. **Detects Revit installations** — scans `%appdata%\Autodesk\Revit\Addins\{year}\` for years 2020–2026
 2. **Extracts embedded resources** — DLLs are embedded per-year with deduplication (shared files stored once)
 3. **Deploys to Addins folder** — copies `revit-ballet.dll` and dependencies to `Addins\{year}\revit-ballet\`
 4. **Handles locked files** — if Revit is running, writes to a `revit-ballet.update\` folder instead; Startup.cs applies it on next Revit launch

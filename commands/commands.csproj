@@ -7,9 +7,6 @@
     <NoWarn>$(NoWarn);NU1701</NoWarn>
 
     <!-- Map Revit versions to .NET Framework targets -->
-    <TargetFramework Condition="'$(RevitYear)' == '2017'">net46</TargetFramework>
-    <TargetFramework Condition="'$(RevitYear)' == '2018'">net46</TargetFramework>
-    <TargetFramework Condition="'$(RevitYear)' == '2019'">net47</TargetFramework>
     <TargetFramework Condition="'$(RevitYear)' == '2020'">net47</TargetFramework>
     <TargetFramework Condition="'$(RevitYear)' == '2021'">net48</TargetFramework>
     <TargetFramework Condition="'$(RevitYear)' == '2022'">net48</TargetFramework>
@@ -19,9 +16,6 @@
     <TargetFramework Condition="'$(RevitYear)' == '2026'">net8.0-windows</TargetFramework>
 
     <!-- Revit API NuGet package version (matches Revit year) -->
-    <RevitAPIVersion Condition="'$(RevitYear)' == '2017'">2017.0.0</RevitAPIVersion>
-    <RevitAPIVersion Condition="'$(RevitYear)' == '2018'">2018.0.0</RevitAPIVersion>
-    <RevitAPIVersion Condition="'$(RevitYear)' == '2019'">2019.0.0</RevitAPIVersion>
     <RevitAPIVersion Condition="'$(RevitYear)' == '2020'">2020.0.0</RevitAPIVersion>
     <RevitAPIVersion Condition="'$(RevitYear)' == '2021'">2021.0.0</RevitAPIVersion>
     <RevitAPIVersion Condition="'$(RevitYear)' == '2022'">2022.0.0</RevitAPIVersion>
@@ -97,8 +91,8 @@
   </ItemGroup>
 
   <!-- SQLite for LogViewChanges database and SelectionStorage - version depends on .NET Framework version -->
-  <ItemGroup Condition="'$(TargetFramework)' == 'net46' OR '$(TargetFramework)' == 'net47' OR '$(TargetFramework)' == 'net48'">
-    <!-- Revit 2017-2024: Use System.Data.SQLite (compatible with .NET Framework) -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net47' OR '$(TargetFramework)' == 'net48'">
+    <!-- Revit 2020-2024: Use System.Data.SQLite (compatible with .NET Framework) -->
     <PackageReference Include="System.Data.SQLite.Core" Version="1.0.118" />
   </ItemGroup>
   <ItemGroup Condition="$(TargetFramework.StartsWith('net8'))">
@@ -107,12 +101,8 @@
   </ItemGroup>
 
   <!-- Roslyn scripting for Server.cs - version depends on .NET Framework version -->
-  <ItemGroup Condition="'$(TargetFramework)' == 'net46'">
-    <!-- Revit 2017-2018: Use older version compatible with .NET 4.6 -->
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="2.10.0" />
-  </ItemGroup>
   <ItemGroup Condition="'$(TargetFramework)' == 'net47' OR '$(TargetFramework)' == 'net48'">
-    <!-- Revit 2019-2024 (.NET Framework): Use Roslyn 3.x (last version fully compatible with .NET Framework) -->
+    <!-- Revit 2020-2024 (.NET Framework): Use Roslyn 3.x (last version fully compatible with .NET Framework) -->
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="3.11.0" />
     <!-- Explicitly reference dependencies to ensure correct versions are copied to output -->
     <PackageReference Include="System.Collections.Immutable" Version="5.0.0" />
@@ -128,7 +118,7 @@
   </ItemGroup>
 
   <!-- Standard System references needed by Revit plugins -->
-  <!-- For .NET Framework builds (Revit 2017-2024): use framework references -->
+  <!-- For .NET Framework builds (Revit 2020-2024): use framework references -->
   <ItemGroup Condition="!$(TargetFramework.StartsWith('net8'))">
     <Reference Include="PresentationCore" />
     <Reference Include="PresentationFramework" />
@@ -202,8 +192,8 @@
              Condition="!Exists('$(RuntimesSqlitePath)') AND !Exists('$(NuGetSqlitePath)')" />
   </Target>
 
-  <!-- For System.Data.SQLite (Revit 2017-2024): Copy SQLite.Interop.dll -->
-  <Target Name="CopySQLiteInterop" AfterTargets="Build" Condition="'$(TargetFramework)' == 'net46' OR '$(TargetFramework)' == 'net47' OR '$(TargetFramework)' == 'net48'">
+  <!-- For System.Data.SQLite (Revit 2020-2024): Copy SQLite.Interop.dll -->
+  <Target Name="CopySQLiteInterop" AfterTargets="Build" Condition="'$(TargetFramework)' == 'net47' OR '$(TargetFramework)' == 'net48'">
     <PropertyGroup>
       <SqliteInteropPath>$(OutputPath)x64\SQLite.Interop.dll</SqliteInteropPath>
     </PropertyGroup>

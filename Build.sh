@@ -11,9 +11,9 @@ INSTALLER_DIR="$REPO_ROOT/installer"
 echo "Repo root: $REPO_ROOT"
 echo ""
 
-echo "Building commands for Revit 2026..2017..."
+echo "Building commands for Revit 2026..2020..."
 FAILED=()
-for year in $(seq 2026 -1 2017); do
+for year in $(seq 2026 -1 2020); do
     result=$(dotnet build "$COMMANDS_DIR" -c Release -p:RevitYear=$year 2>&1)
     errors=$(echo "$result" | grep -oP '\d+(?= Error)' | head -1)
     summary=$(echo "$result" | grep -E '^\s*(Build succeeded|Error\(s\))' | tail -1 | xargs)

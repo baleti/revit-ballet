@@ -93,10 +93,6 @@ namespace RevitBallet.Commands
         /// </summary>
         private GraphicsStyle GetBoundaryLineStyle(Document doc, FilledRegion region)
         {
-#if REVIT2017
-            // GetDependentElements not available in Revit 2017 - skip line style preservation
-            return null;
-#else
             var dependentIds = region.GetDependentElements(null); // Gets any dependent elements, including boundary lines
             foreach (ElementId depId in dependentIds)
             {
@@ -108,7 +104,6 @@ namespace RevitBallet.Commands
                 }
             }
             return null;
-#endif
         }
 
         /// <summary>
@@ -117,10 +112,6 @@ namespace RevitBallet.Commands
         /// </summary>
         private void SetBoundaryLineStyle(Document doc, FilledRegion newRegion, GraphicsStyle style)
         {
-#if REVIT2017
-            // GetDependentElements not available in Revit 2017 - skip line style setting
-            return;
-#else
             var dependentIds = newRegion.GetDependentElements(null);
             foreach (ElementId depId in dependentIds)
             {
@@ -130,7 +121,6 @@ namespace RevitBallet.Commands
                     curveElem.LineStyle = style;
                 }
             }
-#endif
         }
     }
 }

@@ -33,7 +33,6 @@ public partial class CustomGUIs
 
         // Also capture the Revit main window handle for screen positioning
         // MainWindowHandle is only available in Revit 2019+
-#if !(REVIT2017 || REVIT2018)
         if (uidoc != null)
         {
             var uidocTyped = uidoc as UIDocument;
@@ -42,7 +41,6 @@ public partial class CustomGUIs
                 _revitWindowHandle = uidocTyped.Application.MainWindowHandle;
             }
         }
-#endif
     }
 
     /// <summary>

@@ -9,8 +9,7 @@ collection of custom commands for Revit
 | Revit Version | Notes                   |
 |---------------+-------------------------|
 |     2021-2026 | All commands available  |
-|     2020-2019 | 29 commands excluded    |
-|     2018-2017 | 31 commands excluded    |
+|          2020 | 29 commands excluded    |
 
 Excluded commands in older versions primarily use newer APIs for:
 - PDF export (2022+)

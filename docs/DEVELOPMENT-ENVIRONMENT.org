@@ -62,7 +62,7 @@ Revit Ballet development uses a hybrid Windows/Linux environment with shared fol
 Before setting up the development environment:
 
 1. Windows 10/11 with Hyper-V enabled
-2. Revit 2017-2026 installed on Windows host
+2. Revit 2020-2026 installed on Windows host
 3. Debian VM(s) running in Hyper-V with network access to host
 4. .NET SDK 8.0+ installed in Debian VM
 5. Git configured in Debian VM
@@ -218,7 +218,7 @@ dotnet build -c Release
 dotnet build -c Release -p:RevitYear=2024
 
 # Build for all versions
-for year in {2026..2017}; do
+for year in {2026..2020}; do
   dotnet build -c Release -p:RevitYear=$year
 done
 #+END_SRC

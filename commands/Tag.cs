@@ -60,12 +60,7 @@ public class Tag : IExternalCommand
                         XYZ minPoint = boundingBox.Min;
                         XYZ tagPosition = new XYZ(originalPosition.X, minPoint.Y - offsetY, originalPosition.Z);
 
-#if REVIT2017
-                        // Revit 2017 uses the older NewTag method
-                        IndependentTag newTag = doc.Create.NewTag(doc.ActiveView, element, false, TagMode.TM_ADDBY_CATEGORY, TagOrientation.Horizontal, tagPosition);
-#else
                         IndependentTag newTag = IndependentTag.Create(doc, doc.ActiveView.Id, new Reference(element), false, TagMode.TM_ADDBY_CATEGORY, TagOrientation.Horizontal, tagPosition);
-#endif
                         Parameter typeMarkParam = newTag.LookupParameter("Type Mark");
 
                         if (typeMarkParam != null && typeMarkParam.IsReadOnly == false)

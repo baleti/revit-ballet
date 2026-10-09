@@ -60,7 +60,7 @@ def main():
         print_error("Run these commands from the repository root:")
         print_error()
         print_error("  # Build all Revit versions:")
-        print_error("  for year in 2017 2018 2019 2020 2021 2022 2023 2024 2025 2026; do")
+        print_error("  for year in 2020 2021 2022 2023 2024 2025 2026; do")
         print_error("    dotnet build commands/revit-ballet.csproj -p:RevitYear=$year")
         print_error("  done")
         print_error()
@@ -74,7 +74,7 @@ def main():
     OUTPUT_PATH.mkdir(parents=True)
 
     # Define expected years for Revit Ballet installer
-    EXPECTED_YEARS = ['2017', '2018', '2019', '2020', '2021', '2022', '2023', '2024', '2025', '2026']
+    EXPECTED_YEARS = ['2020', '2021', '2022', '2023', '2024', '2025', '2026']
 
     # Get all year directories (exclude temp)
     year_dirs = sorted([d for d in SOURCE_PATH.iterdir()
@@ -92,7 +92,7 @@ def main():
         print_error("Run these commands from the repository root:")
         print_error()
         print_error("  # Build all Revit versions:")
-        print_error("  for year in 2017 2018 2019 2020 2021 2022 2023 2024 2025 2026; do")
+        print_error("  for year in 2020 2021 2022 2023 2024 2025 2026; do")
         print_error("    dotnet build commands/revit-ballet.csproj -p:RevitYear=$year")
         print_error("  done")
         print_error()
@@ -145,7 +145,7 @@ def main():
 
         print_error()
         print_error("Or build all years at once:")
-        print_error("  for year in 2017 2018 2019 2020 2021 2022 2023 2024 2025 2026; do")
+        print_error("  for year in 2020 2021 2022 2023 2024 2025 2026; do")
         print_error("    dotnet build commands/revit-ballet.csproj -p:RevitYear=$year")
         print_error("  done")
         print_error()
