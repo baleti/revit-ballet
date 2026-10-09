@@ -18,8 +18,29 @@ namespace RevitBallet.Commands
         /// </summary>
         public static string SessionId => System.Diagnostics.Process.GetCurrentProcess().Id.ToString();
 
+#if NET472
+        private static readonly string[] SupportAssemblies =
+        {
+            "System.Memory", "System.Buffers", "System.Numerics.Vectors", "System.Runtime.CompilerServices.Unsafe",
+            "System.Collections.Immutable", "System.Reflection.Metadata"
+        };
+
+        private static Assembly ResolveSupportAssembly(object sender, ResolveEventArgs args)
+        {
+            string name = new AssemblyName(args.Name).Name;
+            if (Array.IndexOf(SupportAssemblies, name) < 0) return null;
+            string path = Path.Combine(Path.GetDirectoryName(typeof(RevitBalletApplication).Assembly.Location), name + ".dll");
+            return File.Exists(path) ? Assembly.LoadFrom(path) : null;
+        }
+#endif
+
         public Result OnStartup(UIControlledApplication application)
         {
+#if NET472
+            // Revit 2020 ships none of Roslyn's support assemblies and has no binding redirects for ours:
+            // resolve them by simple name from the add-in folder, ignoring the requested version.
+            AppDomain.CurrentDomain.AssemblyResolve += ResolveSupportAssembly;
+#endif
 
             // Run all startup tasks (directory initialization and update migration)
             Startup.RunStartupTasks(application);
