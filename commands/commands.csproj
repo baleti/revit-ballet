@@ -7,7 +7,7 @@
     <NoWarn>$(NoWarn);NU1701</NoWarn>
 
     <!-- Map Revit versions to .NET Framework targets -->
-    <TargetFramework Condition="'$(RevitYear)' == '2020'">net47</TargetFramework>
+    <TargetFramework Condition="'$(RevitYear)' == '2020'">net472</TargetFramework>
     <TargetFramework Condition="'$(RevitYear)' == '2021'">net48</TargetFramework>
     <TargetFramework Condition="'$(RevitYear)' == '2022'">net48</TargetFramework>
     <TargetFramework Condition="'$(RevitYear)' == '2023'">net48</TargetFramework>
@@ -91,7 +91,7 @@
   </ItemGroup>
 
   <!-- SQLite for LogViewChanges database and SelectionStorage - version depends on .NET Framework version -->
-  <ItemGroup Condition="'$(TargetFramework)' == 'net47' OR '$(TargetFramework)' == 'net48'">
+  <ItemGroup Condition="'$(TargetFramework)' == 'net472' OR '$(TargetFramework)' == 'net48'">
     <!-- Revit 2020-2024: Use System.Data.SQLite (compatible with .NET Framework) -->
     <PackageReference Include="System.Data.SQLite.Core" Version="1.0.118" />
   </ItemGroup>
@@ -101,12 +101,16 @@
   </ItemGroup>
 
   <!-- Roslyn scripting for Server.cs - version depends on .NET Framework version -->
-  <ItemGroup Condition="'$(TargetFramework)' == 'net47' OR '$(TargetFramework)' == 'net48'">
+  <ItemGroup Condition="'$(TargetFramework)' == 'net472' OR '$(TargetFramework)' == 'net48'">
     <!-- Revit 2020-2024 (.NET Framework): Use Roslyn 3.x (last version fully compatible with .NET Framework) -->
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="3.11.0" />
     <!-- Explicitly reference dependencies to ensure correct versions are copied to output -->
     <PackageReference Include="System.Collections.Immutable" Version="5.0.0" />
     <PackageReference Include="System.Reflection.Metadata" Version="5.0.0" />
+  </ItemGroup>
+  <!-- Revit 2020 does not ship System.Memory (Revit 2021+ install folders do); Roslyn 3.x needs it at runtime -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net472'">
+    <PackageReference Include="System.Memory" Version="4.5.4" />
   </ItemGroup>
   <ItemGroup Condition="$(TargetFramework.StartsWith('net8'))">
     <!-- Revit 2025+ (.NET 8): Use latest Roslyn version -->
@@ -143,6 +147,10 @@
       <RoslynDependencies Include="$(OutputPath)System.Collections.Immutable.dll" />
       <RoslynDependencies Include="$(OutputPath)System.Reflection.Metadata.dll" />
       <RoslynDependencies Include="$(OutputPath)System.Runtime.CompilerServices.Unsafe.dll" />
+      <!-- Revit 2020 ships none of these (2021+ do); Roslyn 3.x needs them. Revit 2020 (net472) only: later Revit versions ship their own and must keep using those. -->
+      <RoslynDependencies Include="$(OutputPath)System.Memory.dll" Condition="'$(TargetFramework)' == 'net472'" />
+      <RoslynDependencies Include="$(OutputPath)System.Buffers.dll" Condition="'$(TargetFramework)' == 'net472'" />
+      <RoslynDependencies Include="$(OutputPath)System.Numerics.Vectors.dll" Condition="'$(TargetFramework)' == 'net472'" />
       <RoslynDependencies Include="$(OutputPath)Microsoft.CodeAnalysis*.dll" />
       <!-- Exclude SQLite dependencies (needed for LogViewChanges and SelectionStorage) -->
       <RoslynDependencies Include="$(OutputPath)Microsoft.Data.Sqlite.dll" />
@@ -193,7 +201,7 @@
   </Target>
 
   <!-- For System.Data.SQLite (Revit 2020-2024): Copy SQLite.Interop.dll -->
-  <Target Name="CopySQLiteInterop" AfterTargets="Build" Condition="'$(TargetFramework)' == 'net47' OR '$(TargetFramework)' == 'net48'">
+  <Target Name="CopySQLiteInterop" AfterTargets="Build" Condition="'$(TargetFramework)' == 'net472' OR '$(TargetFramework)' == 'net48'">
     <PropertyGroup>
       <SqliteInteropPath>$(OutputPath)x64\SQLite.Interop.dll</SqliteInteropPath>
     </PropertyGroup>

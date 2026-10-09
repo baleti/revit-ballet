@@ -1994,7 +1994,7 @@ namespace RevitBallet.Commands
 
         private static X509Certificate2 GenerateSelfSignedCertificate()
         {
-#if NET48 || NET8_0_OR_GREATER
+#if NET472_OR_GREATER || NET8_0_OR_GREATER
             var rsa = RSA.Create(2048);
             try
             {
@@ -2044,7 +2044,7 @@ namespace RevitBallet.Commands
             }
 #else
             throw new NotSupportedException(
-                "Self-signed certificate generation is not supported on .NET Framework 4.6/4.7.\n" +
+                "Self-signed certificate generation is not supported before .NET Framework 4.7.2.\n" +
                 "For Revit 2017-2018, please generate a certificate manually using:\n" +
                 "  PowerShell: New-SelfSignedCertificate -DnsName 'localhost' -CertStoreLocation 'Cert:\\CurrentUser\\My'\n" +
                 "Then export it to: " + CertificateStorePath
