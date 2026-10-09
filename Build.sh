@@ -8,6 +8,18 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMMANDS_DIR="$REPO_ROOT/commands"
 INSTALLER_DIR="$REPO_ROOT/installer"
 
+
+# Optional Authenticode signing (set REVIT_BALLET_SIGN_PFX [+ REVIT_BALLET_SIGN_PASS]; needs osslsigncode).
+# Signed DLLs load in Revit without the "unsigned add-in" prompt and trigger fewer antivirus false positives.
+# Never commit the PFX. Timestamp server: REVIT_BALLET_SIGN_TS (default DigiCert).
+sign_file() {
+    [ -n "${REVIT_BALLET_SIGN_PFX:-}" ] || return 0
+    command -v osslsigncode >/dev/null || { echo "REVIT_BALLET_SIGN_PFX is set but osslsigncode is not installed"; exit 1; }
+    osslsigncode sign -pkcs12 "$REVIT_BALLET_SIGN_PFX" -pass "${REVIT_BALLET_SIGN_PASS:-}" -h sha256 \
+        -t "${REVIT_BALLET_SIGN_TS:-http://timestamp.digicert.com}" -n "Revit Ballet" -in "$1" -out "$1.signed" >/dev/null \
+        && mv -f "$1.signed" "$1" && echo "  signed $(basename "$1")" || { echo "signing failed: $1"; exit 1; }
+}
+
 echo "Repo root: $REPO_ROOT"
 echo ""
 
@@ -31,9 +43,17 @@ if [ ${#FAILED[@]} -gt 0 ]; then
     exit 1
 fi
 
+if [ -n "${REVIT_BALLET_SIGN_PFX:-}" ]; then
+    echo ""
+    echo "Signing revit-ballet.dll for each Revit year..."
+    for year in $(seq 2026 -1 2020); do sign_file "$COMMANDS_DIR/bin/$year/revit-ballet.dll"; done
+fi
+
 echo ""
 echo "Building installer..."
 dotnet build "$INSTALLER_DIR" -c Release
+
+if [ -n "${REVIT_BALLET_SIGN_PFX:-}" ]; then sign_file "$INSTALLER_DIR/bin/Release/installer.exe"; fi
 
 echo ""
 echo "Done. Installer at: $INSTALLER_DIR/bin/Release/installer.exe"
