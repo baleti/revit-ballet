@@ -36,6 +36,8 @@ Protocol version: **1**. Status: **implemented** (host, `/v1` API and the three 
   "session": {"id": "12345", "pid": 12345, "port": 23717},
   "ui": {"responsive": true, "modalDialog": null, "state": "idle"},
   "queue": {"queued": 0, "running": null, "oldestQueuedMs": 0},
+  "agent": {"build": "0.10.0.0 877118f5353e", "loadedFrom": "installed"},
+  "hungCompiles": 0,
   "engines": [
     {"name": "roslyn", "language": "csharp", "version": "3.11.0", "available": true, "sessions": true},
     {"name": "ironpython2", "language": "python", "version": "2.7.12", "available": true, "sessions": true},
@@ -48,6 +50,10 @@ Protocol version: **1**. Status: **implemented** (host, `/v1` API and the three 
 `ui.responsive` is `false` when the UI thread has not picked up a probe within 2 seconds.
 `ui.modalDialog` is `null` or the open modal dialog: `{"title","kind","text","buttons":["OK","Cancel"],"dialogId","sinceMs"}`
 (see "Modal dialogs"). `ui.state` is `idle`, `busy`, `modal` or `unresponsive`.
+
+`agent.build` identifies the running runtime (assembly version and 12 hex digits of its module id); `agent.loadedFrom` is
+`installed` or `hot-reload` (see "Hot reload"). `hungCompiles` counts compiles the watchdog gave up on (see "Watchdog").
+While the runtime has not started yet (it starts when Revit is first idle), every `/v1` route answers `503` with kind `starting`.
 
 ### `POST /v1/jobs`
 
@@ -245,3 +251,22 @@ says which rule tripped, the thread state and CPU time. The engine instance is d
 stuck thread is abandoned, `GET /v1/info` counts it in `hungCompiles`, and the details go to `runtime\server.log`. A queued job
 that waits longer than its `timeoutMs` for a UI thread still held by an earlier timed-out job ends `ui_busy` (or `blocked_by_dialog`
 when a dialog is the reason). `Abort` calls and audit writes cannot stall the worker either (2 s limit; audit is asynchronous).
+
+## Hot reload
+
+The agent is a small stable shell (`commands/AgentShell.cs`: HTTP/TLS listener, Idling hook) and a reloadable runtime (job queue, engines
+loader, dialog handling, the `/v1` routes). The shell never changes while Revit runs; the runtime can be swapped without restarting Revit.
+
+`POST /v1/admin/reload` loads `revit-ballet.dll` from `%APPDATA%\revit-ballet\hot-reload\<year>\` (the folder `installer.exe --hot-reload`
+fills; without that file it reloads the installed copy), starts the new runtime, then detaches the old one. Answers:
+
+| status | body |
+|---|---|
+| `200` | `{"reloaded":true,"build","loadedFrom","previousBuild","ms"}` |
+| `500` | `{"error":{"kind":"reload_failed","message"}}` - the new build did not load or start; the previous runtime keeps serving |
+| `504` | `{"error":{"kind":"reload_timeout"}}` - Revit did not become idle within 30 s (busy or a modal dialog); the reload stays queued |
+
+The swap happens on the UI thread at an idle moment (an external event raised by the request, plus the Idling hook), so a job that is
+running finishes on the old runtime. Jobs and sessions of the old runtime are not carried over. The contract assembly, Newtonsoft.Json and
+the engine assemblies are shared with the shell, so engines stay loaded; on Revit 2025+ each reload gets its own assembly load context.
+Not reloadable: the shell, the installer, engine DLLs, new dependency DLLs. Use `tests/vm/quick.sh` for the build, reload and test loop.
