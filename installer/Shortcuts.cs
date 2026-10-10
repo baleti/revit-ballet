@@ -243,23 +243,36 @@ namespace RevitBalletInstaller
             var form = new Form
             {
                 Text = "Revit Ballet - Keyboard shortcuts", StartPosition = FormStartPosition.CenterScreen, Font = font, BackColor = Color.White,
-                ClientSize = new Size(900, 640), MinimumSize = new Size(760, 520), ShowIcon = false
+                ClientSize = new Size(900, 640), ShowIcon = false
             };
             var intro = new Label { Left = 16, Top = 12, Width = 868, Height = 44, Text = "Install keyboard shortcuts? Your existing shortcuts are left as they are unless you tick a row that replaces one. Rows in red take keys that you or Revit already use for something else; they start unticked." };
             var rbNone = new RadioButton { Left = 20, Top = 62, Width = 860, Height = 24, Text = "Don't touch my keyboard shortcuts" };
             var rbBallet = new RadioButton { Left = 20, Top = 88, Width = 860, Height = 24, Text = $"Revit Ballet shortcuts only ({ballet.Count} commands)", Checked = true };
             var rbAll = new RadioButton { Left = 20, Top = 114, Width = 860, Height = 24, Text = $"Revit Ballet shortcuts and the other shortcuts bundled with it ({all.Count} in total)" };
             var summary = new Label { Left = 16, Top = 144, Width = 868, Height = 22, ForeColor = Color.FromArgb(90, 90, 90) };
-            var list = new ListView { Left = 16, Top = 170, Width = 868, Height = 400, View = View.Details, CheckBoxes = true, FullRowSelect = true, HideSelection = false, GridLines = false, Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right };
+            var toggle = new Button { Left = 16, Top = 172, Width = 230, Height = 30, Text = "Show the shortcuts \u25BE" };
+            var list = new ListView { Left = 16, Top = 210, Visible = false, Width = 868, Height = 362, View = View.Details, CheckBoxes = true, FullRowSelect = true, HideSelection = false, GridLines = false, Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right };
             list.Columns.Add("Command", 250); list.Columns.Add("Keys", 110); list.Columns.Add("Note", 480);
-            var bAll = new Button { Left = 16, Top = 580, Width = 110, Height = 30, Text = "Tick all", Anchor = AnchorStyles.Bottom | AnchorStyles.Left };
-            var bNone = new Button { Left = 132, Top = 580, Width = 110, Height = 30, Text = "Untick all", Anchor = AnchorStyles.Bottom | AnchorStyles.Left };
-            var bSafe = new Button { Left = 248, Top = 580, Width = 190, Height = 30, Text = "Tick only without clashes", Anchor = AnchorStyles.Bottom | AnchorStyles.Left };
+            var bAll = new Button { Left = 16, Top = 580, Width = 110, Height = 30, Text = "Tick all", Visible = false, Anchor = AnchorStyles.Bottom | AnchorStyles.Left };
+            var bNone = new Button { Left = 132, Top = 580, Width = 110, Height = 30, Text = "Untick all", Visible = false, Anchor = AnchorStyles.Bottom | AnchorStyles.Left };
+            var bSafe = new Button { Left = 248, Top = 580, Width = 190, Height = 30, Text = "Tick only without clashes", Visible = false, Anchor = AnchorStyles.Bottom | AnchorStyles.Left };
             var ok = new Button { Left = 784, Top = 596, Width = 100, Height = 30, Text = "Install", DialogResult = DialogResult.OK, Anchor = AnchorStyles.Bottom | AnchorStyles.Right };
             var cancel = new Button { Left = 676, Top = 596, Width = 100, Height = 30, Text = "Cancel", DialogResult = DialogResult.Cancel, Anchor = AnchorStyles.Bottom | AnchorStyles.Right };
-            form.Controls.AddRange(new Control[] { intro, rbNone, rbBallet, rbAll, summary, list, bAll, bNone, bSafe, ok, cancel });
+            form.Controls.AddRange(new Control[] { intro, rbNone, rbBallet, rbAll, summary, toggle, list, bAll, bNone, bSafe, ok, cancel });
             form.AcceptButton = ok; form.CancelButton = cancel;
-            ok.Top = 580; cancel.Top = 580;
+            ok.Top = 596; cancel.Top = 596;   // designed at the expanded size (anchors); layout() shrinks the form to the collapsed size
+            bool expanded = false;
+            Action layout = () =>
+            {
+                bool show = expanded && !rbNone.Checked;
+                list.Visible = bAll.Visible = bNone.Visible = bSafe.Visible = show;
+                toggle.Visible = !rbNone.Checked;
+                toggle.Text = expanded ? "Hide the shortcuts \u25B4" : "Show the shortcuts \u25BE";
+                form.MinimumSize = Size.Empty;
+                form.ClientSize = new Size(form.ClientSize.Width, show ? 640 : 290);
+                form.MinimumSize = show ? new Size(760, 520) : new Size(form.Width, form.Height);
+            };
+            toggle.Click += (s, e) => { expanded = !expanded; layout(); };
 
             List<ShortcutRow> current = ballet;
             bool filling = false;
@@ -283,12 +296,12 @@ namespace RevitBalletInstaller
                 list.Enabled = !rbNone.Checked; bAll.Enabled = bNone.Enabled = bSafe.Enabled = !rbNone.Checked;
             };
             list.ItemChecked += (s, e) => { if (filling) return; ((ShortcutRow)e.Item.Tag).Selected = e.Item.Checked; refresh(); };
-            EventHandler pick = (s, e) => { if (!((RadioButton)s).Checked) return; if (rbBallet.Checked) current = ballet; else if (rbAll.Checked) current = all; fill(); refresh(); };
+            EventHandler pick = (s, e) => { if (!((RadioButton)s).Checked) return; if (rbBallet.Checked) current = ballet; else if (rbAll.Checked) current = all; fill(); refresh(); layout(); };
             rbNone.CheckedChanged += pick; rbBallet.CheckedChanged += pick; rbAll.CheckedChanged += pick;
             bAll.Click += (s, e) => { foreach (ListViewItem it in list.Items) it.Checked = true; };
             bNone.Click += (s, e) => { foreach (ListViewItem it in list.Items) it.Checked = false; };
             bSafe.Click += (s, e) => { foreach (ListViewItem it in list.Items) it.Checked = !((ShortcutRow)it.Tag).Hard; };
-            fill(); refresh();
+            fill(); refresh(); layout();
             if (form.ShowDialog() != DialogResult.OK) return null;
             if (rbNone.Checked) return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             return new HashSet<string>(current.Where(r => r.Selected).Select(r => r.CommandId), StringComparer.OrdinalIgnoreCase);
