@@ -54,6 +54,10 @@ ssh daniel@192.168.231.1 -i ~/.ssh/dev-vm-key 'powershell -NoProfile -Command "C
 
 ## Hot-Reload Mechanism
 
+The same folder also feeds the agent server: after `--hot-reload`, `POST /v1/admin/reload` on a running Revit swaps the agent runtime to the new
+build (jobs, `/v1` routes, dialog handling) without a restart. Details: `docs/agent-protocol.md`, "Hot reload".
+
+
 When Revit is running, the Addins folder DLL is locked by Revit's process. Two mechanisms allow picking up new code without restarting Revit:
 
 ### `.update` folder (automatic)
