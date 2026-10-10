@@ -58,17 +58,19 @@ A core set of commands is registered under *Add-Ins > External Tools* with defau
 
 - *Find anything:* run =InvokeAddinCommand= (give it a shortcut of your choice). Type part of a name and pick. =InvokeLastAddinCommand= repeats the previous one.
 - *Select, then act.* A typical flow: =SelectByCategoriesInView= opens a grid of categories; pick some; =SelectByFamilyTypesInDocument= narrows them; =SetParametersOfInstance= edits them.
-- *Grids are the interface.* In any grid, type in the search box to filter, click headers to sort, and edit supported columns in place. The search box understands a small query language:
+- *Grids are the interface.* In any grid, type in the search box to filter, click headers to sort, and edit supported columns in place. The search box speaks the same small query language as the pickers on the author's Linux desktop (=~/.config/docs/query-dsl.md= is its definition):
 
   - =door fire= : rows containing both words in any column
-  - =door || window= : either group matches
   - =!glazed= : exclude
-  - ="fire door"= : quoted phrase; =e"Level 1"= matches a whole cell exactly
-  - =*Type 2*= : glob pattern
-  - =>50= and =<50= : numeric comparison
-  - =$level:L2= : only rows whose column matching "level" contains "L2"
-  - =2$mark= : show the Mark column in position 2
-  - =#"my set"= : members of a Revit selection set
+  - ="fire door"= : quoted phrase, matched as written
+  - =//level L2= : only rows whose column matching "level" contains "L2" (=/fv level:L2= is the same; the column is shown automatically)
+  - =//area >50= : numeric comparison on one column (=>=, =<=, =>==, =<==); =!//area >50= inverts it
+  - =/ft mark /at level= : choose columns: =/ft= keeps only those, =/at= adds, =/rt= removes (applied left to right)
+  - =/s area desc= : sort; =/s/level/mark= sorts by level then mark; =/rv= reverses the order
+  - =//selection "my set"= : members of a Revit selection set (a computed column listing the sets an element is in)
+  - names match as substrings and ignore spaces: =//"type name" flush= and =//typename flush= are the same
+
+  Changed with this language: =a || b= (OR), =e"exact"=, =*glob*=, a bare =>50=, =2$col= positions and =#set= are gone. Use quoted phrases, scoped comparisons (=//count >5=), the order of =/at=, and =//selection= instead. A column name that matches nothing now shows no rows instead of being ignored.
 
 - *Pick the scope you need.* If a command exists as =...InView=, =...InDocument=, =...InSession= and =...InNetwork=, the suffix is the only difference.
 

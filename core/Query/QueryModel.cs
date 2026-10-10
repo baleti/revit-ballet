@@ -65,6 +65,8 @@ namespace RevitBallet.Core.Query
         public List<int> RowIndices = new List<int>();
         /// <summary>The columns to show, in order (full field names, `group.sub` for a subfield).</summary>
         public List<string> Columns = new List<string>();
+        /// <summary>True when the query itself ordered the rows (`/sort` that resolved, or `/reverse`); a host with its own sorting leaves the order alone then.</summary>
+        public bool OrdersRows;
         /// <summary>The fields a filter or existence term refers to; they are already part of Columns (auto-shown filter fields).</summary>
         public List<string> FilterFields = new List<string>();
     }

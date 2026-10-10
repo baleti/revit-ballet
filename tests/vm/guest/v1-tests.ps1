@@ -234,6 +234,45 @@ Check "commands-invoke-returns-the-commands-own-message-and-result" {
 }
 
 
+# ---- the DataGrid search box speaks the picker query DSL (the real dialog, driven from a helper thread; fixture rows) ----
+Check "datagrid-dsl-in-the-real-dialog" {
+  $code = [string](Get-Content (Join-Path $PSScriptRoot "datagrid-dsl.cs") -Raw)
+  $j = (Api POST "/v1/jobs" @{ engine = "roslyn"; code = $code; timeoutMs = 120000; wait = 110000; dialogPolicy = "report" } $true 120).Body
+  if ($j.state -ne "done") { return "state=$($j.state) $($j.error.message) $($j.diagnostics | ConvertTo-Json -Compress -Depth 3)" }
+  $r = $j.value.json | ConvertFrom-Json
+  if ($r.skipped) { Write-Host "SKIP datagrid-dsl: $($r.skipped)"; return $true }
+  if ($r.error) { return "helper: $($r.error)" }
+  $all = "Mark,TypeName,Level,Area,Count,Comments"
+  $want = @(
+    @("", "D1,D10,D2,W1,W2", $all),
+    @("single", "D1,D2", $all),
+    @("//level 2", "D2,W2", "$all"),
+    @("!single", "D10,W1,W2", $all),
+    @("/ft mark /at level", "D1,D10,D2,W1,W2", "Mark,Level"),
+    @("/s count desc", "W1,D10,W2,D1,D2", $all),
+    @("/rv", "W2,W1,D2,D10,D1", $all),
+    @("//count >5", "D10,W1,W2", $all),
+    @("//`"type name`" flush", "D1,D2", $all),
+    @("/ft comments //level 1", "D1,D10,W1", "Comments,Level"),
+    @("//level 1 /s mark desc", "W1,D10,D1", $all),
+    @("single !//level 2", "D1", $all),
+    @("/ft instance", "D1,D10,D2,W1,W2", ""),
+    @("//zzz foo", "", $all),
+    @("", "D1,D10,D2,W1,W2", $all)
+  )
+  $steps = @($r.steps)
+  $dump = ($steps | ForEach-Object { "[$($_.query)] rows=$($_.rows -join ',') cols=$($_.columns -join ',')" }) -join " ; "
+  if ($steps.Count -ne $want.Count) { return "ran $($steps.Count) of $($want.Count) queries: $dump" }
+  for ($i = 0; $i -lt $want.Count; $i++) {
+    $gotRows = ($steps[$i].rows -join ","); $gotCols = ($steps[$i].columns -join ",")
+    if ($gotRows -ne $want[$i][1]) { return "query [$($want[$i][0])]: rows=[$gotRows] want [$($want[$i][1])]  ALL: $dump" }
+    if ($gotCols -ne $want[$i][2]) { return "query [$($want[$i][0])]: columns=[$gotCols] want [$($want[$i][2])]" }
+    if ($steps[$i].gridRows -ne @($steps[$i].rows).Count) { return "query [$($want[$i][0])]: grid shows $($steps[$i].gridRows) rows, working set has $(@($steps[$i].rows).Count)" }
+  }
+  $true
+}
+
+
 # ---- hot reload of the agent runtime (same hot-reload folder InvokeAddinCommand uses; no Revit restart) ----
 $hotDir = Join-Path $env:APPDATA "revit-ballet\hot-reload\$Year"
 $installedDll = Join-Path $env:APPDATA "Autodesk\Revit\Addins\$Year\revit-ballet\revit-ballet.dll"

@@ -188,6 +188,9 @@ public partial class CustomGUIs
     {
         _searchIndexByColumn = new Dictionary<string, Dictionary<int, string>>();
         _searchIndexAllColumns = new Dictionary<int, string>();
+        _haystackByRow = new Dictionary<object, string>(ReferenceComparer.Instance);
+        _querySchema = null;            // rebuilt on the first query of this data set (it captures the haystack cache)
+        _lastColumnState = "";
 
         // Initialize column indices
         foreach (string prop in propertyNames)
@@ -213,6 +216,7 @@ public partial class CustomGUIs
             }
 
             _searchIndexAllColumns[i] = allValuesBuilder.ToString();
+            _haystackByRow[entry] = _searchIndexAllColumns[i];
         }
     }
 
