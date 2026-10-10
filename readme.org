@@ -2,25 +2,146 @@
 
 #+html:<p align="center"><i>Dance around Revit 🩰</i></p>
 
-collection of custom commands for Revit
+*Revit Ballet* is a keyboard-first toolkit for Autodesk Revit: 230+ commands for selecting, navigating, editing, documenting and exporting, installed with a single =installer.exe= on Revit 2020 to 2026.
 
-** supported versions
+It is built for people who spend their day inside large models and many open sessions, and who want the next action to be two keystrokes and a search box away instead of five ribbon tabs deep.
 
-| Revit Version | Notes                   |
-|---------------+-------------------------|
-|     2021-2026 | All commands available  |
-|          2020 | 29 commands excluded    |
+#+html:<p align="center">
+#+html:<a href="https://github.com/baleti/revit-ballet/releases"><b>Download</b></a> ·
+#+html:<a href="#install">Install</a> ·
+#+html:<a href="#use">Use</a> ·
+#+html:<a href="#automation">Automation</a> ·
+#+html:<a href="#build-from-source">Build</a>
+#+html:</p>
 
-Excluded commands in older versions primarily use newer APIs for:
-- PDF export (2022+)
-- Enhanced tag management (2022+)
-- Unit system APIs (2021+)
+* What makes it different
 
-** sample commands
-*** switch/close/open views and sheets
-[[https://github.com/baleti/revit-scripts-docs/blob/8142cd312030378ed0b2543ad563b8514dbf9d5a/OpenViews.gif]]
-*** invoke commands
-both revit commands and any command included in this plugin
-[[https://github.com/baleti/revit-scripts-docs/blob/217abcd02343572d70a4de7ecaa0195892f94ee0/InvokeRevitCommand.gif]]
+- *One scope model everywhere.* Every command says how far it reaches: =InView=, =InDocument=, =InSession= (every open document in this Revit) or =InNetwork= (every Revit session in the peer network). =SelectByCategoriesInSession= does what it says, across all open models, without switching windows.
+- *Selections that survive.* Revit only lets you select in the active document. Revit Ballet keeps a persistent selection store keyed by element =UniqueId=, so you can select in one model, switch, and act on it in another. Linked-model elements are first-class.
+- *Searchable data grids instead of dialogs.* Results open in one fast grid with a real query language (below). Family, type name, mark and comments are editable in place. Pick rows, and the selection goes straight back to Revit.
+- *Everything is invokable by name.* =InvokeAddinCommand= lists every command in the plugin in a searchable grid, =InvokeRevitCommand= does the same for Revit's own commands, and =InvokeLastAddinCommand= repeats the previous one.
+- *Sessions talk to each other.* Copy and paste between Revit processes, open a view or sheet that lives in another session, synchronise documents across sessions, copy type parameters between sessions.
+- *Scriptable from outside.* Each running Revit hosts a local, token-protected server that compiles and runs C# in the session. Scripts, CI jobs and AI agents use the same API (see [[#automation][Automation]]).
+- *Tested against real Revit.* Every push builds all seven versions. A separate end-to-end suite installs the plugin into a clean Windows VM with real Revit 2020 to 2026 and checks that it loads and works ([[file:docs/vm-testing.md][how]]).
+
+* Demo
+*** switch, close and open views and sheets
+[[https://raw.githubusercontent.com/baleti/revit-scripts-docs/8142cd312030378ed0b2543ad563b8514dbf9d5a/OpenViews.gif]]
+*** invoke any command
+Revit's own commands and everything in this plugin, from one searchable list.
+[[https://raw.githubusercontent.com/baleti/revit-scripts-docs/217abcd02343572d70a4de7ecaa0195892f94ee0/InvokeRevitCommand.gif]]
 *** select elements by parameters
-[[https://github.com/baleti/revit-scripts-docs/blob/217abcd02343572d70a4de7ecaa0195892f94ee0/SelectCategoriesInView-ListSelectedElementsWithParameters.gif]]
+[[https://raw.githubusercontent.com/baleti/revit-scripts-docs/217abcd02343572d70a4de7ecaa0195892f94ee0/SelectCategoriesInView-ListSelectedElementsWithParameters.gif]]
+
+* Install
+
+Windows 10 or 11 and Revit 2020 to 2026. No admin rights needed: everything goes under your user profile.
+
+1. Download =installer.exe= from the [[https://github.com/baleti/revit-ballet/releases][latest release]].
+2. Run it (closing Revit first is best but not required, see below). It finds every installed Revit 2020 to 2026, installs the matching build into each, merges the default keyboard shortcuts into Revit's shortcut file and registers an uninstaller.
+3. Start Revit. If Revit asks about an unsigned add-in, choose *Always Load*. Release builds are not yet code-signed.
+
+Good to know:
+
+- *Revit already running?* The installer does not fail on locked files. It stages the update and Revit applies it on the next start.
+- *Unattended / scripted installs:* =installer.exe --quiet= (no UI, prints what it did, =--verbosity 0|1|2= for more or less detail). Exit status tells you if it worked.
+- *Uninstall:* Windows Settings > Apps > Revit Ballet, or =installer.exe /uninstall=.
+- *Offline friendly.* The plugin makes no calls to external servers. Its only listener is the local automation server below.
+
+Details: [[file:docs/installer.md][docs/installer.md]].
+
+* Use
+
+A core set of commands is registered under *Add-Ins > External Tools* with default keyboard shortcuts. The installer merges those into Revit's own shortcut file, so you can see and change them in Revit's keyboard shortcut dialog. Every other command is reached through =InvokeAddinCommand=.
+
+- *Find anything:* run =InvokeAddinCommand= (give it a shortcut of your choice). Type part of a name and pick. =InvokeLastAddinCommand= repeats the previous one.
+- *Select, then act.* A typical flow: =SelectByCategoriesInView= opens a grid of categories; pick some; =SelectByFamilyTypesInDocument= narrows them; =SetParametersOfInstance= edits them.
+- *Grids are the interface.* In any grid, type in the search box to filter, click headers to sort, and edit supported columns in place. The search box understands a small query language:
+
+  - =door fire= : rows containing both words in any column
+  - =door || window= : either group matches
+  - =!glazed= : exclude
+  - ="fire door"= : quoted phrase; =e"Level 1"= matches a whole cell exactly
+  - =*Type 2*= : glob pattern
+  - =>50= and =<50= : numeric comparison
+  - =$level:L2= : only rows whose column matching "level" contains "L2"
+  - =2$mark= : show the Mark column in position 2
+  - =#"my set"= : members of a Revit selection set
+
+- *Pick the scope you need.* If a command exists as =...InView=, =...InDocument=, =...InSession= and =...InNetwork=, the suffix is the only difference.
+
+** What is in the box
+
+| Area                    | Examples                                                                                          |
+|-------------------------+---------------------------------------------------------------------------------------------------|
+| Selection               | by category, family type, material, workset, model group, view filter, level; hosts, tags, arrays |
+| Views and sheets        | open / switch / close across documents and sessions, view history, duplicate, place on sheet       |
+| 3D section boxes        | from a view, from a selection, from linked models; resize horizontally or vertically             |
+| Revisions               | set revisions on sheets or clouds, list sheets by revision, draw clouds around elements            |
+| Filled regions and CAD  | create, combine, split, boolean difference, trace lines and rooms                                  |
+| Parameters              | set instance / type parameters in bulk, number sequences along X or clockwise                       |
+| Worksets and links      | show, hide, close, change; select through links                                                    |
+| Export and exchange     | PDF, DWG, schedules, keynote files, views and view templates to and from RVT                       |
+| Cross-session           | copy / paste between Revit processes, open documents in new sessions, synchronise                  |
+| Housekeeping            | clash detection, duplicate types, rename groups, change level, view data cache, change log         |
+
+** Scopes
+
+| Suffix        | Reaches                                         |
+|---------------+-------------------------------------------------|
+| =InView=      | the active view                                 |
+| =InDocument=  | the active document                             |
+| =InSession=   | all documents open in this Revit process        |
+| =InNetwork=   | all Revit sessions in the peer network (by default, running on this machine) |
+
+* Supported versions
+
+| Revit      | .NET runtime         | Notes                                                           |
+|------------+----------------------+-----------------------------------------------------------------|
+| 2022-2024  | .NET Framework 4.8   | full command set                                                |
+| 2025-2026  | .NET 8               | full command set                                                |
+| 2021       | .NET Framework 4.8   | a few commands that need newer APIs are not available           |
+| 2020       | .NET Framework 4.7.2 | more of the newer-API commands are not available                |
+
+Revit 2019 and older are not supported.
+
+* Automation
+
+Every Revit session runs a small HTTPS server on =127.0.0.1= (ports 23717 to 23817, one per session). It compiles a C# script and runs it inside Revit with =UIApp=, =UIDoc= and =Doc= in scope, and returns the output as JSON. It is how this repository's own end-to-end tests drive Revit, and how AI agents inspect and edit live models.
+
+#+begin_src powershell
+$token = Get-Content "$env:APPDATA\revit-ballet\runtime\network\token"
+curl.exe -k -H "X-Auth-Token: $token" --data-binary '@script.cs' https://127.0.0.1:23717/roslyn
+#+end_src
+
+#+begin_src csharp
+// script.cs
+Console.WriteLine(Doc.Title);
+return new FilteredElementCollector(Doc).OfClass(typeof(Wall)).GetElementCount();
+#+end_src
+
+- Loopback only, shared 256-bit token, written under =%APPDATA%\revit-ballet\runtime=.
+- Open sessions and their ports are listed in =runtime\documents=; that is also how the =...InNetwork= commands find each other.
+- Scripts run with the user's full rights: treat the token like a password.
+
+See [[file:CLAUDE.md][CLAUDE.md]] for the conventions agents follow.
+
+* Build from source
+
+Builds on Linux, macOS or Windows with the .NET SDK. The Revit API comes from NuGet, so no Revit install is needed to compile.
+
+#+begin_src sh
+bash Build.sh                                   # all Revit versions + installer.exe
+dotnet build commands -c Release -p:RevitYear=2025   # one version
+dotnet test core/tests                          # unit tests (filter engine, sorting, naming)
+#+end_src
+
+The installer embeds every build, so =installer/bin/Release/installer.exe= is the only file you ship. CI builds all seven versions on every push ([[file:.github/workflows/build.yml][workflow]]). =tests/vm/ci.sh= runs the end-to-end suite against real Revit installs in a throwaway VM ([[file:docs/vm-testing.md][docs/vm-testing.md]]).
+
+* Status and contributing
+
+Pre-release (0.9.x): in daily use, command names and shortcuts may still change. Issues and pull requests are welcome. Please read [[file:CLAUDE.md][CLAUDE.md]] first; it documents the naming scheme, the scope rules and the Revit API pitfalls found along the way.
+
+* License
+
+[[file:license][MIT]]
