@@ -50,6 +50,8 @@ Good to know:
 
 Details: [[file:docs/installer.md][docs/installer.md]].
 
+*Code signing:* Revit Ballet uses free code signing from the SignPath Foundation (see the [[#code-signing-policy][code signing policy]]). The application is in progress: releases up to 0.9.1 are unsigned, which is why Revit asks about an unsigned add-in on first load.
+
 * Use
 
 A core set of commands is registered under *Add-Ins > External Tools* with default keyboard shortcuts. The installer merges those into Revit's own shortcut file, so you can see and change them in Revit's keyboard shortcut dialog. Every other command is reached through =InvokeAddinCommand=.
@@ -146,6 +148,12 @@ The installer embeds every build, so =installer/bin/Release/installer.exe= is th
 * Status and contributing
 
 Pre-release (0.9.x): in daily use, command names and shortcuts may still change. Issues and pull requests are welcome. Please read [[file:CLAUDE.md][CLAUDE.md]] first; it documents the naming scheme, the scope rules and the Revit API pitfalls found along the way.
+
+* Code signing policy
+
+Free code signing provided by [[https://signpath.io][SignPath.io]], certificate by [[https://signpath.org][SignPath Foundation]] (application in progress; releases up to 0.9.1 are unsigned).
+
+Once approved, release installers and add-in assemblies are signed from a build made by GitHub Actions from a tagged commit, and every signing request is approved by hand. The roles, what is signed, the privacy statement and the changes the installer makes on your machine are in [[file:docs/code-signing-policy.md][docs/code-signing-policy.md]].
 
 * License
 

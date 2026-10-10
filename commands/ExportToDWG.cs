@@ -12,7 +12,6 @@ using System.Windows.Forms;
 using System.Text.RegularExpressions;
 using Application = System.Windows.Forms.Application;
 using System.Runtime.InteropServices;
-using Microsoft.WindowsAPICodePack.Dialogs;
 
 namespace RevitBallet.Commands;
 
@@ -47,23 +46,11 @@ public class ExportToDWG : IExternalCommand
             if (dialog.ShowDialog(new RevitWindow(Helpers.GetMainWindowHandle(commandData.Application))) != DialogResult.OK)
                 return Result.Cancelled;
             
-            // Get folder location using CommonOpenFileDialog
+            // Get folder location
             string exportFolder = null;
             var lastPath = dialog.GetLastExportPath();
 
-            var folderDialog = new CommonOpenFileDialog
-            {
-                Title = "Select folder for DWG export",
-                IsFolderPicker = true,
-                InitialDirectory = lastPath,
-                EnsurePathExists = true,
-                EnsureFileExists = false
-            };
-
-            if (folderDialog.ShowDialog(Helpers.GetMainWindowHandle(commandData.Application)) == CommonFileDialogResult.Ok)
-            {
-                exportFolder = folderDialog.FileName;
-            }
+            exportFolder = FolderPicker.Pick(Helpers.GetMainWindowHandle(commandData.Application), "Select folder for DWG export", lastPath);
 
             if (string.IsNullOrEmpty(exportFolder))
             {

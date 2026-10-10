@@ -70,6 +70,9 @@ fi
 
 echo ""
 echo "Building installer..."
+# The installer project embeds installer/bin/resources/* picked up when the project is evaluated, i.e. BEFORE its own prepare step runs;
+# generate them first so a changed set of bundled DLLs does not fail the first build with a missing-resource error.
+(cd "$INSTALLER_DIR" && python3 _installer-merge-shortcuts.py >/dev/null && python3 _installer-deduplicate.py >/dev/null)
 dotnet build "$INSTALLER_DIR" -c Release
 
 if [ -n "${REVIT_BALLET_SIGN_PFX:-}" ]; then sign_file "$INSTALLER_DIR/bin/Release/installer.exe"; fi
