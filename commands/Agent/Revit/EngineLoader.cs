@@ -18,8 +18,10 @@ namespace RevitBallet.Commands.Agent
 
     internal static class EngineLoader
     {
+        /// <summary>Set by the runtime: the engines folder next to the installed add-in (this assembly may have been loaded from bytes and then has no location).</summary>
+        public static string EnginesRootOverride;
         public static string EnginesRoot =>
-            Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), "engines");
+            EnginesRootOverride ?? Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), "engines");
 
         private static readonly List<string> engineDirs = new List<string>();
         private static bool resolverInstalled;

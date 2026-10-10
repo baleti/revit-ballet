@@ -19,17 +19,17 @@ namespace RevitBallet.Commands.Agent
     {
         private sealed class Shown { public string Id; public string Message; public string Kind; public DateTime At; }
         private static volatile Shown lastShown;
-        private static UIControlledApplication app;
+        private static UIApplication app;
 
-        /// <summary>Call once from a Revit API context (OnStartup).</summary>
-        public static void Attach(UIControlledApplication application)
+        /// <summary>Call from a Revit API context (the runtime is created inside one).</summary>
+        public static void Attach(UIApplication application)
         {
             if (app != null) return;
             app = application;
             application.DialogBoxShowing += OnShowing;
         }
 
-        public static void Detach()
+        public static void Detach(UIApplication application)
         {
             if (app == null) return;
             try { app.DialogBoxShowing -= OnShowing; } catch { }

@@ -57,14 +57,17 @@ namespace RevitBallet.Engines.CPython3
                     if (dll == null) return initError = "the embedded Python runtime (python3xx.dll) was not found in " + dir;
                     pyDllPath = dll;
                     Runtime.PythonDLL = dll;
-                    PythonEngine.Initialize();
+                    // A reloaded engine instance finds the interpreter already running (pythonnet is one shared copy): never initialise twice,
+                    // and never release the GIL twice.
+                    bool already = PythonEngine.IsInitialized;
+                    if (!already) PythonEngine.Initialize();
                     pyVersion = null;
                     using (Py.GIL())
                     {
                         dynamic sys = Py.Import("sys");
                         pyVersion = ((string)sys.version.ToString()).Split(' ')[0];
                     }
-                    PythonEngine.BeginAllowThreads();   // release the GIL so any thread can take it with Py.GIL()
+                    if (!already) PythonEngine.BeginAllowThreads();   // release the GIL so any thread can take it with Py.GIL()
                     initialized = true;
                     return null;
                 }

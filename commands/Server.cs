@@ -162,8 +162,6 @@ namespace RevitBallet.Commands
             listener.Start();
 
             // Create ExternalEvent handlers (must be done during API execution)
-            // Agent host (job queue, engines): needs the API context just like the events below
-            RevitBallet.Commands.Agent.AgentHost.Initialize();
 
             screenshotHandler = new ScreenshotHandler(sessionId);
             screenshotEvent = ExternalEvent.Create(screenshotHandler);
@@ -940,12 +938,12 @@ namespace RevitBallet.Commands
                     // Route request based on path
                     if (path.StartsWith("/v1/", StringComparison.OrdinalIgnoreCase))
                     {
-                        await RevitBallet.Commands.Agent.AgentHttp.Handle(RevitBallet.Commands.Agent.AgentHost.Core, stream, method.ToUpperInvariant(), path, code, connId, sessionId, serverPort, ClientName(headers));
+                        await AgentShell.HandleV1Async(stream, method.ToUpperInvariant(), path, code, connId, sessionId, serverPort, ClientName(headers));
                     }
                     else if (path.StartsWith("/roslyn", StringComparison.OrdinalIgnoreCase))
                     {
                         LogToRevit($"[CONN-{connId}] Routing to /roslyn endpoint");
-                        await HandleRoslynRequest(stream, code, connId);
+                        await SendLegacy(stream, await AgentShell.HandleLegacyRoslynAsync(code));
                     }
                     else if (path.StartsWith("/screenshot", StringComparison.OrdinalIgnoreCase))
                     {
@@ -975,60 +973,14 @@ namespace RevitBallet.Commands
             }
         }
 
-        /// <summary>
-        /// Legacy endpoint: POST /roslyn with the raw C# as body. Kept as a thin shim over the agent host (docs/agent-protocol.md);
-        /// answers in the old ScriptResponse shape.
-        /// </summary>
-        private async Task HandleRoslynRequest(Stream stream, string code, string connId)
+        /// <summary>Writes the reply of the legacy POST /roslyn (built by the agent runtime in the old response shape).</summary>
+        private static async Task SendLegacy(Stream stream, RevitBallet.Agents.LegacyReply reply)
         {
-            var response = new ScriptResponse();
-            response.LogProcessing("Request received by server");
-
-            if (string.IsNullOrWhiteSpace(code))
-            {
-                response.Success = false;
-                response.Error = "Empty request body";
-                await SendHttpResponse(stream, response);
-                return;
-            }
-
-            RevitBallet.Commands.Agent.Job job;
-            try { job = RevitBallet.Commands.Agent.AgentHost.Submit("roslyn", code, 30000, null); }
-            catch (RevitBallet.Commands.Agent.AgentException ex)
-            {
-                response.Success = false;
-                response.Error = ex.Kind == "engine" ? "The Roslyn engine is not available: " + ex.Message : ex.Message;
-                await SendHttpResponse(stream, response, ex.Status == 409 ? 503 : ex.Status, ex.Status == 409 ? "Service Unavailable" : "Error");
-                return;
-            }
-            response.LogProcessing($"Job {job.Id} queued");
-            await Task.Run(() => RevitBallet.Commands.Agent.AgentHost.WaitFinal(job, 120000));
-            var j = job.ToJson();
-            response.LogProcessing($"Job finished: {(string)j["state"]} (compile {j["timings"]["compileMs"]} ms, run {j["timings"]["runMs"]} ms)");
-
-            response.Success = (bool)j["ok"];
-            response.Output = (string)j["output"];
-            foreach (var d in (Newtonsoft.Json.Linq.JArray)j["diagnostics"])
-                response.Diagnostics.Add($"({(int)d["line"]},{(int)d["column"]}): {(string)d["severity"]} {(string)d["id"]}: {(string)d["message"]}");
-            if (response.Success)
-            {
-                var v = j["value"];
-                if (v != null && v.Type != Newtonsoft.Json.Linq.JTokenType.Null && (string)v["text"] != null)
-                {
-                    if (!string.IsNullOrEmpty(response.Output)) response.Output += "\n";
-                    response.Output += "Return value: " + (string)v["text"];
-                }
-            }
-            else
-            {
-                var e = j["error"];
-                var kind = e == null ? null : (string)e["kind"];
-                var msg = e == null ? "unknown error" : (string)e["message"];
-                if (kind == "compile") response.Error = "Compilation failed";
-                else if (kind == "timeout" || kind == "blocked_by_dialog") response.Error = "Script execution timeout (30 seconds). " + msg;
-                else response.Error = msg + (string.IsNullOrEmpty((string)e?["stack"]) ? "" : "\n\nStack Trace:\n" + (string)e["stack"]);
-            }
-            await SendHttpResponse(stream, response);
+            var bytes = Encoding.UTF8.GetBytes(reply.Json);
+            var head = Encoding.ASCII.GetBytes($"HTTP/1.1 {reply.Status} {(reply.Status == 200 ? "OK" : "Error")}\r\nContent-Type: application/json\r\nContent-Length: {bytes.Length}\r\n\r\n");
+            await stream.WriteAsync(head, 0, head.Length);
+            await stream.WriteAsync(bytes, 0, bytes.Length);
+            await stream.FlushAsync();
         }
 
         private async Task HandleScreenshotRequest(Stream stream, string connId)

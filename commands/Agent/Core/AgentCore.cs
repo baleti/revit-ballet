@@ -42,6 +42,9 @@ namespace RevitBallet.Commands.Agent
         private Thread worker;
         private volatile bool initialized;
 
+        /// <summary>Extra facts the runtime adds to GET /v1/info under "agent" (build id, loaded from).</summary>
+        public JObject AgentInfo = new JObject();
+
         public AgentCore(IUiBridge ui, IAgentEnvironment env, IEngineSource source)
         {
             this.ui = ui; this.env = env; this.source = source;
@@ -213,6 +216,7 @@ namespace RevitBallet.Commands.Agent
             return new JObject
             {
                 ["protocol"] = 1,
+                ["agent"] = AgentInfo,
                 ["revit"] = new JObject { ["year"] = env.RevitYear, ["version"] = env.RevitVersion },
                 ["session"] = new JObject { ["id"] = sessionId, ["pid"] = int.TryParse(sessionId, out var pid) ? pid : 0, ["port"] = port },
                 // idle: nothing running; busy: a job (or other work) is running; modal: a dialog is open; unresponsive: message pump hung
