@@ -14,8 +14,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using Microsoft.CodeAnalysis.CSharp.Scripting;
-using Microsoft.CodeAnalysis.Scripting;
 using RevitBallet.Commands;
 
 namespace RevitBallet.Commands
@@ -87,10 +85,8 @@ namespace RevitBallet.Commands
         private X509Certificate2 serverCertificate;
         private string sessionId;
         private static UIApplication uiApp;
-        private ExternalEvent scriptExecutionEvent;
         private ExternalEvent screenshotEvent;
         private ExternalEvent queryEvent;
-        private ScriptExecutionHandler scriptHandler;
         private ScreenshotHandler screenshotHandler;
         private QueryHandler queryHandler;
         private int activeConnections = 0;
@@ -166,8 +162,8 @@ namespace RevitBallet.Commands
             listener.Start();
 
             // Create ExternalEvent handlers (must be done during API execution)
-            scriptHandler = new ScriptExecutionHandler();
-            scriptExecutionEvent = ExternalEvent.Create(scriptHandler);
+            // Agent host (job queue, engines): needs the API context just like the events below
+            RevitBallet.Commands.Agent.AgentHost.Initialize();
 
             screenshotHandler = new ScreenshotHandler(sessionId);
             screenshotEvent = ExternalEvent.Create(screenshotHandler);
@@ -222,13 +218,6 @@ namespace RevitBallet.Commands
             {
                 serverCertificate?.Dispose();
                 serverCertificate = null;
-            }
-            catch { }
-
-            try
-            {
-                scriptExecutionEvent?.Dispose();
-                scriptExecutionEvent = null;
             }
             catch { }
 
@@ -821,22 +810,26 @@ namespace RevitBallet.Commands
                         var contentLength = int.Parse(headers["Content-Length"]);
                         LogToRevit($"[CONN-{connId}] Content-Length: {contentLength}");
 
-                        var buffer = new char[contentLength];
+                        // Content-Length counts bytes; the reader yields chars. Count encoded bytes so non-ASCII bodies do not hang.
+                        var buffer = new char[4096];
+                        var sb = new StringBuilder();
+                        var encoder = Encoding.UTF8.GetEncoder();
                         var totalRead = 0;
                         var bodyReadStart = DateTime.Now;
 
                         while (totalRead < contentLength)
                         {
-                            var bytesRead = await reader.ReadAsync(buffer, totalRead, contentLength - totalRead);
+                            var bytesRead = await reader.ReadAsync(buffer, 0, buffer.Length);
                             if (bytesRead == 0)
                             {
                                 LogToRevit($"[CONN-{connId}] WARNING: Stream ended before reading full body (expected {contentLength}, got {totalRead})");
                                 break;
                             }
-                            totalRead += bytesRead;
+                            sb.Append(buffer, 0, bytesRead);
+                            totalRead += encoder.GetByteCount(buffer, 0, bytesRead, false);
                         }
 
-                        code = new string(buffer, 0, totalRead);
+                        code = sb.ToString();
                         var bodyReadDuration = (DateTime.Now - bodyReadStart).TotalMilliseconds;
                         LogToRevit($"[CONN-{connId}] Received {totalRead}/{contentLength} bytes ({bodyReadDuration:F0}ms)");
                     }
@@ -879,6 +872,8 @@ namespace RevitBallet.Commands
                             Success = false,
                             Error = "Authentication required. Provide X-Auth-Token header or Authorization: Bearer <token> header."
                         };
+                        if (path.StartsWith("/v1/", StringComparison.OrdinalIgnoreCase))
+                        { await RevitBallet.Commands.Agent.AgentHttp.Error(stream, 401, "auth", errorResponse.Error); return; }
                         await SendHttpResponse(stream, errorResponse, 401, "Unauthorized");
                         return;
                     }
@@ -890,6 +885,8 @@ namespace RevitBallet.Commands
                             Success = false,
                             Error = "Server authentication not configured."
                         };
+                        if (path.StartsWith("/v1/", StringComparison.OrdinalIgnoreCase))
+                        { await RevitBallet.Commands.Agent.AgentHttp.Error(stream, 500, "auth", errorResponse.Error); return; }
                         await SendHttpResponse(stream, errorResponse, 500, "Internal Server Error");
                         return;
                     }
@@ -901,6 +898,8 @@ namespace RevitBallet.Commands
                             Success = false,
                             Error = "Invalid authentication token."
                         };
+                        if (path.StartsWith("/v1/", StringComparison.OrdinalIgnoreCase))
+                        { await RevitBallet.Commands.Agent.AgentHttp.Error(stream, 401, "auth", errorResponse.Error); return; }
                         await SendHttpResponse(stream, errorResponse, 401, "Unauthorized");
                         return;
                     }
@@ -908,7 +907,11 @@ namespace RevitBallet.Commands
                     LogToRevit($"[CONN-{connId}] Authentication successful");
 
                     // Route request based on path
-                    if (path.StartsWith("/roslyn", StringComparison.OrdinalIgnoreCase))
+                    if (path.StartsWith("/v1/", StringComparison.OrdinalIgnoreCase))
+                    {
+                        await RevitBallet.Commands.Agent.AgentHttp.Handle(stream, method.ToUpperInvariant(), path, code, connId, sessionId, serverPort);
+                    }
+                    else if (path.StartsWith("/roslyn", StringComparison.OrdinalIgnoreCase))
                     {
                         LogToRevit($"[CONN-{connId}] Routing to /roslyn endpoint");
                         await HandleRoslynRequest(stream, code, connId);
@@ -941,6 +944,10 @@ namespace RevitBallet.Commands
             }
         }
 
+        /// <summary>
+        /// Legacy endpoint: POST /roslyn with the raw C# as body. Kept as a thin shim over the agent host (docs/agent-protocol.md);
+        /// answers in the old ScriptResponse shape.
+        /// </summary>
         private async Task HandleRoslynRequest(Stream stream, string code, string connId)
         {
             var response = new ScriptResponse();
@@ -948,172 +955,49 @@ namespace RevitBallet.Commands
 
             if (string.IsNullOrWhiteSpace(code))
             {
-                LogToRevit($"[CONN-{connId}] Empty request body");
                 response.Success = false;
                 response.Error = "Empty request body";
-                response.LogProcessing("ERROR: Empty request body");
                 await SendHttpResponse(stream, response);
                 return;
             }
 
-            LogToRevit($"[CONN-{connId}] Compiling script ({code.Length} chars)...");
-            response.LogProcessing($"Starting compilation ({code.Length} chars)...");
-
-            var compileStart = DateTime.Now;
-            var compilationResult = await CompileScript(code);
-            var compileDuration = (DateTime.Now - compileStart).TotalMilliseconds;
-
-            if (!compilationResult.Success)
+            RevitBallet.Commands.Agent.Job job;
+            try { job = RevitBallet.Commands.Agent.AgentHost.Submit("roslyn", code, 30000, null); }
+            catch (RevitBallet.Commands.Agent.AgentException ex)
             {
-                LogToRevit($"[CONN-{connId}] Compilation failed ({compileDuration:F0}ms)");
-                compilationResult.ErrorResponse.LogProcessing($"Compilation FAILED ({compileDuration:F0}ms)");
-                await SendHttpResponse(stream, compilationResult.ErrorResponse);
+                response.Success = false;
+                response.Error = ex.Kind == "engine" ? "The Roslyn engine is not available: " + ex.Message : ex.Message;
+                await SendHttpResponse(stream, response, ex.Status == 409 ? 503 : ex.Status, ex.Status == 409 ? "Service Unavailable" : "Error");
                 return;
             }
+            response.LogProcessing($"Job {job.Id} queued");
+            await Task.Run(() => RevitBallet.Commands.Agent.AgentHost.WaitFinal(job, 120000));
+            var j = job.ToJson();
+            response.LogProcessing($"Job finished: {(string)j["state"]} (compile {j["timings"]["compileMs"]} ms, run {j["timings"]["runMs"]} ms)");
 
-            response.LogProcessing($"Compilation successful ({compileDuration:F0}ms)");
-            LogToRevit($"[CONN-{connId}] Compilation successful ({compileDuration:F0}ms), executing via External Event...");
-            response.LogProcessing("Queueing script for execution on Revit UI thread...");
-
-            var executeStart = DateTime.Now;
-            var scriptResponse = await ExecuteScriptViaExternalEvent(compilationResult.CompiledScript);
-            var executeDuration = (DateTime.Now - executeStart).TotalMilliseconds;
-
-            scriptResponse.LogProcessing($"Execution completed ({executeDuration:F0}ms) - Success: {scriptResponse.Success}");
-
-            // Merge processing logs from compilation stage
-            scriptResponse.ProcessingLog.InsertRange(0, response.ProcessingLog);
-
-            LogToRevit($"[CONN-{connId}] Execution completed ({executeDuration:F0}ms) - Success: {scriptResponse.Success}");
-            await SendHttpResponse(stream, scriptResponse);
-        }
-
-        private class CompilationResult
-        {
-            public bool Success { get; set; }
-            public Script<object> CompiledScript { get; set; }
-            public ScriptResponse ErrorResponse { get; set; }
-        }
-
-        private Task<CompilationResult> CompileScript(string code)
-        {
-            var result = new CompilationResult();
-
-            try
+            response.Success = (bool)j["ok"];
+            response.Output = (string)j["output"];
+            foreach (var d in (Newtonsoft.Json.Linq.JArray)j["diagnostics"])
+                response.Diagnostics.Add($"({(int)d["line"]},{(int)d["column"]}): {(string)d["severity"]} {(string)d["id"]}: {(string)d["message"]}");
+            if (response.Success)
             {
-                // Use MetadataReference.CreateFromFile to explicitly load from our bin directory
-                // This bypasses AppDomain assembly loading and avoids conflicts with pyRevit
-                string binDirectory = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
-
-                var scriptOptions = ScriptOptions.Default
-                    .AddReferences(Microsoft.CodeAnalysis.MetadataReference.CreateFromFile(typeof(ScriptGlobals).Assembly.Location))
-                    .AddReferences(Microsoft.CodeAnalysis.MetadataReference.CreateFromFile(typeof(Document).Assembly.Location))
-                    .AddReferences(Microsoft.CodeAnalysis.MetadataReference.CreateFromFile(typeof(UIDocument).Assembly.Location))
-                    .AddReferences(Microsoft.CodeAnalysis.MetadataReference.CreateFromFile(typeof(System.Linq.Enumerable).Assembly.Location));
-
-                // Explicitly add Roslyn dependency DLLs from bin directory (all Revit versions)
-                // This avoids conflicts with incompatible versions loaded by other addins (e.g., pyRevit)
-                string immutablePath = Path.Combine(binDirectory, "System.Collections.Immutable.dll");
-                string metadataPath = Path.Combine(binDirectory, "System.Reflection.Metadata.dll");
-
-                if (File.Exists(immutablePath))
-                    scriptOptions = scriptOptions.AddReferences(Microsoft.CodeAnalysis.MetadataReference.CreateFromFile(immutablePath));
-                if (File.Exists(metadataPath))
-                    scriptOptions = scriptOptions.AddReferences(Microsoft.CodeAnalysis.MetadataReference.CreateFromFile(metadataPath));
-
-                scriptOptions = scriptOptions
-                    .AddImports("System")
-                    .AddImports("System.Linq")
-                    .AddImports("System.Collections.Generic")
-                    .AddImports("Autodesk.Revit.DB")
-                    .AddImports("Autodesk.Revit.UI")
-                    // Addin helpers (SelectionStorage, PathHelper, ...) stay callable
-                    // from scripts without qualification after namespace unification
-                    .AddImports("RevitBallet.Commands");
-
-                var script = CSharpScript.Create(code, scriptOptions, typeof(ScriptGlobals));
-                var compilation = script.GetCompilation();
-                var diagnostics = compilation.GetDiagnostics();
-
-                var errors = diagnostics.Where(d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error).ToList();
-                if (errors.Any())
+                var v = j["value"];
+                if (v != null && v.Type != Newtonsoft.Json.Linq.JTokenType.Null && (string)v["text"] != null)
                 {
-                    result.Success = false;
-                    result.ErrorResponse = new ScriptResponse
-                    {
-                        Success = false,
-                        Error = "Compilation failed",
-                        Diagnostics = errors.Select(e => e.ToString()).ToList()
-                    };
-                    return Task.FromResult(result);
-                }
-
-                result.Success = true;
-                result.CompiledScript = script;
-
-                var warnings = diagnostics.Where(d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Warning).ToList();
-                if (warnings.Any())
-                {
-                    result.ErrorResponse = new ScriptResponse
-                    {
-                        Success = true,
-                        Diagnostics = warnings.Select(w => w.ToString()).ToList()
-                    };
+                    if (!string.IsNullOrEmpty(response.Output)) response.Output += "\n";
+                    response.Output += "Return value: " + (string)v["text"];
                 }
             }
-            catch (CompilationErrorException ex)
+            else
             {
-                result.Success = false;
-                result.ErrorResponse = new ScriptResponse
-                {
-                    Success = false,
-                    Error = "Compilation error",
-                    Diagnostics = ex.Diagnostics.Select(d => d.ToString()).ToList()
-                };
+                var e = j["error"];
+                var kind = e == null ? null : (string)e["kind"];
+                var msg = e == null ? "unknown error" : (string)e["message"];
+                if (kind == "compile") response.Error = "Compilation failed";
+                else if (kind == "timeout" || kind == "blocked_by_dialog") response.Error = "Script execution timeout (30 seconds). " + msg;
+                else response.Error = msg + (string.IsNullOrEmpty((string)e?["stack"]) ? "" : "\n\nStack Trace:\n" + (string)e["stack"]);
             }
-            catch (System.Exception ex)
-            {
-                LogToRevit($"[{DateTime.Now:HH:mm:ss}] Script compilation exception: {ex.Message}");
-                LogToRevit($"[{DateTime.Now:HH:mm:ss}] Exception type: {ex.GetType().FullName}");
-                LogToRevit($"[{DateTime.Now:HH:mm:ss}] Stack trace:\n{ex.StackTrace}");
-
-                result.Success = false;
-                result.ErrorResponse = new ScriptResponse
-                {
-                    Success = false,
-                    Error = $"{ex.Message}\n\nException Type: {ex.GetType().Name}\nStack Trace: {ex.StackTrace}"
-                };
-            }
-
-            return Task.FromResult(result);
-        }
-
-        private async Task<ScriptResponse> ExecuteScriptViaExternalEvent(Script<object> script)
-        {
-            var tcs = new TaskCompletionSource<ScriptResponse>();
-
-            // Queue the script execution request in the handler
-            scriptHandler.QueueExecution(script, tcs);
-
-            // Raise the external event to execute on the UI thread
-            scriptExecutionEvent.Raise();
-
-            // Add timeout to prevent infinite waiting (30 seconds default)
-            var timeoutTask = Task.Delay(30000);
-            var completedTask = await Task.WhenAny(tcs.Task, timeoutTask);
-
-            if (completedTask == timeoutTask)
-            {
-                var response = new ScriptResponse
-                {
-                    Success = false,
-                    Error = "Script execution timeout (30 seconds). The script may contain an infinite loop or is waiting for user input."
-                };
-                response.LogProcessing("ERROR: Execution timeout after 30 seconds");
-                return response;
-            }
-
-            return await tcs.Task;
+            await SendHttpResponse(stream, response);
         }
 
         private async Task HandleScreenshotRequest(Stream stream, string connId)
@@ -1246,126 +1130,6 @@ namespace RevitBallet.Commands
             await stream.WriteAsync(headerBytes, 0, headerBytes.Length);
             await stream.WriteAsync(responseBytes, 0, responseBytes.Length);
             await stream.FlushAsync();
-        }
-    }
-
-    /// <summary>
-    /// External Event Handler for executing Roslyn scripts on the Revit UI thread
-    /// </summary>
-    internal class ScriptExecutionHandler : IExternalEventHandler
-    {
-        private Script<object> pendingScript;
-        private TaskCompletionSource<ScriptResponse> pendingTcs;
-        private readonly object lockObject = new object();
-
-        public ScriptExecutionHandler()
-        {
-        }
-
-        public void QueueExecution(Script<object> script, TaskCompletionSource<ScriptResponse> tcs)
-        {
-            lock (lockObject)
-            {
-                pendingScript = script;
-                pendingTcs = tcs;
-            }
-        }
-
-        public void Execute(UIApplication app)
-        {
-            Script<object> script;
-            TaskCompletionSource<ScriptResponse> tcs;
-
-            // Get the pending request
-            lock (lockObject)
-            {
-                script = pendingScript;
-                tcs = pendingTcs;
-                pendingScript = null;
-                pendingTcs = null;
-            }
-
-            if (script == null || tcs == null)
-            {
-                return; // No pending execution
-            }
-
-            var response = new ScriptResponse();
-            var outputCapture = new StringWriter();
-            var originalOut = Console.Out;
-
-            try
-            {
-                response.LogProcessing("Script execution started on Revit UI thread");
-                Console.SetOut(outputCapture);
-
-                var uidoc = app.ActiveUIDocument;
-                var doc = uidoc?.Document;
-
-                // Allow scripts to run even without an active document
-                // UIDoc and Doc will be null, but UIApp is always available
-                var globals = new ScriptGlobals
-                {
-                    UIApp = app,
-                    UIDoc = uidoc,
-                    Doc = doc
-                };
-
-                response.LogProcessing($"Script context: UIApp={app != null}, UIDoc={uidoc != null}, Doc={doc != null}");
-                response.LogProcessing("Running script...");
-
-                var executeStart = DateTime.Now;
-                // Execute the script (no Transaction - user must create one in their script if needed)
-                var result = script.RunAsync(globals).Result;
-                var executeMs = (DateTime.Now - executeStart).TotalMilliseconds;
-
-                response.LogProcessing($"Script completed successfully ({executeMs:F0}ms)");
-                response.Success = true;
-                response.Output = outputCapture.ToString();
-
-                if (result.ReturnValue != null)
-                {
-                    if (!string.IsNullOrEmpty(response.Output))
-                        response.Output += "\n";
-                    response.Output += $"Return value: {result.ReturnValue}";
-                }
-
-                tcs.SetResult(response);
-            }
-            catch (CompilationErrorException ex)
-            {
-                response.LogProcessing("ERROR: Compilation error during execution");
-                response.Success = false;
-                response.Error = "Compilation error";
-                response.Diagnostics = ex.Diagnostics.Select(d => d.ToString()).ToList();
-                tcs.SetResult(response);
-            }
-            catch (System.Exception ex)
-            {
-                RevitBalletServer.LogToRevit($"[{DateTime.Now:HH:mm:ss}] Script execution exception: {ex.Message}");
-                RevitBalletServer.LogToRevit($"[{DateTime.Now:HH:mm:ss}] Exception type: {ex.GetType().FullName}");
-                RevitBalletServer.LogToRevit($"[{DateTime.Now:HH:mm:ss}] Stack trace:\n{ex.StackTrace}");
-                if (ex.InnerException != null)
-                {
-                    RevitBalletServer.LogToRevit($"[{DateTime.Now:HH:mm:ss}] Inner exception: {ex.InnerException.Message}");
-                    RevitBalletServer.LogToRevit($"[{DateTime.Now:HH:mm:ss}] Inner stack trace:\n{ex.InnerException.StackTrace}");
-                }
-
-                response.LogProcessing($"ERROR: {ex.GetType().Name} - {ex.Message}");
-                response.Success = false;
-                response.Error = $"{ex.Message}\n\nException Type: {ex.GetType().Name}\n\nStack Trace:\n{ex.StackTrace}";
-                response.Output = outputCapture.ToString();
-                tcs.SetResult(response);
-            }
-            finally
-            {
-                Console.SetOut(originalOut);
-            }
-        }
-
-        public string GetName()
-        {
-            return "RevitBalletScriptExecutionHandler";
         }
     }
 
@@ -1913,16 +1677,6 @@ namespace RevitBallet.Commands
     /// Represents a single document entry in the document registry.
     /// One entry per open document across all Revit sessions.
     /// </summary>
-    /// <summary>
-    /// Globals available to Roslyn scripts
-    /// </summary>
-    public class ScriptGlobals
-    {
-        public UIApplication UIApp { get; set; }
-        public UIDocument UIDoc { get; set; }
-        public Document Doc { get; set; }
-    }
-
     /// <summary>
     /// Response object for script execution
     /// </summary>

@@ -31,6 +31,7 @@ ssh daniel@192.168.231.1 -i ~/.ssh/dev-vm-key 'powershell -NoProfile -Command "C
 | `--quiet` / `-q` | Run headlessly (no UI dialogs); print results to stdout. Required for SSH use. |
 | `--verbosity 0\|1\|2` | Controls output detail in quiet mode (default: 1). |
 | `--hot-reload` | Also copy DLLs to `%appdata%\revit-ballet\hot-reload\{year}\` for immediate pickup by `InvokeAddinCommand`. |
+| `--engines all\|none\|name[,name...]` | Which script engines to install under `engines/<name>/` (`roslyn`, `ironpython2`, `cpython3`). Default `all`. Engines installed earlier but not listed are removed. |
 | `/uninstall` | Run uninstaller instead of installer. |
 
 ### Verbosity levels
@@ -45,7 +46,8 @@ ssh daniel@192.168.231.1 -i ~/.ssh/dev-vm-key 'powershell -NoProfile -Command "C
 2. **Extracts embedded resources** — DLLs are embedded per-year with deduplication (shared files stored once)
 3. **Deploys to Addins folder** — copies `revit-ballet.dll` and dependencies to `Addins\{year}\revit-ballet\`
 4. **Handles locked files** — if Revit is running, writes to a `revit-ballet.update\` folder instead; Startup.cs applies it on next Revit launch
-5. **Deploys keyboard shortcuts** — merges custom shortcuts into `KeyboardShortcuts.xml` per Revit version
+5. **Deploys script engines** — `engines/<name>/` next to `revit-ballet.dll` (see `docs/agent-protocol.md`); `--engines` selects which
+6. **Deploys keyboard shortcuts** — merges custom shortcuts into `KeyboardShortcuts.xml` per Revit version
 6. **Registers uninstaller** — adds entry to Windows Add/Remove Programs
 7. **Registers trusted addins** — adds to Revit's addin trust list
 8. **Hot-reload dir** *(with `--hot-reload`)* — copies DLLs to `%appdata%\revit-ballet\hot-reload\{year}\`

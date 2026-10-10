@@ -1,0 +1,22 @@
+<Project>
+  <!-- Shared by the engine projects: Revit year -> target framework / Revit API package (same mapping as commands/commands.csproj). -->
+  <PropertyGroup>
+    <RevitYear Condition="'$(RevitYear)' == ''">2025</RevitYear>
+    <NoWarn>$(NoWarn);NU1701</NoWarn>
+    <TargetFramework Condition="'$(RevitYear)' == '2020'">net472</TargetFramework>
+    <TargetFramework Condition="'$(RevitYear)' == '2021' OR '$(RevitYear)' == '2022' OR '$(RevitYear)' == '2023' OR '$(RevitYear)' == '2024'">net48</TargetFramework>
+    <TargetFramework Condition="'$(RevitYear)' == '2025' OR '$(RevitYear)' == '2026'">net8.0-windows</TargetFramework>
+    <RevitAPIVersion>$(RevitYear).0.0</RevitAPIVersion>
+    <DefineConstants>REVIT$(RevitYear)</DefineConstants>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <Nullable>disable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <PlatformTarget>x64</PlatformTarget>
+    <GenerateDependencyFile>false</GenerateDependencyFile>
+    <GenerateRuntimeConfigurationFiles>false</GenerateRuntimeConfigurationFiles>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <DebugType Condition="'$(Configuration)' == 'Release'">none</DebugType>
+  </PropertyGroup>
+</Project>

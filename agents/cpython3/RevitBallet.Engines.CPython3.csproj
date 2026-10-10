@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="..\Revit.props" />
+  <!-- CPython 3 scripting engine (real CPython embedded through pythonnet) for the revit-ballet agent host.
+       Separate component (docs/agent-protocol.md): ships in engines/cpython3/ together with the official Windows embeddable
+       Python runtime (fetch-python.sh), so no system Python is needed. Loaded only when a job asks for it. -->
+  <PropertyGroup>
+    <AssemblyName>revit-ballet-engine-cpython3</AssemblyName>
+    <RootNamespace>RevitBallet.Engines.CPython3</RootNamespace>
+    <OutputPath>bin\$(RevitYear)\</OutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\abstractions\RevitBallet.Agents.Abstractions.csproj" />
+    <PackageReference Include="pythonnet" Version="3.0.5" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="engine.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- the embeddable runtime, flat next to the engine assembly -->
+    <None Include="python-embed\**\*" Condition="Exists('python-embed\python312.dll')" Link="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <Target Name="WarnNoPython" BeforeTargets="Build" Condition="!Exists('python-embed\python312.dll')">
+    <Warning Text="agents/cpython3/python-embed is missing: run agents/cpython3/fetch-python.sh (the engine will report 'runtime not found')" />
+  </Target>
+
+  <Target Name="TrimOutput" AfterTargets="Build">
+    <Delete Files="$(OutputPath)revit-ballet.agents.abstractions.dll" />
+  </Target>
+</Project>

@@ -43,10 +43,29 @@ if [ ${#FAILED[@]} -gt 0 ]; then
     exit 1
 fi
 
+# Script engines (separate components, shipped in engines/<name>/): one build per Revit year each.
+ENGINES=(roslyn ironpython2 cpython3)
+bash "$REPO_ROOT/agents/cpython3/fetch-python.sh"   # embeddable CPython for the cpython3 engine (no-op when present)
+for engine in "${ENGINES[@]}"; do
+    echo ""
+    echo "Building engine '$engine' for Revit 2026..2020..."
+    for year in $(seq 2026 -1 2020); do
+        if dotnet build "$REPO_ROOT/agents/$engine" -c Release -p:RevitYear=$year 2>&1 | grep -q -E '^\s*0 Error\(s\)'; then
+            echo "Revit $year: OK"
+        else
+            echo "Revit $year: FAILED"; FAILED+=("$engine-$year")
+        fi
+    done
+done
+if [ ${#FAILED[@]} -gt 0 ]; then echo "Build failed for: ${FAILED[*]}"; exit 1; fi
+
 if [ -n "${REVIT_BALLET_SIGN_PFX:-}" ]; then
     echo ""
     echo "Signing revit-ballet.dll for each Revit year..."
-    for year in $(seq 2026 -1 2020); do sign_file "$COMMANDS_DIR/bin/$year/revit-ballet.dll"; done
+    for year in $(seq 2026 -1 2020); do
+        sign_file "$COMMANDS_DIR/bin/$year/revit-ballet.dll"
+        for engine in "${ENGINES[@]}"; do sign_file "$REPO_ROOT/agents/$engine/bin/$year/revit-ballet-engine-$engine.dll"; done
+    done
 fi
 
 echo ""

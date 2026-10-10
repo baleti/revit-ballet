@@ -1,0 +1,9 @@
+{
+  "name": "cpython3",
+  "language": "python",
+  "version": "3.12",
+  "assembly": "revit-ballet-engine-cpython3.dll",
+  "type": "RevitBallet.Engines.CPython3.CPython3Engine",
+  "protocol": 1,
+  "sessions": true
+}

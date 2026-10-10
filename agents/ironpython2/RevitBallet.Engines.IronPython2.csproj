@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="..\Revit.props" />
+  <!-- IronPython 2.7 scripting engine for the revit-ballet agent host. Separate component (see docs/agent-protocol.md):
+       ships in engines/ironpython2/, loaded only when a job asks for it. -->
+  <PropertyGroup>
+    <AssemblyName>revit-ballet-engine-ironpython2</AssemblyName>
+    <RootNamespace>RevitBallet.Engines.IronPython2</RootNamespace>
+    <OutputPath>bin\$(RevitYear)\</OutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\abstractions\RevitBallet.Agents.Abstractions.csproj" />
+    <PackageReference Include="Revit_All_Main_Versions_API_x64" Version="$(RevitAPIVersion)" ExcludeAssets="runtime" />
+    <PackageReference Include="IronPython" Version="2.7.12" />
+    <!-- The pure-Python standard library: not copied as loose files; a trimmed Lib.zip is built from it below -->
+    <PackageReference Include="IronPython.StdLib" Version="2.7.12" GeneratePathProperty="true" ExcludeAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="engine.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- Lib.zip = standard library without tests, IDLE, 2to3, distutils (about 2 MB instead of 30 MB of loose files) -->
+  <Target Name="BuildStdLibZip" AfterTargets="Build" Condition="!Exists('$(OutputPath)Lib.zip')">
+    <ItemGroup>
+      <StdLibFile Include="$(PkgIronPython_StdLib)\content\Lib\**\*.py" Exclude="$(PkgIronPython_StdLib)\content\Lib\test\**;$(PkgIronPython_StdLib)\content\Lib\idlelib\**;$(PkgIronPython_StdLib)\content\Lib\lib2to3\**;$(PkgIronPython_StdLib)\content\Lib\distutils\**;$(PkgIronPython_StdLib)\content\Lib\ensurepip\**" />
+    </ItemGroup>
+    <RemoveDir Directories="$(IntermediateOutputPath)stdlib" />
+    <Copy SourceFiles="@(StdLibFile)" DestinationFiles="@(StdLibFile->'$(IntermediateOutputPath)stdlib\%(RecursiveDir)%(Filename)%(Extension)')" />
+    <ZipDirectory SourceDirectory="$(IntermediateOutputPath)stdlib" DestinationFile="$(OutputPath)Lib.zip" Overwrite="true" />
+  </Target>
+
+  <!-- the host ships the contract assembly; also drop modules nobody needs here (sqlite, wpf) and non-Windows leftovers -->
+  <Target Name="TrimOutput" AfterTargets="Build">
+    <Delete Files="$(OutputPath)revit-ballet.agents.abstractions.dll;$(OutputPath)IronPython.SQLite.dll;$(OutputPath)IronPython.Wpf.dll;$(OutputPath)Mono.Unix.dll" />
+    <RemoveDir Directories="$(OutputPath)runtimes" />
+  </Target>
+</Project>

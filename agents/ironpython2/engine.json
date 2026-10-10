@@ -1,0 +1,9 @@
+{
+  "name": "ironpython2",
+  "language": "python",
+  "version": "2.7.12",
+  "assembly": "revit-ballet-engine-ironpython2.dll",
+  "type": "RevitBallet.Engines.IronPython2.IronPython2Engine",
+  "protocol": 1,
+  "sessions": true
+}
