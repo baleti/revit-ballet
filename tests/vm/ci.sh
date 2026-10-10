@@ -20,7 +20,9 @@
 set -uo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 REPO=$(cd "$HERE/../.." && pwd)
+_cid=${CI_CID:-}; _mem=${CI_MEM:-}; _smp=${CI_SMP:-}   # variables given on the command line beat ci.env (several VMs side by side need their own CID)
 [ -f "$HERE/ci.env" ] && . "$HERE/ci.env"
+[ -n "$_cid" ] && CI_CID=$_cid; [ -n "$_mem" ] && CI_MEM=$_mem; [ -n "$_smp" ] && CI_SMP=$_smp
 CI_VM_DIR=${CI_VM_DIR:-/srv/vm/win}
 CI_BASELINE=${CI_BASELINE:-baseline-before-revit-ballet.qcow2}
 CI_GUEST_KEY=${CI_GUEST_KEY:-'~/.ssh/WinDev2407Eval-revit'}

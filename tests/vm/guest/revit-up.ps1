@@ -17,4 +17,15 @@ while (((Get-Date) - $t0).TotalSeconds -lt $TimeoutSec -and -not $port) {
   }
 }
 if (-not $port) { Write-Output "TIMEOUT after $TimeoutSec s: revit $Year running=$([bool](Mine)), no server port"; exit 2 }
+# the port opens before the agent runtime does (it starts when Revit is first idle, later on a loaded machine): wait for /v1/info
+$tokFile = Join-Path $env:APPDATA "revit-ballet\runtime\network\token"
+while (((Get-Date) - $t0).TotalSeconds -lt $TimeoutSec) {
+  if (Test-Path $tokFile) {
+    $tok = (Get-Content $tokFile -Raw).Trim()
+    $code = curl.exe -sk -m 10 -o NUL -w "%{http_code}" -H "X-Auth-Token: $tok" "https://127.0.0.1:$port/v1/info"
+    if ($code -eq "200") { break }
+  }
+  Start-Sleep 2
+}
+if (((Get-Date) - $t0).TotalSeconds -ge $TimeoutSec) { Write-Output "TIMEOUT after $TimeoutSec s: port $port open but the agent runtime did not start (Revit never idle?)"; exit 2 }
 Write-Output "PORT=$port"
