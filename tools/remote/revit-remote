@@ -1,0 +1,281 @@
+#!/usr/bin/env python3
+"""revit-remote: list and run Revit Ballet add-in commands in Revit instances on this machine or on other machines / VMs.
+
+    revit-remote targets                       the machines it knows (from the config file) and how they are reached
+    revit-remote instances [--json]            every Revit instance found on them
+    revit-remote rows [--cached]               one NDJSON row per (command x instance), what the picker shows
+    revit-remote invoke --target T --port P --command C [--wait MS] [--policy fail|report|respond:BUTTON]
+
+Config: ~/.config/revit-ballet/remote.json (or $REVIT_REMOTE_CONFIG). See docs/remote-commands-and-query-dsl.md.
+Nothing is installed on the targets: a PowerShell probe is piped to them over ssh and talks to the agent on their loopback.
+"""
+import argparse
+import concurrent.futures
+import json
+import os
+import shlex
+import signal
+import subprocess
+import sys
+import time
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+CONFIG = os.environ.get("REVIT_REMOTE_CONFIG") or os.path.expanduser("~/.config/revit-ballet/remote.json")
+CACHE = os.environ.get("REVIT_REMOTE_CACHE") or os.path.expanduser("~/.cache/revit-remote/rows.json")
+SSH_OPTS = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-o", "ServerAliveInterval=5", "-o", "ServerAliveCountMax=3"]
+GUEST_OPTS = ["-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", "-o", "LogLevel=ERROR", "-o", "ConnectTimeout=10"]
+POWERSHELL = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "-"]
+
+
+# ----------------------------------------------------------------------------------------------------- config / targets
+
+def load_config(path=None):
+    path = path or CONFIG
+    try:
+        with open(path) as f:
+            cfg = json.load(f)
+    except FileNotFoundError:
+        return {"targets": []}
+    cfg.setdefault("targets", [])
+    return cfg
+
+
+def parse_vm_listing(text):
+    """`name cid` lines printed by the qemu listing command on a VM host."""
+    vms = []
+    for line in text.splitlines():
+        parts = line.split()
+        if len(parts) == 2 and parts[1].isdigit():
+            vms.append({"name": parts[0], "cid": int(parts[1])})
+    return vms
+
+
+QEMU_LIST = ("for p in $(pgrep -f '^qemu-system-x86_64 -name'); do c=$(tr '\\0' ' ' < /proc/$p/cmdline); "
+             "n=$(echo \"$c\" | grep -o -- '-name [^ ]*' | cut -d' ' -f2); cid=$(echo \"$c\" | grep -o 'guest-cid=[0-9]*' | cut -d= -f2); "
+             "[ -n \"$cid\" ] && echo \"$n $cid\"; done")
+
+
+def expand_targets(cfg, runner=None):
+    """Config entries -> concrete targets. kind=qemu-vsock expands to one target per running VM of that host (live discovery)."""
+    runner = runner or run_local
+    out = []
+    for t in cfg.get("targets", []):
+        kind = t.get("kind", "ssh")
+        if kind == "qemu-vsock":
+            rc, stdout, _ = runner(["ssh"] + SSH_OPTS + [t["ssh"], QEMU_LIST], None, 20)
+            if rc != 0:
+                out.append(dict(t, name=t["name"], unreachable="cannot list the VMs on %s" % t["ssh"]))
+                continue
+            for vm in parse_vm_listing(stdout):
+                label = "cid%d" % vm["cid"] if vm["name"].startswith("ci-") else vm["name"]
+                out.append({"name": "%s/%s" % (t["name"], label), "kind": "qemu-vsock-guest", "ssh": t["ssh"], "cid": vm["cid"],
+                            "guest_key": t.get("guest_key", "~/.ssh/id_rsa"), "guest_user": t.get("guest_user", "user"), "vm": vm["name"]})
+        else:
+            out.append(dict(t, kind=kind))
+    return out
+
+
+def transport_command(target):
+    """argv that runs a PowerShell script read from stdin on the target."""
+    kind = target["kind"]
+    if kind == "ssh":
+        return ["ssh"] + SSH_OPTS + [target["ssh"]] + POWERSHELL
+    if kind == "qemu-vsock-guest":
+        cid = target["cid"]
+        inner = ["ssh", "-i", target["guest_key"]] + GUEST_OPTS + [
+            "-o", "ProxyCommand=socat - VSOCK-CONNECT:%d:22" % cid, "%s@vsock%d" % (target["guest_user"], cid)] + POWERSHELL
+        return ["ssh"] + SSH_OPTS + [target["ssh"], " ".join(shlex.quote(a) if not a.startswith("~") else a for a in inner)]
+    raise ValueError("unknown target kind %r" % kind)
+
+
+def run_local(argv, stdin_text, timeout):
+    try:
+        p = subprocess.run(argv, input=stdin_text, capture_output=True, text=True, timeout=timeout)
+        return p.returncode, p.stdout, p.stderr
+    except subprocess.TimeoutExpired:
+        return 124, "", "timed out after %ss" % timeout
+
+
+def script_with_params(script_name, params):
+    """The PowerShell to send: `$P = <json>` first (single line, no here-strings, nothing to quote), then the script."""
+    with open(os.path.join(HERE, script_name)) as f:
+        body = f.read()
+    literal = json.dumps(params).replace("'", "''")
+    return "$P = '%s' | ConvertFrom-Json\n%s\n" % (literal, body)
+
+
+# ----------------------------------------------------------------------------------------------------- probing
+
+def probe_target(target, runner=None, timeout=30):
+    runner = runner or run_local
+    if target.get("unreachable"):
+        return {"target": target["name"], "error": target["unreachable"], "instances": [], "commands": {}}
+    rc, stdout, stderr = runner(transport_command(target), script_with_params("probe.ps1", {}), timeout)
+    lines = [l for l in stdout.splitlines() if l.strip().startswith("{")]
+    if rc != 0 or not lines:
+        why = (stderr.strip().splitlines() or ["no answer"])[-1] if rc != 124 else "timed out"
+        return {"target": target["name"], "error": "cannot reach: " + why, "instances": [], "commands": {}}
+    try:
+        data = json.loads(lines[-1])
+    except ValueError:
+        return {"target": target["name"], "error": "unreadable answer", "instances": [], "commands": {}}
+    data["target"] = target["name"]
+    data["instances"] = _as_list(data.get("instances"))
+    # an agent without /v1/commands (an older build) has no catalogue: no commands, not broken entries
+    data["commands"] = {y: [c for c in _as_list(cs) if isinstance(c, dict) and c.get("name")] for y, cs in (data.get("commands") or {}).items()}
+    return data
+
+
+def _as_list(v):
+    """PowerShell's ConvertTo-Json turns a one-element array into the element itself."""
+    if v is None:
+        return []
+    return v if isinstance(v, list) else [v]
+
+
+def probe_all(targets, runner=None, only=None):
+    selected = [t for t in targets if not only or only in t["name"]]
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, len(selected))) as ex:
+        return list(ex.map(lambda t: probe_target(t, runner), selected))
+
+
+# ----------------------------------------------------------------------------------------------------- rows
+
+def instance_label(target, inst):
+    return "%s · %s · %s" % (target, inst["year"], inst["pid"])
+
+
+def build_rows(probes):
+    """One row per (command x instance), in the shape of the quickshell pickers: {id, preview, haystack, fields}."""
+    rows = []
+    for pr in probes:
+        for inst in pr["instances"]:
+            label = instance_label(pr["target"], inst)
+            state = inst.get("state") or ""
+            if inst.get("dialog"):
+                state = "dialog: " + str(inst["dialog"])
+            for c in pr["commands"].get(str(inst["year"]), []):
+                fields = {
+                    "command": c["displayName"], "class": c["name"], "input": c.get("input") or "", "output": c.get("output") or "",
+                    "target": pr["target"], "instance": label, "year": str(inst["year"]), "pid": str(inst["pid"]), "state": state,
+                }
+                rows.append({
+                    "id": "%s|%s|%s" % (pr["target"], inst["port"], c["name"]),
+                    "preview": c["displayName"],
+                    "haystack": " ".join([c["displayName"], c["name"], pr["target"], str(inst["year"])]).lower(),
+                    "target": pr["target"], "port": inst["port"], "command": c["name"],
+                    "fields": fields,
+                })
+    return rows
+
+
+def write_cache(rows, probes):
+    os.makedirs(os.path.dirname(CACHE), exist_ok=True)
+    tmp = CACHE + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump({"time": time.time(), "rows": rows, "errors": [{"target": p["target"], "error": p["error"]} for p in probes if p.get("error")]}, f)
+    os.replace(tmp, CACHE)
+
+
+def read_cache():
+    try:
+        with open(CACHE) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {"time": 0, "rows": [], "errors": []}
+
+
+# ----------------------------------------------------------------------------------------------------- invoke
+
+def policy_param(policy):
+    if not policy or policy == "report":
+        return None
+    if policy == "fail":
+        return "fail"
+    if policy.startswith("respond:"):
+        return {"respond": policy[len("respond:"):]}
+    raise ValueError("policy must be report, fail or respond:BUTTON")
+
+
+def invoke(target, port, command, wait=0, policy=None, timeout_ms=None, runner=None):
+    runner = runner or run_local
+    params = {"port": int(port), "command": command, "wait": int(wait)}
+    if timeout_ms:
+        params["timeoutMs"] = int(timeout_ms)
+    p = policy_param(policy)
+    if p:
+        params["dialogPolicy"] = p
+    rc, stdout, stderr = runner(transport_command(target), script_with_params("invoke.ps1", params), max(60, wait // 1000 + 45))
+    lines = [l for l in stdout.splitlines() if l.strip().startswith("{")]
+    if not lines:
+        return {"error": {"kind": "transport", "message": (stderr.strip().splitlines() or ["no answer from " + target["name"]])[-1]}}
+    return json.loads(lines[-1])
+
+
+# ----------------------------------------------------------------------------------------------------- CLI
+
+def find_target(targets, name):
+    for t in targets:
+        if t["name"] == name:
+            return t
+    matches = [t for t in targets if name in t["name"]]
+    return matches[0] if len(matches) == 1 else None
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(prog="revit-remote", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("targets")
+    p = sub.add_parser("instances"); p.add_argument("--json", action="store_true"); p.add_argument("--target")
+    p = sub.add_parser("rows"); p.add_argument("--cached", action="store_true"); p.add_argument("--target")
+    p = sub.add_parser("invoke")
+    p.add_argument("--target", required=True); p.add_argument("--port", required=True, type=int); p.add_argument("--command", required=True)
+    p.add_argument("--wait", type=int, default=0); p.add_argument("--policy"); p.add_argument("--timeout-ms", type=int)
+    a = ap.parse_args(argv)
+
+    cfg = load_config()
+    if a.cmd == "rows" and a.cached:
+        for r in read_cache()["rows"]:
+            print(json.dumps(r, ensure_ascii=False))
+        return 0
+    targets = expand_targets(cfg)
+
+    if a.cmd == "targets":
+        for t in targets:
+            print("%-28s %s%s" % (t["name"], t["kind"], "  UNREACHABLE: " + t["unreachable"] if t.get("unreachable") else ""))
+        return 0
+    if a.cmd in ("instances", "rows"):
+        probes = probe_all(targets, only=a.target)
+        if a.cmd == "instances":
+            if a.json:
+                print(json.dumps(probes, indent=1))
+            else:
+                for pr in probes:
+                    if pr.get("error"):
+                        print("%-28s %s" % (pr["target"], pr["error"]))
+                    for i in pr["instances"]:
+                        print("%-28s Revit %s  pid %-6s port %s  %s%s" % (pr["target"], i["year"], i["pid"], i["port"], i["state"], "  [dialog: %s]" % i["dialog"] if i.get("dialog") else ""))
+            return 0
+        rows = build_rows(probes)
+        if not a.target:
+            write_cache(rows, probes)
+        for r in rows:
+            print(json.dumps(r, ensure_ascii=False))
+        for pr in probes:
+            if pr.get("error"):
+                print("%s: %s" % (pr["target"], pr["error"]), file=sys.stderr)
+        return 0
+    if a.cmd == "invoke":
+        t = find_target(targets, a.target)
+        if t is None:
+            print(json.dumps({"error": {"kind": "no_target", "message": "no such target %r (revit-remote targets)" % a.target}}))
+            return 3
+        res = invoke(t, a.port, a.command, wait=a.wait, policy=a.policy, timeout_ms=a.timeout_ms)
+        print(json.dumps(res))
+        return 0 if res.get("state") in ("done", "queued", "compiling", "running") else 1
+    return 2
+
+
+if __name__ == "__main__":
+    signal.signal(signal.SIGPIPE, signal.SIG_DFL)      # `revit-remote rows | head` must not traceback
+    sys.exit(main())
