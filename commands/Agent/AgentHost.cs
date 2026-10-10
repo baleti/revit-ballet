@@ -326,6 +326,9 @@ namespace RevitBallet.Commands.Agent
                 job.State = state; job.ErrorKind = kind; job.ErrorMessage = message; job.ErrorStack = stack;
                 job.Finished = DateTime.UtcNow; job.Done.Set();
             }
+            // A finished job is only history: do not keep the compiled script alive. Its compilation (symbols, metadata) is huge, and
+            // the last 100 jobs are retained for GET /v1/jobs.
+            job.Compiled = null; job.Context = null; job.RunResult = null; job.EngineInstance = null;
             if (job.SessionObject != null) job.SessionObject.Jobs++;
             job.AddEvent("state", new JObject { ["state"] = Job.StateName(state) });
             job.AddEvent("done", job.ToJson());

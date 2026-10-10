@@ -44,6 +44,13 @@ namespace RevitBallet.Engines.Roslyn
 
         private ScriptOptions options;
 
+        /// <summary>
+        /// One assembly loader for every script. Without it Roslyn creates a new assembly load context per script; in Revit that cost
+        /// about 400 MB of native memory per compile (invisible to the garbage collector, so the working set grew to tens of GB).
+        /// </summary>
+        private readonly Microsoft.CodeAnalysis.Scripting.Hosting.InteractiveAssemblyLoader loader =
+            new Microsoft.CodeAnalysis.Scripting.Hosting.InteractiveAssemblyLoader();
+
         private ScriptOptions Options()
         {
             if (options != null) return options;
@@ -67,7 +74,25 @@ namespace RevitBallet.Engines.Roslyn
             return options = o;
         }
 
+        // A script compile leaves a few hundred MB of native memory behind (Roslyn's metadata for the Revit API) that only a garbage collection
+        // releases, and the runtime cannot see it. Left alone it piles up for as long as RAM is plentiful, so collect every few compiles.
+        private static int compileCount;
+        private const int CollectEvery = 4;
+
         public EngineCompileResult Compile(string code, EngineSession session, CancellationToken cancel)
+        {
+            try { return CompileCore(code, session, cancel); }
+            finally
+            {
+                if (Interlocked.Increment(ref compileCount) % CollectEvery == 0)
+                {
+                    GC.Collect(2, GCCollectionMode.Forced, true);
+                    GC.WaitForPendingFinalizers();
+                }
+            }
+        }
+
+        private EngineCompileResult CompileCore(string code, EngineSession session, CancellationToken cancel)
         {
             var result = new EngineCompileResult();
             try
@@ -75,7 +100,7 @@ namespace RevitBallet.Engines.Roslyn
                 var state = session != null && session.Name != null ? (session.State as SessionState ?? (SessionState)(session.State = new SessionState())) : null;
                 Script<object> script = state != null && state.State != null
                     ? state.State.Script.ContinueWith(code, Options())
-                    : CSharpScript.Create(code, Options(), typeof(Globals));
+                    : CSharpScript.Create(code, Options(), typeof(Globals), loader);
                 var diags = script.GetCompilation().GetDiagnostics(cancel);
                 foreach (var d in diags.Where(d => d.Severity >= DiagnosticSeverity.Warning))
                 {
