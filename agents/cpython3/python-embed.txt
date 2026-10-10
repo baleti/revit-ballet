@@ -1,0 +1,3 @@
+# Single source of truth for the bundled CPython (read by fetch-python.sh and fetch-python.ps1)
+PY_VERSION=3.12.8
+PY_SHA256=8d3f33be9eb810f23c102f08475af2854e50484b8e4e06275e937be61ce3d2fb
