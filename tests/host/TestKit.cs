@@ -111,6 +111,12 @@ namespace RevitBallet.Agent.Tests
         public volatile bool Hung;
         public int Raises;
         public string AuditDirectory { get; set; }
+        public IList<CommandInfo> Commands { get; set; } = new List<CommandInfo>
+        {
+            new CommandInfo { Name = "DeselectRandomly", DisplayName = "Deselect Randomly", Input = "Any" },
+            new CommandInfo { Name = "ExportToPDF", DisplayName = "Export To PDF", Input = "", Output = "PDF" },
+            new CommandInfo { Name = "DrawCircleAtOrigin", DisplayName = "Draw Circle At Origin", Input = "" },
+        };
 
         public void Attach(AgentCore core)
         {
@@ -170,16 +176,16 @@ namespace RevitBallet.Agent.Tests
     {
         public readonly FakeUi Ui = new FakeUi();
         public readonly FakeSource Source = new FakeSource();
-        public readonly FakeEngine Roslyn, Python;
+        public readonly FakeEngine Roslyn, Python, Command;
         public readonly AgentCore Core;
         public readonly string AuditDir = Path.Combine(Path.GetTempPath(), "rb-agent-test-" + Guid.NewGuid().ToString("N"));
 
         public Rig(bool audit = false)
         {
-            Roslyn = Source.Add("roslyn"); Python = Source.Add("ironpython2");
+            Roslyn = Source.Add("roslyn"); Python = Source.Add("ironpython2"); Command = Source.Add("command");
             Source.Map["broken"] = new EngineEntry { Manifest = new EngineManifest { Name = "broken", Language = "x", Version = "1", Protocol = 1 }, Directory = "x", LoadError = "boom while loading" };
             Ui.AuditDirectory = audit ? AuditDir : null;
-            Roslyn.Ui = Ui; Python.Ui = Ui;
+            Roslyn.Ui = Ui; Python.Ui = Ui; Command.Ui = Ui;
             Core = new AgentCore(Ui, Ui, Source) { DialogGraceMs = 300 };
             Ui.Attach(Core);
             Core.Start();

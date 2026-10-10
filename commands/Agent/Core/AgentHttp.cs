@@ -74,6 +74,14 @@ namespace RevitBallet.Commands.Agent
                     await Json(stream, 200, core.RespondToDialog(button)); return;
                 }
 
+                if (seg.Length == 2 && seg[1] == "commands" && method == "GET")
+                {
+                    var list = core.Commands;
+                    await Json(stream, 200, new JObject { ["count"] = list.Count, ["commands"] = new JArray(list.Select(c => (JToken)c.ToJson())) }); return;
+                }
+                if (seg.Length == 4 && seg[1] == "commands" && seg[3] == "invoke" && method == "POST")
+                { await InvokeCommand(core, stream, Uri.UnescapeDataString(seg[2]), body, client); return; }
+
                 if (seg.Length == 2 && seg[1] == "sessions" && method == "GET")
                 {
                     var arr = new JArray(core.ListSessions().Select(s => (JToken)new JObject
@@ -119,6 +127,24 @@ namespace RevitBallet.Commands.Agent
             try { req = JObject.Parse(body ?? ""); }
             catch (Exception) { throw new AgentException(400, "bad_request", "body must be a JSON object"); }
             var job = core.Submit((string)req["engine"], (string)req["code"], (int?)req["timeoutMs"] ?? 0, (string)req["session"], client, (string)req["requestId"], ParsePolicy(req["dialogPolicy"]));
+            int wait = (int?)req["wait"] ?? 0;
+            if (wait > 0) await Task.Run(() => core.WaitFinal(job, wait));
+            await Json(stream, job.Done.IsSet ? 200 : 202, job.ToJson());
+        }
+
+        /// <summary>POST /v1/commands/{name}/invoke: a job of the built-in "command" engine, so it queues, times out and reports dialogs like any job.
+        /// Commands often wait for the user (a picker, a dialog), so the default time limit is the maximum.</summary>
+        private static async Task InvokeCommand(AgentCore core, Stream stream, string name, string body, string client)
+        {
+            JObject req = new JObject();
+            if (!string.IsNullOrWhiteSpace(body))
+            {
+                try { req = JObject.Parse(body); }
+                catch (Exception) { throw new AgentException(400, "bad_request", "body must be empty or a JSON object"); }
+            }
+            var cmd = core.Commands.FirstOrDefault(c => string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase));
+            if (cmd == null) throw new AgentException(404, "not_found", "unknown command '" + name + "'");
+            var job = core.Submit("command", cmd.Name, (int?)req["timeoutMs"] ?? AgentCore.MaxTimeoutMs, null, client, (string)req["requestId"], ParsePolicy(req["dialogPolicy"]));
             int wait = (int?)req["wait"] ?? 0;
             if (wait > 0) await Task.Run(() => core.WaitFinal(job, wait));
             await Json(stream, job.Done.IsSet ? 200 : 202, job.ToJson());

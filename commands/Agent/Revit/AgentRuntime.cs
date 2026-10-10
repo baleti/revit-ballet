@@ -90,6 +90,7 @@ namespace RevitBallet.Commands.Agent
             public bool TryRespondToDialog(string button, out string error) { return RevitDialogs.TryRespond(button, out error); }
             public int RevitYear { get { return 2000 + fvi.FileMajorPart; } }
             public string RevitVersion { get { return fvi.FileVersion; } }
+            public System.Collections.Generic.IList<CommandInfo> Commands { get { return CommandCatalog.List(); } }
             public string AuditDirectory { get { return PathHelper.EnsureRuntimeSubdirectoryExists(Path.Combine("agent", "jobs")); } }
         }
     }

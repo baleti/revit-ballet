@@ -11,7 +11,19 @@ namespace RevitBallet.Commands.Agent
     /// <summary>Adapter: engines discovered from engines/ next to the add-in, loaded on first use.</summary>
     internal sealed class EngineLoaderSource : IEngineSource
     {
-        private readonly Dictionary<string, EngineEntry> engines = EngineLoader.Discover();
+        private readonly Dictionary<string, EngineEntry> engines = WithBuiltIns(EngineLoader.Discover());
+
+        /// <summary>Engines that ship inside the add-in itself rather than under engines/.</summary>
+        private static Dictionary<string, EngineEntry> WithBuiltIns(Dictionary<string, EngineEntry> found)
+        {
+            var command = new CommandEngine();
+            found[command.Name] = new EngineEntry
+            {
+                Manifest = new EngineManifest { Name = command.Name, Language = command.Language, Version = command.Version, Protocol = 1, Sessions = false },
+                Directory = "(built in)", Instance = command,
+            };
+            return found;
+        }
         public IDictionary<string, EngineEntry> Engines { get { return engines; } }
         public IScriptEngine Load(EngineEntry entry) { return EngineLoader.Load(entry); }
         public void Reset(EngineEntry entry) { lock (entry.LoadLock) entry.Instance = null; }
