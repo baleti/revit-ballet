@@ -76,6 +76,8 @@ namespace RevitBallet.Engines.Roslyn
 
         // A script compile leaves a few hundred MB of native memory behind (Roslyn's metadata for the Revit API) that only a garbage collection
         // releases, and the runtime cannot see it. Left alone it piles up for as long as RAM is plentiful, so collect every few compiles.
+        // The collection runs on its own thread and never waits for finalizers: a blocking GC.WaitForPendingFinalizers() on the job worker thread
+        // hung a Revit session for minutes (a finalizer of a Revit object can need the UI thread), and every job queued behind it.
         private static int compileCount;
         private const int CollectEvery = 4;
 
@@ -85,10 +87,7 @@ namespace RevitBallet.Engines.Roslyn
             finally
             {
                 if (Interlocked.Increment(ref compileCount) % CollectEvery == 0)
-                {
-                    GC.Collect(2, GCCollectionMode.Forced, true);
-                    GC.WaitForPendingFinalizers();
-                }
+                    ThreadPool.QueueUserWorkItem(_ => { try { GC.Collect(2, GCCollectionMode.Forced, true); } catch { } });
             }
         }
 

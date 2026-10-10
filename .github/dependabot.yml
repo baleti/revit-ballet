@@ -1,0 +1,9 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule: { interval: weekly }
+  - package-ecosystem: nuget
+    directories: ["/commands", "/core", "/installer", "/agents/abstractions", "/agents/roslyn", "/agents/ironpython2", "/agents/cpython3", "/tests/host", "/tests/engines"]
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 5

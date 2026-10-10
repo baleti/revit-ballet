@@ -28,9 +28,8 @@ FAILED=()
 for year in $(seq 2026 -1 2020); do
     result=$(dotnet build "$COMMANDS_DIR" -c Release -p:RevitYear=$year 2>&1)
     errors=$(echo "$result" | grep -oP '\d+(?= Error)' | head -1)
-    summary=$(echo "$result" | grep -E '^\s*(Build succeeded|Error\(s\))' | tail -1 | xargs)
     if [ "${errors:-0}" -gt 0 ]; then
-        FAILED+=($year)
+        FAILED+=("$year")
         echo "Revit $year: FAILED ($errors error(s))"
     else
         echo "Revit $year: OK"
