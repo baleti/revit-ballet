@@ -16,6 +16,8 @@
 #   MACHINE=q35    (default; GPU sits behind a pcie-root-port) or pc
 #   CLOCKFIX=1     hpet off + PIT lost-tick delay + rtc drift slew (default on)
 #   IOTHREAD=1     virtio-blk on a dedicated iothread (default on)
+#   SPICE=1        also serve the console over SPICE on a host-only unix socket /tmp/spice-NAME.sock (no guest network involved: the VM stays offline).
+#                  SPICE_MC=1 allows several viewers at once (SPICE_DEBUG_ALLOW_MC: experimental, QEMU calls it crashy; viewers share one console session)
 #   TOPO=0         1 = guest sees SMT pairs and pin.sh pins vCPU pairs (tested, no gain, default off)
 set -e
 VM_DIR=${VM_DIR:-$(cd "$(dirname "$0")" && pwd)}
@@ -44,12 +46,17 @@ if [ "${GPU:-1}" = 1 ]; then
     GPUFLAGS="-device vfio-pci,host=0000:1d:00.0,multifunction=on -device vfio-pci,host=0000:1d:00.1"
   fi
 fi
+SPICEFLAGS=""
+if [ "${SPICE:-0}" = 1 ]; then
+  SPICEFLAGS="-spice unix=on,addr=/tmp/spice-$NAME.sock,disable-ticketing=on,gl=off"
+  [ "${SPICE_MC:-0}" = 1 ] && export SPICE_DEBUG_ALLOW_MC=1
+fi
 qemu-system-x86_64 -name "$NAME" -machine $MACHOPT -nodefaults -display none -enable-kvm \
   -cpu ${CPU:-host,hv_vendor_id=nvidiagpu,hv_relaxed,hv_vapic,hv_spinlocks=0x1fff,hv_vpindex,hv_runtime,hv_time,hv_synic,hv_stimer,hv_tlbflush,hv_ipi}$CPUX \
   -smp $SMPARG -m ${MEM:-32G} -nic none -rtc $RTC $EXTRA -global PIIX4_PM.disable_s3=1 -global ICH9-LPC.disable_s3=1 $SNAPFLAG \
   $DISK -bios /usr/share/ovmf/OVMF.fd \
   -device qxl-vga,vgamem_mb=32 -device vhost-vsock-pci,guest-cid=$CID \
-  $GPUFLAGS \
+  $GPUFLAGS $SPICEFLAGS \
   -qmp unix:/tmp/qmp-$NAME.sock,server=on,wait=off \
   -daemonize -pidfile /tmp/$NAME.pid
 if [ "${TOPO:-0}" = 1 ]; then sleep 1; "$VM_DIR/pin.sh" $N; fi
