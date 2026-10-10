@@ -19,8 +19,10 @@ dotnet build -c Release
 
 # 3. SCP to Windows and run
 scp -i ~/.ssh/hwo-18 installer/bin/Release/installer.exe daniel@192.168.231.1:'C:\Users\Daniel\Desktop\installer.exe'
-ssh daniel@192.168.231.1 -i ~/.ssh/hwo-18 'powershell -NoProfile -Command "C:\Users\Daniel\Desktop\installer.exe --quiet --hot-reload"'
+ssh daniel@192.168.231.1 -i ~/.ssh/hwo-18 'powershell -NoProfile -Command "Start-Process C:\Users\Daniel\Desktop\installer.exe -ArgumentList \"--quiet\",\"--hot-reload\" -Wait -NoNewWindow"'
 ```
+
+> The installer is a Windows-subsystem program (no console window flashes on double-click), so PowerShell does not wait for it: use `Start-Process ... -Wait -PassThru` (the exit code is `.ExitCode`), or redirect its output. In quiet mode it prints to the console it was started from.
 
 > **Always pass `--hot-reload`** so new commands are immediately available via `InvokeAddinCommand` without restarting Revit.
 

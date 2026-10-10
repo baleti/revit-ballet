@@ -14,12 +14,38 @@ namespace RevitBalletInstaller
     internal static class Program
     {
         [DllImport("kernel32.dll")]
-        private static extern IntPtr GetConsoleWindow();
+        private static extern bool AttachConsole(int processId);
 
-        [DllImport("user32.dll")]
-        private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+        [DllImport("kernel32.dll")]
+        private static extern IntPtr GetStdHandle(int which);
 
-        private const int SW_HIDE = 0;
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern IntPtr CreateFile(string name, uint access, uint share, IntPtr security, uint disposition, uint flags, IntPtr template);
+
+        /// <summary>
+        /// The installer is a Windows-subsystem program (no console window flashes when it is double-clicked). When it is run from a terminal in
+        /// quiet mode, borrow the parent's console so its output still shows there; output redirected by the caller (a file or a pipe) already works.
+        /// </summary>
+        private static void AttachParentConsole()
+        {
+            try
+            {
+                AttachConsole(-1);   // ATTACH_PARENT_PROCESS; fails harmlessly when there is no parent console
+                RepairStream(-11, "CONOUT$", true);
+                RepairStream(-12, "CONOUT$", false);
+            }
+            catch { }
+        }
+
+        private static void RepairStream(int stdHandle, string device, bool isOut)
+        {
+            var h = GetStdHandle(stdHandle);
+            if (h != IntPtr.Zero && h != new IntPtr(-1)) return;   // redirected by the caller: the runtime already uses it
+            var f = CreateFile(device, 0x40000000 /*GENERIC_WRITE*/, 3, IntPtr.Zero, 3 /*OPEN_EXISTING*/, 0, IntPtr.Zero);
+            if (f == new IntPtr(-1) || f == IntPtr.Zero) return;
+            var w = new StreamWriter(new FileStream(new Microsoft.Win32.SafeHandles.SafeFileHandle(f, true), FileAccess.Write)) { AutoFlush = true };
+            if (isOut) Console.SetOut(w); else Console.SetError(w);
+        }
 
         [STAThread]
         static void Main(string[] args)
@@ -64,14 +90,20 @@ namespace RevitBalletInstaller
                 else BalletInstaller.EnabledEngines = new HashSet<string>(v.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim()), StringComparer.OrdinalIgnoreCase);
             }
 
-            // In interactive mode, hide the console window (UI dialogs are used instead).
-            // In quiet/SSH mode the console window is left visible for stdout output.
-            if (!quietMode)
+            // --shortcuts none|ballet|all|auto   (interactive default: ask; quiet default: auto = the classic behaviour)
+            // --shortcuts-report                   print which bundled shortcuts clash with the current ones, change nothing
+            for (int i = 0; i < args.Length; i++)
             {
-                var consoleWindow = GetConsoleWindow();
-                if (consoleWindow != IntPtr.Zero)
-                    ShowWindow(consoleWindow, SW_HIDE);
+                if (args[i].Equals("--shortcuts-report", StringComparison.OrdinalIgnoreCase)) { BalletInstaller.ShortcutsReportOnly = true; quietMode = true; }
+                if (args[i].Equals("--shortcuts", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+                {
+                    ShortcutMode m;
+                    if (Enum.TryParse(args[i + 1].Trim(), true, out m) && m != ShortcutMode.Prompt) BalletInstaller.ShortcutsMode = m;
+                }
             }
+
+            // Interactive mode uses UI dialogs; quiet mode (scripts, ssh) prints to the console it was started from.
+            if (quietMode) AttachParentConsole();
 
             if (isUninstaller)
             {
@@ -84,7 +116,7 @@ namespace RevitBalletInstaller
         }
     }
 
-    public class BalletInstaller
+    public partial class BalletInstaller
     {
         private const string PRODUCT_NAME = "Revit Ballet";
         private const string UNINSTALL_KEY = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\RevitBallet";
@@ -172,6 +204,8 @@ namespace RevitBalletInstaller
                         Log(2, $"  Found: Revit {inst.Year} -> {inst.AddinsPath}");
                 }
 
+                if (!PrepareShortcutChoice(quietMode)) return;   // the shortcuts dialog (or --shortcuts-report); false = cancelled or report only
+
                 string targetDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "revit-ballet");
                 Log(2, $"Target dir: {targetDir}");
                 Directory.CreateDirectory(targetDir);
@@ -184,7 +218,8 @@ namespace RevitBalletInstaller
                 foreach (var installation in installations)
                 {
                     Log(2, $"Deploying keyboard shortcuts for Revit {installation.Year}...");
-                    DeployKeyboardShortcuts(installation, quietMode);
+                    if (chosenShortcutIds == null) DeployKeyboardShortcuts(installation, quietMode);
+                    else ApplyChosenShortcuts(installation, quietMode);
                 }
 
                 Log(2, "Registering uninstaller...");
@@ -324,24 +359,22 @@ namespace RevitBalletInstaller
                 messageText = "Installation completed, but no Revit versions were updated.\nThis might indicate missing DLL resources.";
             }
 
-            using (var g = form.CreateGraphics())
+            // AutoSize + MaximumSize lets the label wrap with the same text engine that draws it (MeasureString wrapped differently and cut lines off)
+            var messageLabel = new Label
             {
-                var textSize = g.MeasureString(messageText, new Font("Segoe UI", 10), 450);
-                var textHeight = (int)Math.Ceiling(textSize.Height);
-
-                var messageLabel = new Label
-                {
-                    Text = messageText,
-                    Font = new Font("Segoe UI", 10),
-                    ForeColor = Color.FromArgb(60, 60, 60),
-                    Location = new Point(50, currentY),
-                    Size = new Size(450, textHeight + 10),
-                    TextAlign = ContentAlignment.TopCenter
-                };
-                form.Controls.Add(messageLabel);
-
-                currentY += textHeight + 30;
-            }
+                Text = messageText,
+                Font = new Font("Segoe UI", 10),
+                ForeColor = Color.FromArgb(60, 60, 60),
+                Location = new Point(50, currentY),
+                AutoSize = true,
+                MaximumSize = new Size(450, 0),
+                UseCompatibleTextRendering = false
+            };
+            form.Controls.Add(messageLabel);
+            messageLabel.PerformLayout();
+            int textHeight = messageLabel.PreferredHeight;
+            messageLabel.Left = (550 - messageLabel.PreferredWidth) / 2;
+            currentY += textHeight + 30;
 
             var btnOK = new Button
             {
