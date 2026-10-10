@@ -81,8 +81,8 @@
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <!-- Required for dynamic keyword support in ExportSelectedViewsToPDF.cs -->
     <PackageReference Include="Microsoft.CSharp" Version="4.7.0" />
-    <!-- Used for modern folder picker dialog in export commands -->
-    <PackageReference Include="Microsoft.WindowsAPICodePack-Shell" Version="1.1.0" />
+    <!-- Modern folder picker dialog in the export commands (BSD-3-Clause) -->
+    <PackageReference Include="Ookii.Dialogs.WinForms" Version="4.0.0" />
     <!-- Used by OpenRvtFilesInNewSessions.cs for reading OLE Structured Storage (.rvt files) -->
     <PackageReference Include="OpenMcdf" Version="2.4.0" />
   </ItemGroup>
@@ -131,8 +131,6 @@
       <KeepDlls Include="$(OutputPath)System.Data.SQLite.dll" />
       <KeepDlls Include="$(OutputPath)SQLitePCLRaw*.dll" />
       <KeepDlls Include="$(OutputPath)SQLite.Interop.dll" />
-      <!-- Exclude WindowsAPICodePack (needed for ExportSelectedViewsToPDF folder picker) -->
-      <KeepDlls Include="$(OutputPath)Microsoft.WindowsAPICodePack*.dll" />
       <!-- Remove only non-essential DLLs -->
       <UnnecessaryDlls Include="@(AllSystemDlls)" Exclude="@(KeepDlls)" />
       <UnnecessaryDlls Include="@(AllMicrosoftDlls)" Exclude="@(KeepDlls)" />

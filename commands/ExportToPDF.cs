@@ -12,7 +12,6 @@ using Application = System.Windows.Forms.Application;
 using System.Runtime.InteropServices;
 using System.Reflection;
 using System.Threading;
-using Microsoft.WindowsAPICodePack.Dialogs;
 
 namespace RevitBallet.Commands;
 
@@ -91,19 +90,7 @@ public class ExportToPDF : IExternalCommand
             string exportFolder = null;
             var lastPath = dialog.GetLastExportPath();
 
-            var folderDialog = new CommonOpenFileDialog
-            {
-                Title = "Select folder for PDF export",
-                IsFolderPicker = true,
-                InitialDirectory = lastPath,
-                EnsurePathExists = true,
-                EnsureFileExists = false
-            };
-
-            if (folderDialog.ShowDialog(commandData.Application.MainWindowHandle) == CommonFileDialogResult.Ok)
-            {
-                exportFolder = folderDialog.FileName;
-            }
+            exportFolder = FolderPicker.Pick(commandData.Application.MainWindowHandle, "Select folder for PDF export", lastPath);
 
             if (string.IsNullOrEmpty(exportFolder))
             {

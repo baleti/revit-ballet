@@ -1,0 +1,14 @@
+<Project>
+  <!-- Identity stamped into every assembly and the installer. Code signing (SignPath Foundation) requires the product name to be the project name
+       and the product version to be identical in every signed binary of a release: change the version here, in one place. -->
+  <PropertyGroup>
+    <Product>Revit Ballet</Product>
+    <Authors>baleti</Authors>
+    <Company>baleti</Company>
+    <Copyright>Copyright (c) 2024-2026 baleti. MIT License.</Copyright>
+    <VersionPrefix>0.10.0</VersionPrefix>
+    <!-- keep the product version free of the commit hash so it is identical across builds of the same release -->
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <NeutralLanguage>en</NeutralLanguage>
+  </PropertyGroup>
+</Project>
