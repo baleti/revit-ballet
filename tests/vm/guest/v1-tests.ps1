@@ -193,6 +193,48 @@ Check "dialog-policy-respond-answers-it-and-the-job-completes" {
   } finally { ClearDialogs }
 }
 
+
+# ---- hot reload of the agent runtime (same hot-reload folder InvokeAddinCommand uses; no Revit restart) ----
+$hotDir = Join-Path $env:APPDATA "revit-ballet\hot-reload\$Year"
+$installedDll = Join-Path $env:APPDATA "Autodesk\Revit\Addins\$Year\revit-ballet\revit-ballet.dll"
+Check "reload-from-the-hot-reload-folder-keeps-the-agent-working" {
+  try {
+    $before = (Api GET "/v1/info").Body.agent
+    New-Item -ItemType Directory -Force $hotDir | Out-Null
+    Copy-Item $installedDll (Join-Path $hotDir "revit-ballet.dll") -Force
+    $r = Api POST "/v1/admin/reload" $null $true 90
+    if ($r.Status -ne 200 -or -not $r.Body.reloaded) { return "reload status=$($r.Status) $($r.Text)" }
+    if ($r.Body.loadedFrom -ne "hot-reload") { return "loadedFrom=$($r.Body.loadedFrom)" }
+    $after = (Api GET "/v1/info").Body.agent
+    if ($after.loadedFrom -ne "hot-reload") { return "info.agent=$($after | ConvertTo-Json -Compress)" }
+    $j = Run roslyn 'return 6 * 7;'
+    if ($j.state -ne "done" -or $j.value.json -ne 42) { return "job after reload: state=$($j.state) $($j.error.message)" }
+    $p = Run ironpython2 "result = 'py'"
+    if ($p.state -ne "done") { return "python job after reload: state=$($p.state) $($p.error.message)" }
+    # several reloads in a row, each time the previous runtime is detached
+    foreach ($i in 1..3) { $x = Api POST "/v1/admin/reload" $null $true 90; if ($x.Status -ne 200) { return "reload #$i status=$($x.Status) $($x.Text)" } }
+    $k = Run roslyn 'return 1;'
+    if ($k.state -ne "done") { return "job after repeated reloads: $($k.state) $($k.error.message)" }
+    $true
+  } finally { Remove-Item $hotDir -Recurse -Force -ErrorAction SilentlyContinue }
+}
+Check "reload-of-a-broken-build-is-refused-and-the-old-runtime-keeps-serving" {
+  try {
+    New-Item -ItemType Directory -Force $hotDir | Out-Null
+    Copy-Item $installedDll (Join-Path $hotDir "revit-ballet.dll") -Force
+    $null = Api POST "/v1/admin/reload" $null $true 90
+    $good = (Api GET "/v1/info").Body.agent.build
+    Set-Content -Path (Join-Path $hotDir "revit-ballet.dll") -Value "this is not an assembly" -Encoding ASCII
+    $r = Api POST "/v1/admin/reload" $null $true 90
+    if ($r.Status -ne 500 -or $r.Body.error.kind -ne "reload_failed") { return "broken build: status=$($r.Status) $($r.Text)" }
+    if ($r.Body.error.message -notmatch "previous runtime keeps serving") { return "message=$($r.Body.error.message)" }
+    if ((Api GET "/v1/info").Body.agent.build -ne $good) { return "the runtime changed after a failed reload" }
+    $j = Run roslyn 'return 2;'
+    if ($j.state -ne "done" -or $j.value.json -ne 2) { return "job after failed reload: $($j.state)" }
+    $true
+  } finally { Remove-Item $hotDir -Recurse -Force -ErrorAction SilentlyContinue; $null = Api POST "/v1/admin/reload" $null $true 90 }
+}
+
 Check "ui-state-and-queue-age" {
   $i = (Api GET "/v1/info").Body
   if ($i.ui.state -ne "idle") { return "ui.state=$($i.ui.state)" }
