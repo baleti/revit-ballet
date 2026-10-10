@@ -1,6 +1,6 @@
 # Remote command invocation and the canonical query DSL
 
-Status: design, 2026-10-10. Written before the implementation; each phase below is updated as it lands.
+Status: implemented 2026-10-10 (everything below exists and is tested; "Open" at the end lists what is not done). The text keeps its design form.
 
 Two connected changes:
 
@@ -121,11 +121,37 @@ the port to the network. The picker only ever holds a token for a target the use
 (`revit-remote list|invoke`) for discovery and invocation, an IPC handler `revitRemote toggle`, a row in the consumer table of
 `query-dsl.md`, a description on the Hyprland bind so it shows up in the `mod+?` cheat sheet.
 
-## Phases
+## What exists (2026-10-10)
 
-1. Core DSL engine + tests (Linux). 
-2. Migrate `DataGrid` to it; remove the old parser; update `readme.org`; check in a real Revit (VM) that every old use case still works.
-3. Agent `/v1/commands` + invoke; tests (host + VM).
-4. `revit-remote` backend + Linux picker + `mod+``.
-5. Windows hotkey helper + installer opt-in + VM hotkey test.
-6. Docs, `query-dsl.md` consumer row, final full test run.
+| Piece | Where | Tests |
+|---|---|---|
+| DSL engine (parser, schema, executor, comparator) | `core/Query/` | `core/tests` (Query*Tests, 167 tests incl. the old-syntax regression table) |
+| DataGrid search box on the engine | `commands/DataGrid/DataGrid.Filtering.cs` | VM: `datagrid-dsl-in-the-real-dialog` drives the real dialog (15 queries) |
+| `GET /v1/commands`, `POST /v1/commands/{name}/invoke`, built-in `command` engine | `commands/Agent/` (protocol: `docs/agent-protocol.md`) | `tests/host/CommandTests.cs` (12), VM `commands-*` checks |
+| Linux backend `revit-remote` | `tools/remote/` | `tests/remote` (34, fake transport) + real runs against the VMs |
+| Linux picker (`mod+``) | dotfiles `~/.config/quickshell/revitremote/`, bind in `hypr/keybinds.lua` | `qmltestrunner` model tests (20), headless load of the real window |
+| Windows picker `RevitBalletRemote.exe` (tray, `Win+``, picker) | `remote/RevitBalletRemote/`, logic in `core/Remote/` | `core/tests/RemoteTests.cs`, `tests/vm/remote-picker.sh` (real hotkey and typing) |
+| Installer opt-in (`--remote-picker`) | `installer/RemotePicker.cs` | `tests/vm/guest/remote-installer.ps1` via `remote-picker.sh` |
+
+### Decisions taken
+
+- **The canonical grammar stays closed.** `a || b`, `e"exact"`, `*glob*`, a bare `>50`, `N$col` and `#set` have no canonical spelling and were removed
+  (`readme.org` lists the replacements; `QueryMigrationTests` pins what each old form returned). Selection sets became the computed column
+  `Selection Set` (`//selection "my set"`). If any removed form should come back it has to be added to `query-dsl.md` and every picker, not to revit-ballet alone.
+- **Deviations from the spec, on purpose:** comparisons (`>`, `<`, `>=`, `<=`) work in every consumer here (the spec lists them for two pickers) and
+  accept decimals, because Revit areas and lengths are decimals; text sorts naturally (`A2` before `A10`) through the existing `NaturalComparer`;
+  `QuerySchema.IgnoreSpacesInNames` lets `type name` reach the key `TypeName` in the DataGrid.
+- **`/ft` intersects with the shown columns**, as both QML reference implementations do (the spec's `/ft claude /at workspace` example is looser than its rule).
+- **Commands run through the job queue**, not a side channel: an invocation queues FIFO behind scripts, is cancellable, reports modal dialogs and has the
+  maximum time limit by default because commands wait for people.
+- **Nothing is installed on a target**: a PowerShell probe is piped over ssh (`tools/remote/probe.ps1`, `invoke.ps1`, embedded in `RevitBallet.Core` for the Windows program).
+- **Windows hotkey `Win+``**: free on Windows 11 (`RegisterHotKey` succeeds; `Win+Q`, `Win+Z` do not), resolved with `VkKeyScan` so a UK layout
+  (backtick is `VK_OEM_8`) works, re-resolved when the layout changes. Configurable (`"hotkey"` in `remote.json`). The opt-in is off by default.
+
+### Open
+
+- The Windows picker has no Tab completion or inline command colouring yet (the engine supports the queries; the Linux picker has the shared completion).
+- There is no `document` column (the open documents are in `documents.sqlite`, not exposed by the agent; `/v1/info` would need a UI-thread cache).
+- `.NET Framework` Revit years (2020-2024): the DataGrid check is skipped in the quick tier (it needs the installed build); the full CI covers it.
+- Older agents (an installed build without `/v1/commands`) are listed as instances with no commands until they are updated and Revit is restarted.
+- Remote reach beyond ssh (a direct https target) is not implemented.

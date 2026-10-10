@@ -34,6 +34,7 @@ ssh daniel@192.168.231.1 -i ~/.ssh/dev-vm-key 'powershell -NoProfile -Command "S
 | `--verbosity 0\|1\|2` | Controls output detail in quiet mode (default: 1). |
 | `--hot-reload` | Also copy DLLs to `%appdata%\revit-ballet\hot-reload\{year}\` for immediate pickup by `InvokeAddinCommand`. |
 | `--engines all\|none\|name[,name...]` | Which script engines to install under `engines/<name>/` (`roslyn`, `ironpython2`, `cpython3`). Default `all`. Engines installed earlier but not listed are removed. |
+| `--remote-picker ask\|on\|off\|keep` | The optional *remote command picker* (a tray program with the global hotkey Win+`, see below). Interactive default `ask` (a dialog, unchecked unless already installed); quiet default `keep` (leave it as it is, refresh an installed one). |
 | `/uninstall` | Run uninstaller instead of installer. |
 
 ### Verbosity levels
@@ -53,6 +54,17 @@ ssh daniel@192.168.231.1 -i ~/.ssh/dev-vm-key 'powershell -NoProfile -Command "S
 6. **Registers uninstaller** — adds entry to Windows Add/Remove Programs
 7. **Registers trusted addins** — adds to Revit's addin trust list
 8. **Hot-reload dir** *(with `--hot-reload`)* — copies DLLs to `%appdata%\revit-ballet\hot-reload\{year}\`
+
+## Remote command picker (optional component)
+
+`remote/RevitBalletRemote` is built by `Build.sh` and embedded in the installer as three resources (`remote/RevitBalletRemote.exe`, `remote/RevitBallet.Core.dll`,
+`remote/Newtonsoft.Json.dll`). It is **opt-in**: nothing is installed unless the dialog box is ticked or `--remote-picker on` is given.
+
+- installs to `%LOCALAPPDATA%\revit-ballet\remote-picker\` (per user, no admin) and starts with Windows through `HKCU\...\Run\RevitBalletRemote`;
+  the interactive installer also starts it at once, the quiet one leaves that to the next sign-in;
+- `--remote-picker off`, or unticking the box on a later run, stops it and removes the files and the Run value; uninstalling Revit Ballet does the same;
+- its settings are `%APPDATA%\revit-ballet\remote.json` (hotkey, other machines); the installer never touches it;
+- details and tests: `docs/remote-commands-and-query-dsl.md`, `tests/vm/remote-picker.sh`.
 
 ## Hot-Reload Mechanism
 

@@ -72,6 +72,7 @@ A core set of commands is registered under *Add-Ins > External Tools* with defau
 
   Changed with this language: =a || b= (OR), =e"exact"=, =*glob*=, a bare =>50=, =2$col= positions and =#set= are gone. Use quoted phrases, scoped comparisons (=//count >5=), the order of =/at=, and =//selection= instead. A column name that matches nothing now shows no rows instead of being ignored.
 
+- *Run commands from outside Revit (optional).* The installer can add a small tray program: press =Win + `= and pick any command from a list that covers every Revit window on this computer (and on other machines you list in =%APPDATA%\revit-ballet\remote.json=, reached with ssh). Same query language, same list as =InvokeAddinCommand=. Off unless you tick it in the installer or pass =--remote-picker on=.
 - *Pick the scope you need.* If a command exists as =...InView=, =...InDocument=, =...InSession= and =...InNetwork=, the suffix is the only difference.
 
 ** What is in the box

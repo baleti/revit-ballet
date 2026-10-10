@@ -162,6 +162,19 @@ the host and takes it again when the guest runs short. The guest needs no agent,
   was what once sent the guest into WinRE. Windows reports memory stats only through `blnsvr`, so without the service the watcher just logs
   "guest-stats not fresh" and changes nothing.
 
+## Remote command picker test (`tests/vm/remote-picker.sh`)
+
+End to end for the Windows picker, in a VM that has the add-in and Revit 2026 (`ci.sh --hold --years 2026`, then the script prepares it: stop Revit, install,
+sign/trust, start Revit). It checks, in order: the installer's default does not install the picker, `--remote-picker on` installs files and the Run value,
+`keep` keeps it; then, in the **interactive session** (a scheduled task, see `guest/it.ps1`), the installed program is started and the test presses the real
+`Win+``, reads the status label through UI Automation, types queries with real key events (bare word, `//input any`, negation, an unresolved field,
+a half-typed `/`), closes with Esc, reopens with the hotkey, selects one command and presses Enter; the agent's job list must then contain a job of the `command`
+engine with the command's own message; finally `--remote-picker off` and `/uninstall` must leave no files, Run value or process. `--no-uninstall` keeps the VM usable.
+
+The DataGrid's own check (`datagrid-dsl-in-the-real-dialog` in `guest/v1-tests.ps1`) opens the real dialog with fixture rows inside Revit, types 15 queries into its
+search box from a helper thread and reads back the rows and the visible columns. In the quick tier it loads the hot-reloaded build into an isolated
+`AssemblyLoadContext` (Revit 2025+), because hot reload swaps only the agent runtime and the add-in's own `RevitBallet.Core` is already loaded.
+
 ## GPU passthrough or not
 
 Measured 2026-10-10 on Revit 2026 with the 38k-element Snowdon Towers sample, same agent benchmark on both (`tests/bench`):
