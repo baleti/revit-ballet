@@ -214,6 +214,31 @@ def invoke(target, port, command, wait=0, policy=None, timeout_ms=None, runner=N
 
 # ----------------------------------------------------------------------------------------------------- CLI
 
+def outcome(res):
+    """(title word, detail) for a finished invoke result, for a desktop notification."""
+    err = res.get("error") or {}
+    state = res.get("state")
+    if state == "done":
+        return "done", (res.get("output") or "").strip()
+    if state == "cancelled" or err.get("kind") == "cancelled":
+        return "cancelled", ""
+    if state in ("queued", "compiling", "running"):
+        return "still running", "it did not finish while revit-remote waited"
+    if err.get("kind") == "blocked_by_dialog":
+        d = err.get("dialog") or {}
+        return "blocked by a dialog", "%s: %s" % (d.get("title", ""), (d.get("text") or "").strip())
+    return "failed", err.get("message") or (res.get("output") or "").strip() or "unknown error"
+
+
+def notify(label, res, runner=None):
+    word, detail = outcome(res)
+    body = detail if len(detail) <= 300 else detail[:297] + "..."
+    argv = ["notify-send", "-a", "Revit", "-u", "critical" if word in ("failed", "blocked by a dialog") else "normal", "%s: %s" % (label, word)]
+    if body:
+        argv.append(body)
+    (runner or run_local)(argv, None, 10)
+
+
 def find_target(targets, name):
     for t in targets:
         if t["name"] == name:
@@ -231,6 +256,7 @@ def main(argv=None):
     p = sub.add_parser("invoke")
     p.add_argument("--target", required=True); p.add_argument("--port", required=True, type=int); p.add_argument("--command", required=True)
     p.add_argument("--wait", type=int, default=0); p.add_argument("--policy"); p.add_argument("--timeout-ms", type=int)
+    p.add_argument("--notify", metavar="LABEL", help="when it ends, send a desktop notification with this label and the outcome")
     a = ap.parse_args(argv)
 
     cfg = load_config()
@@ -272,6 +298,8 @@ def main(argv=None):
             return 3
         res = invoke(t, a.port, a.command, wait=a.wait, policy=a.policy, timeout_ms=a.timeout_ms)
         print(json.dumps(res))
+        if a.notify:
+            notify(a.notify, res)
         return 0 if res.get("state") in ("done", "queued", "compiling", "running") else 1
     return 2
 

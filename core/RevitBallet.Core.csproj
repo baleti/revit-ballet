@@ -10,6 +10,13 @@
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
   </PropertyGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <!-- the PowerShell that runs on a target machine is shared with tools/remote/revit-remote (Linux): one source of truth -->
+    <EmbeddedResource Include="..\tools\remote\probe.ps1" LogicalName="remote/probe.ps1" />
+    <EmbeddedResource Include="..\tools\remote\invoke.ps1" LogicalName="remote/invoke.ps1" />
+  </ItemGroup>
+
   <!-- The test project lives in a subdirectory and has its own .csproj -->
   <ItemGroup>
     <Compile Remove="tests\**\*.cs" />
