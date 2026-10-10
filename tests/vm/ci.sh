@@ -11,6 +11,7 @@
 #   --years   Revit years to test (default "2026 2024")        --all       2020..2026 (also checks the installer --engines flag)
 #   --parallel N  Revit years run side by side, N at a time (default 4: about 3 GB of RAM each in the 16 GB CI VM)   --serial = --parallel 1
 #   --engines-flag  also exercise installer.exe --engines (about 20 s; implied by --all)
+#   --hold    prepare the VM (overlay, boot, install, sign, Revit.ini) and leave it running for manual work; prints how to reach and stop it
 #   --skip-unit  skip the no-Revit unit tests (tests/host, about 10 s; they run first so a broken core fails before a VM is booted)
 #   --no-build  reuse installer/bin/Release/installer.exe      --keep      keep the overlay disk and VM host files
 #   --gpu     pass the GPU through (same hardware as the baseline; stop the interactive VM first). Default: no GPU,
@@ -24,7 +25,7 @@ CI_VM_DIR=${CI_VM_DIR:-/srv/vm/win}
 CI_BASELINE=${CI_BASELINE:-baseline-before-revit-ballet.qcow2}
 CI_GUEST_KEY=${CI_GUEST_KEY:-'~/.ssh/WinDev2407Eval-revit'}
 CI_CID=${CI_CID:-4}
-YEARS="2026 2024"; UNIT=1; BUILD=1; KEEP=0; GPU=0; PAR=${CI_PARALLEL:-4}; ENGFLAG=0; STAGGER=${CI_STAGGER:-5}
+YEARS="2026 2024"; UNIT=1; HOLD=0; BUILD=1; KEEP=0; GPU=0; PAR=${CI_PARALLEL:-4}; ENGFLAG=0; STAGGER=${CI_STAGGER:-5}
 INSTALLER="$REPO/installer/bin/Release/installer.exe"
 while [ $# -gt 0 ]; do
   case $1 in
@@ -35,6 +36,7 @@ while [ $# -gt 0 ]; do
     --engines-flag) ENGFLAG=1;;
     --no-build) BUILD=0;;
     --skip-unit) UNIT=0;;
+    --hold) HOLD=1; YEARS="";;
     --keep) KEEP=1;;
     --gpu) GPU=1;;
     --installer) INSTALLER=$2; shift;;
@@ -163,6 +165,12 @@ run_year() {
   log "Revit $y: done"
 }
 
+if [ "$HOLD" = 1 ]; then
+  trap - EXIT
+  log "VM held. Run id $ID, CID $CI_CID. Guest shell:   ssh <host2> $RD/gssh '<powershell>'    copy:   ssh <host2> $RD/gcp <files> GUEST:C:/ci/"
+  log "Stop it with:   ssh <host2> 'echo {\"execute\":\"qmp_capabilities\"}{\"execute\":\"quit\"} | socat - UNIX-CONNECT:/tmp/qmp-ci-$ID.sock; rm -rf $RD'"
+  exit 0
+fi
 gps "token.ps1" >/dev/null 2>&1   # one shared token up front, so sessions started together do not race to create it
 log "Revit years: $YEARS (up to $PAR at a time)"
 for y in $YEARS; do

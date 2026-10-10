@@ -87,7 +87,7 @@ Nothing here is revit-ballet specific. To rebuild the baseline from a fresh Wind
 ## CI runner (`tests/vm/ci.sh`)
 
 ```
-tests/vm/ci.sh [--years "2026 2024"] [--all] [--no-build] [--keep] [--gpu] [--installer FILE]
+tests/vm/ci.sh [--hold] [--years "2026 2024"] [--all] [--no-build] [--keep] [--gpu] [--installer FILE]
 ```
 
 One run does, in order:
@@ -139,6 +139,37 @@ revit-ballet assembly loaded with a plausible number of commands, application ob
 - **Runtime path**: server data is under `%APPDATA%\revit-ballet\runtime\` (token at `runtime\network\token`).
 - **Licences** after hardware changes: if a no-GPU CI run reports licence trouble, use `--gpu` after shutting the
   interactive VM down, which reproduces the baseline's hardware exactly.
+
+## GPU passthrough or not
+
+Measured 2026-10-10 on Revit 2026 with the 38k-element Snowdon Towers sample, same agent benchmark on both (`tests/bench`):
+
+| | GPU VM | no-GPU VM |
+|---|---|---|
+| hardware | GTX 1060 passed through, 10 vCPU | QXL display, hardware acceleration off (`UseGraphicsHardware=0`), 8 vCPU |
+| agent tasks (30 task/engine pairs) | baseline | median **1.22x** slower, which is the vCPU ratio (1.25x): the GPU does not matter for compute, API loops, output or queueing |
+| writes to the model (set a parameter on 2,000 elements, roll back) | 0.2 to 0.5 s | **1.4 to 1.6 s (3 to 7x)** |
+| 3D view export, 1920 px | not measured (the GPU VM was busy) | 3.7 s per image |
+| Revit UI | full speed | works, full UI and shaded 3D view render, display is basic 1366x768 |
+
+- **Why writes are slower**: a transaction makes Revit redraw the open view, and without acceleration that redraw is software rendering. Tasks that
+  modify the model with a graphical view open are the ones that feel the missing GPU.
+- **What does not change**: starting Revit, opening a model (36 s against 30 s, mostly the CPU count), every read-only agent task, installers, signing, RDP
+  (RDP renders through its own virtual display).
+- **Memory ballooning**: not possible with passthrough (QEMU treats VFIO devices as incompatible with ballooning); possible without it.
+- **virtio-gpu**: stock Windows support is 2D only; a 3D driver is experimental. QXL is the practical virtual display for Windows.
+- **Not measured**: the GPU side of 3D export and viewport navigation. Run `tests/bench/gfx.cs` (through `job.ps1`) on both VMs when the GPU VM is free.
+
+Recommendation: CI and agent tests do not need the GPU (they already run without it). Keep passthrough only for a VM used for interactive 3D work.
+
+### SPICE as a console
+
+`SPICE=1 tests/vm/start-vm.sh` serves the console over SPICE on a host-only unix socket (`/tmp/spice-NAME.sock`; the guest stays offline). Findings from the
+SPICE documentation: a viewer shows the one **console session**, it does not create a second session; several viewers at once need the experimental
+`SPICE_MC=1` mode (`SPICE_DEBUG_ALLOW_MC`, QEMU itself calls it crashy; all viewers share input). So SPICE helps to watch or share one VM, not to scale
+interactive access across tests: automated runs need no viewer at all (vsock ssh, in-guest screenshots). Multiple VMs scale by RAM and, as measured,
+mostly by CPU: seven Revits at once are slower than four. Not yet verified live: multi-viewer behaviour (a viewer is installed on the dev machine as the
+`org.virt_manager.virt-viewer` flatpak).
 
 ## Signing policy
 
