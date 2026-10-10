@@ -721,3 +721,11 @@ values don't get copied correctly
 right now there is just cycle between last two, but there is none to get back to previous in chronological list
 *** options > ctrl tab order option does that already
 [2026-02-27 Fri 11:13]
+** security: OpenMcdf 2.4.0 has two known advisories (infinite loop on a crafted .rvt/CFB directory cycle)
+[2026-10-10 Sat 18:40]
+GHSA-jxpf-xq2m-q525 (fixed in 3.1.3) and GHSA-5qwm-7pvp-w988 (fixed in 3.1.4), both medium. Used by OpenRvtFilesInNewSessions to read .rvt files.
+Fix = move to OpenMcdf 3.x (major version, different API: RootStorage). Exposure is a malformed file the user chooses to open.
+** security: SQLitePCLRaw.lib.e_sqlite3 2.1.6 (bundled native SQLite, Revit 2025/2026 builds) has a High advisory
+[2026-10-10 Sat 18:40]
+GHSA-2m69-gcr7-jv3q, no patched 2.1.x release. Options: newer lib package (3.x numbering follows SQLite), or Microsoft.Data.Sqlite.Core with the winsqlite3
+provider (no native library to ship; Windows patches it). Needs a test in Revit 2025/2026 (SelectionStorage, LogViewChanges). Local files only, no network exposure.
