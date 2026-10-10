@@ -153,8 +153,9 @@ the host and takes it again when the guest runs short. The guest needs no agent,
   live device, no reboot) and registers the `BalloonService` stats service (`blnsvr.exe -i`), then a watcher starts on the host
   (`balloon.log` in the run directory). It keeps between a third of `CI_MEM` (at least 2 GB) and the full size, and keeps `CI_BALLOON_FREE_MB`
   (default 1536) available. It exits when the VM quits. A failure only warns; the VM then keeps its full RAM. `CI_BALLOON=0` disables it.
-- **Interactive VM:** the driver and service are installed in the image once (they only activate when the device exists); run the watcher by
-  hand: `python3 balloon-autoscale.py --socket /tmp/qmp-revit-win.sock --min-free-mb 2048 --min-size-mb 8192 --max-size-mb 32768`.
+- **Not with GPU passthrough:** VFIO pins all of the guest's RAM so the GPU can DMA into it, and QEMU inhibits ballooning for such a VM
+  (it would hand nothing back). `start-vm.sh` therefore adds the device only when asked (`BALLOON=1`); `ci.sh` always asks, because its VMs
+  have no GPU. The interactive VM with the GPU keeps its fixed RAM, which is why the GPU-less VMs are the ones sized to share the host.
 - **Measured:** an idle 4 GB guest shrank to 2 GB in about 6 s and the VM's resident memory on the host fell by the same 2 GB; a 1.6 GB
   allocation in the guest made the balloon deflate back to the cap, and it was reclaimed again afterwards.
 - **Pitfalls:** a q35 machine cannot hot-plug the device, so a VM started without it needs a restart. `-cpu host` (not the balloon device)
