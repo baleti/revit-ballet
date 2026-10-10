@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
+    <OutputType>WinExe</OutputType>
     <TargetFramework>net48</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
     <AssemblyName>installer</AssemblyName>
@@ -16,6 +16,7 @@
     <EmbeddedResource Include="revit-ballet-logo.ico"/>
     <EmbeddedResource Include="revit-ballet-logo.png" Condition="Exists('revit-ballet-logo.png')"/>
     <EmbeddedResource Include="revit-ballet.addin"/>
+    <EmbeddedResource Include="KeyboardShortcuts\KeyboardShortcuts-custom.xml" LogicalName="KeyboardShortcuts-custom.xml"/>
 
     <!-- Embed merged keyboard shortcuts for each Revit version -->
     <EmbeddedResource Include="bin\keyboard-shortcuts-merged\KeyboardShortcuts-2020.xml"/>

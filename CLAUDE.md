@@ -222,7 +222,7 @@ bash Build.sh
 
 # Deploy to Windows with hot-reload (commands available immediately via InvokeAddinCommand)
 scp -i ~/.ssh/dev-vm-key installer/bin/Release/installer.exe daniel@192.168.231.1:installer.exe
-ssh daniel@192.168.231.1 -i ~/.ssh/dev-vm-key 'powershell -NoProfile -Command "& .\installer.exe --quiet --hot-reload"'
+ssh daniel@192.168.231.1 -i ~/.ssh/dev-vm-key 'powershell -NoProfile -Command "Start-Process .\installer.exe -ArgumentList \"--quiet\",\"--hot-reload\" -Wait -NoNewWindow"'
 ```
 
 ### Hot-reload vs keyboard shortcuts — critical distinction
