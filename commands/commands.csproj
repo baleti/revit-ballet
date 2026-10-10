@@ -64,6 +64,8 @@
   <!-- UI-agnostic core logic (filter engine, sorting, naming) -->
   <ItemGroup>
     <ProjectReference Include="..\core\RevitBallet.Core.csproj" />
+    <!-- Contract shared with the script engines (agents/*); see docs/agent-protocol.md -->
+    <ProjectReference Include="..\agents\abstractions\RevitBallet.Agents.Abstractions.csproj" />
   </ItemGroup>
 
   <!-- Revit API from NuGet (all versions in one package) -->

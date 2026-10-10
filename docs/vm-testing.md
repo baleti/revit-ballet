@@ -83,7 +83,6 @@ Nothing here is revit-ballet specific. To rebuild the baseline from a fresh Wind
 - Sysinternals in `C:\Tools\Sysinternals`; clipboard redirection for RDP.
 - No guest agents that need a network or a balloon (SPICE agent, QEMU guest agent and virtio balloon were removed;
   balloon cannot work with GPU passthrough).
-- Windows evaluation licence state is ignored; it does not affect testing.
 
 ## CI runner (`tests/vm/ci.sh`)
 
