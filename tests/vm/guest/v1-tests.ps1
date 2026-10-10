@@ -195,6 +195,45 @@ Check "dialog-policy-respond-answers-it-and-the-job-completes" {
 }
 
 
+# ---- add-in commands through the agent: the catalogue and the built-in "command" engine (docs/remote-commands-and-query-dsl.md) ----
+Check "commands-list-has-the-catalogue-with-metadata" {
+  $r = Api GET "/v1/commands"
+  if ($r.Status -ne 200) { return "status=$($r.Status) $($r.Text)" }
+  $c = @($r.Body.commands)
+  if ($c.Count -lt 50) { return "only $($c.Count) commands" }
+  if ($r.Body.count -ne $c.Count) { return "count=$($r.Body.count) but $($c.Count) listed" }
+  $d = $c | Where-Object name -eq "DeselectRandomly"
+  if (-not $d -or $d.input -ne "Any" -or $d.displayName -ne "Deselect Randomly") { return "DeselectRandomly entry: $($d | ConvertTo-Json -Compress)" }
+  if ($c | Where-Object { -not $_.name -or -not $_.displayName }) { return "a command without a name/displayName" }
+  if (@($c.name | Select-Object -Unique).Count -ne $c.Count) { return "duplicate command names" }
+  $true
+}
+Check "commands-unknown-is-404" {
+  $r = Api POST "/v1/commands/NoSuchCommandAnywhere/invoke" "{}"
+  if ($r.Status -ne 404 -or $r.Body.error.kind -ne "not_found") { return "status=$($r.Status) $($r.Text)" }
+  $true
+}
+Check "commands-invoke-without-a-document-reaches-the-command" {
+  # no document is open here: DeselectRandomly dereferences ActiveUIDocument, so the failure must come FROM the command's own code
+  $r = Api POST "/v1/commands/DeselectRandomly/invoke" (@{ wait = 30000 })
+  $j = $r.Body
+  if ($j.engine -ne "command") { return "engine=$($j.engine)" }
+  if ($j.state -ne "failed" -or $j.error.kind -ne "runtime") { return "state=$($j.state) $($j.error | ConvertTo-Json -Compress)" }
+  if ($j.error.stack -notmatch "DeselectRandomly") { return "stack does not mention the command: $($j.error.stack)" }
+  $n = Run roslyn 'return 1;'
+  if ($n.state -ne "done") { return "queue did not recover: $($n.state)" }
+  $true
+}
+Check "commands-invoke-returns-the-commands-own-message-and-result" {
+  # CloseWorksets with no document returns Failed + "No active document." (its own code, not a null reference)
+  $j = (Api POST "/v1/commands/closeworksets/invoke" @{ wait = 30000 }).Body       # the name is case-insensitive
+  if ($j.state -ne "failed" -or $j.error.kind -ne "runtime") { return "state=$($j.state) $($j.error | ConvertTo-Json -Compress)" }
+  if ($j.error.message -ne "No active document.") { return "message=[$($j.error.message)]" }
+  if ($j.output -notmatch "No active document") { return "output=[$($j.output)]" }
+  $true
+}
+
+
 # ---- hot reload of the agent runtime (same hot-reload folder InvokeAddinCommand uses; no Revit restart) ----
 $hotDir = Join-Path $env:APPDATA "revit-ballet\hot-reload\$Year"
 $installedDll = Join-Path $env:APPDATA "Autodesk\Revit\Addins\$Year\revit-ballet\revit-ballet.dll"

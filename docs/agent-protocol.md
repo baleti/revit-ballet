@@ -95,6 +95,27 @@ engine's abort hook called; see "Cancellation" for what that can and cannot do. 
 dialog (matched by caption, case-insensitive): `200 {"responded": true, ...}`, `404` when no dialog is open, `409` with the list of buttons when there is no
 such button or pressing it did not close the dialog. Both work **while the job queue is stuck behind the dialog**: they need the dialog, not the UI thread.
 
+### Add-in commands: `GET /v1/commands`, `POST /v1/commands/{name}/invoke`
+
+The same commands the in-Revit command list (`Q` then `` ` ``) offers can be listed and run from outside, which is what the remote picker uses
+(`docs/remote-commands-and-query-dsl.md`).
+
+`GET /v1/commands` -> `{"count": 187, "commands": [{"name": "DeselectRandomly", "displayName": "Deselect Randomly", "input": "Any", "output": ""}, ...]}`.
+Every concrete `IExternalCommand` class of the add-in; `input`/`output` come from `[CommandMeta]`/`[CommandOutput]`.
+
+`POST /v1/commands/{name}/invoke` with an optional body `{"wait": ms, "timeoutMs": ms, "dialogPolicy": ..., "requestId": "..."}`. The name is matched
+case-insensitively; unknown -> `404 not_found`. It creates a job of the built-in engine `command` (the job's code is the command's class name), so
+everything above applies: FIFO queue, `202` + poll or `wait`, SSE, cancel, dialog reporting and `dialogPolicy`. Differences from a script job:
+
+- the default `timeoutMs` is the maximum (600000): commands often wait for a person (a picker, a dialog). A modal dialog opened by the command is
+  reported like any other; answer it with `POST /v1/dialog/respond` or a `dialogPolicy`.
+- the command runs with an `ExternalCommandData` whose `Application` is the live `UIApplication`; its `message` output is the job's output.
+  `Succeeded` -> `done`; `Cancelled` -> `cancelled` (`error.kind: cancelled`); `Failed` -> `failed`, `error.kind: runtime`, `error.message` = the
+  command's own message; an exception -> `failed`/`runtime` with the stack.
+- usage is recorded in `command-usage.sqlite` exactly as for a command run from the ribbon or `InvokeAddinCommand`.
+
+The engine is also reachable as `POST /v1/jobs {"engine": "command", "code": "<ClassName>"}`.
+
 ### Sessions
 
 `GET /v1/sessions` lists `{"engine","name","jobs","created"}`; `DELETE /v1/sessions/{engine}/{name}` drops the

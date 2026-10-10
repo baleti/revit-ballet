@@ -46,6 +46,22 @@ namespace RevitBallet.Commands.Agent
         }
     }
 
+    /// <summary>One invokable add-in command (an IExternalCommand class of revit-ballet), as listed by GET /v1/commands.</summary>
+    internal sealed class CommandInfo
+    {
+        public string Name;
+        public string FullName;
+        public string DisplayName;
+        /// <summary>What the user must have ready before running it (the CommandMeta attribute): "", "Any", "Door", ...</summary>
+        public string Input = "";
+        public string Output = "";
+
+        public Newtonsoft.Json.Linq.JObject ToJson()
+        {
+            return new Newtonsoft.Json.Linq.JObject { ["name"] = Name, ["displayName"] = DisplayName, ["input"] = Input ?? "", ["output"] = Output ?? "" };
+        }
+    }
+
     /// <summary>What the core needs to know about the process it runs in.</summary>
     internal interface IAgentEnvironment
     {
@@ -58,6 +74,8 @@ namespace RevitBallet.Commands.Agent
         string RevitVersion { get; }
         /// <summary>Folder for the per-job audit log; null disables it.</summary>
         string AuditDirectory { get; }
+        /// <summary>The commands that can be run through the "command" engine (empty when the host has none).</summary>
+        System.Collections.Generic.IList<CommandInfo> Commands { get; }
     }
 
     /// <summary>Where the engines come from (in Revit: manifests under engines/, loaded on first use).</summary>

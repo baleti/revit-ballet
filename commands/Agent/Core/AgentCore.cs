@@ -25,7 +25,8 @@ namespace RevitBallet.Commands.Agent
     internal sealed class AgentCore
     {
         public static readonly string[] KnownEngines = { "roslyn", "ironpython2", "cpython3" };
-        private const int MaxJobsKept = 100, MaxTimeoutMs = 600000, MaxCodeBytes = 4 * 1024 * 1024;
+        private const int MaxJobsKept = 100, MaxCodeBytes = 4 * 1024 * 1024;
+        public const int MaxTimeoutMs = 600000;
 
         private readonly IUiBridge ui;
         private readonly IAgentEnvironment env;
@@ -45,6 +46,9 @@ namespace RevitBallet.Commands.Agent
 
         /// <summary>Extra facts the runtime adds to GET /v1/info under "agent" (build id, loaded from).</summary>
         public JObject AgentInfo = new JObject();
+
+        /// <summary>The commands the "command" engine can run (GET /v1/commands).</summary>
+        public IList<CommandInfo> Commands { get { return env.Commands ?? new List<CommandInfo>(); } }
 
         public AgentCore(IUiBridge ui, IAgentEnvironment env, IEngineSource source)
         {
