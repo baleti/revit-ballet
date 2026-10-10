@@ -20,12 +20,40 @@ namespace RevitBallet.Commands.Agent
         void RaiseDrain();
     }
 
+    /// <summary>A modal dialog that is holding up the UI thread.</summary>
+    internal sealed class DialogInfo
+    {
+        public string Title;
+        /// <summary>"task" (Revit TaskDialog), "win32" (any other modal window) or "unknown".</summary>
+        public string Kind = "unknown";
+        public string Text;
+        public List<string> Buttons = new List<string>();
+        /// <summary>Revit's TaskDialog id when known (DialogBoxShowing), else null.</summary>
+        public string DialogId;
+
+        /// <summary>Same dialog as before? (title, id and the start of the text)</summary>
+        public string Key { get { return Title + "|" + DialogId + "|" + (Text == null ? "" : Text.Substring(0, System.Math.Min(80, Text.Length))); } }
+
+        public Newtonsoft.Json.Linq.JObject ToJson(double? sinceMs = null)
+        {
+            var o = new Newtonsoft.Json.Linq.JObject
+            {
+                ["title"] = Title, ["kind"] = Kind, ["text"] = Text, ["dialogId"] = DialogId,
+                ["buttons"] = new Newtonsoft.Json.Linq.JArray(Buttons.ToArray()),
+            };
+            if (sinceMs.HasValue) o["sinceMs"] = System.Math.Round(sinceMs.Value);
+            return o;
+        }
+    }
+
     /// <summary>What the core needs to know about the process it runs in.</summary>
     internal interface IAgentEnvironment
     {
         bool UiResponsive { get; }
-        /// <summary>Title of an open modal dialog, or null.</summary>
-        string ModalDialogTitle { get; }
+        /// <summary>The open modal dialog (what it says, its buttons), or null. Must be safe to call from any thread, also while the UI thread is blocked.</summary>
+        DialogInfo CurrentDialog { get; }
+        /// <summary>Press a button of the open dialog (matched by caption, case-insensitive). Returns false and an error text when that is not possible.</summary>
+        bool TryRespondToDialog(string button, out string error);
         int RevitYear { get; }
         string RevitVersion { get; }
         /// <summary>Folder for the per-job audit log; null disables it.</summary>

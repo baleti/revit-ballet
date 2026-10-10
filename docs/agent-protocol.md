@@ -34,8 +34,8 @@ Protocol version: **1**. Status: **implemented** (host, `/v1` API and the three 
   "protocol": 1,
   "revit": {"year": 2024, "version": "24.3.0.108", "build": "20240425_1500"},
   "session": {"id": "12345", "pid": 12345, "port": 23717},
-  "ui": {"responsive": true, "modalDialog": null},
-  "queue": {"queued": 0, "running": null},
+  "ui": {"responsive": true, "modalDialog": null, "state": "idle"},
+  "queue": {"queued": 0, "running": null, "oldestQueuedMs": 0},
   "engines": [
     {"name": "roslyn", "language": "csharp", "version": "3.11.0", "available": true, "sessions": true},
     {"name": "ironpython2", "language": "python", "version": "2.7.12", "available": true, "sessions": true},
@@ -46,7 +46,8 @@ Protocol version: **1**. Status: **implemented** (host, `/v1` API and the three 
 ```
 
 `ui.responsive` is `false` when the UI thread has not picked up a probe within 2 seconds.
-`ui.modalDialog` is the title of an open modal dialog of the Revit process, or `null`.
+`ui.modalDialog` is `null` or the open modal dialog: `{"title","kind","text","buttons":["OK","Cancel"],"dialogId","sinceMs"}`
+(see "Modal dialogs"). `ui.state` is `idle`, `busy`, `modal` or `unresponsive`.
 
 ### `POST /v1/jobs`
 
@@ -63,6 +64,8 @@ Request:
 | `timeoutMs` | run time limit (not counting queue time), default 30000, max 600000 |
 | `session` | optional name of a persistent engine session (state kept between jobs); `null` = isolated |
 | `wait` | milliseconds to hold the HTTP response open until the job finishes (0 to 600000). Default 0 |
+| `dialogPolicy` | what to do when a modal dialog holds Revit up while the job waits or runs: `"report"` (default), `"fail"`, or `{"respond": "<button>"}` |
+| `requestId` | optional idempotency key: a retry with the same id returns the existing job instead of running it twice |
 
 Response: `202` with the job (state `queued`) when it did not finish within `wait`, else `200` with the finished job.
 
@@ -79,6 +82,12 @@ output), `done` (the final job object). The stream ends after `done`.
 
 Cancel. A queued job is removed (state `cancelled`). A running job gets its cancellation token set and the
 engine's abort hook called; see "Cancellation" for what that can and cannot do. Response: the job.
+
+### `GET /v1/dialog`, `POST /v1/dialog/respond`
+
+`GET /v1/dialog` returns `{"dialog": null}` or `{"dialog": {...}}`. `POST /v1/dialog/respond {"button": "OK"}` presses that button of the open
+dialog (matched by caption, case-insensitive): `200 {"responded": true, ...}`, `404` when no dialog is open, `409` with the list of buttons when there is no
+such button or pressing it did not close the dialog. Both work **while the job queue is stuck behind the dialog**: they need the dialog, not the UI thread.
 
 ### Sessions
 
@@ -116,6 +125,9 @@ is scoped to its engine.
   script), `timeout`, `blocked_by_dialog` (timeout while a modal dialog was open; `message` carries its title),
   `cancelled`, `engine` (engine failed to load or crashed), `internal`.
 - `diagnostics`: compile errors and warnings with 1-based `line`/`column` where the engine can give them.
+- `blockedBy`: `null`, or the dialog that has been holding this job up for more than 1.5 s (the job is still `queued` or `running`).
+  `dialogs`: every distinct dialog seen while the job waited or ran, each with `firstSeen` and the `action` taken (`report`, `fail`, `responded:<button>`).
+  When a job ends because of a dialog, `error.kind` is `blocked_by_dialog` and `error.dialog` holds it.
 
 ## Execution model
 
@@ -134,6 +146,23 @@ is scoped to its engine.
 
 - No transaction is opened; scripts open their own, as before.
 
+## Modal dialogs
+
+A modal dialog stops the UI thread, so no script can run and an external event is not serviced. The agent therefore watches for one while a job waits or runs:
+
+- **Detection**: a visible window owned by Revit's main window while the main window is disabled. Text and button captions come from UI Automation; for
+  Revit's own TaskDialogs the `DialogBoxShowing` event adds the dialog id and message. `kind` is `task` (a Revit TaskDialog), `win32` (any other
+  modal window) or `unknown` (Revit is in a modal state but no dialog window was found).
+- **Reporting**: a dialog open for more than 1.5 s (so one that flashes by is ignored) appears in `ui.modalDialog`, in `GET /v1/dialog`, in the
+  `blockedBy` and `dialogs` fields of every job it affects, as a `dialog` event on that job's SSE stream, in the audit log and in `server.log`. This
+  happens while the job is still waiting or running, not after its timeout.
+- **Policy** (`dialogPolicy` on the job): `report` keeps waiting until the job's own timeout (a person or `POST /v1/dialog/respond` may answer);
+  `fail` ends the job at once as `failed`/`blocked_by_dialog` (the UI thread may stay blocked, so later jobs wait until the dialog is gone);
+  `{"respond": "OK"}` presses that button after the grace period and carries on, and fails the job if the dialog has no such button.
+- **Answering**: UI Automation Invoke, then a Win32 click, then a real mouse click; each is checked by seeing the dialog close. The mouse fallback needs an
+  interactive desktop (a disconnected RDP session has none).
+- **Not covered**: dialogs that are not modal (docked panes, balloon notifications) do not block anything and are not reported.
+
 ## Timeouts, cancellation, blocked UI
 
 - The run time limit starts when the job starts running. On expiry the job is marked `timeout` (or
@@ -143,8 +172,8 @@ is scoped to its engine.
   (a script that never checks `Cancel` runs to completion). A script blocked inside a Revit API call cannot be interrupted by any engine.
 - A job that cannot be stopped keeps the UI thread busy and later jobs stay `queued`. This is visible: `/v1/info` reports `ui.responsive:false`
   (when the message pump hangs) and the stuck job in `queue.running`.
-- If a modal dialog is open, jobs cannot start at all (the external event does not run). They time out after
-  `timeoutMs` counted from submission in that case, with kind `blocked_by_dialog`.
+- If a modal dialog is open, jobs cannot start at all (the external event does not run). The job reports the dialog (see "Modal dialogs"); if
+  nothing answers it, it times out after `timeoutMs` counted from submission, with kind `blocked_by_dialog`.
 
 ## Engines
 

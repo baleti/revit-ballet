@@ -69,7 +69,7 @@ namespace RevitBallet.Commands.Agent
 
         private readonly Dictionary<string, string> requestIds = new Dictionary<string, string>();   // requestId -> job id
 
-        public Job Submit(string engine, string code, int timeoutMs, string session, string client = null, string requestId = null)
+        public Job Submit(string engine, string code, int timeoutMs, string session, string client = null, string requestId = null, DialogPolicy dialogPolicy = null)
         {
             if (!string.IsNullOrEmpty(requestId))
                 lock (stateLock)
@@ -93,7 +93,7 @@ namespace RevitBallet.Commands.Agent
             {
                 Id = "j-" + Interlocked.Increment(ref counter).ToString("D4"),
                 Engine = e.Manifest.Name, SessionName = string.IsNullOrWhiteSpace(session) ? null : session,
-                Code = code, TimeoutMs = timeoutMs, Client = client, RequestId = string.IsNullOrEmpty(requestId) ? null : requestId,
+                Code = code, TimeoutMs = timeoutMs, DialogPolicy = dialogPolicy ?? DialogPolicy.Default, Client = client, RequestId = string.IsNullOrEmpty(requestId) ? null : requestId,
             };
             job.Writer = new JobWriter(job);
             lock (stateLock)
@@ -182,7 +182,7 @@ namespace RevitBallet.Commands.Agent
 
         public JObject Info(string sessionId, int port)
         {
-            var modal = env.ModalDialogTitle;
+            double dlgSince; var dialog = CurrentDialog(out dlgSince);
             var responsive = env.UiResponsive;
             Job running; int queued; double oldest = 0;
             lock (stateLock)
@@ -216,10 +216,113 @@ namespace RevitBallet.Commands.Agent
                 ["revit"] = new JObject { ["year"] = env.RevitYear, ["version"] = env.RevitVersion },
                 ["session"] = new JObject { ["id"] = sessionId, ["pid"] = int.TryParse(sessionId, out var pid) ? pid : 0, ["port"] = port },
                 // idle: nothing running; busy: a job (or other work) is running; modal: a dialog is open; unresponsive: message pump hung
-                ["ui"] = new JObject { ["responsive"] = responsive, ["modalDialog"] = modal, ["state"] = !responsive ? "unresponsive" : modal != null ? "modal" : running != null ? "busy" : "idle" },
+                ["ui"] = new JObject { ["responsive"] = responsive, ["modalDialog"] = dialog == null ? null : dialog.ToJson(dlgSince), ["state"] = !responsive ? "unresponsive" : dialog != null ? "modal" : running != null ? "busy" : "idle" },
                 ["queue"] = new JObject { ["queued"] = queued, ["running"] = running?.Id, ["oldestQueuedMs"] = Math.Round(oldest) },
                 ["engines"] = engArr,
             };
+        }
+
+        // ---------------------------------------------------------------- dialogs
+
+        /// <summary>How long a dialog must be open before a job reports being blocked by it (a dialog that flashes by is not "stuck").</summary>
+        public int DialogGraceMs = 1500;
+
+        private readonly object dialogLock = new object();
+        private string dialogKey; private DateTime dialogSince;
+
+        /// <summary>The open dialog and how long it has been open, or null.</summary>
+        public DialogInfo CurrentDialog(out double sinceMs)
+        {
+            sinceMs = 0;
+            var d = env.CurrentDialog;
+            lock (dialogLock)
+            {
+                if (d == null) { dialogKey = null; return null; }
+                if (dialogKey != d.Key) { dialogKey = d.Key; dialogSince = DateTime.UtcNow; }
+                sinceMs = (DateTime.UtcNow - dialogSince).TotalMilliseconds;
+            }
+            return d;
+        }
+
+        /// <summary>Answer the open dialog. Works while the job queue is stuck: it only needs the dialog, not the UI thread.</summary>
+        public JObject RespondToDialog(string button)
+        {
+            double since;
+            var d = CurrentDialog(out since);
+            if (d == null) throw new AgentException(404, "not_found", "no modal dialog is open");
+            string error;
+            if (!env.TryRespondToDialog(button, out error)) throw new AgentException(409, "dialog", error ?? "could not press that button");
+            AgentLog.Write($"[AGENT] dialog '{d.Title}' answered with '{button}'");
+            return new JObject { ["responded"] = true, ["button"] = button, ["dialog"] = d.ToJson(since) };
+        }
+
+        private static string Describe(DialogInfo d)
+        {
+            var text = string.IsNullOrWhiteSpace(d.Text) ? "" : ": " + (d.Text.Length > 300 ? d.Text.Substring(0, 300) + "..." : d.Text).Replace("\r", "").Replace("\n", " ");
+            var buttons = d.Buttons.Count == 0 ? "" : " [buttons: " + string.Join(", ", d.Buttons) + "]";
+            return "'" + d.Title + "'" + text + buttons;
+        }
+
+        /// <summary>
+        /// Called every few tens of ms while a job waits for or runs on the UI thread. Records a dialog that blocks it (event, job JSON), and applies the
+        /// job's policy once the dialog has been open for the grace period. Returns true when the job was finished because of the dialog.
+        /// </summary>
+        private bool WatchDialog(Job job, bool running, IScriptEngine engine)
+        {
+            var now = DateTime.UtcNow;
+            if ((now - job.LastDialogPoll).TotalMilliseconds < 250) return false;
+            job.LastDialogPoll = now;
+            double since;
+            var d = CurrentDialog(out since);
+            if (d == null)
+            {
+                if (job.BlockedBy != null) { lock (job.Sync) job.BlockedBy = null; job.AddEvent("dialogClosed", new JObject()); }
+                job.DialogSeenSince = null;
+                return false;
+            }
+            if (job.DialogSeenSince == null) job.DialogSeenSince = now;
+            if ((now - job.DialogSeenSince.Value).TotalMilliseconds < DialogGraceMs) return false;
+
+            JObject record = null;
+            lock (job.Sync)
+            {
+                job.BlockedBy = d;
+                if (job.DialogKeys.Add(d.Key))
+                {
+                    record = d.ToJson(); record["firstSeen"] = now.ToString("o"); record["action"] = job.DialogPolicy.Mode.ToString().ToLowerInvariant();
+                    job.Dialogs.Add(record);
+                }
+            }
+            if (record != null)
+            {
+                job.AddEvent("dialog", record);
+                AgentLog.Write($"[AGENT] {job.Id} is blocked by dialog {Describe(d)}");
+            }
+            switch (job.DialogPolicy.Mode)
+            {
+                case DialogMode.Fail:
+                    job.ErrorDialog = d;
+                    job.Cts.Cancel();
+                    if (running) { try { engine.Abort(job.Context); } catch { } stuck = job; }
+                    else lock (job.Sync) job.Abandoned = true;
+                    Finish(job, JobState.Failed, "blocked_by_dialog", (running ? "the script is blocked by the dialog " : "Revit is blocked by the dialog ") + Describe(d), null);
+                    return true;
+                case DialogMode.Respond:
+                    string error;
+                    bool ok = env.TryRespondToDialog(job.DialogPolicy.Button, out error);
+                    lock (job.Sync) { if (record != null) { record["action"] = ok ? "responded:" + job.DialogPolicy.Button : "respond-failed: " + error; } }
+                    if (ok) job.DialogSeenSince = null;   // look again: another dialog may follow
+                    else
+                    {
+                        job.ErrorDialog = d;
+                        job.Cts.Cancel();
+                        if (running) { try { engine.Abort(job.Context); } catch { } stuck = job; } else lock (job.Sync) job.Abandoned = true;
+                        Finish(job, JobState.Failed, "blocked_by_dialog", $"could not answer the dialog {Describe(d)} with '{job.DialogPolicy.Button}': {error}", null);
+                        return true;
+                    }
+                    break;
+            }
+            return false;
         }
 
         // ---------------------------------------------------------------- worker (compile, dispatch, watch)
@@ -284,13 +387,14 @@ namespace RevitBallet.Commands.Agent
             while (!job.UiStarted.Wait(50))
             {
                 if (job.IsFinal) return;   // cancelled
+                if (WatchDialog(job, false, engine)) return;
                 // Revit services external events only when it is idle; keep asking (the Idling handler is the second drain path)
                 if ((DateTime.UtcNow - lastRaise).TotalMilliseconds > 1000) { lastRaise = DateTime.UtcNow; try { ui.RaiseDrain(); } catch { } }
                 if ((DateTime.UtcNow - dispatched).TotalMilliseconds > job.TimeoutMs)
                 {
                     lock (job.Sync) { if (job.UiStarted.IsSet) break; job.Abandoned = true; }
-                    var modal = env.ModalDialogTitle;
-                    if (modal != null) Finish(job, JobState.Timeout, "blocked_by_dialog", $"Revit is blocked by the open dialog '{modal}'; the script never started", null);
+                    var dlg = env.CurrentDialog;
+                    if (dlg != null) { job.ErrorDialog = dlg; Finish(job, JobState.Timeout, "blocked_by_dialog", $"Revit is blocked by the open dialog {Describe(dlg)}; the script never started", null); }
                     else Finish(job, JobState.Timeout, "timeout", $"the UI thread did not pick up the script within {job.TimeoutMs} ms", null);
                     return;
                 }
@@ -300,13 +404,14 @@ namespace RevitBallet.Commands.Agent
             var started = DateTime.UtcNow;
             while (!job.UiDone.Wait(50))
             {
+                if (WatchDialog(job, true, engine)) return;
                 if ((DateTime.UtcNow - started).TotalMilliseconds > job.TimeoutMs)
                 {
                     job.Cts.Cancel();
                     try { engine.Abort(job.Context); } catch { }
                     stuck = job;
-                    var modal = env.ModalDialogTitle;
-                    if (modal != null) Finish(job, JobState.Timeout, "blocked_by_dialog", $"the script is waiting on the open dialog '{modal}'", null);
+                    var dlg = env.CurrentDialog;
+                    if (dlg != null) { job.ErrorDialog = dlg; Finish(job, JobState.Timeout, "blocked_by_dialog", $"the script is waiting on the open dialog {Describe(dlg)}", null); }
                     else Finish(job, JobState.Timeout, "timeout", $"the script did not finish within {job.TimeoutMs} ms (cancellation requested)", null);
                     return;
                 }
@@ -338,6 +443,7 @@ namespace RevitBallet.Commands.Agent
             // A finished job is only history: do not keep the compiled script alive. Its compilation (symbols, metadata) is huge, and
             // the last 100 jobs are retained for GET /v1/jobs.
             job.Compiled = null; job.Context = null; job.RunResult = null; job.EngineInstance = null;
+            lock (job.Sync) job.BlockedBy = null;   // finished: no longer waiting on anything (job.Dialogs keeps the history)
             if (job.SessionObject != null) job.SessionObject.Jobs++;
             job.AddEvent("state", new JObject { ["state"] = Job.StateName(state) });
             job.AddEvent("done", job.ToJson());

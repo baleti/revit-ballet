@@ -8,6 +8,16 @@ using RevitBallet.Agents;
 
 namespace RevitBallet.Commands.Agent
 {
+    internal enum DialogMode { Report, Fail, Respond }
+
+    /// <summary>What a job does when a modal dialog blocks Revit while it waits or runs.</summary>
+    internal sealed class DialogPolicy
+    {
+        public DialogMode Mode = DialogMode.Report;
+        public string Button;   // for Respond
+        public static readonly DialogPolicy Default = new DialogPolicy();
+    }
+
     internal enum JobState { Queued, Compiling, Running, Done, Failed, Cancelled, Timeout }
 
     /// <summary>One submitted script. State changes happen under <see cref="Sync"/>.</summary>
@@ -20,6 +30,13 @@ namespace RevitBallet.Commands.Agent
         public string Client;       // X-Agent-Name header, for the audit log
         public string RequestId;    // optional idempotency key from the client
         public int TimeoutMs = 30000;
+        public DialogPolicy DialogPolicy = DialogPolicy.Default;
+        public DateTime LastDialogPoll;
+        public DateTime? DialogSeenSince;
+        public DialogInfo ErrorDialog;                                 // set when the job ended because of a dialog
+        public DialogInfo BlockedBy;                                   // while a dialog has been holding this job up longer than the grace period
+        public readonly List<JObject> Dialogs = new List<JObject>();   // every distinct dialog seen while the job waited or ran, with what was done about it
+        public readonly HashSet<string> DialogKeys = new HashSet<string>();
 
         public readonly object Sync = new object();
         public JobState State = JobState.Queued;
@@ -108,7 +125,9 @@ namespace RevitBallet.Commands.Agent
                     ["outputTruncated"] = outputLength > output.Length || OutputDropped,
                     ["outputLength"] = outputLength,
                     ["value"] = ValueType == null ? null : new JObject { ["type"] = ValueType, ["json"] = ValueJson, ["text"] = ValueText, ["truncated"] = ValueTruncated },
-                    ["error"] = ErrorKind == null ? null : new JObject { ["kind"] = ErrorKind, ["message"] = ErrorMessage, ["stack"] = ErrorStack },
+                    ["error"] = ErrorKind == null ? null : new JObject { ["kind"] = ErrorKind, ["message"] = ErrorMessage, ["stack"] = ErrorStack, ["dialog"] = ErrorDialog == null ? null : ErrorDialog.ToJson() },
+                    ["blockedBy"] = BlockedBy == null ? null : BlockedBy.ToJson(DialogSeenSince.HasValue ? (DateTime.UtcNow - DialogSeenSince.Value).TotalMilliseconds : (double?)null),
+                    ["dialogs"] = new JArray(Dialogs.ToArray()),
                     ["timings"] = new JObject { ["queueMs"] = Math.Round(QueueMs), ["compileMs"] = Math.Round(CompileMs), ["runMs"] = Math.Round(RunMs) },
                 };
                 var diags = new JArray();

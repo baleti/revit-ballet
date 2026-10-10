@@ -66,6 +66,24 @@ namespace RevitBallet.Engines.Roslyn
                 var p = Path.Combine(engineDir, dll);
                 if (File.Exists(p)) o = o.AddReferences(MetadataReference.CreateFromFile(p));
             }
+            // Common framework assemblies. On .NET Framework (Revit 2020-2024) a script otherwise sees only mscorlib and System.Core: even
+            // System.Diagnostics.Process (System.dll) would not compile. Anchored on types so the implementation assembly is referenced, not a
+            // forwarding facade (on .NET 8, System.Xml.dll only forwards to System.Private.Xml).
+            foreach (var anchor in new[] { typeof(System.Diagnostics.Process), typeof(System.Xml.XmlDocument), typeof(System.Xml.Linq.XDocument) })
+            {
+                var loc = anchor.Assembly.Location;
+                if (!string.IsNullOrEmpty(loc) && File.Exists(loc)) o = o.AddReferences(MetadataReference.CreateFromFile(loc));
+            }
+            // Windows-only and optional ones by name: skipped where they do not exist.
+            foreach (var name in new[] { "System.Drawing", "System.Windows.Forms", "System.Net.Http", "Microsoft.CSharp" })
+            {
+                try
+                {
+                    var asm = Assembly.Load(name);
+                    if (!string.IsNullOrEmpty(asm.Location) && File.Exists(asm.Location)) o = o.AddReferences(MetadataReference.CreateFromFile(asm.Location));
+                }
+                catch { }
+            }
             // The host add-in: lets scripts call its helpers (SelectionStorage, PathHelper, ...) without qualification.
             var host = AppDomain.CurrentDomain.GetAssemblies().FirstOrDefault(a => a.GetName().Name == "revit-ballet");
             if (host != null && !string.IsNullOrEmpty(host.Location)) o = o.AddReferences(MetadataReference.CreateFromFile(host.Location));
