@@ -64,6 +64,11 @@ namespace RevitBallet.Commands.Agent
                     var path = Path.GetFullPath(Path.Combine(e.Directory, e.Manifest.Assembly));
                     RegisterDirectory(e.Directory);
                     Assembly asm;
+                    // after a runtime hot-reload the engine assembly is usually loaded already: reuse it, a second copy would make the
+                    // compiled scripts and the engine disagree about types like Globals
+                    asm = AppDomain.CurrentDomain.GetAssemblies().FirstOrDefault(a => { try { return !a.IsDynamic && string.Equals(a.Location, path, StringComparison.OrdinalIgnoreCase); } catch { return false; } });
+                    if (asm == null)
+                    {
 #if NET8_0_OR_GREATER
                     // Revit 2025+ loads add-ins into their own AssemblyLoadContext; load the engine into the same one so the
                     // shared contract assembly is the same type for host and engine.
@@ -72,6 +77,7 @@ namespace RevitBallet.Commands.Agent
 #else
                     asm = Assembly.LoadFrom(path);
 #endif
+                    }
                     var type = asm.GetType(e.Manifest.Type, throwOnError: true);
                     e.Instance = (IScriptEngine)Activator.CreateInstance(type);
                     RevitBalletServer.LogToRevit($"[AGENT] engine loaded: {e.Manifest.Name} {e.Instance.Version}");

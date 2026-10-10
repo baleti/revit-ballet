@@ -97,8 +97,10 @@ namespace RevitBallet.Commands
             var bytes = File.ReadAllBytes(dll);   // from bytes: no file lock, like InvokeAddinCommand
             from = "hot-reload";
 #if NET8_0_OR_GREATER
-            var alc = System.Runtime.Loader.AssemblyLoadContext.GetLoadContext(typeof(AgentShell).Assembly);
-            using (var ms = new MemoryStream(bytes)) return alc.LoadFromStream(ms);
+            // A second copy of revit-ballet.dll cannot live in Revit's add-in context ("Assembly with same name is already loaded"), so each
+            // reload gets a context of its own that hands every dependency (contract, Newtonsoft, ...) to the shell's context.
+            var ctx = new RuntimeContext(System.Runtime.Loader.AssemblyLoadContext.GetLoadContext(typeof(AgentShell).Assembly), Path.GetDirectoryName(dll));
+            using (var ms = new MemoryStream(bytes)) return ctx.Adopt(ctx.LoadFromStream(ms));
 #else
             return Assembly.Load(bytes);
 #endif
@@ -115,8 +117,7 @@ namespace RevitBallet.Commands
                 if (resolverInstalled) return;
                 resolverInstalled = true;
 #if NET8_0_OR_GREATER
-                var alc = System.Runtime.Loader.AssemblyLoadContext.GetLoadContext(typeof(AgentShell).Assembly);
-                alc.Resolving += (ctx, name) => AppDomain.CurrentDomain.GetAssemblies().FirstOrDefault(a => !a.IsDynamic && a.GetName().Name == name.Name && a != typeof(AgentShell).Assembly && !string.IsNullOrEmpty(a.Location));
+                // nothing to install: RuntimeContext resolves the reloaded runtime's dependencies
 #else
                 AppDomain.CurrentDomain.AssemblyResolve += (s, args) =>
                 {
@@ -127,6 +128,25 @@ namespace RevitBallet.Commands
 #endif
             }
         }
+#if NET8_0_OR_GREATER
+        private sealed class RuntimeContext : System.Runtime.Loader.AssemblyLoadContext
+        {
+            private readonly System.Runtime.Loader.AssemblyLoadContext shell; private readonly string dir; private Assembly self;
+            public RuntimeContext(System.Runtime.Loader.AssemblyLoadContext shell, string dir) : base("revit-ballet-runtime", false) { this.shell = shell; this.dir = dir; }
+            public Assembly Adopt(Assembly a) { self = a; return a; }
+            protected override Assembly Load(AssemblyName name)
+            {
+                if (self != null && name.Name == self.GetName().Name) return self;
+                // shared with the shell: whatever is already loaded under that name (contract assembly, Newtonsoft.Json, Revit API ...)
+                var loaded = AppDomain.CurrentDomain.GetAssemblies().FirstOrDefault(a => !a.IsDynamic && a.GetName().Name == name.Name && GetLoadContext(a) != this);
+                if (loaded != null) return loaded;
+                var file = Path.Combine(dir, name.Name + ".dll");
+                if (File.Exists(file)) { using (var ms = new MemoryStream(File.ReadAllBytes(file))) return LoadFromStream(ms); }
+                return null;
+            }
+        }
+#endif
+
         private static string SafeLocation(Assembly a) { try { return a.Location; } catch { return null; } }
 
         // ---------------------------------------------------------------- HTTP side (any thread)
