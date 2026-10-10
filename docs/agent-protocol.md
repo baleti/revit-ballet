@@ -1,7 +1,7 @@
 # Agent protocol (v1)
 
 How external tools (scripts, CI, LLM agents) talk to a running Revit session through Revit Ballet.
-Protocol version: **1**. Status: **draft, implementation in progress** (the contract assembly and job model exist; the /v1 endpoints and engines are not wired in yet). This document is the contract; `commands/Agent/` implements the host,
+Protocol version: **1**. Status: **implemented** (host, `/v1` API and the three engines; covered by the VM CI on Revit 2020-2026). This document is the contract; `commands/Agent/` implements the host,
 `agents/` the script engines.
 
 ## Goals and non-goals
@@ -138,9 +138,11 @@ is scoped to its engine.
 
 - The run time limit starts when the job starts running. On expiry the job is marked `timeout` (or
   `blocked_by_dialog`), its cancellation token is set and the engine abort hook runs.
-- A script that never checks `Cancel` and never returns cannot be stopped from outside: the UI thread stays busy and
-  later jobs stay `queued`. This is visible: `/v1/info` reports `ui.responsive:false` and the stuck job in
-  `queue.running`. Python engines also check `cancel` between statements (trace hook), so pure-Python loops are stoppable.
+- What can be stopped depends on the engine. `ironpython2` checks the cancellation token on every traced line, so even `while True: pass` stops.
+  `cpython3` injects a `KeyboardInterrupt` into the running thread, which also stops pure-Python loops. `roslyn` can only stop cooperatively
+  (a script that never checks `Cancel` runs to completion). A script blocked inside a Revit API call cannot be interrupted by any engine.
+- A job that cannot be stopped keeps the UI thread busy and later jobs stay `queued`. This is visible: `/v1/info` reports `ui.responsive:false`
+  (when the message pump hangs) and the stuck job in `queue.running`.
 - If a modal dialog is open, jobs cannot start at all (the external event does not run). They time out after
   `timeoutMs` counted from submission in that case, with kind `blocked_by_dialog`.
 
@@ -169,9 +171,23 @@ public interface IScriptEngine {
 `EngineContext` carries `UIApp`, `UIDoc`, `Doc` (as `object`; engines cast to the Revit API types of the
 running year), the per-job output writer and the cancellation token.
 
-Engines: `roslyn` (C# scripting, Roslyn), `ironpython2` (IronPython 2.7), `cpython3` (a real CPython 3
-embedded through pythonnet; ships its own embeddable Python runtime, so it needs no system Python).
-They can be installed independently; an uninstalled engine shows `available:false` in `/v1/info`.
+### The engines
+
+| engine | runtime | notes |
+|---|---|---|
+| `roslyn` | Roslyn scripting 3.11 (Revit 2020-2024) / 4.8 (2025-2026) | C# script, same globals and imports as the old `/roslyn`. Sessions use script continuation (`ContinueWith`). `Return` value becomes `value`. |
+| `ironpython2` | IronPython 2.7.12 | Python 2 syntax. Standard library from a bundled `Lib.zip`. `from Autodesk.Revit.DB import *` works without `clr.AddReference`. |
+| `cpython3` | CPython 3.12 (official embeddable distribution, bundled) through pythonnet 3.0 | Real Python 3 (f-strings, type hints, modern stdlib). `import clr` then `clr.AddReference("RevitAPI")` as in pythonnet. No system Python needed. One interpreter per Revit process, shared by all jobs. |
+
+Python specifics: the script's value is the variable `result` (plain Python values become JSON; anything else is reported through `str()`).
+`out.write(...)` and `print(...)` both reach the job output. A Python traceback is returned in `error.stack`, syntax errors as `compile` diagnostics with line and column.
+
+Install size: the Python 3 runtime adds about 22 MB, IronPython about 6 MB. The installer accepts `--engines all|none|name[,name...]`
+(default `all`); engines that were installed earlier and are not in an explicit list are removed. All engines are separate files, so a user who does not want an
+embedded interpreter on the machine can leave it out.
+
+Known limitations: one job runs at a time per Revit process (the UI thread is the bottleneck by design); the `cpython3` interpreter lives for the lifetime of
+the Revit process and cannot be re-initialised; other add-ins that embed IronPython or Python (pyRevit, RevitPythonShell) load their own copies, so versions are not shared.
 
 ## Compatibility
 

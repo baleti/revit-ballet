@@ -47,3 +47,4 @@ deploy
 .claude/
 .worktrees/
 
+agents/cpython3/python-embed/

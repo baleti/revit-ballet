@@ -1,0 +1,9 @@
+{
+  "name": "roslyn",
+  "language": "csharp",
+  "version": "1",
+  "assembly": "revit-ballet-engine-roslyn.dll",
+  "type": "RevitBallet.Engines.Roslyn.RoslynEngine",
+  "protocol": 1,
+  "sessions": true
+}

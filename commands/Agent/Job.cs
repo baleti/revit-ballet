@@ -32,6 +32,8 @@ namespace RevitBallet.Commands.Agent
         public bool Abandoned;        // UI thread must skip it (timed out or cancelled before it started)
         public bool CancelRequested;
 
+        public JobWriter Writer;
+        public EngineSession SessionObject;
         public IScriptEngine EngineInstance;
         public EngineContext Context;
         public object Compiled;

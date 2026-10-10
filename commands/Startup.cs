@@ -129,12 +129,15 @@ namespace RevitBallet.Commands
             // Track whether the key DLL copied successfully so we can decide whether to
             // flip the manifest.  Non-DLL files (native interop etc.) are best-effort.
             bool keyDllCopied = false;
-            foreach (string srcFile in Directory.GetFiles(updateFolder))
+            // Recursive: engines live in engines/<name>/ below the add-in folder.
+            foreach (string srcFile in Directory.GetFiles(updateFolder, "*", SearchOption.AllDirectories))
             {
+                string relative = srcFile.Substring(updateFolder.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
                 string fileName = Path.GetFileName(srcFile);
-                string destFile = Path.Combine(mainFolder, fileName);
+                string destFile = Path.Combine(mainFolder, relative);
                 try
                 {
+                    Directory.CreateDirectory(Path.GetDirectoryName(destFile));
                     File.Copy(srcFile, destFile, overwrite: true);
                     if (fileName.Equals("revit-ballet.dll", StringComparison.OrdinalIgnoreCase))
                         keyDllCopied = true;
@@ -216,10 +219,10 @@ namespace RevitBallet.Commands
                 // Check if files from this update folder exist in main folder
                 if (Directory.Exists(mainFolder) && Directory.Exists(updateFolder))
                 {
-                    foreach (string updateFile in Directory.GetFiles(updateFolder))
+                    foreach (string updateFile in Directory.GetFiles(updateFolder, "*", SearchOption.AllDirectories))
                     {
-                        string fileName = Path.GetFileName(updateFile);
-                        string mainFile = Path.Combine(mainFolder, fileName);
+                        string relative = updateFile.Substring(updateFolder.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                        string mainFile = Path.Combine(mainFolder, relative);
 
                         if (!File.Exists(mainFile))
                         {

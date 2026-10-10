@@ -53,6 +53,17 @@ namespace RevitBalletInstaller
             // so InvokeAddinCommand can pick them up immediately without restarting Revit
             bool hotReload = args.Any(arg => arg.Equals("--hot-reload", StringComparison.OrdinalIgnoreCase));
 
+            // --engines all|none|name[,name...]: which script engines to install under engines/<name>/ (default: all).
+            // Engines are separate components (embedded compilers/interpreters are what antivirus products flag), so they can be left out.
+            for (int i = 0; i < args.Length - 1; i++)
+            {
+                if (!args[i].Equals("--engines", StringComparison.OrdinalIgnoreCase)) continue;
+                var v = args[i + 1].Trim();
+                if (v.Equals("all", StringComparison.OrdinalIgnoreCase)) BalletInstaller.EnabledEngines = null;
+                else if (v.Equals("none", StringComparison.OrdinalIgnoreCase)) BalletInstaller.EnabledEngines = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                else BalletInstaller.EnabledEngines = new HashSet<string>(v.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim()), StringComparer.OrdinalIgnoreCase);
+            }
+
             // In interactive mode, hide the console window (UI dialogs are used instead).
             // In quiet/SSH mode the console window is left visible for stdout output.
             if (!quietMode)
@@ -80,6 +91,29 @@ namespace RevitBalletInstaller
 
         private readonly List<RevitInstallation> installations = new List<RevitInstallation>();
         private readonly List<InstallationResult> installationResults = new List<InstallationResult>();
+        /// <summary>Engines to install (null = all). Set from --engines.</summary>
+        public static HashSet<string> EnabledEngines;
+
+        private static bool EngineAllowed(string targetFileName)
+        {
+            if (EnabledEngines == null) return true;
+            var t = targetFileName.Replace('\\', '/');
+            if (!t.StartsWith("engines/", StringComparison.OrdinalIgnoreCase)) return true;
+            var parts = t.Split('/');
+            return parts.Length > 2 && EnabledEngines.Contains(parts[1]);
+        }
+
+        /// <summary>With an explicit --engines list, engines that were installed earlier but are no longer wanted are removed.</summary>
+        private static void RemoveDisabledEngines(string targetFolder)
+        {
+            if (EnabledEngines == null) return;
+            var root = Path.Combine(targetFolder, "engines");
+            if (!Directory.Exists(root)) return;
+            foreach (var dir in Directory.GetDirectories(root))
+                if (!EnabledEngines.Contains(Path.GetFileName(dir)))
+                    try { Directory.Delete(dir, true); } catch { /* locked by a running Revit: removed by the next install */ }
+        }
+
         private Dictionary<string, FileMapping> fileMappings = null;
         private bool _quiet;
         private int _verbosity;
@@ -866,7 +900,7 @@ namespace RevitBalletInstaller
                             "revit-ballet", "hot-reload", installation.Year.ToString());
                         Directory.CreateDirectory(hotReloadDir);
                         ExtractResource(dllResource, Path.Combine(hotReloadDir, "revit-ballet.dll"));
-                        ExtractDependencies(installation.Year, hotReloadDir);
+                        ExtractDependencies(installation.Year, hotReloadDir, includeEngines: false);
                         Log(2, $"  [Revit {installation.Year}] Hot-reload dir updated -> {hotReloadDir}");
                     }
                     catch (Exception ex)
@@ -884,6 +918,7 @@ namespace RevitBalletInstaller
             {
                 if (stream != null)
                 {
+                    Directory.CreateDirectory(Path.GetDirectoryName(targetPath));
                     // Try to open target file exclusively to check if it's locked
                     using (FileStream fs = new FileStream(targetPath, FileMode.Create, FileAccess.Write, FileShare.None))
                     {
@@ -897,8 +932,9 @@ namespace RevitBalletInstaller
             }
         }
 
-        private void ExtractDependenciesSafe(string year, string targetFolder)
+        private void ExtractDependenciesSafe(string year, string targetFolder, bool includeEngines = true)
         {
+            RemoveDisabledEngines(targetFolder);
             // This method throws IOException if any file is locked
             var assembly = Assembly.GetExecutingAssembly();
 
@@ -913,6 +949,10 @@ namespace RevitBalletInstaller
 
                     // Skip the main DLL (handled separately)
                     if (mapping.TargetFileName == "revit-ballet.dll")
+                        continue;
+
+                    // Engines the user did not ask for (--engines)
+                    if (!EngineAllowed(mapping.TargetFileName) || (!includeEngines && mapping.TargetFileName.StartsWith("engines/", StringComparison.OrdinalIgnoreCase)))
                         continue;
 
                     // Find the resource with this name
@@ -949,8 +989,9 @@ namespace RevitBalletInstaller
             }
         }
 
-        private void ExtractDependencies(string year, string targetFolder)
+        private void ExtractDependencies(string year, string targetFolder, bool includeEngines = true)
         {
+            if (includeEngines) RemoveDisabledEngines(targetFolder);
             var assembly = Assembly.GetExecutingAssembly();
 
             if (fileMappings != null && fileMappings.Count > 0)
@@ -964,6 +1005,10 @@ namespace RevitBalletInstaller
 
                     // Skip the main DLL (handled separately)
                     if (mapping.TargetFileName == "revit-ballet.dll")
+                        continue;
+
+                    // Engines the user did not ask for (--engines)
+                    if (!EngineAllowed(mapping.TargetFileName) || (!includeEngines && mapping.TargetFileName.StartsWith("engines/", StringComparison.OrdinalIgnoreCase)))
                         continue;
 
                     // Find the resource with this name
@@ -1303,6 +1348,7 @@ namespace RevitBalletInstaller
                 {
                     if (stream != null)
                     {
+                        Directory.CreateDirectory(Path.GetDirectoryName(targetPath));
                         using (FileStream fs = new FileStream(targetPath, FileMode.Create))
                             stream.CopyTo(fs);
                     }

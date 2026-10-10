@@ -15,6 +15,7 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 SOURCE_PATH = SCRIPT_DIR / "../commands/bin"
+AGENTS_PATH = SCRIPT_DIR / "../agents"      # script engines: agents/<name>/bin/<year>/ (with engine.json), installed to engines/<name>/
 OUTPUT_PATH = SCRIPT_DIR / "bin/resources"
 
 
@@ -160,11 +161,22 @@ def main():
     print("Scanning files and calculating checksums...")
     file_database = defaultdict(list)
 
+    def year_files(year_dir):
+        """(group, path) for the core DLLs and for every installed engine's files of this year."""
+        for f in year_dir.glob("*.dll"):
+            yield "", f
+        if AGENTS_PATH.exists():
+            for eng in sorted(AGENTS_PATH.iterdir()):
+                d = eng / "bin" / year_dir.name
+                if (d / "engine.json").exists():
+                    for f in sorted(d.iterdir()):
+                        if f.is_file():
+                            yield f"engines/{eng.name}", f
+
     for year_dir in year_dirs:
         year = year_dir.name
-        dll_files = list(year_dir.glob("*.dll"))
 
-        for dll_file in dll_files:
+        for group, dll_file in year_files(year_dir):
             filename = dll_file.name
             file_size = dll_file.stat().st_size
 
@@ -172,7 +184,7 @@ def main():
             # Files with same name and size but different contents must be detected
             file_hash = calculate_md5(dll_file)
 
-            file_database[filename].append({
+            file_database[(group, filename)].append({
                 'year': year,
                 'path': dll_file,
                 'hash': file_hash,
@@ -190,8 +202,11 @@ def main():
     saved_space = 0
     shared_file_count = 0
 
-    for filename in sorted(file_database.keys()):
-        entries = file_database[filename]
+    for (group, filename) in sorted(file_database.keys()):
+        entries = file_database[(group, filename)]
+        # resource names cannot contain '/', so the engine directory is folded into the name; the mapping keeps the real target path
+        rname = (group.replace("/", "-") + "." if group else "") + filename
+        target = (group + "/" if group else "") + filename
 
         # Group by hash
         hash_groups = defaultdict(list)
@@ -209,16 +224,16 @@ def main():
             # Determine resource name
             if len(years) == len(year_dirs):
                 # File is identical across ALL years - use _common prefix
-                resource_name = f"_common.{filename}"
+                resource_name = f"_common.{rname}"
                 saved_space += file_size * (len(years) - 1)
                 print(f"  {resource_name} -> shared by ALL years")
                 shared_file_count += 1
             elif len(years) == 1:
                 # File is unique to this year
-                resource_name = f"_{years[0]}.{filename}"
+                resource_name = f"_{years[0]}.{rname}"
             else:
                 # File is shared by multiple (but not all) years
-                resource_name = f"_{years[0]}.{filename}"
+                resource_name = f"_{years[0]}.{rname}"
                 saved_space += file_size * (len(years) - 1)
                 print(f"  {resource_name} -> shared by years: {', '.join(years)}")
                 shared_file_count += 1
@@ -226,7 +241,7 @@ def main():
             total_deduplicated_size += file_size
 
             deduplication_plan.append({
-                'filename': filename,
+                'filename': target,
                 'resource_name': resource_name,
                 'hash': file_hash,
                 'years': years,

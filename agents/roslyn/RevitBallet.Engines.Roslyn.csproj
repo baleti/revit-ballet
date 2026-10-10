@@ -1,0 +1,50 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="..\Revit.props" />
+  <!-- C# scripting engine for the revit-ballet agent host. Separate component on purpose (embedded compilers are what antivirus flags):
+       it ships in engines/roslyn/ next to revit-ballet.dll and is only loaded when a job asks for it. -->
+  <PropertyGroup>
+    <AssemblyName>revit-ballet-engine-roslyn</AssemblyName>
+    <RootNamespace>RevitBallet.Engines.Roslyn</RootNamespace>
+    <OutputPath>bin\$(RevitYear)\</OutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\abstractions\RevitBallet.Agents.Abstractions.csproj" />
+    <PackageReference Include="Revit_All_Main_Versions_API_x64" Version="$(RevitAPIVersion)" ExcludeAssets="runtime" />
+  </ItemGroup>
+
+  <!-- Roslyn 3.x is the last line that works on .NET Framework; 4.x for .NET 8 (same choice as before the split) -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net472' OR '$(TargetFramework)' == 'net48'">
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="3.11.0" />
+    <PackageReference Include="System.Collections.Immutable" Version="5.0.0" />
+    <PackageReference Include="System.Reflection.Metadata" Version="5.0.0" />
+  </ItemGroup>
+  <!-- Revit 2020 ships none of these; Roslyn 3.x needs them at runtime -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net472'">
+    <PackageReference Include="System.Memory" Version="4.5.4" />
+  </ItemGroup>
+  <ItemGroup Condition="$(TargetFramework.StartsWith('net8'))">
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="4.8.0" />
+    <PackageReference Include="System.Collections.Immutable" Version="7.0.0" />
+    <PackageReference Include="System.Reflection.Metadata" Version="7.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="engine.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- Keep only what Roslyn needs; drop the facade DLLs the package restore drags in (same allow-list the core used) -->
+  <Target Name="CleanupFacades" AfterTargets="Build">
+    <ItemGroup>
+      <AllSys Include="$(OutputPath)System.*.dll" />
+      <AllMs Include="$(OutputPath)Microsoft.*.dll" />
+      <Keep Include="$(OutputPath)System.Collections.Immutable.dll;$(OutputPath)System.Reflection.Metadata.dll;$(OutputPath)System.Runtime.CompilerServices.Unsafe.dll" />
+      <Keep Include="$(OutputPath)System.Memory.dll;$(OutputPath)System.Buffers.dll;$(OutputPath)System.Numerics.Vectors.dll" Condition="'$(TargetFramework)' == 'net472'" />
+      <Keep Include="$(OutputPath)Microsoft.CodeAnalysis*.dll" />
+      <Drop Include="@(AllSys)" Exclude="@(Keep)" />
+      <Drop Include="@(AllMs)" Exclude="@(Keep)" />
+      <Drop Include="$(OutputPath)netstandard.dll;$(OutputPath)revit-ballet.agents.abstractions.dll" />
+    </ItemGroup>
+    <Delete Files="@(Drop)" />
+  </Target>
+</Project>

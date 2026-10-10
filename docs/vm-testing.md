@@ -104,7 +104,10 @@ One run does, in order:
    (Revit 2020 in the baseline has no template content) gets an existing directory, and in no-GPU mode
    `[Graphics] UseGraphicsHardware=0` (otherwise a "Hardware Acceleration disabled" dialog blocks every script).
 8. **Per Revit year**: start Revit on the desktop, wait until the revit-ballet server listens (port 23717 up),
-   run every `tests/vm/checks/*.cs` through `/roslyn` and compare to its `.expect`, then stop Revit.
+   run every `tests/vm/checks/*.cs` through `/roslyn` and compare to its `.expect`, then run the `/v1` agent API battery
+   (`guest/v1-tests.ps1`: info, jobs, errors, sessions, queue order, cancel, timeouts, SSE, non-ASCII bodies, the legacy shim, and for the
+   `ironpython2` and `cpython3` engines the same Python checks), then stop Revit. After all years the installer's `--engines` flag is
+   exercised (`guest/engines-flag.ps1`).
 9. **Evidence on failure**: desktop screenshot, `server.log`, tail of the newest Revit journals, per-check JSON,
    all under `tests/vm/artifacts/<run-id>/` (git-ignored).
 10. **Tear down**: QMP `quit`, delete the overlay (`--keep` keeps it).

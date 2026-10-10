@@ -21,7 +21,7 @@ It is built for people who spend their day inside large models and many open ses
 - *Searchable data grids instead of dialogs.* Results open in one fast grid with a real query language (below). Family, type name, mark and comments are editable in place. Pick rows, and the selection goes straight back to Revit.
 - *Everything is invokable by name.* =InvokeAddinCommand= lists every command in the plugin in a searchable grid, =InvokeRevitCommand= does the same for Revit's own commands, and =InvokeLastAddinCommand= repeats the previous one.
 - *Sessions talk to each other.* Copy and paste between Revit processes, open a view or sheet that lives in another session, synchronise documents across sessions, copy type parameters between sessions.
-- *Scriptable from outside.* Each running Revit hosts a local, token-protected server that compiles and runs C# in the session. Scripts, CI jobs and AI agents use the same API (see [[#automation][Automation]]).
+- *Scriptable from outside, in three languages.* Each running Revit hosts a local, token-protected server that runs C#, IronPython 2 or CPython 3 inside the session, with a job queue, cancellation and sessions. Scripts, CI jobs and AI agents use the same API (see [[#automation][Automation]]).
 - *Tested against real Revit.* Every push builds all seven versions. A separate end-to-end suite installs the plugin into a clean Windows VM with real Revit 2020 to 2026 and checks that it loads and works ([[file:docs/vm-testing.md][how]]).
 
 * Demo
@@ -107,24 +107,29 @@ Revit 2019 and older are not supported.
 
 * Automation
 
-Every Revit session runs a small HTTPS server on =127.0.0.1= (ports 23717 to 23817, one per session). It compiles a C# script and runs it inside Revit with =UIApp=, =UIDoc= and =Doc= in scope, and returns the output as JSON. It is how this repository's own end-to-end tests drive Revit, and how AI agents inspect and edit live models.
+Every Revit session runs a small HTTPS server on =127.0.0.1= (ports 23717 to 23817, one per session). Submit a script as a job; it runs inside Revit with the live =UIApp=, =UIDoc= and =Doc= in scope and comes back as JSON. It is how this repository's own end-to-end tests drive Revit, and how AI agents inspect and edit live models.
+
+Three engines, installed as separate optional components (embedded interpreters are what antivirus products flag, so you can leave them out with =installer.exe --engines none=):
+
+| Engine        | Language                | Notes                                                              |
+|---------------+-------------------------+--------------------------------------------------------------------|
+| =roslyn=      | C#                      | script with full Revit API access                                  |
+| =ironpython2= | Python 2.7 (IronPython) | =from Autodesk.Revit.DB import *=, standard library included       |
+| =cpython3=    | Python 3.12 (CPython)   | real CPython through pythonnet; runtime bundled, no Python needed  |
 
 #+begin_src powershell
 $token = Get-Content "$env:APPDATA\revit-ballet\runtime\network\token"
-curl.exe -k -H "X-Auth-Token: $token" --data-binary '@script.cs' https://127.0.0.1:23717/roslyn
+$body  = @{ engine = "cpython3"; wait = 20000; code = "result = [d.Title for d in uiapp.Application.Documents]" } | ConvertTo-Json
+curl.exe -sk -H "X-Auth-Token: $token" -H "Content-Type: application/json" --data-binary $body https://127.0.0.1:23717/v1/jobs
 #+end_src
 
-#+begin_src csharp
-// script.cs
-Console.WriteLine(Doc.Title);
-return new FilteredElementCollector(Doc).OfClass(typeof(Wall)).GetElementCount();
-#+end_src
+The response carries =state=, =output=, the =value= (as JSON when it is plain data), positioned compile =diagnostics= and a stack trace on errors. Jobs queue in order, can be cancelled (=DELETE /v1/jobs/{id}=), stream their output (server-sent events), and can share state through named sessions. A script stuck behind an open Revit dialog is reported as such instead of silently hanging.
 
 - Loopback only, shared 256-bit token, written under =%APPDATA%\revit-ballet\runtime=.
 - Open sessions and their ports are listed in =runtime\documents=; that is also how the =...InNetwork= commands find each other.
 - Scripts run with the user's full rights: treat the token like a password.
 
-See [[file:CLAUDE.md][CLAUDE.md]] for the conventions agents follow.
+The wire format is in [[file:docs/agent-protocol.md][docs/agent-protocol.md]]; the conventions agents follow are in [[file:CLAUDE.md][CLAUDE.md]].
 
 * Build from source
 

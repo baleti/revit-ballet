@@ -102,26 +102,7 @@
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.0" />
   </ItemGroup>
 
-  <!-- Roslyn scripting for Server.cs - version depends on .NET Framework version -->
-  <ItemGroup Condition="'$(TargetFramework)' == 'net472' OR '$(TargetFramework)' == 'net48'">
-    <!-- Revit 2020-2024 (.NET Framework): Use Roslyn 3.x (last version fully compatible with .NET Framework) -->
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="3.11.0" />
-    <!-- Explicitly reference dependencies to ensure correct versions are copied to output -->
-    <PackageReference Include="System.Collections.Immutable" Version="5.0.0" />
-    <PackageReference Include="System.Reflection.Metadata" Version="5.0.0" />
-  </ItemGroup>
-  <!-- Revit 2020 does not ship System.Memory (Revit 2021+ install folders do); Roslyn 3.x needs it at runtime -->
-  <ItemGroup Condition="'$(TargetFramework)' == 'net472'">
-    <PackageReference Include="System.Memory" Version="4.5.4" />
-  </ItemGroup>
-  <ItemGroup Condition="$(TargetFramework.StartsWith('net8'))">
-    <!-- Revit 2025+ (.NET 8): Use latest Roslyn version -->
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="4.8.0" />
-    <!-- Explicitly reference dependencies to ensure DLLs are copied to output for MetadataReference.CreateFromFile -->
-    <!-- This prevents conflicts with other addins even though .NET 8 has these built-in -->
-    <PackageReference Include="System.Collections.Immutable" Version="7.0.0" />
-    <PackageReference Include="System.Reflection.Metadata" Version="7.0.0" />
-  </ItemGroup>
+  <!-- Scripting engines (Roslyn, ...) are separate components under agents/ and ship in engines/; the core only hosts them. -->
 
   <!-- Standard System references needed by Revit plugins -->
   <!-- For .NET Framework builds (Revit 2020-2024): use framework references -->
@@ -145,25 +126,16 @@
       <!-- Get all System.*.dll and Microsoft.*.dll files -->
       <AllSystemDlls Include="$(OutputPath)System.*.dll" />
       <AllMicrosoftDlls Include="$(OutputPath)Microsoft.*.dll" />
-      <!-- Exclude Roslyn dependencies (needed for Server.cs MetadataReference.CreateFromFile) -->
-      <RoslynDependencies Include="$(OutputPath)System.Collections.Immutable.dll" />
-      <RoslynDependencies Include="$(OutputPath)System.Reflection.Metadata.dll" />
-      <RoslynDependencies Include="$(OutputPath)System.Runtime.CompilerServices.Unsafe.dll" />
-      <!-- Revit 2020 ships none of these (2021+ do); Roslyn 3.x needs them. Revit 2020 (net472) only: later Revit versions ship their own and must keep using those. -->
-      <RoslynDependencies Include="$(OutputPath)System.Memory.dll" Condition="'$(TargetFramework)' == 'net472'" />
-      <RoslynDependencies Include="$(OutputPath)System.Buffers.dll" Condition="'$(TargetFramework)' == 'net472'" />
-      <RoslynDependencies Include="$(OutputPath)System.Numerics.Vectors.dll" Condition="'$(TargetFramework)' == 'net472'" />
-      <RoslynDependencies Include="$(OutputPath)Microsoft.CodeAnalysis*.dll" />
       <!-- Exclude SQLite dependencies (needed for LogViewChanges and SelectionStorage) -->
-      <RoslynDependencies Include="$(OutputPath)Microsoft.Data.Sqlite.dll" />
-      <RoslynDependencies Include="$(OutputPath)System.Data.SQLite.dll" />
-      <RoslynDependencies Include="$(OutputPath)SQLitePCLRaw*.dll" />
-      <RoslynDependencies Include="$(OutputPath)SQLite.Interop.dll" />
+      <KeepDlls Include="$(OutputPath)Microsoft.Data.Sqlite.dll" />
+      <KeepDlls Include="$(OutputPath)System.Data.SQLite.dll" />
+      <KeepDlls Include="$(OutputPath)SQLitePCLRaw*.dll" />
+      <KeepDlls Include="$(OutputPath)SQLite.Interop.dll" />
       <!-- Exclude WindowsAPICodePack (needed for ExportSelectedViewsToPDF folder picker) -->
-      <RoslynDependencies Include="$(OutputPath)Microsoft.WindowsAPICodePack*.dll" />
+      <KeepDlls Include="$(OutputPath)Microsoft.WindowsAPICodePack*.dll" />
       <!-- Remove only non-essential DLLs -->
-      <UnnecessaryDlls Include="@(AllSystemDlls)" Exclude="@(RoslynDependencies)" />
-      <UnnecessaryDlls Include="@(AllMicrosoftDlls)" Exclude="@(RoslynDependencies)" />
+      <UnnecessaryDlls Include="@(AllSystemDlls)" Exclude="@(KeepDlls)" />
+      <UnnecessaryDlls Include="@(AllMicrosoftDlls)" Exclude="@(KeepDlls)" />
       <UnnecessaryDlls Include="$(OutputPath)netstandard.dll" />
     </ItemGroup>
     <Delete Files="@(UnnecessaryDlls)" />

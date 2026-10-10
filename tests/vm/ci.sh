@@ -134,9 +134,19 @@ for y in $YEARS; do
     v=$(printf '%s' "$resp" | verdict "$exp")
     case $v in PASS*) record "PASS $y $n";; *) record "FAIL $y $n: ${v#FAIL }";; esac
   done
+  # /v1 agent API battery (guest/v1-tests.ps1 prints PASS/FAIL lines)
+  v1=$(gps "v1-tests.ps1 -Port $port -Year $y" 2>&1); echo "$v1" > "$ART/$y-v1.txt"
+  if ! echo "$v1" | grep -q -E '^(PASS|FAIL)'; then record "FAIL $y v1: no results: $(echo "$v1" | tail -1)"; fi
+  while IFS= read -r line; do case $line in PASS*|FAIL*) record "${line%% *} $y v1:${line#* }";; esac; done <<< "$v1"
   grep -q "^FAIL $y" "$ART/results.txt" && evidence "$y"
   gps revit-down.ps1 >/dev/null 2>&1
 done
+
+# installer --engines flag (Revit is stopped by now); uses the first year of the run
+fy=${YEARS%% *}
+ef=$(gps "engines-flag.ps1 -Year $fy" 2>&1); echo "$ef" > "$ART/engines-flag.txt"
+if ! echo "$ef" | grep -q -E '^(PASS|FAIL)'; then record "FAIL engines-flag: no results: $(echo "$ef" | tail -1)"; fi
+while IFS= read -r line; do case $line in PASS*|FAIL*) record "$line";; esac; done <<< "$ef"
 
 echo; log "results ($ART/results.txt):"; cat "$ART/results.txt"
 [ "$FAILS" = 0 ] && log "ALL GREEN" || log "$FAILS FAILED"

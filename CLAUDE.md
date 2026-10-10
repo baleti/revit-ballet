@@ -47,41 +47,35 @@ Supports Revit 2020-2026 via conditional compilation on `RevitYear`:
 
 Revit.NET package versions are selected automatically based on target year.
 
-### Roslyn Server for AI Agents
+### Agent Server (scripts and AI agents run inside Revit)
 
-Revit Ballet runs a Roslyn compiler-as-a-service so AI agents can execute C# in Revit session context.
+Each Revit instance hosts a local HTTPS server so scripts and AI agents can run code in the live session. The host (`commands/Agent/`) has no scripting engine; engines are separate components under `agents/` (installed to `engines/<name>/` next to `revit-ballet.dll`, loaded on first use): `roslyn` (C#), `ironpython2` (IronPython 2.7), `cpython3` (CPython 3.12 via pythonnet, bundled runtime). Protocol: `docs/agent-protocol.md`.
 
 **Peer-to-Peer Network:**
-- Each Revit instance runs its own HTTPS server, auto-started when Revit loads
-- Port range 23717-23817 (first available)
-- Shared 256-bit token across all sessions — first session generates it, others reuse
-- File-based discovery via `%appdata%\revit-ballet\`:
-  - `runtime\documents` — CSV: `DocumentTitle,DocumentPath,SessionId,Port,Hostname,ProcessId,RegisteredAt,LastHeartbeat,LastSync`
-  - `runtime\network\token` — shared auth token
+- Port range 23717-23817 (first available); shared 256-bit token across all sessions (`runtime\network\token`, header `X-Auth-Token`)
+- Discovery: `runtime\documents` CSV (`DocumentTitle,DocumentPath,SessionId,Port,Hostname,ProcessId,RegisteredAt,LastHeartbeat,LastSync`)
 
-**Endpoints:**
-- `/roslyn` — execute C# scripts in Revit context
-- `/screenshot` — capture Revit window to `%appdata%\revit-ballet\screenshots\`
+**Endpoints:** `GET /v1/info` (Revit year, engines, `ui.responsive`, `ui.modalDialog`), `POST /v1/jobs` (`{engine, code, timeoutMs, session, wait}`), `GET /v1/jobs/{id}?wait=ms`, `GET /v1/jobs/{id}/events` (SSE), `DELETE /v1/jobs/{id}` (cancel), `GET /v1/sessions`, `DELETE /v1/sessions/{engine}/{name}`; legacy `POST /roslyn` (raw C# body, old `{Success,Output,Error,Diagnostics,ProcessingLog}` response), `/screenshot`, `/query/*`.
 
-**Implementation:** `commands/RevitBallet.cs` initializes server; background thread marshals to UI via `ExternalEvent`; heartbeat every 30s, 2min dead-session timeout.
+**Implementation:** jobs queue FIFO; compile on a worker thread, run on the UI thread via `ExternalEvent` (`commands/Agent/AgentHost.cs`). Engine contract: `agents/abstractions`. Heartbeat 30s, 2min dead-session timeout.
 
 ## Querying Revit Sessions
 
-The Roslyn server runs on Windows at `127.0.0.1:PORT`. Access from a remote dev machine requires port forwarding to reach it — see agent private memory for connection patterns specific to this setup.
+The server runs on Windows at `127.0.0.1:PORT`. Access from a remote dev machine requires port forwarding to reach it.
 
-**ASCII only in query files.** Multi-byte UTF-8 (✓, ❌, ⚠) can corrupt `curl --data-binary` transmission (Content-Length mismatch → hung request). Use `OK`, `FAIL`, `WARNING` instead.
+**Bodies are UTF-8 JSON; the legacy `/roslyn` body is raw C#.** (The old "ASCII only" limit is gone: Content-Length is now counted in bytes.)
 
 ### Available Context
 
-Scripts have globals `UIApp`, `UIDoc`, `Doc`. Pre-imported: `System`, `System.Linq`, `System.Collections.Generic`, `Autodesk.Revit.DB`, `Autodesk.Revit.UI`.
+Globals: C# `UIApp`, `UIDoc`, `Doc`, `Out`, `Cancel`; Python `uiapp`, `uidoc`, `doc`, `out`, `cancel` (aliases `UIApp`, `UIDoc`, `Doc`). Python scripts return a value by setting `result`. C# pre-imports `System`, `System.IO`, `System.Linq`, `System.Collections.Generic`, `Autodesk.Revit.DB`, `Autodesk.Revit.UI`, `RevitBallet.Commands`. Python can `from Autodesk.Revit.DB import *` directly.
 
-**Response format:** `{ Success, Output, Error, Diagnostics, ProcessingLog }`. `ProcessingLog` is a timestamped trace of compile/execute stages — check it when a query fails or hangs.
+**Job result:** `{state, ok, output, value:{type,json,text}, error:{kind,message,stack}, diagnostics[{severity,id,line,column,message}], timings}`. Error kinds: `compile`, `runtime`, `timeout`, `blocked_by_dialog`, `cancelled`, `engine`, `internal`.
 
-**Script timeout:** 30 seconds. Timeouts return `Success: false` with an explanatory `Error` and the timeout marker in `ProcessingLog`.
+**Timeouts:** default 30 s of run time (`timeoutMs`, max 600000). A script stuck in a modal dialog reports `blocked_by_dialog` with the dialog title. Scripts can be stopped cooperatively through `Cancel` / `cancel.is_set()`; Python engines also stop hot loops.
 
 ## Error Handling
 
-Compile errors return `Success: false` with `Diagnostics` (e.g. `(1,23): error CS1002: ; expected`). Runtime errors return `Success: false` with the exception string in `Error` plus any output written before the throw. Server continues listening after errors.
+Compile errors give `state: failed`, `error.kind: compile` and positioned `diagnostics`. Runtime errors give `error.kind: runtime` with the message, a stack/traceback and any output written before the throw. The server keeps listening after errors. The legacy `/roslyn` shim reports the same in the old shape.
 
 ## Revit .NET API Best Practices
 
@@ -243,13 +237,13 @@ Summary:
 
 ## VM Testing / CI
 
-End-to-end tests run against an offline Windows+Revit VM: `tests/vm/ci.sh` (overlay of a read-only baseline image, installs the built installer, runs `/roslyn` checks per Revit year). Supported Revit: 2020-2026. Full description: `docs/vm-testing.md`.
+End-to-end tests run against an offline Windows+Revit VM: `tests/vm/ci.sh` (overlay of a read-only baseline image, installs the built installer, runs engine and `/v1` checks per Revit year). Supported Revit: 2020-2026. Full description: `docs/vm-testing.md`.
 
 ## Key Files
 
 - `commands/commands.csproj` — main plugin project
 - `commands/RevitBallet.cs` — extension application entry point (initializes server)
-- `commands/Server.cs` — auto-started Roslyn server
+- `commands/Server.cs` — auto-started HTTPS server (routing, auth); `commands/Agent/` — job queue and `/v1` API; `agents/` — script engines
 - `commands/PathHelper.cs` — runtime path management
 
 ## Command Registration Policy
