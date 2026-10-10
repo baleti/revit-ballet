@@ -34,7 +34,8 @@ namespace RevitBallet.Commands.Agent
         private static readonly ConcurrentQueue<Job> ready = new ConcurrentQueue<Job>();
         private static ExternalEvent uiEvent;
         private static int counter;
-        private static Job current, stuck;
+        // written by the worker thread, read by HTTP threads (Info): volatile
+        private static volatile Job current, stuck;
         private static Thread worker;
         private static bool initialized;
 
@@ -44,6 +45,7 @@ namespace RevitBallet.Commands.Agent
             if (initialized) return;
             initialized = true;
             ConsoleRouter.Install();
+            AuditLog.Prune();
             engines = EngineLoader.Discover();
             uiEvent = ExternalEvent.Create(new AgentExecHandler());
             worker = new Thread(WorkerLoop) { IsBackground = true, Name = "revit-ballet-agent" };
@@ -53,8 +55,16 @@ namespace RevitBallet.Commands.Agent
 
         // ---------------------------------------------------------------- submit / query
 
-        public static Job Submit(string engine, string code, int timeoutMs, string session)
+        private static readonly Dictionary<string, string> requestIds = new Dictionary<string, string>();   // requestId -> job id
+
+        public static Job Submit(string engine, string code, int timeoutMs, string session, string client = null, string requestId = null)
         {
+            if (!string.IsNullOrEmpty(requestId))
+                lock (stateLock)
+                {
+                    string existing; Job j;
+                    if (requestIds.TryGetValue(requestId, out existing) && jobs.TryGetValue(existing, out j)) return j;   // client retry: same job, not run twice
+                }
             if (string.IsNullOrWhiteSpace(engine)) throw new AgentException(400, "bad_request", "\"engine\" is required");
             if (code == null) throw new AgentException(400, "bad_request", "\"code\" is required");
             if (System.Text.Encoding.UTF8.GetByteCount(code) > MaxCodeBytes) throw new AgentException(413, "too_large", "code exceeds 4 MiB");
@@ -71,16 +81,18 @@ namespace RevitBallet.Commands.Agent
             {
                 Id = "j-" + Interlocked.Increment(ref counter).ToString("D4"),
                 Engine = e.Manifest.Name, SessionName = string.IsNullOrWhiteSpace(session) ? null : session,
-                Code = code, TimeoutMs = timeoutMs,
+                Code = code, TimeoutMs = timeoutMs, Client = client, RequestId = string.IsNullOrEmpty(requestId) ? null : requestId,
             };
             job.Writer = new JobWriter(job);
             lock (stateLock)
             {
                 jobs[job.Id] = job; order.Add(job.Id);
+                if (job.RequestId != null) requestIds[job.RequestId] = job.Id;
                 while (order.Count > MaxJobsKept)
                 {   // drop the oldest finished job
                     var old = order.FirstOrDefault(id => jobs[id].IsFinal);
                     if (old == null) break;
+                    var oldReq = jobs[old].RequestId; if (oldReq != null) requestIds.Remove(oldReq);
                     order.Remove(old); jobs.Remove(old);
                 }
             }
@@ -114,6 +126,7 @@ namespace RevitBallet.Commands.Agent
             {
                 job.AddEvent("state", new JObject { ["state"] = "cancelled" });
                 job.AddEvent("done", job.ToJson());
+                AuditLog.Write(job);
             }
             else if (job.EngineInstance != null && job.Context != null)
             {
@@ -161,12 +174,15 @@ namespace RevitBallet.Commands.Agent
             var fvi = System.Diagnostics.Process.GetCurrentProcess().MainModule.FileVersionInfo;
             var year = 2000 + fvi.FileMajorPart;
             var modal = UiProbe.ModalDialogTitle();
-            Job running; int queued;
+            var responsive = UiProbe.IsResponsive();
+            Job running; int queued; double oldest = 0;
             lock (stateLock)
             {
                 running = jobs.Values.FirstOrDefault(j => j.State == JobState.Running)
                           ?? (stuck != null && !stuck.UiDone.IsSet ? stuck : null);
-                queued = jobs.Values.Count(j => j.State == JobState.Queued || j.State == JobState.Compiling);
+                var waiting = jobs.Values.Where(j => j.State == JobState.Queued || j.State == JobState.Compiling).ToList();
+                queued = waiting.Count;
+                if (waiting.Count > 0) oldest = (DateTime.UtcNow - waiting.Min(j => j.Submitted)).TotalMilliseconds;
             }
             var engArr = new JArray();
             foreach (var name in KnownEngines.Concat(engines.Keys).Distinct(StringComparer.OrdinalIgnoreCase))
@@ -190,8 +206,9 @@ namespace RevitBallet.Commands.Agent
                 ["protocol"] = 1,
                 ["revit"] = new JObject { ["year"] = year, ["version"] = fvi.FileVersion },
                 ["session"] = new JObject { ["id"] = sessionId, ["pid"] = int.Parse(sessionId), ["port"] = port },
-                ["ui"] = new JObject { ["responsive"] = UiProbe.IsResponsive(), ["modalDialog"] = modal },
-                ["queue"] = new JObject { ["queued"] = queued, ["running"] = running?.Id },
+                // idle: nothing running; busy: a job (or other work) is running; modal: a dialog is open; unresponsive: message pump hung
+                ["ui"] = new JObject { ["responsive"] = responsive, ["modalDialog"] = modal, ["state"] = !responsive ? "unresponsive" : modal != null ? "modal" : running != null ? "busy" : "idle" },
+                ["queue"] = new JObject { ["queued"] = queued, ["running"] = running?.Id, ["oldestQueuedMs"] = Math.Round(oldest) },
                 ["engines"] = engArr,
             };
         }
@@ -254,10 +271,12 @@ namespace RevitBallet.Commands.Agent
             uiEvent.Raise();
 
             // wait for the UI thread to pick it up
-            var dispatched = DateTime.UtcNow;
+            var dispatched = DateTime.UtcNow; var lastRaise = dispatched;
             while (!job.UiStarted.Wait(50))
             {
                 if (job.IsFinal) return;   // cancelled
+                // Revit services external events only when it is idle; keep asking (the Idling handler is the second drain path)
+                if ((DateTime.UtcNow - lastRaise).TotalMilliseconds > 1000) { lastRaise = DateTime.UtcNow; try { uiEvent.Raise(); } catch { } }
                 if ((DateTime.UtcNow - dispatched).TotalMilliseconds > job.TimeoutMs)
                 {
                     lock (job.Sync) { if (job.UiStarted.IsSet) break; job.Abandoned = true; }
@@ -292,13 +311,7 @@ namespace RevitBallet.Commands.Agent
             var rr = job.RunResult;
             if (rr == null) { Finish(job, JobState.Failed, "internal", "no result from the engine", null); return; }
             lock (job.Sync) job.Diagnostics.AddRange(rr.Diagnostics);
-            if (rr.Ok)
-            {
-                string type, text; JToken json;
-                ValueConverter.Convert(rr.Value, out type, out json, out text);
-                lock (job.Sync) { job.ValueType = type; job.ValueJson = json; job.ValueText = text; }
-                Finish(job, JobState.Done, null, null, null);
-            }
+            if (rr.Ok) Finish(job, JobState.Done, null, null, null);
             else if (job.CancelRequested || rr.ErrorKind == "cancelled")
                 Finish(job, JobState.Cancelled, "cancelled", rr.ErrorMessage ?? "cancelled", rr.ErrorStack);
             else
@@ -316,10 +329,47 @@ namespace RevitBallet.Commands.Agent
             if (job.SessionObject != null) job.SessionObject.Jobs++;
             job.AddEvent("state", new JObject { ["state"] = Job.StateName(state) });
             job.AddEvent("done", job.ToJson());
+            AuditLog.Write(job);
             RevitBalletServer.LogToRevit($"[AGENT] {job.Id} {job.Engine} -> {Job.StateName(state)}{(kind != null ? " (" + kind + ")" : "")}");
         }
 
         // ---------------------------------------------------------------- UI thread
+
+        /// <summary>Convert the result on the UI thread (Revit objects), then cap it so a huge value cannot bloat memory or the response.</summary>
+        private static void ApplyValue(Job job, EngineRunResult rr)
+        {
+            string type, text; JToken json;
+            try { ValueConverter.Convert(rr.Value, out type, out json, out text); }
+            catch (Exception ex) { type = rr.Value?.GetType().FullName; json = null; text = "<value conversion failed: " + ex.Message + ">"; }
+            bool truncated = false;
+            if (json != null && json.ToString(Newtonsoft.Json.Formatting.None).Length > Job.MaxInline) { json = null; truncated = true; }
+            if (text != null && text.Length > Job.MaxInline) { text = text.Substring(0, Job.MaxInline); truncated = true; }
+            lock (job.Sync) { job.ValueType = type; job.ValueJson = json; job.ValueText = text; job.ValueTruncated = truncated; }
+        }
+
+        // Second drain path: Revit raises Idling when it is idle, which is more dependable than ExternalEvent while Revit is in the
+        // background. Subscribed once at start-up (valid API context); the handler returns at once when nothing is waiting.
+        private static UIControlledApplication idlingApp;
+
+        public static void AttachIdling(UIControlledApplication app)
+        {
+            if (idlingApp != null) return;
+            idlingApp = app; app.Idling += OnIdling;
+        }
+
+        public static void DetachIdling()
+        {
+            if (idlingApp == null) return;
+            try { idlingApp.Idling -= OnIdling; } catch { }
+            idlingApp = null;
+        }
+
+        private static void OnIdling(object sender, Autodesk.Revit.UI.Events.IdlingEventArgs e)
+        {
+            if (!initialized || ready.IsEmpty) return;
+            var uiapp = sender as UIApplication;
+            if (uiapp != null) RunReadyJob(uiapp);
+        }
 
         /// <summary>Runs on the Revit UI thread (external event).</summary>
         internal static void RunReadyJob(UIApplication app)
@@ -349,6 +399,7 @@ namespace RevitBallet.Commands.Agent
                     }
                 }
                 job.RunMs = (DateTime.UtcNow - t0).TotalMilliseconds;
+                if (rr.Ok) ApplyValue(job, rr);
                 job.RunResult = rr;
                 job.UiDone.Set();
                 break;   // one job per tick

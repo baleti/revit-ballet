@@ -17,6 +17,8 @@ namespace RevitBallet.Commands.Agent
         public string Engine;
         public string SessionName;
         public string Code;
+        public string Client;       // X-Agent-Name header, for the audit log
+        public string RequestId;    // optional idempotency key from the client
         public int TimeoutMs = 30000;
 
         public readonly object Sync = new object();
@@ -43,6 +45,12 @@ namespace RevitBallet.Commands.Agent
         public readonly List<EngineDiagnostic> Diagnostics = new List<EngineDiagnostic>();
         public string ErrorKind, ErrorMessage, ErrorStack;
         public JToken ValueJson; public string ValueType, ValueText;
+        public bool ValueTruncated, OutputDropped;
+        public int EventChars; public bool EventsCapped;
+
+        public const int MaxInline = 256 * 1024;        // output / value text returned inside the job object
+        public const int MaxStored = 4 * 1024 * 1024;   // output kept in memory (served by GET /v1/jobs/{id}/output)
+        public const int MaxEventChars = 1024 * 1024;   // streamed over SSE
 
         // server-sent events: each entry is "event: name\ndata: json\n\n"
         public readonly List<string> Events = new List<string>();
@@ -66,11 +74,25 @@ namespace RevitBallet.Commands.Agent
 
         public static string StateName(JobState s) => s.ToString().ToLowerInvariant();
 
-        public JObject ToJson()
+        /// <summary>The text of the output between offset and offset+limit (for GET /v1/jobs/{id}/output).</summary>
+        public string OutputSlice(int offset, int limit, out int total)
+        {
+            lock (Output)
+            {
+                total = Output.Length;
+                if (offset < 0) offset = 0;
+                if (offset >= total) return "";
+                return Output.ToString(offset, Math.Min(Math.Max(limit, 0), total - offset));
+            }
+        }
+
+        /// <param name="full">true for the audit log: whole stored output and the code.</param>
+        public JObject ToJson(bool full = false)
         {
             lock (Sync)
             {
-                string output; lock (Output) output = Output.ToString();
+                string output; int outputLength;
+                lock (Output) { outputLength = Output.Length; output = full || outputLength <= MaxInline ? Output.ToString() : Output.ToString(0, MaxInline); }
                 var j = new JObject
                 {
                     ["id"] = Id,
@@ -81,8 +103,11 @@ namespace RevitBallet.Commands.Agent
                     ["submitted"] = Submitted.ToString("o"),
                     ["started"] = Started?.ToString("o"),
                     ["finished"] = Finished?.ToString("o"),
+                    ["client"] = Client,
                     ["output"] = output,
-                    ["value"] = ValueType == null ? null : new JObject { ["type"] = ValueType, ["json"] = ValueJson, ["text"] = ValueText },
+                    ["outputTruncated"] = outputLength > output.Length || OutputDropped,
+                    ["outputLength"] = outputLength,
+                    ["value"] = ValueType == null ? null : new JObject { ["type"] = ValueType, ["json"] = ValueJson, ["text"] = ValueText, ["truncated"] = ValueTruncated },
                     ["error"] = ErrorKind == null ? null : new JObject { ["kind"] = ErrorKind, ["message"] = ErrorMessage, ["stack"] = ErrorStack },
                     ["timings"] = new JObject { ["queueMs"] = Math.Round(QueueMs), ["compileMs"] = Math.Round(CompileMs), ["runMs"] = Math.Round(RunMs) },
                 };
@@ -90,6 +115,7 @@ namespace RevitBallet.Commands.Agent
                 foreach (var d in Diagnostics)
                     diags.Add(new JObject { ["severity"] = d.Severity, ["id"] = d.Id, ["line"] = d.Line, ["column"] = d.Column, ["message"] = d.Message });
                 j["diagnostics"] = diags;
+                if (full) { j["code"] = Code; j["requestId"] = RequestId; }
                 return j;
             }
         }
@@ -108,8 +134,24 @@ namespace RevitBallet.Commands.Agent
 
         private void Emit(string text)
         {
-            lock (job.Output) job.Output.Append(text);
-            job.AddEvent("output", new JObject { ["text"] = text });
+            lock (job.Output)
+            {
+                int room = Job.MaxStored - job.Output.Length;
+                if (room <= 0) { job.OutputDropped = true; return; }
+                if (text.Length > room) { text = text.Substring(0, room); job.OutputDropped = true; }
+                job.Output.Append(text);
+            }
+            // SSE: stream only the first MaxEventChars; a client that wants more reads /output
+            if (job.EventChars < Job.MaxEventChars)
+            {
+                job.EventChars += text.Length;
+                job.AddEvent("output", new JObject { ["text"] = text });
+            }
+            else if (!job.EventsCapped)
+            {
+                job.EventsCapped = true;
+                job.AddEvent("output", new JObject { ["text"] = "\n[output stream truncated here; the rest is available at GET /v1/jobs/" + job.Id + "/output]\n" });
+            }
         }
     }
 

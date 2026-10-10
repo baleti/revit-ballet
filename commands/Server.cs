@@ -758,6 +758,15 @@ namespace RevitBallet.Commands
             }
         }
 
+        /// <summary>X-Agent-Name: who is calling, recorded in the audit log. Printable ASCII only, 64 chars at most.</summary>
+        private static string ClientName(Dictionary<string, string> headers)
+        {
+            string v;
+            if (!headers.TryGetValue("X-Agent-Name", out v) || string.IsNullOrWhiteSpace(v)) return null;
+            var clean = new string(v.Where(c => c >= 32 && c < 127).ToArray()).Trim();
+            return clean.Length == 0 ? null : (clean.Length > 64 ? clean.Substring(0, 64) : clean);
+        }
+
         private async Task HandleHttpRequest(Stream stream, string connId, CancellationToken cancellationToken)
         {
             try
@@ -838,6 +847,28 @@ namespace RevitBallet.Commands
                         LogToRevit($"[CONN-{connId}] No Content-Length header (body empty or chunked transfer)");
                     }
 
+                    // Loopback hardening: a web page must never be able to talk to this server (CSRF / DNS rebinding).
+                    // Browsers always send Origin on cross-site requests; the Host header must name this server.
+                    if (IPAddress.IsLoopback(listenAddress))
+                    {
+                        string hostHeader; headers.TryGetValue("Host", out hostHeader);
+                        bool badOrigin = headers.ContainsKey("Origin");
+                        bool badHost = !string.IsNullOrEmpty(hostHeader) &&
+                            !(hostHeader.Equals("127.0.0.1:" + serverPort, StringComparison.OrdinalIgnoreCase) ||
+                              hostHeader.Equals("localhost:" + serverPort, StringComparison.OrdinalIgnoreCase) ||
+                              hostHeader.Equals("[::1]:" + serverPort, StringComparison.OrdinalIgnoreCase));
+                        if (badOrigin || badHost)
+                        {
+                            LogToRevit($"[CONN-{connId}] Rejected: {(badOrigin ? "Origin header present" : "Host header '" + hostHeader + "'")}");
+                            const string msg = "Forbidden: requests with an Origin header or a foreign Host header are not accepted.";
+                            if (path.StartsWith("/v1/", StringComparison.OrdinalIgnoreCase))
+                                await RevitBallet.Commands.Agent.AgentHttp.Error(stream, 403, "forbidden", msg);
+                            else
+                                await SendHttpResponse(stream, new ScriptResponse { Success = false, Error = msg }, 403, "Forbidden");
+                            return;
+                        }
+                    }
+
                     // Check authentication using shared token
                     string providedToken = null;
                     if (headers.ContainsKey("X-Auth-Token"))
@@ -909,7 +940,7 @@ namespace RevitBallet.Commands
                     // Route request based on path
                     if (path.StartsWith("/v1/", StringComparison.OrdinalIgnoreCase))
                     {
-                        await RevitBallet.Commands.Agent.AgentHttp.Handle(stream, method.ToUpperInvariant(), path, code, connId, sessionId, serverPort);
+                        await RevitBallet.Commands.Agent.AgentHttp.Handle(stream, method.ToUpperInvariant(), path, code, connId, sessionId, serverPort, ClientName(headers));
                     }
                     else if (path.StartsWith("/roslyn", StringComparison.OrdinalIgnoreCase))
                     {
