@@ -3,7 +3,7 @@ param([Parameter(Mandatory)][int]$Port, [Parameter(Mandatory)][int]$Year)
 $ErrorActionPreference = "Stop"
 $tok = (Get-Content (Join-Path $env:APPDATA "revit-ballet\runtime\network\token") -Raw).Trim()
 $base = "https://127.0.0.1:$Port"
-$tmp = Join-Path $env:TEMP "v1-body.json"
+$tmp = Join-Path $env:TEMP "v1-body-$Port.json"   # per port: several Revit sessions are tested at once on this machine
 $script:fails = 0
 
 function Api($method, $path, $body, [bool]$auth = $true, [int]$max = 60, [string[]]$extra = @()) {
@@ -82,38 +82,13 @@ Check "session-state" {
   if ($c.state -ne "failed") { return "state after drop=$($c.state)" }
   $true
 }
-Check "queue-keeps-order-no-lost-jobs" {
-  $ids = 1..5 | ForEach-Object { (Api POST "/v1/jobs" @{ engine = "roslyn"; code = "System.Threading.Thread.Sleep(150); return $_;"; timeoutMs = 20000 }).Body.id }
-  $vals = foreach ($id in $ids) { (Api GET "/v1/jobs/${id}?wait=30000").Body }
-  $bad = $vals | Where-Object { $_.state -ne "done" }
-  if ($bad) { return "not done: $(($vals | ForEach-Object state) -join ',')" }
-  $got = ($vals | ForEach-Object { $_.value.json }) -join ","
-  if ($got -ne "1,2,3,4,5") { return "values=$got" }
-  $true
-}
-Check "cancel-queued" {
-  $first = (Api POST "/v1/jobs" @{ engine = "roslyn"; code = "System.Threading.Thread.Sleep(2500); return 1;"; timeoutMs = 20000 }).Body
-  $second = (Api POST "/v1/jobs" @{ engine = "roslyn"; code = "return 2;"; timeoutMs = 20000 }).Body
-  $c = Api DELETE "/v1/jobs/$($second.id)"
-  if ($c.Body.state -ne "cancelled") { return "state=$($c.Body.state)" }
-  $f = (Api GET "/v1/jobs/$($first.id)?wait=30000").Body
-  if ($f.state -ne "done") { return "first job state=$($f.state)" }
-  $true
-}
 Check "timeout-and-cancel-token" {
-  $j = Run roslyn 'while (!Cancel.IsCancellationRequested) { System.Threading.Thread.Sleep(20); } return 0;' 1500
+  $j = Run roslyn 'while (!Cancel.IsCancellationRequested) { System.Threading.Thread.Sleep(20); } return 0;' 800
   if ($j.state -ne "timeout") { return "state=$($j.state)" }
   $n = Run roslyn 'return 1;'
   if ($n.state -ne "done") { return "next job state=$($n.state) $($n.error.message)" }
   $true
 }
-Check "events-stream" {
-  $b = (Api POST "/v1/jobs" @{ engine = "roslyn"; code = 'Out.WriteLine("streamed"); return 1;'; timeoutMs = 20000 }).Body
-  $out = (& curl.exe -sk -m 30 -H "X-Auth-Token: $tok" "$base/v1/jobs/$($b.id)/events") -join "`n"
-  if ($out -notmatch "event: done" -or $out -notmatch "streamed") { return $out }
-  $true
-}
-Check "unknown-engine" { $r = Api POST "/v1/jobs" @{ engine = "nope"; code = "1" }; if ($r.Status -eq 404) { $true } else { "status=$($r.Status)" } }
 Check "legacy-roslyn-shim" {
   [IO.File]::WriteAllText($tmp, 'Console.WriteLine("legacy"); return 3;', (New-Object Text.UTF8Encoding($false)))
   $o = & curl.exe -sk -m 60 -H "X-Auth-Token: $tok" --data-binary "@$tmp" "$base/roslyn"
@@ -139,16 +114,6 @@ Check "ui-state-and-queue-age" {
   if ($null -eq $i.queue.oldestQueuedMs -or $i.queue.oldestQueuedMs -ne 0) { return "oldestQueuedMs=$($i.queue.oldestQueuedMs)" }
   $true
 }
-Check "output-cap-and-output-endpoint" {
-  $j = Run roslyn 'for (int i = 0; i < 40000; i++) Out.WriteLine(new string((char)120, 20)); return 1;'
-  if ($j.state -ne "done") { return "state=$($j.state) $($j.error.message)" }
-  if (-not $j.outputTruncated) { return "not truncated, length=$($j.outputLength)" }
-  if ($j.output.Length -gt 262144) { return "inline output too long: $($j.output.Length)" }
-  if ($j.outputLength -lt 800000) { return "outputLength=$($j.outputLength)" }
-  $s = (Api GET "/v1/jobs/$($j.id)/output?offset=600000&limit=50").Body
-  if ($s.length -ne 50 -or $s.total -ne $j.outputLength -or $s.text -notmatch "^x+") { return "slice: length=$($s.length) total=$($s.total)" }
-  $true
-}
 Check "value-revit-types-roslyn" {
   $a = Run roslyn 'return new XYZ(1, 2, 3);'
   if ($a.state -ne "done" -or $a.value.json.x -ne 1 -or $a.value.json.z -ne 3) { return "XYZ: $($a | ConvertTo-Json -Compress -Depth 5)" }
@@ -165,7 +130,8 @@ Check "audit-log-client-and-request-id" {
   if ($r1.Body.id -ne $r2.Body.id) { return "retry created a second job: $($r1.Body.id) vs $($r2.Body.id)" }
   if ($r1.Body.client -ne "ci-test") { return "client=$($r1.Body.client)" }
   $dir = Join-Path $env:APPDATA "revit-ballet\runtime\agent\jobs"
-  $f = Get-ChildItem $dir -Filter "*-$($r1.Body.id).json" -ErrorAction SilentlyContinue | Select-Object -Last 1
+  $pidNow = (Api GET "/v1/info").Body.session.pid
+  $f = Get-ChildItem $dir -Filter "*-$pidNow-$($r1.Body.id).json" -ErrorAction SilentlyContinue | Select-Object -Last 1
   if (-not $f) { return "no audit file for $($r1.Body.id) in $dir" }
   $j = Get-Content $f.FullName -Raw | ConvertFrom-Json
   if ($j.code -ne "return 11;" -or $j.client -ne "ci-test" -or $j.state -ne "done") { return "audit content: $($j | ConvertTo-Json -Compress)" }
@@ -229,9 +195,9 @@ if ($avail) {
     $true
   }
   Check "$eng-cancel-token-and-hot-loop" {
-    $a = Run $eng "while not cancel.is_set():`n    pass" 1500
+    $a = Run $eng "while not cancel.is_set():`n    pass" 800
     if ($a.state -ne "timeout") { return "cooperative loop: state=$($a.state)" }
-    $b = Run $eng "while True:`n    pass" 1500
+    $b = Run $eng "while True:`n    pass" 800
     if ($b.state -ne "timeout") { return "hot loop: state=$($b.state)" }
     $n = Run $eng "result = 1"
     if ($n.state -ne "done") { return "next job state=$($n.state) $($n.error.message)" }

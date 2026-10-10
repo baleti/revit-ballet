@@ -13,26 +13,27 @@ namespace RevitBallet.Commands.Agent
     {
         private const int MaxDays = 14;
         private const long MaxBytes = 200L * 1024 * 1024;
-        private static string Dir { get { return PathHelper.EnsureRuntimeSubdirectoryExists(Path.Combine("agent", "jobs")); } }
-
-        public static void Write(Job job)
+        public static void Write(Job job, string dir)
         {
+            if (string.IsNullOrEmpty(dir)) return;
             try
             {
+                Directory.CreateDirectory(dir);
                 var pid = System.Diagnostics.Process.GetCurrentProcess().Id;
                 var j = job.ToJson(full: true);
                 j["pid"] = pid;
                 var name = $"{job.Submitted:yyyyMMdd-HHmmss}-{pid}-{job.Id}.json";
-                File.WriteAllText(Path.Combine(Dir, name), j.ToString(Newtonsoft.Json.Formatting.Indented));
+                File.WriteAllText(Path.Combine(dir, name), j.ToString(Newtonsoft.Json.Formatting.Indented));
             }
-            catch (Exception ex) { RevitBalletServer.LogToRevit("[AGENT] audit log write failed: " + ex.Message); }
+            catch (Exception ex) { AgentLog.Write("[AGENT] audit log write failed: " + ex.Message); }
         }
 
-        public static void Prune()
+        public static void Prune(string dir)
         {
+            if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir)) return;
             try
             {
-                var files = new DirectoryInfo(Dir).GetFiles("*.json").OrderBy(f => f.LastWriteTimeUtc).ToList();
+                var files = new DirectoryInfo(dir).GetFiles("*.json").OrderBy(f => f.LastWriteTimeUtc).ToList();
                 var cutoff = DateTime.UtcNow.AddDays(-MaxDays);
                 foreach (var f in files.Where(f => f.LastWriteTimeUtc < cutoff).ToList()) { try { f.Delete(); files.Remove(f); } catch { } }
                 long total = files.Sum(f => f.Length);

@@ -3,7 +3,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using Autodesk.Revit.UI;
 using Newtonsoft.Json.Linq;
 using RevitBallet.Agents;
 
@@ -16,48 +15,61 @@ namespace RevitBallet.Commands.Agent
     }
 
     /// <summary>
-    /// The agent host: job queue, worker thread, engines and sessions. Protocol: docs/agent-protocol.md.
+    /// The agent core: job queue, worker thread, engines and sessions. Protocol: docs/agent-protocol.md. No Revit types in here: the UI thread, the
+    /// engines and facts about the process come in through <see cref="IUiBridge"/>, <see cref="IEngineSource"/> and <see cref="IAgentEnvironment"/>,
+    /// so the whole queue/timeout/cancel logic can be tested without Revit (tests/host).
     /// Pipeline per job: worker thread compiles, the UI thread (Revit external event) runs, the worker watches timeouts. One job at a time,
     /// strictly in submission order, so named sessions see their own state in order.
     /// </summary>
-    internal static class AgentHost
+    internal sealed class AgentCore
     {
         public static readonly string[] KnownEngines = { "roslyn", "ironpython2", "cpython3" };
         private const int MaxJobsKept = 100, MaxTimeoutMs = 600000, MaxCodeBytes = 4 * 1024 * 1024;
 
-        private static Dictionary<string, EngineEntry> engines = new Dictionary<string, EngineEntry>();
-        private static readonly object stateLock = new object();
-        private static readonly Dictionary<string, Job> jobs = new Dictionary<string, Job>();
-        private static readonly List<string> order = new List<string>();
-        private static readonly Dictionary<string, EngineSession> sessions = new Dictionary<string, EngineSession>(StringComparer.OrdinalIgnoreCase);
-        private static readonly BlockingCollection<Job> queue = new BlockingCollection<Job>();
-        private static readonly ConcurrentQueue<Job> ready = new ConcurrentQueue<Job>();
-        private static ExternalEvent uiEvent;
-        private static int counter;
+        private readonly IUiBridge ui;
+        private readonly IAgentEnvironment env;
+        private readonly IEngineSource source;
+        private IDictionary<string, EngineEntry> engines { get { return source.Engines; } }
+        private readonly object stateLock = new object();
+        private readonly Dictionary<string, Job> jobs = new Dictionary<string, Job>();
+        private readonly List<string> order = new List<string>();
+        private readonly Dictionary<string, EngineSession> sessions = new Dictionary<string, EngineSession>(StringComparer.OrdinalIgnoreCase);
+        private readonly BlockingCollection<Job> queue = new BlockingCollection<Job>();
+        private readonly ConcurrentQueue<Job> ready = new ConcurrentQueue<Job>();
+        private int counter;
         // written by the worker thread, read by HTTP threads (Info): volatile
-        private static volatile Job current, stuck;
-        private static Thread worker;
-        private static bool initialized;
+        private volatile Job current, stuck;
+        private Thread worker;
+        private volatile bool initialized;
 
-        /// <summary>Must be called from a Revit API context (ExternalEvent.Create requirement).</summary>
-        public static void Initialize()
+        public AgentCore(IUiBridge ui, IAgentEnvironment env, IEngineSource source)
+        {
+            this.ui = ui; this.env = env; this.source = source;
+        }
+
+        /// <summary>Stops accepting jobs and lets the worker thread end (tests; the add-in never stops it).</summary>
+        public void Stop() { queue.CompleteAdding(); }
+
+        /// <summary>True when a compiled job is waiting for the UI thread.</summary>
+        public bool HasReadyJob { get { return !ready.IsEmpty; } }
+
+        /// <summary>Starts the worker thread. Call once.</summary>
+        public void Start()
         {
             if (initialized) return;
             initialized = true;
             ConsoleRouter.Install();
-            AuditLog.Prune();
-            engines = EngineLoader.Discover();
-            uiEvent = ExternalEvent.Create(new AgentExecHandler());
+            AuditLog.Prune(env.AuditDirectory);
             worker = new Thread(WorkerLoop) { IsBackground = true, Name = "revit-ballet-agent" };
             worker.Start();
-            RevitBalletServer.LogToRevit($"[AGENT] ready, engines: {(engines.Count == 0 ? "none installed" : string.Join(", ", engines.Keys))}");
+            AgentLog.Write($"[AGENT] ready, engines: {(engines.Count == 0 ? "none installed" : string.Join(", ", engines.Keys))}");
         }
 
         // ---------------------------------------------------------------- submit / query
 
-        private static readonly Dictionary<string, string> requestIds = new Dictionary<string, string>();   // requestId -> job id
+        private readonly Dictionary<string, string> requestIds = new Dictionary<string, string>();   // requestId -> job id
 
-        public static Job Submit(string engine, string code, int timeoutMs, string session, string client = null, string requestId = null)
+        public Job Submit(string engine, string code, int timeoutMs, string session, string client = null, string requestId = null)
         {
             if (!string.IsNullOrEmpty(requestId))
                 lock (stateLock)
@@ -100,15 +112,15 @@ namespace RevitBallet.Commands.Agent
             return job;
         }
 
-        public static Job Get(string id) { lock (stateLock) { Job j; return jobs.TryGetValue(id, out j) ? j : null; } }
-        public static List<Job> List() { lock (stateLock) return order.Select(id => jobs[id]).ToList(); }
+        public Job Get(string id) { lock (stateLock) { Job j; return jobs.TryGetValue(id, out j) ? j : null; } }
+        public List<Job> List() { lock (stateLock) return order.Select(id => jobs[id]).ToList(); }
 
-        public static bool WaitFinal(Job job, int waitMs)
+        public bool WaitFinal(Job job, int waitMs)
         {
             return waitMs <= 0 ? job.Done.IsSet : job.Done.Wait(Math.Min(waitMs, MaxTimeoutMs));
         }
 
-        public static void Cancel(Job job)
+        public void Cancel(Job job)
         {
             lock (job.Sync)
             {
@@ -126,21 +138,21 @@ namespace RevitBallet.Commands.Agent
             {
                 job.AddEvent("state", new JObject { ["state"] = "cancelled" });
                 job.AddEvent("done", job.ToJson());
-                AuditLog.Write(job);
+                AuditLog.Write(job, env.AuditDirectory);
             }
             else if (job.EngineInstance != null && job.Context != null)
             {
-                try { job.EngineInstance.Abort(job.Context); } catch (Exception ex) { RevitBalletServer.LogToRevit("[AGENT] abort failed: " + ex.Message); }
+                try { job.EngineInstance.Abort(job.Context); } catch (Exception ex) { AgentLog.Write("[AGENT] abort failed: " + ex.Message); }
             }
         }
 
         // ---------------------------------------------------------------- sessions
 
-        public static List<EngineSession> ListSessions() { lock (stateLock) return sessions.Values.ToList(); }
+        public List<EngineSession> ListSessions() { lock (stateLock) return sessions.Values.ToList(); }
 
         private static string SessionKey(string engine, string name) => engine + "/" + name;
 
-        private static EngineSession GetSession(Job job)
+        private EngineSession GetSession(Job job)
         {
             if (job.SessionName == null) return new EngineSession();
             lock (stateLock)
@@ -152,7 +164,7 @@ namespace RevitBallet.Commands.Agent
             }
         }
 
-        public static bool DropSession(string engine, string name)
+        public bool DropSession(string engine, string name)
         {
             EngineSession s;
             lock (stateLock)
@@ -168,13 +180,10 @@ namespace RevitBallet.Commands.Agent
 
         // ---------------------------------------------------------------- info
 
-        public static JObject Info(string sessionId, int port)
+        public JObject Info(string sessionId, int port)
         {
-            // From the Revit executable itself: independent of when the UIApplication becomes available. 24.x.y.z = Revit 2024.
-            var fvi = System.Diagnostics.Process.GetCurrentProcess().MainModule.FileVersionInfo;
-            var year = 2000 + fvi.FileMajorPart;
-            var modal = UiProbe.ModalDialogTitle();
-            var responsive = UiProbe.IsResponsive();
+            var modal = env.ModalDialogTitle;
+            var responsive = env.UiResponsive;
             Job running; int queued; double oldest = 0;
             lock (stateLock)
             {
@@ -204,8 +213,8 @@ namespace RevitBallet.Commands.Agent
             return new JObject
             {
                 ["protocol"] = 1,
-                ["revit"] = new JObject { ["year"] = year, ["version"] = fvi.FileVersion },
-                ["session"] = new JObject { ["id"] = sessionId, ["pid"] = int.Parse(sessionId), ["port"] = port },
+                ["revit"] = new JObject { ["year"] = env.RevitYear, ["version"] = env.RevitVersion },
+                ["session"] = new JObject { ["id"] = sessionId, ["pid"] = int.TryParse(sessionId, out var pid) ? pid : 0, ["port"] = port },
                 // idle: nothing running; busy: a job (or other work) is running; modal: a dialog is open; unresponsive: message pump hung
                 ["ui"] = new JObject { ["responsive"] = responsive, ["modalDialog"] = modal, ["state"] = !responsive ? "unresponsive" : modal != null ? "modal" : running != null ? "busy" : "idle" },
                 ["queue"] = new JObject { ["queued"] = queued, ["running"] = running?.Id, ["oldestQueuedMs"] = Math.Round(oldest) },
@@ -215,20 +224,20 @@ namespace RevitBallet.Commands.Agent
 
         // ---------------------------------------------------------------- worker (compile, dispatch, watch)
 
-        private static void WorkerLoop()
+        private void WorkerLoop()
         {
             foreach (var job in queue.GetConsumingEnumerable())
             {
                 try { Process(job); }
                 catch (Exception ex)
                 {
-                    RevitBalletServer.LogToRevit("[AGENT] internal error: " + ex);
+                    AgentLog.Write("[AGENT] internal error: " + ex);
                     Finish(job, JobState.Failed, "internal", ex.Message, ex.StackTrace);
                 }
             }
         }
 
-        private static void Process(Job job)
+        private void Process(Job job)
         {
             lock (job.Sync) { if (job.IsFinal) return; }
             // a previous job that timed out may still occupy the UI thread: keep this one queued until it is free
@@ -241,7 +250,7 @@ namespace RevitBallet.Commands.Agent
             lock (job.Sync) { if (job.IsFinal) return; }
 
             var entry = engines[job.Engine];
-            var engine = EngineLoader.Load(entry);
+            var engine = source.Load(entry);
             if (engine == null) { Finish(job, JobState.Failed, "engine", $"engine '{job.Engine}' failed to load: {entry.LoadError}", null); return; }
             job.EngineInstance = engine;
             current = job;
@@ -268,7 +277,7 @@ namespace RevitBallet.Commands.Agent
             job.SessionObject = session;
             job.SetState(JobState.Queued);   // compiled, waiting for the UI thread
             ready.Enqueue(job);
-            uiEvent.Raise();
+            ui.RaiseDrain();
 
             // wait for the UI thread to pick it up
             var dispatched = DateTime.UtcNow; var lastRaise = dispatched;
@@ -276,11 +285,11 @@ namespace RevitBallet.Commands.Agent
             {
                 if (job.IsFinal) return;   // cancelled
                 // Revit services external events only when it is idle; keep asking (the Idling handler is the second drain path)
-                if ((DateTime.UtcNow - lastRaise).TotalMilliseconds > 1000) { lastRaise = DateTime.UtcNow; try { uiEvent.Raise(); } catch { } }
+                if ((DateTime.UtcNow - lastRaise).TotalMilliseconds > 1000) { lastRaise = DateTime.UtcNow; try { ui.RaiseDrain(); } catch { } }
                 if ((DateTime.UtcNow - dispatched).TotalMilliseconds > job.TimeoutMs)
                 {
                     lock (job.Sync) { if (job.UiStarted.IsSet) break; job.Abandoned = true; }
-                    var modal = UiProbe.ModalDialogTitle();
+                    var modal = env.ModalDialogTitle;
                     if (modal != null) Finish(job, JobState.Timeout, "blocked_by_dialog", $"Revit is blocked by the open dialog '{modal}'; the script never started", null);
                     else Finish(job, JobState.Timeout, "timeout", $"the UI thread did not pick up the script within {job.TimeoutMs} ms", null);
                     return;
@@ -296,7 +305,7 @@ namespace RevitBallet.Commands.Agent
                     job.Cts.Cancel();
                     try { engine.Abort(job.Context); } catch { }
                     stuck = job;
-                    var modal = UiProbe.ModalDialogTitle();
+                    var modal = env.ModalDialogTitle;
                     if (modal != null) Finish(job, JobState.Timeout, "blocked_by_dialog", $"the script is waiting on the open dialog '{modal}'", null);
                     else Finish(job, JobState.Timeout, "timeout", $"the script did not finish within {job.TimeoutMs} ms (cancellation requested)", null);
                     return;
@@ -306,7 +315,7 @@ namespace RevitBallet.Commands.Agent
         }
 
         /// <summary>The UI thread has returned from Run: turn its result into the final job state.</summary>
-        private static void Complete(Job job)
+        private void Complete(Job job)
         {
             var rr = job.RunResult;
             if (rr == null) { Finish(job, JobState.Failed, "internal", "no result from the engine", null); return; }
@@ -318,7 +327,7 @@ namespace RevitBallet.Commands.Agent
                 Finish(job, JobState.Failed, rr.ErrorKind ?? "runtime", rr.ErrorMessage, rr.ErrorStack);
         }
 
-        private static void Finish(Job job, JobState state, string kind, string message, string stack)
+        private void Finish(Job job, JobState state, string kind, string message, string stack)
         {
             lock (job.Sync)
             {
@@ -332,50 +341,25 @@ namespace RevitBallet.Commands.Agent
             if (job.SessionObject != null) job.SessionObject.Jobs++;
             job.AddEvent("state", new JObject { ["state"] = Job.StateName(state) });
             job.AddEvent("done", job.ToJson());
-            AuditLog.Write(job);
-            RevitBalletServer.LogToRevit($"[AGENT] {job.Id} {job.Engine} -> {Job.StateName(state)}{(kind != null ? " (" + kind + ")" : "")}");
+            AuditLog.Write(job, env.AuditDirectory);
+            AgentLog.Write($"[AGENT] {job.Id} {job.Engine} -> {Job.StateName(state)}{(kind != null ? " (" + kind + ")" : "")}");
         }
 
         // ---------------------------------------------------------------- UI thread
 
         /// <summary>Convert the result on the UI thread (Revit objects), then cap it so a huge value cannot bloat memory or the response.</summary>
-        private static void ApplyValue(Job job, EngineRunResult rr)
+        private void ApplyValue(Job job, EngineRunResult rr)
         {
-            string type, text; JToken json;
-            try { ValueConverter.Convert(rr.Value, out type, out json, out text); }
-            catch (Exception ex) { type = rr.Value?.GetType().FullName; json = null; text = "<value conversion failed: " + ex.Message + ">"; }
-            bool truncated = false;
+            string type, text; JToken json; bool truncated;
+            try { ValueConverter.Convert(rr.Value, out type, out json, out text, out truncated); }
+            catch (Exception ex) { type = rr.Value?.GetType().FullName; json = null; text = "<value conversion failed: " + ex.Message + ">"; truncated = false; }
             if (json != null && json.ToString(Newtonsoft.Json.Formatting.None).Length > Job.MaxInline) { json = null; truncated = true; }
             if (text != null && text.Length > Job.MaxInline) { text = text.Substring(0, Job.MaxInline); truncated = true; }
             lock (job.Sync) { job.ValueType = type; job.ValueJson = json; job.ValueText = text; job.ValueTruncated = truncated; }
         }
 
-        // Second drain path: Revit raises Idling when it is idle, which is more dependable than ExternalEvent while Revit is in the
-        // background. Subscribed once at start-up (valid API context); the handler returns at once when nothing is waiting.
-        private static UIControlledApplication idlingApp;
-
-        public static void AttachIdling(UIControlledApplication app)
-        {
-            if (idlingApp != null) return;
-            idlingApp = app; app.Idling += OnIdling;
-        }
-
-        public static void DetachIdling()
-        {
-            if (idlingApp == null) return;
-            try { idlingApp.Idling -= OnIdling; } catch { }
-            idlingApp = null;
-        }
-
-        private static void OnIdling(object sender, Autodesk.Revit.UI.Events.IdlingEventArgs e)
-        {
-            if (!initialized || ready.IsEmpty) return;
-            var uiapp = sender as UIApplication;
-            if (uiapp != null) RunReadyJob(uiapp);
-        }
-
-        /// <summary>Runs on the Revit UI thread (external event).</summary>
-        internal static void RunReadyJob(UIApplication app)
+        /// <summary>Runs on the UI thread (in Revit: from the external event or the Idling handler). One job per call.</summary>
+        public void RunReadyJob(object uiApp, object uiDoc, object doc)
         {
             Job job;
             while (ready.TryDequeue(out job))
@@ -388,9 +372,8 @@ namespace RevitBallet.Commands.Agent
                 job.AddEvent("state", new JObject { ["state"] = "running" });
                 job.UiStarted.Set();
 
-                var uidoc = app.ActiveUIDocument;
                 var ctx = job.Context;
-                ctx.UIApp = app; ctx.UIDoc = uidoc; ctx.Doc = uidoc?.Document;
+                ctx.UIApp = uiApp; ctx.UIDoc = uiDoc; ctx.Doc = doc;
                 var t0 = DateTime.UtcNow;
                 EngineRunResult rr;
                 using (ConsoleRouter.Scope(job.Writer))
@@ -407,13 +390,7 @@ namespace RevitBallet.Commands.Agent
                 job.UiDone.Set();
                 break;   // one job per tick
             }
-            if (!ready.IsEmpty) uiEvent.Raise();
+            if (!ready.IsEmpty) ui.RaiseDrain();
         }
-    }
-
-    internal sealed class AgentExecHandler : IExternalEventHandler
-    {
-        public void Execute(UIApplication app) { AgentHost.RunReadyJob(app); }
-        public string GetName() => "RevitBalletAgentExecHandler";
     }
 }

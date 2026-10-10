@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <AssemblyName>RevitAPIUI</AssemblyName>
+    <RootNamespace>Autodesk.Revit.UI</RootNamespace>
+    <AssemblyVersion>99.0.0.0</AssemblyVersion>
+    <Nullable>disable</Nullable>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+  </PropertyGroup>
+  <ItemGroup><ProjectReference Include="..\stubs\RevitAPI.csproj" /></ItemGroup>
+</Project>

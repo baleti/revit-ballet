@@ -15,6 +15,8 @@ jobs:
         with:
           dotnet-version: 10.0.x
       - run: dotnet test core/tests
+      - name: Agent host tests (queue, timeouts, cancel, sessions, caps; no Revit needed)
+        run: dotnet test tests/host -c Release
 
   # Compile the commands plugin for every supported Revit year.
   # The Revit API comes from NuGet and EnableWindowsTargeting is set,

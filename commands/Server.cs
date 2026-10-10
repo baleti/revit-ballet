@@ -940,7 +940,7 @@ namespace RevitBallet.Commands
                     // Route request based on path
                     if (path.StartsWith("/v1/", StringComparison.OrdinalIgnoreCase))
                     {
-                        await RevitBallet.Commands.Agent.AgentHttp.Handle(stream, method.ToUpperInvariant(), path, code, connId, sessionId, serverPort, ClientName(headers));
+                        await RevitBallet.Commands.Agent.AgentHttp.Handle(RevitBallet.Commands.Agent.AgentHost.Core, stream, method.ToUpperInvariant(), path, code, connId, sessionId, serverPort, ClientName(headers));
                     }
                     else if (path.StartsWith("/roslyn", StringComparison.OrdinalIgnoreCase))
                     {
