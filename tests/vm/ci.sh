@@ -100,7 +100,7 @@ EOF
 h2 "cat > $RD/start-vm.sh" < "$HERE/start-vm.sh"
 log "booting overlay VM"
 h2 "VM_DIR=$CI_VM_DIR NAME=ci-$ID CID=$CI_CID GPU=$GPU MEM=${CI_MEM:-16G} SMP=${CI_SMP:-8} IMG=runs/$ID/disk.qcow2 bash $RD/start-vm.sh" || { log "VM failed to start"; exit 1; }
-up=0; for i in $(seq 1 60); do h2 "$RD/gssh echo up" 2>/dev/null | grep -q up && { up=1; break; }; sleep 5; done
+up=0; for _ in $(seq 1 60); do h2 "$RD/gssh echo up" 2>/dev/null | grep -q up && { up=1; break; }; sleep 5; done
 [ "$up" = 1 ] || { record "FAIL boot: guest ssh not reachable after 5 min"; exit 1; }
 log "guest is up"
 

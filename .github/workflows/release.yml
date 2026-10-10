@@ -1,0 +1,30 @@
+name: release
+
+# Push a tag such as 0.10.0 to build the installer and create a DRAFT pre-release with installer.exe attached.
+# A draft is deliberate: a person looks at it, then publishes it. (Code signing through SignPath will slot in between build and release;
+# SignPath requires a manual approval for every signing request anyway.)
+on:
+  push:
+    tags: ["[0-9]+.[0-9]+*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Build all years, engines and the installer
+        run: bash Build.sh
+      # - name: Sign with SignPath   (after the SignPath Foundation application is approved)
+      #   uses: signpath/github-action-submit-signing-request@v1
+      - name: Create the draft pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" installer/bin/Release/installer.exe \
+            --draft --prerelease --generate-notes --title "$GITHUB_REF_NAME"

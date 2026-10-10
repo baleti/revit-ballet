@@ -56,3 +56,67 @@ jobs:
         with:
           name: installer
           path: installer/bin/Release/installer.exe
+
+  # The real script engines (Roslyn, IronPython 2, CPython 3) driven without Revit, on Windows so that the bundled CPython runtime loads too.
+  # They run against tiny stand-ins for RevitAPI/RevitAPIUI (tests/engines/stubs).
+  engine-tests:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+      - name: Fetch the bundled CPython
+        shell: pwsh
+        run: ./agents/cpython3/fetch-python.ps1
+      - name: Engine tests
+        run: dotnet test tests/engines -c Release
+
+  # Install, re-install, --engines and uninstall on a plain Windows machine without Revit: the runner gets a faked Revit install
+  # (Revit.exe under Program Files + an Uninstall registry entry), which is all the installer looks for.
+  installer-smoke:
+    needs: installer
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: installer
+          path: installer-artifact
+      - name: Installer smoke test
+        shell: pwsh
+        run: ./tests/ci/installer-smoke.ps1 -Installer installer-artifact/installer.exe -Years 2022,2025
+
+  # Cheap static checks.
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: ShellCheck
+        run: shellcheck -S warning Build.sh tests/vm/*.sh agents/cpython3/fetch-python.sh
+      - name: PSScriptAnalyzer (errors only)
+        shell: pwsh
+        run: |
+          Install-Module PSScriptAnalyzer -Force -Scope CurrentUser
+          $r = Invoke-ScriptAnalyzer -Path tests, agents -Recurse -Severity Error
+          $r | Format-Table -AutoSize RuleName, ScriptName, Line, Message
+          if ($r) { exit 1 }
+
+  # Known-vulnerable packages. Report only for now: some transitive packages of the Revit-era .NET Framework targets are old.
+  vulnerabilities:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: dotnet list package --vulnerable
+        run: |
+          for y in 2020 2026; do
+            dotnet restore commands -p:RevitYear=$y -v q
+            dotnet list commands package --vulnerable --include-transitive 2>&1 | tee vulnerable-$y.txt
+          done
+          ! grep -E 'High|Critical' vulnerable-*.txt
