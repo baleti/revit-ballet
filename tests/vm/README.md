@@ -11,6 +11,7 @@ cp ci.env.example ci.env      # describe your VM host once (git-ignored)
 |---|---|
 | `ci.sh` | orchestrator (runs on the dev machine, drives the VM host over ssh) |
 | `start-vm.sh` | qemu launcher, runs on the VM host (offline, GPU passthrough optional) |
+| `balloon-autoscale.py`, `fetch-balloon-driver.sh` | memory ballooning so several VMs share the host's RAM (docs/vm-testing.md) |
 | `guest/*.ps1` | PowerShell helpers copied into the guest at `C:\ci` |
 | `checks/` | Roslyn scripts + expected output, run inside every Revit year |
 | `guest-setup/` | Windows-side pieces of the baseline image (vsock relay) |

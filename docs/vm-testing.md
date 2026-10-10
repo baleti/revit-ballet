@@ -140,6 +140,27 @@ revit-ballet assembly loaded with a plausible number of commands, application ob
 - **Licences** after hardware changes: if a no-GPU CI run reports licence trouble, use `--gpu` after shutting the
   interactive VM down, which reproduces the baseline's hardware exactly.
 
+## Memory ballooning (several VMs on one host)
+
+The interactive VM and several CI VMs run side by side (QXL console, no GPU for the CI ones), so host RAM is the limit. Each VM gets a
+`virtio-balloon-pci` device (`BALLOON=1` in `start-vm.sh`; `ci.sh` sets it, the host's interactive `start.sh` defaults to it). A host-side
+watcher, `tests/vm/balloon-autoscale.py`, polls the guest's available memory over QMP and moves the balloon target: it hands idle RAM back to
+the host and takes it again when the guest runs short. The guest needs no agent, only the driver and a stats service.
+
+- **One-time, on the VM host:** `tests/vm/fetch-balloon-driver.sh` downloads the virtio-win ISO and extracts the Windows 11 balloon driver
+  (`balloon.inf/.cat/.sys`, `blnsvr.exe`). The guests stay offline: `ci.sh` copies the files in over vsock.
+- **Per CI run (automatic):** boot with the device, copy the driver, `guest/balloon.ps1` runs `pnputil /add-driver /install` (works on the
+  live device, no reboot) and registers the `BalloonService` stats service (`blnsvr.exe -i`), then a watcher starts on the host
+  (`balloon.log` in the run directory). It keeps between a third of `CI_MEM` (at least 2 GB) and the full size, and keeps `CI_BALLOON_FREE_MB`
+  (default 1536) available. It exits when the VM quits. A failure only warns; the VM then keeps its full RAM. `CI_BALLOON=0` disables it.
+- **Interactive VM:** the driver and service are installed in the image once (they only activate when the device exists); run the watcher by
+  hand: `python3 balloon-autoscale.py --socket /tmp/qmp-revit-win.sock --min-free-mb 2048 --min-size-mb 8192 --max-size-mb 32768`.
+- **Measured:** an idle 4 GB guest shrank to 2 GB in about 6 s and the VM's resident memory on the host fell by the same 2 GB; a 1.6 GB
+  allocation in the guest made the balloon deflate back to the cap, and it was reclaimed again afterwards.
+- **Pitfalls:** a q35 machine cannot hot-plug the device, so a VM started without it needs a restart. `-cpu host` (not the balloon device)
+  was what once sent the guest into WinRE. Windows reports memory stats only through `blnsvr`, so without the service the watcher just logs
+  "guest-stats not fresh" and changes nothing.
+
 ## GPU passthrough or not
 
 Measured 2026-10-10 on Revit 2026 with the 38k-element Snowdon Towers sample, same agent benchmark on both (`tests/bench`):
