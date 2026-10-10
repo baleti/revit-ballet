@@ -143,7 +143,7 @@ revit-ballet assembly loaded with a plausible number of commands, application ob
 ## Memory ballooning (several VMs on one host)
 
 The interactive VM and several CI VMs run side by side (QXL console, no GPU for the CI ones), so host RAM is the limit. Each VM gets a
-`virtio-balloon-pci` device (`BALLOON=1` in `start-vm.sh`; `ci.sh` sets it, the host's interactive `start.sh` defaults to it). A host-side
+`virtio-balloon-pci` device (`BALLOON=1` in `start-vm.sh`; `ci.sh` sets it). A host-side
 watcher, `tests/vm/balloon-autoscale.py`, polls the guest's available memory over QMP and moves the balloon target: it hands idle RAM back to
 the host and takes it again when the guest runs short. The guest needs no agent, only the driver and a stats service.
 
