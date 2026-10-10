@@ -55,7 +55,9 @@ function Status($win) {
 
 Get-Process RevitBalletRemote -ErrorAction SilentlyContinue | Stop-Process -Force
 Start-Sleep -Milliseconds 500
-$exe = "C:\ci\remote\RevitBalletRemote.exe"
+# the installed copy (what the Run entry starts at sign-in), else the loose copy deployed by hand
+$exe = Join-Path $env:LOCALAPPDATA "revit-ballet\remote-picker\RevitBalletRemote.exe"
+if (-not (Test-Path $exe)) { $exe = "C:\ci\remote\RevitBalletRemote.exe" }
 Start-Process $exe            # no --show: the picker must come from the hotkey, which is what is under test
 Start-Sleep -Seconds 3
 

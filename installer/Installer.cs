@@ -102,6 +102,15 @@ namespace RevitBalletInstaller
                 }
             }
 
+            // --remote-picker ask|on|off|keep: the optional remote command picker (tray program, hotkey Win+`).
+            //   interactive default: ask (unchecked unless installed); quiet default: keep what is there
+            for (int i = 0; i < args.Length - 1; i++)
+            {
+                RemotePickerMode rp;
+                if (args[i].Equals("--remote-picker", StringComparison.OrdinalIgnoreCase) && Enum.TryParse(args[i + 1].Trim(), true, out rp))
+                    BalletInstaller.RemotePicker = rp;
+            }
+
             // Interactive mode uses UI dialogs; quiet mode (scripts, ssh) prints to the console it was started from.
             if (quietMode) AttachParentConsole();
 
@@ -205,6 +214,7 @@ namespace RevitBalletInstaller
                 }
 
                 if (!PrepareShortcutChoice(quietMode)) return;   // the shortcuts dialog (or --shortcuts-report); false = cancelled or report only
+                PrepareRemotePickerChoice(quietMode);             // the optional remote command picker (opt-in dialog or --remote-picker)
 
                 string targetDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "revit-ballet");
                 Log(2, $"Target dir: {targetDir}");
@@ -227,6 +237,8 @@ namespace RevitBalletInstaller
 
                 Log(2, $"Registering trusted addins...");
                 RegisterTrustedAddins();
+
+                ApplyRemotePicker(quietMode);
 
                 if (!quietMode)
                     ShowSuccessDialog();
@@ -1423,6 +1435,7 @@ namespace RevitBalletInstaller
 
                 RemoveFromRevit();
                 RestoreKeyboardShortcuts();
+                RemotePickerComponent.Remove(m => { if (quietMode) Console.WriteLine(m); });
 
                 string targetDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "revit-ballet");
                 if (Directory.Exists(targetDir))
