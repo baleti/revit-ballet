@@ -60,7 +60,13 @@ namespace RevitBallet.Commands
         private static void StartOrReload(UIApplication app)
         {
             TaskCompletionSource<string> tcs;
-            lock (gate) { tcs = reloadResult; reloadRequested = false; reloadResult = null; }
+            lock (gate)
+            {
+                // Idling and the control event can both fire for one request: only the first one reloads (a second, unrequested reload would
+                // detach the runtime that has just started, under a job that is being submitted to it)
+                if (!reloadRequested && AgentRuntimeRegistry.Current != null) return;
+                tcs = reloadResult; reloadRequested = false; reloadResult = null;
+            }
             var sw = System.Diagnostics.Stopwatch.StartNew();
             try
             {

@@ -18,6 +18,8 @@
 #   IOTHREAD=1     virtio-blk on a dedicated iothread (default on)
 #   SPICE=1        also serve the console over SPICE on a host-only unix socket /tmp/spice-NAME.sock (no guest network involved: the VM stays offline).
 #                  SPICE_MC=1 allows several viewers at once (SPICE_DEBUG_ALLOW_MC: experimental, QEMU calls it crashy; viewers share one console session)
+#   BALLOON=1      add a virtio-balloon device (id balloon0, deflate-on-oom) so balloon-autoscale.py can reclaim idle guest RAM; the Windows driver
+#                  (virtio-win Balloon\\w11\\amd64 + blnsvr.exe service) must be installed in the guest: ci.sh does that per run via guest/balloon.ps1
 #   TOPO=0         1 = guest sees SMT pairs and pin.sh pins vCPU pairs (tested, no gain, default off)
 set -e
 VM_DIR=${VM_DIR:-$(cd "$(dirname "$0")" && pwd)}
@@ -46,6 +48,8 @@ if [ "${GPU:-1}" = 1 ]; then
     GPUFLAGS="-device vfio-pci,host=0000:1d:00.0,multifunction=on -device vfio-pci,host=0000:1d:00.1"
   fi
 fi
+BALLOONFLAGS=""
+[ "${BALLOON:-0}" = 1 ] && BALLOONFLAGS="-device virtio-balloon-pci,id=balloon0,deflate-on-oom=on"
 SPICEFLAGS=""
 if [ "${SPICE:-0}" = 1 ]; then
   SPICEFLAGS="-spice unix=on,addr=/tmp/spice-$NAME.sock,disable-ticketing=on,gl=off"
@@ -56,7 +60,7 @@ qemu-system-x86_64 -name "$NAME" -machine $MACHOPT -nodefaults -display none -en
   -smp $SMPARG -m ${MEM:-32G} -nic none -rtc $RTC $EXTRA -global PIIX4_PM.disable_s3=1 -global ICH9-LPC.disable_s3=1 $SNAPFLAG \
   $DISK -bios /usr/share/ovmf/OVMF.fd \
   -device qxl-vga,vgamem_mb=32 -device vhost-vsock-pci,guest-cid=$CID \
-  $GPUFLAGS $SPICEFLAGS \
+  $GPUFLAGS $SPICEFLAGS $BALLOONFLAGS \
   -qmp unix:/tmp/qmp-$NAME.sock,server=on,wait=off \
   -daemonize -pidfile /tmp/$NAME.pid
 if [ "${TOPO:-0}" = 1 ]; then sleep 1; "$VM_DIR/pin.sh" $N; fi

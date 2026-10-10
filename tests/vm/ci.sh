@@ -14,6 +14,9 @@
 #   --hold    prepare the VM (overlay, boot, install, sign, Revit.ini) and leave it running for manual work; prints how to reach and stop it
 #   --skip-unit  skip the no-Revit unit tests (tests/host, about 10 s; they run first so a broken core fails before a VM is booted)
 #   --no-build  reuse installer/bin/Release/installer.exe      --keep      keep the overlay disk and VM host files
+#   Memory ballooning (default on, CI_BALLOON=0 to disable): the VM gets a virtio-balloon device, the Windows driver + stats service from
+#             CI_BALLOON_DIR (virtio-win Balloon/w11/amd64 on the VM host) are installed per run, and balloon-autoscale.py shrinks the idle guest and
+#             grows it back under load (CI_BALLOON_MIN_MB / CI_BALLOON_FREE_MB), so several VMs fit in one host's RAM. A failure here only warns.
 #   --gpu     pass the GPU through (same hardware as the baseline; stop the interactive VM first). Default: no GPU,
 #             16G/6 vCPU, so the CI VM can run next to the interactive one. Licence checks may differ without the GPU.
 # Exit status = number of failed checks (0 = all green). Evidence for failures lands in tests/vm/artifacts/<run-id>/.
@@ -27,6 +30,9 @@ CI_VM_DIR=${CI_VM_DIR:-/srv/vm/win}
 CI_BASELINE=${CI_BASELINE:-baseline-before-revit-ballet.qcow2}
 CI_GUEST_KEY=${CI_GUEST_KEY:-'~/.ssh/WinDev2407Eval-revit'}
 CI_CID=${CI_CID:-4}
+CI_BALLOON=${CI_BALLOON:-1}
+CI_BALLOON_DIR=${CI_BALLOON_DIR:-'$HOME/virtio-win/balloon/Balloon/w11/amd64'}   # on the VM host: balloon.inf/.cat/.sys + blnsvr.exe from the virtio-win ISO
+CI_BALLOON_FREE_MB=${CI_BALLOON_FREE_MB:-1536}                                    # keep this much guest memory available; reclaim only above it + 1 GB
 YEARS="2026 2024"; UNIT=1; HOLD=0; BUILD=1; KEEP=0; GPU=0; PAR=${CI_PARALLEL:-2}; ENGFLAG=0; STAGGER=${CI_STAGGER:-5}
 INSTALLER="$REPO/installer/bin/Release/installer.exe"
 while [ $# -gt 0 ]; do
@@ -102,8 +108,9 @@ exec scp -q -i "$GKEY" -o ProxyCommand="socat - VSOCK-CONNECT:$CID:22" -o Strict
   -o LogLevel=ERROR -o BatchMode=yes "${args[@]}"
 EOF
 h2 "cat > $RD/start-vm.sh" < "$HERE/start-vm.sh"
+h2 "cat > $RD/balloon-autoscale.py" < "$HERE/balloon-autoscale.py"
 log "booting overlay VM"
-h2 "VM_DIR=$CI_VM_DIR NAME=ci-$ID CID=$CI_CID GPU=$GPU MEM=${CI_MEM:-6G} SMP=${CI_SMP:-4} IMG=runs/$ID/disk.qcow2 bash $RD/start-vm.sh" || { log "VM failed to start"; exit 1; }
+h2 "VM_DIR=$CI_VM_DIR NAME=ci-$ID CID=$CI_CID GPU=$GPU BALLOON=$CI_BALLOON MEM=${CI_MEM:-6G} SMP=${CI_SMP:-4} IMG=runs/$ID/disk.qcow2 bash $RD/start-vm.sh" || { log "VM failed to start"; exit 1; }
 up=0; for _ in $(seq 1 60); do h2 "$RD/gssh echo up" 2>/dev/null | grep -q up && { up=1; break; }; sleep 5; done
 [ "$up" = 1 ] || { record "FAIL boot: guest ssh not reachable after 5 min"; exit 1; }
 log "guest is up"
@@ -120,6 +127,15 @@ if [ $rc -ne 0 ]; then record "FAIL install (exit $rc)"; echo "$out" | grep FAIL
 log "trust + sign"
 out=$(gps "trust-and-sign.ps1 -Years $Y_CSV"); rc=$?; echo "$out" > "$ART/sign.txt"
 if [ $rc -ne 0 ]; then record "FAIL sign (exit $rc)"; echo "$out" | grep FAIL | sed 's/^/    /'; else record "PASS sign"; fi
+
+if [ "$CI_BALLOON" = 1 ]; then
+  # driver + stats service, then the host-side autoscaler (one per VM; exits by itself when the VM quits). Never fails the run.
+  mem=${CI_MEM:-6G}; max_mb=$(( ${mem%G} * 1024 )); min_mb=$(( max_mb / 3 )); [ $min_mb -lt 2048 ] && min_mb=2048; [ $min_mb -gt $max_mb ] && min_mb=$max_mb
+  if h2 "$RD/gcp -r $CI_BALLOON_DIR GUEST:C:/ci/balloon" && out=$(gps "balloon.ps1 -Dir C:/ci/balloon") && echo "$out" | grep -q "^OK balloon"; then
+    h2 "setsid python3 $RD/balloon-autoscale.py --socket /tmp/qmp-ci-$ID.sock --min-free-mb $CI_BALLOON_FREE_MB --headroom-mb 1024 --min-size-mb $min_mb --max-size-mb $max_mb --poll-interval 5 --step-mb 1024 --exit-when-gone > $RD/balloon.log 2>&1 < /dev/null &"
+    log "memory ballooning on ($min_mb-$max_mb MB, keeps $CI_BALLOON_FREE_MB MB free; log $RD/balloon.log)"
+  else log "WARN balloon driver/service not installed: this VM keeps its full ${mem} of host RAM. $(echo "$out" | grep FAIL | head -2)"; fi
+fi
 
 gps "blank-password.ps1" >/dev/null 2>&1   # blank account password: RDP into a held VM needs no prompt
 out=$(gps "revit-ini.ps1 -Years $Y_CSV $([ "$GPU" = 0 ] && echo -NoGpu)") || record "FAIL revit-ini setup: $out"
