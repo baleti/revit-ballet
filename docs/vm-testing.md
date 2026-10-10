@@ -184,3 +184,16 @@ mostly by CPU: seven Revits at once are slower than four. Not yet verified live:
 - `tests/vm/README.md`: quick reference for the runner.
 - `tests/README.md`: older libvirt/virtiofs notes, superseded by this setup.
 - `CLAUDE.md`: how to query a running Revit session through `/roslyn`.
+
+## Quick tier (warm VM, one year, no Revit restart)
+
+`tests/vm/quick.sh` is the inner loop. Start a VM once with `tests/vm/ci.sh --hold` and Revit 2026 in it (`revit-up.ps1`); after that every
+run is: unit tests (about 15 s, `--no-unit` to skip), build one year, copy `revit-ballet.dll` into the guest's hot-reload folder, `POST /v1/admin/reload`,
+then only the checks that need Revit (about 10 s). About 30 s end to end.
+
+    tests/vm/quick.sh                       # 2026, unit tests + trimmed battery
+    tests/vm/quick.sh --year 2024 --full    # another year, every check
+    tests/vm/quick.sh --filter 'dialog'     # only checks whose name matches
+
+Not reloadable, so reinstall and restart Revit after changing them: the shell (`commands/AgentShell.cs`, `Server.cs`), the installer, the
+engine DLLs, and anything that adds a dependency DLL. The full matrix (`ci.sh`, all years, parallel) stays the gate before a push to main.
