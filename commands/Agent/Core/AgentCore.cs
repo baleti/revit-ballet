@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 using RevitBallet.Agents;
 
@@ -141,7 +142,7 @@ namespace RevitBallet.Commands.Agent
             {
                 job.AddEvent("state", new JObject { ["state"] = "cancelled" });
                 job.AddEvent("done", job.ToJson());
-                AuditLog.Write(job, env.AuditDirectory);
+                try { Task.Run(() => AuditLog.Write(job, env.AuditDirectory)); } catch { }   // disk trouble must not stall the worker
             }
             else if (job.EngineInstance != null && job.Context != null)
             {
@@ -217,6 +218,7 @@ namespace RevitBallet.Commands.Agent
             {
                 ["protocol"] = 1,
                 ["agent"] = AgentInfo,
+                ["hungCompiles"] = hungCompiles,
                 ["revit"] = new JObject { ["year"] = env.RevitYear, ["version"] = env.RevitVersion },
                 ["session"] = new JObject { ["id"] = sessionId, ["pid"] = int.TryParse(sessionId, out var pid) ? pid : 0, ["port"] = port },
                 // idle: nothing running; busy: a job (or other work) is running; modal: a dialog is open; unresponsive: message pump hung
@@ -230,6 +232,11 @@ namespace RevitBallet.Commands.Agent
 
         /// <summary>How long a dialog must be open before a job reports being blocked by it (a dialog that flashes by is not "stuck").</summary>
         public int DialogGraceMs = 1500;
+        /// <summary>Watchdog: a compile whose thread uses no CPU for this long is deadlocked or waiting on nothing (engine_hung).</summary>
+        public int CompileStallMs = 20000;
+        /// <summary>Watchdog: a compile still running after max(this, 2 x timeoutMs) is reported as hung even if it is burning CPU (endless loop).</summary>
+        public int CompileCapMs = 120000;
+        private int hungCompiles;
 
         private readonly object dialogLock = new object();
         private string dialogKey; private DateTime dialogSince;
@@ -348,9 +355,18 @@ namespace RevitBallet.Commands.Agent
         {
             lock (job.Sync) { if (job.IsFinal) return; }
             // a previous job that timed out may still occupy the UI thread: keep this one queued until it is free
+            var waitStart = DateTime.UtcNow;
             while (stuck != null && !stuck.UiDone.IsSet)
             {
                 if (job.IsFinal) return;
+                if ((DateTime.UtcNow - waitStart).TotalMilliseconds > job.TimeoutMs)
+                {
+                    var dlg = env.CurrentDialog;
+                    if (dlg != null) job.ErrorDialog = dlg;
+                    Finish(job, JobState.Timeout, dlg != null ? "blocked_by_dialog" : "ui_busy",
+                        $"the UI thread is still running the earlier job {stuck.Id}, which timed out and could not be stopped" + (dlg != null ? $"; Revit is blocked by the open dialog {Describe(dlg)}" : ""), null);
+                    return;
+                }
                 Thread.Sleep(100);
             }
             stuck = null;
@@ -367,8 +383,7 @@ namespace RevitBallet.Commands.Agent
             job.SetState(JobState.Compiling);
             var t0 = DateTime.UtcNow;
             EngineCompileResult cr;
-            try { cr = engine.Compile(job.Code, session, job.Cts.Token); }
-            catch (Exception ex) { Finish(job, JobState.Failed, "engine", ex.GetType().Name + ": " + ex.Message, ex.StackTrace); return; }
+            if (!GuardedCompile(job, entry, engine, session, out cr)) return;
             job.CompileMs = (DateTime.UtcNow - t0).TotalMilliseconds;
             lock (job.Sync) job.Diagnostics.AddRange(cr.Diagnostics);
             if (job.IsFinal) return;   // cancelled while compiling
@@ -412,7 +427,7 @@ namespace RevitBallet.Commands.Agent
                 if ((DateTime.UtcNow - started).TotalMilliseconds > job.TimeoutMs)
                 {
                     job.Cts.Cancel();
-                    try { engine.Abort(job.Context); } catch { }
+                    try { var ctx = job.Context; Task.Run(() => engine.Abort(ctx)).Wait(2000); } catch { }   // Abort is best effort and must not hang the worker
                     stuck = job;
                     var dlg = env.CurrentDialog;
                     if (dlg != null) { job.ErrorDialog = dlg; Finish(job, JobState.Timeout, "blocked_by_dialog", $"the script is waiting on the open dialog {Describe(dlg)}", null); }
@@ -421,6 +436,50 @@ namespace RevitBallet.Commands.Agent
                 }
             }
             Complete(job);
+        }
+
+        /// <summary>
+        /// Compile on a dedicated thread so a hung compiler cannot take the whole queue with it. A compile is hung when its thread has used
+        /// no CPU for <see cref="CompileStallMs"/> (deadlock / waiting forever) or when it runs past the cap; a long compile that keeps working is left alone.
+        /// A hung engine is reset (the next job gets a fresh instance) and the caller gets what is known about it.
+        /// </summary>
+        private bool GuardedCompile(Job job, EngineEntry entry, IScriptEngine engine, EngineSession session, out EngineCompileResult result)
+        {
+            EngineCompileResult res = null; Exception err = null; ThreadCpu cpu = null;
+            var started = new ManualResetEventSlim(false); var finished = new ManualResetEventSlim(false);
+            var t = new Thread(() =>
+            {
+                try { cpu = ThreadCpu.CaptureCurrent(); started.Set(); res = engine.Compile(job.Code, session, job.Cts.Token); }
+                catch (Exception ex) { err = ex; }
+                finally { started.Set(); finished.Set(); }
+            }) { IsBackground = true, Name = "revit-ballet-agent-compile" };
+            t.Start();
+            started.Wait(5000);
+            var t0 = DateTime.UtcNow; var lastProgress = t0; double lastCpu = cpu == null ? -1 : cpu.ReadMs();
+            var cap = Math.Max(CompileCapMs, 2 * job.TimeoutMs);
+            while (!finished.Wait(50))
+            {
+                if (job.IsFinal) { result = null; return false; }   // cancelled; the compile thread notices the token and ends on its own
+                var now = DateTime.UtcNow;
+                double c = cpu == null ? -1 : cpu.ReadMs();
+                if (c >= 0 && c - lastCpu >= 1) { lastCpu = c; lastProgress = now; }
+                bool stalled = c >= 0 && (now - lastProgress).TotalMilliseconds > CompileStallMs;
+                bool overCap = (now - t0).TotalMilliseconds > cap;
+                if (!stalled && !overCap) continue;
+                var secs = Math.Round((now - t0).TotalSeconds, 1);
+                var why = stalled
+                    ? $"the compiler made no progress for {Math.Round((now - lastProgress).TotalSeconds)} s (thread state {t.ThreadState}, {Math.Round(Math.Max(c, 0))} ms CPU in total): it is deadlocked or waiting for something that never happens"
+                    : $"the compiler was still running after {secs} s and was not finished (thread state {t.ThreadState}, {Math.Round(Math.Max(c, 0))} ms CPU): endless loop or a pathologically large script";
+                job.Cts.Cancel();
+                Interlocked.Increment(ref hungCompiles);
+                try { source.Reset(entry); } catch { }
+                AgentLog.Write($"[AGENT] {job.Id} {job.Engine} compile HUNG: {why}; engine instance dropped, compile thread abandoned");
+                Finish(job, JobState.Failed, "engine_hung", $"engine '{job.Engine}' compile hung: {why}. The engine was reset; the next job loads a fresh instance (and may hang again if the cause is in the engine itself, see runtime\\server.log).", null);
+                result = null; return false;
+            }
+            if (cpu != null) cpu.Dispose();
+            if (err != null) { Finish(job, JobState.Failed, "engine", err.GetType().Name + ": " + err.Message, err.StackTrace); result = null; return false; }
+            result = res; return true;
         }
 
         /// <summary>The UI thread has returned from Run: turn its result into the final job state.</summary>

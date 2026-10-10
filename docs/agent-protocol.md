@@ -123,7 +123,8 @@ is scoped to its engine.
   `json` is best-effort JSON (null when not serialisable), `text` is `ToString()`/`str()`.
 - `error` (when not `ok`): `{"kind","message","stack"}`. Kinds: `compile` (see `diagnostics`), `runtime` (exception in the
   script), `timeout`, `blocked_by_dialog` (timeout while a modal dialog was open; `message` carries its title),
-  `cancelled`, `engine` (engine failed to load or crashed), `internal`.
+  `cancelled`, `engine` (engine failed to load or crashed), `engine_hung` (see Watchdog), `ui_busy` (the UI thread is still
+  running an earlier job that timed out and could not be stopped), `internal`.
 - `diagnostics`: compile errors and warnings with 1-based `line`/`column` where the engine can give them.
 - `blockedBy`: `null`, or the dialog that has been holding this job up for more than 1.5 s (the job is still `queued` or `running`).
   `dialogs`: every distinct dialog seen while the job waited or ran, each with `firstSeen` and the `action` taken (`report`, `fail`, `responded:<button>`).
@@ -233,3 +234,14 @@ New clients should use `/v1`. The shims are removed no earlier than protocol ver
 - Engines are loaded only from `engines/` under the add-in folder, which is writable only by the installing user;
   the host refuses a manifest whose assembly path escapes its directory.
 - Release builds sign the host and each engine assembly separately.
+
+
+## Watchdog
+
+Compiling runs on its own thread, so a hung compiler never blocks the queue. A compile is declared hung when its thread has used
+no CPU for 20 s (deadlock, waiting forever) or when it is still running after max(120 s, 2 x `timeoutMs`) even though it uses CPU
+(endless loop). A long compile that keeps working is left alone. The job ends `failed` with `error.kind: engine_hung`; the message
+says which rule tripped, the thread state and CPU time. The engine instance is dropped (the next job loads a fresh one), the
+stuck thread is abandoned, `GET /v1/info` counts it in `hungCompiles`, and the details go to `runtime\server.log`. A queued job
+that waits longer than its `timeoutMs` for a UI thread still held by an earlier timed-out job ends `ui_busy` (or `blocked_by_dialog`
+when a dialog is the reason). `Abort` calls and audit writes cannot stall the worker either (2 s limit; audit is asynchronous).

@@ -66,6 +66,8 @@ namespace RevitBallet.Commands.Agent
         IDictionary<string, EngineEntry> Engines { get; }
         /// <summary>Load the engine; returns null and sets <see cref="EngineEntry.LoadError"/> on failure.</summary>
         IScriptEngine Load(EngineEntry entry);
+        /// <summary>Forget the loaded instance so the next job gets a fresh one (the watchdog calls this after a hung compile).</summary>
+        void Reset(EngineEntry entry);
     }
 
     /// <summary>Log sink (in Revit: runtime\server.log). No-op by default so the core runs anywhere.</summary>
