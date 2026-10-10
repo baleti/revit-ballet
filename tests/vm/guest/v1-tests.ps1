@@ -108,6 +108,91 @@ Check "origin-and-host-rejected" {
   if ($ok.Status -ne 200) { return "normal request: status=$($ok.Status)" }
   $true
 }
+
+# ---- modal dialogs: the agent must notice, describe and be able to answer a dialog that holds Revit up ----
+function ClearDialogs {
+  for ($i = 0; $i -lt 6; $i++) {
+    $d = (Api GET "/v1/dialog").Body.dialog
+    if (-not $d) { return }
+    $b = if ($d.buttons.Count -gt 0) { $d.buttons[0] } else { "OK" }
+    $null = Api POST "/v1/dialog/respond" @{ button = $b }
+    Start-Sleep -Milliseconds 700
+  }
+}
+function WaitDialog($titlePattern, $seconds = 12) {
+  # wait for the dialog we expect; a transient "modal state, dialog not found" (window not visible yet) does not count. Keeps what it saw for failure messages.
+  $script:dialogSamples = @()
+  $end = (Get-Date).AddSeconds($seconds)
+  while ((Get-Date) -lt $end) {
+    $d = (Api GET "/v1/dialog").Body.dialog
+    $script:dialogSamples += $(if ($d) { "[$($d.kind)] $($d.title)" } else { "none" })
+    if ($d -and $d.title -match $titlePattern) { return $d }
+    Start-Sleep -Milliseconds 400
+  }
+  $null
+}
+function Seen { ($script:dialogSamples | Select-Object -Unique) -join " | " }
+$taskDialogCode = 'var td = new TaskDialog("Agent dialog test"); td.MainInstruction = "Something unexpected happened"; td.CommonButtons = TaskDialogCommonButtons.Ok | TaskDialogCommonButtons.Cancel; var r = td.Show(); return r.ToString();'
+$win32Code = 'return W32.MessageBoxW(System.Diagnostics.Process.GetCurrentProcess().MainWindowHandle, "Win32 body text", "Win32 dialog test", 1);' +
+             ' class W32 { [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)] public static extern int MessageBoxW(System.IntPtr h, string text, string caption, uint type); }'
+
+Check "dialog-reported-with-text-and-buttons-then-answered" {
+  try {
+    $job = (Api POST "/v1/jobs" @{ engine = "roslyn"; code = $taskDialogCode; timeoutMs = 60000 }).Body
+    $d = WaitDialog "Agent dialog test"
+    if (-not $d) { return "no dialog reported by /v1/dialog; saw: $(Seen); job: $((Api GET "/v1/jobs/$($job.id)").Text)" }
+    if ($d.title -notmatch "Agent dialog test") { return "title=[$($d.title)]" }
+    if (($d.text + "") -notmatch "Something unexpected") { return "text=[$($d.text)] (kind=$($d.kind))" }
+    if ($d.buttons -notcontains "OK" -or $d.buttons -notcontains "Cancel") { return "buttons=[$($d.buttons -join ',')]" }
+    $info = (Api GET "/v1/info").Body
+    if ($info.ui.state -ne "modal" -or $info.ui.modalDialog.title -notmatch "Agent dialog test") { return "info.ui=$($info.ui | ConvertTo-Json -Compress -Depth 4)" }
+    # the job itself must report being blocked within a couple of seconds, while still running
+    $end = (Get-Date).AddSeconds(6); $j = $null
+    while ((Get-Date) -lt $end) { $j = (Api GET "/v1/jobs/$($job.id)").Body; if ($j.blockedBy) { break }; Start-Sleep -Milliseconds 400 }
+    if (-not $j.blockedBy -or $j.state -ne "running") { return "job state=$($j.state) blockedBy=$($j.blockedBy | ConvertTo-Json -Compress)" }
+    $r = Api POST "/v1/dialog/respond" @{ button = "OK" }
+    if ($r.Status -ne 200) { return "respond status=$($r.Status) $($r.Text)" }
+    $done = (Api GET "/v1/jobs/$($job.id)?wait=15000").Body
+    if ($done.state -ne "done" -or $done.value.json -ne "Ok") { return "after answering: state=$($done.state) value=$($done.value.json) $($done.error.message)" }
+    $true
+  } finally { ClearDialogs }
+}
+Check "dialog-win32-messagebox-answered" {
+  try {
+    $job = (Api POST "/v1/jobs" @{ engine = "roslyn"; code = $win32Code; timeoutMs = 60000 }).Body
+    $d = WaitDialog "Win32 dialog test"
+    if (-not $d) { return "no dialog reported; saw: $(Seen); job: $((Api GET "/v1/jobs/$($job.id)").Text)" }
+    if ($d.title -notmatch "Win32 dialog test") { return "title=[$($d.title)]" }
+    if ($d.buttons -notcontains "OK" -or $d.buttons -notcontains "Cancel") { return "buttons=[$($d.buttons -join ',')] text=[$($d.text)]" }
+    $r = Api POST "/v1/dialog/respond" @{ button = "Cancel" }
+    if ($r.Status -ne 200) { return "respond status=$($r.Status) $($r.Text)" }
+    $done = (Api GET "/v1/jobs/$($job.id)?wait=15000").Body
+    if ($done.state -ne "done" -or $done.value.json -ne 2) { return "state=$($done.state) value=$($done.value.json) (IDCANCEL is 2) $($done.error.message)" }
+    $true
+  } finally { ClearDialogs }
+}
+Check "dialog-policy-fail-ends-the-job-fast-and-queue-recovers" {
+  try {
+    $sw = [Diagnostics.Stopwatch]::StartNew()
+    $j = (Api POST "/v1/jobs" @{ engine = "roslyn"; code = $taskDialogCode; timeoutMs = 60000; dialogPolicy = "fail"; wait = 30000 }).Body
+    if ($j.state -ne "failed" -or $j.error.kind -ne "blocked_by_dialog") { return "state=$($j.state) kind=$($j.error.kind) $($j.error.message)" }
+    if ($sw.Elapsed.TotalSeconds -gt 15) { return "took $([int]$sw.Elapsed.TotalSeconds) s" }
+    if ($j.error.dialog.buttons -notcontains "OK") { return "error.dialog=$($j.error.dialog | ConvertTo-Json -Compress)" }
+    ClearDialogs
+    $n = (Api POST "/v1/jobs" @{ engine = "roslyn"; code = "return 5;"; wait = 20000 }).Body
+    if ($n.state -ne "done") { return "next job state=$($n.state) $($n.error.message)" }
+    $true
+  } finally { ClearDialogs }
+}
+Check "dialog-policy-respond-answers-it-and-the-job-completes" {
+  try {
+    $j = (Api POST "/v1/jobs" @{ engine = "roslyn"; code = $taskDialogCode; timeoutMs = 60000; dialogPolicy = @{ respond = "OK" }; wait = 40000 }).Body
+    if ($j.state -ne "done" -or $j.value.json -ne "Ok") { return "state=$($j.state) value=$($j.value.json) $($j.error.message)" }
+    if ($j.dialogs[0].action -ne "responded:OK") { return "dialogs=$($j.dialogs | ConvertTo-Json -Compress -Depth 4)" }
+    $true
+  } finally { ClearDialogs }
+}
+
 Check "ui-state-and-queue-age" {
   $i = (Api GET "/v1/info").Body
   if ($i.ui.state -ne "idle") { return "ui.state=$($i.ui.state)" }

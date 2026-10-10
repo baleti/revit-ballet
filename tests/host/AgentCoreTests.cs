@@ -185,6 +185,8 @@ namespace RevitBallet.Agent.Tests
                 Assert.Equal(JobState.Timeout, j.State);
                 Assert.Equal("blocked_by_dialog", (string)e["kind"]);
                 Assert.Contains("Fake modal dialog", (string)e["message"]);
+                Assert.Contains("Something unexpected happened", (string)e["message"]);
+                Assert.Equal("OK", (string)e["dialog"]["buttons"][0]);
                 var info = rig.Core.Info("4242", 23717);
                 Assert.Equal("modal", (string)info["ui"]["state"]);
                 rig.Ui.Blocked = false;

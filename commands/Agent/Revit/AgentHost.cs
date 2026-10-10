@@ -46,7 +46,8 @@ namespace RevitBallet.Commands.Agent
             // From the Revit executable itself: independent of when the UIApplication becomes available. 24.x.y.z = Revit 2024.
             private readonly FileVersionInfo fvi = Process.GetCurrentProcess().MainModule.FileVersionInfo;
             public bool UiResponsive { get { return UiProbe.IsResponsive(); } }
-            public string ModalDialogTitle { get { return UiProbe.ModalDialogTitle(); } }
+            public DialogInfo CurrentDialog { get { return RevitDialogs.Current(); } }
+            public bool TryRespondToDialog(string button, out string error) { return RevitDialogs.TryRespond(button, out error); }
             public int RevitYear { get { return 2000 + fvi.FileMajorPart; } }
             public string RevitVersion { get { return fvi.FileVersion; } }
             public string AuditDirectory { get { return PathHelper.EnsureRuntimeSubdirectoryExists(Path.Combine("agent", "jobs")); } }
@@ -64,11 +65,13 @@ namespace RevitBallet.Commands.Agent
         {
             if (idlingApp != null) return;
             idlingApp = app; app.Idling += OnIdling;
+            RevitDialogs.Attach(app);   // Revit's own dialog events: TaskDialog id and message for what the agent reports
         }
 
         public static void DetachIdling()
         {
             if (idlingApp == null) return;
+            RevitDialogs.Detach();
             try { idlingApp.Idling -= OnIdling; } catch { }
             idlingApp = null;
         }

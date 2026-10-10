@@ -60,6 +60,20 @@ namespace RevitBallet.Commands.Agent
                     }
                 }
 
+                if (seg.Length == 2 && seg[1] == "dialog" && method == "GET")
+                {
+                    double since; var d = core.CurrentDialog(out since);
+                    await Json(stream, 200, new JObject { ["dialog"] = d == null ? null : d.ToJson(since) }); return;
+                }
+                if (seg.Length == 3 && seg[1] == "dialog" && seg[2] == "respond" && method == "POST")
+                {
+                    JObject rq;
+                    try { rq = JObject.Parse(body ?? ""); } catch (Exception) { throw new AgentException(400, "bad_request", "body must be a JSON object with a \"button\""); }
+                    var button = (string)rq["button"];
+                    if (string.IsNullOrWhiteSpace(button)) throw new AgentException(400, "bad_request", "\"button\" is required");
+                    await Json(stream, 200, core.RespondToDialog(button)); return;
+                }
+
                 if (seg.Length == 2 && seg[1] == "sessions" && method == "GET")
                 {
                     var arr = new JArray(core.ListSessions().Select(s => (JToken)new JObject
@@ -82,12 +96,29 @@ namespace RevitBallet.Commands.Agent
             }
         }
 
+        /// <summary>"report" (default), "fail", or {"respond": "<button>"}.</summary>
+        private static DialogPolicy ParsePolicy(JToken t)
+        {
+            if (t == null || t.Type == JTokenType.Null) return null;
+            if (t.Type == JTokenType.String)
+            {
+                var v = ((string)t).Trim().ToLowerInvariant();
+                if (v == "report") return null;
+                if (v == "fail") return new DialogPolicy { Mode = DialogMode.Fail };
+                throw new AgentException(400, "bad_request", "dialogPolicy must be \"report\", \"fail\" or {\"respond\": \"<button>\"}");
+            }
+            var o = t as JObject;
+            var button = o == null ? null : (string)o["respond"];
+            if (string.IsNullOrWhiteSpace(button)) throw new AgentException(400, "bad_request", "dialogPolicy must be \"report\", \"fail\" or {\"respond\": \"<button>\"}");
+            return new DialogPolicy { Mode = DialogMode.Respond, Button = button };
+        }
+
         private static async Task SubmitJob(AgentCore core, Stream stream, string body, string client)
         {
             JObject req;
             try { req = JObject.Parse(body ?? ""); }
             catch (Exception) { throw new AgentException(400, "bad_request", "body must be a JSON object"); }
-            var job = core.Submit((string)req["engine"], (string)req["code"], (int?)req["timeoutMs"] ?? 0, (string)req["session"], client, (string)req["requestId"]);
+            var job = core.Submit((string)req["engine"], (string)req["code"], (int?)req["timeoutMs"] ?? 0, (string)req["session"], client, (string)req["requestId"], ParsePolicy(req["dialogPolicy"]));
             int wait = (int?)req["wait"] ?? 0;
             if (wait > 0) await Task.Run(() => core.WaitFinal(job, wait));
             await Json(stream, job.Done.IsSet ? 200 : 202, job.ToJson());
@@ -129,7 +160,7 @@ namespace RevitBallet.Commands.Agent
             switch (status)
             {
                 case 200: return "OK"; case 202: return "Accepted"; case 400: return "Bad Request"; case 401: return "Unauthorized";
-                case 403: return "Forbidden"; case 404: return "Not Found"; case 409: return "Conflict"; case 413: return "Payload Too Large";
+                case 403: return "Forbidden"; case 204: return "No Content"; case 404: return "Not Found"; case 409: return "Conflict"; case 413: return "Payload Too Large";
                 case 503: return "Service Unavailable"; default: return "Error";
             }
         }

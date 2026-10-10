@@ -55,7 +55,7 @@ Each Revit instance hosts a local HTTPS server so scripts and AI agents can run 
 - Port range 23717-23817 (first available); shared 256-bit token across all sessions (`runtime\network\token`, header `X-Auth-Token`)
 - Discovery: `runtime\documents` CSV (`DocumentTitle,DocumentPath,SessionId,Port,Hostname,ProcessId,RegisteredAt,LastHeartbeat,LastSync`)
 
-**Endpoints:** `GET /v1/info` (Revit year, engines, `ui.responsive`, `ui.modalDialog`), `POST /v1/jobs` (`{engine, code, timeoutMs, session, wait}`), `GET /v1/jobs/{id}?wait=ms`, `GET /v1/jobs/{id}/events` (SSE), `DELETE /v1/jobs/{id}` (cancel), `GET /v1/sessions`, `DELETE /v1/sessions/{engine}/{name}`; legacy `POST /roslyn` (raw C# body, old `{Success,Output,Error,Diagnostics,ProcessingLog}` response), `/screenshot`, `/query/*`.
+**Endpoints:** `GET /v1/info` (Revit year, engines, `ui.responsive`, `ui.modalDialog`), `POST /v1/jobs` (`{engine, code, timeoutMs, session, wait}`), `GET /v1/jobs/{id}?wait=ms`, `GET /v1/jobs/{id}/events` (SSE), `DELETE /v1/jobs/{id}` (cancel), `GET /v1/sessions`, `DELETE /v1/sessions/{engine}/{name}`, `GET /v1/dialog` + `POST /v1/dialog/respond {button}` (a modal dialog holding Revit up: text, buttons, answer it); legacy `POST /roslyn` (raw C# body, old `{Success,Output,Error,Diagnostics,ProcessingLog}` response), `/screenshot`, `/query/*`.
 
 **Implementation:** jobs queue FIFO; compile on a worker thread, run on the UI thread via `ExternalEvent` (`commands/Agent/AgentHost.cs`). Engine contract: `agents/abstractions`. Heartbeat 30s, 2min dead-session timeout.
 
@@ -70,6 +70,8 @@ The server runs on Windows at `127.0.0.1:PORT`. Access from a remote dev machine
 Globals: C# `UIApp`, `UIDoc`, `Doc`, `Out`, `Cancel`; Python `uiapp`, `uidoc`, `doc`, `out`, `cancel` (aliases `UIApp`, `UIDoc`, `Doc`). Python scripts return a value by setting `result`. C# pre-imports `System`, `System.IO`, `System.Linq`, `System.Collections.Generic`, `Autodesk.Revit.DB`, `Autodesk.Revit.UI`, `RevitBallet.Commands`. Python can `from Autodesk.Revit.DB import *` directly.
 
 **Job result:** `{state, ok, output, value:{type,json,text}, error:{kind,message,stack}, diagnostics[{severity,id,line,column,message}], timings}`. Error kinds: `compile`, `runtime`, `timeout`, `blocked_by_dialog`, `cancelled`, `engine`, `internal`.
+
+**Dialogs:** a modal dialog open >1.5 s is reported on the job (`blockedBy`, `dialogs`, SSE `dialog`) and in `/v1/info` (`ui.modalDialog`); job option `dialogPolicy` = `report` (default) | `fail` | `{"respond":"OK"}`. A script that opens its own dialog is reported while it runs, not after the timeout.
 
 **Timeouts:** default 30 s of run time (`timeoutMs`, max 600000). A script stuck in a modal dialog reports `blocked_by_dialog` with the dialog title. Scripts can be stopped cooperatively through `Cancel` / `cancel.is_set()`; Python engines also stop hot loops.
 

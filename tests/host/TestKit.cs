@@ -30,6 +30,7 @@ namespace RevitBallet.Agent.Tests
         public string Language => "fake";
         public string Version => "1.0";
         public int Runs;
+        public FakeUi Ui;   // set by Rig: lets the instruction 'open-dialog' behave like a script that opens a modal dialog
         public readonly List<string> RunLog = new List<string>();
         public readonly List<WeakReference> Held = new List<WeakReference>();
 
@@ -76,6 +77,11 @@ namespace RevitBallet.Agent.Tests
                 case "get": { var d = Dict(ctx); rr.Ok = true; rr.Value = d.TryGetValue(arg, out var v) ? v : "(unset)"; break; }
                 case "ctx": rr.Ok = true; rr.Value = $"{ctx.UIApp}/{ctx.UIDoc}/{ctx.Doc}/session={(ctx.Session == null ? "none" : ctx.Session.Name)}"; break;
                 case "hold": rr.Ok = true; rr.Value = 1L; break;
+                case "open-dialog":   // the script itself opens a dialog and the UI thread sits in its message loop until someone answers it
+                    Ui.Blocked = true;
+                    while (Ui.Blocked && !ctx.Cancel.IsCancellationRequested) Thread.Sleep(10);
+                    if (ctx.Cancel.IsCancellationRequested) { Ui.Blocked = false; rr.ErrorKind = "cancelled"; rr.ErrorMessage = "stopped"; } else { rr.Ok = true; rr.Value = "dialog answered"; }
+                    break;
                 default: rr.Ok = true; rr.Value = code; break;
             }
             return rr;
@@ -122,7 +128,20 @@ namespace RevitBallet.Agent.Tests
         public void RaiseDrain() { Interlocked.Increment(ref Raises); signal.Set(); }
 
         public bool UiResponsive => !Hung;
-        public string ModalDialogTitle => Blocked ? "Fake modal dialog" : null;
+        public DialogInfo Dialog;   // when set while Blocked: what the pretend dialog says
+        public DialogInfo CurrentDialog => Blocked ? (Dialog ?? new DialogInfo { Title = "Fake modal dialog", Kind = "task", Text = "Something unexpected happened", Buttons = { "OK", "Cancel" } }) : null;
+        public readonly List<string> Responses = new List<string>();
+        public bool RespondWorks = true;
+        public bool TryRespondToDialog(string button, out string error)
+        {
+            error = null;
+            if (!Blocked) { error = "no dialog"; return false; }
+            var d = CurrentDialog;
+            if (!RespondWorks || !d.Buttons.Any(b => string.Equals(b, button, StringComparison.OrdinalIgnoreCase))) { error = "no button '" + button + "' (has: " + string.Join(", ", d.Buttons) + ")"; return false; }
+            lock (Responses) Responses.Add(button);
+            Blocked = false;   // pressing a button closes the dialog and the UI thread carries on
+            return true;
+        }
         public int RevitYear => 2026;
         public string RevitVersion => "26.0.0-fake";
         public void Dispose() { stop = true; signal.Set(); }
@@ -155,7 +174,8 @@ namespace RevitBallet.Agent.Tests
             Roslyn = Source.Add("roslyn"); Python = Source.Add("ironpython2");
             Source.Map["broken"] = new EngineEntry { Manifest = new EngineManifest { Name = "broken", Language = "x", Version = "1", Protocol = 1 }, Directory = "x", LoadError = "boom while loading" };
             Ui.AuditDirectory = audit ? AuditDir : null;
-            Core = new AgentCore(Ui, Ui, Source);
+            Roslyn.Ui = Ui; Python.Ui = Ui;
+            Core = new AgentCore(Ui, Ui, Source) { DialogGraceMs = 300 };
             Ui.Attach(Core);
             Core.Start();
         }

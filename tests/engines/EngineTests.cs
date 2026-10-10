@@ -136,6 +136,16 @@ namespace RevitBallet.Engines.Tests
             Assert.Equal("h\u00e9llo \u20ac", Convert.ToString(o.Value));
         }
 
+        [Fact]
+        public void Roslyn_scripts_can_use_common_framework_types()
+        {
+            // on .NET Framework a script used to see only mscorlib and System.Core: System.Diagnostics.Process did not even compile
+            var e = EngineHarness.Load("roslyn");
+            var o = EngineHarness.Run(e, "return System.Diagnostics.Process.GetCurrentProcess().Id > 0 && new System.Xml.XmlDocument() != null;");
+            Assert.True(o.Ok, o.Run?.ErrorMessage ?? o.FirstError?.Message);
+            Assert.Equal(true, o.Value);
+        }
+
         [SkippableTheory, MemberData(nameof(Engines))]
         public void A_script_can_be_compiled_and_run_many_times(string name)
         {
