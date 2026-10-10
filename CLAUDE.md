@@ -243,6 +243,8 @@ End-to-end tests run against an offline Windows+Revit VM: `tests/vm/ci.sh` (over
 
 ## Key Files
 
+- `core/Query/` — the picker query DSL engine (canonical: `~/.config/docs/query-dsl.md`); DataGrid, the Windows picker (`remote/`) and `tools/remote/revit-remote` (Linux) all use it or mirror it. Design/status: `docs/remote-commands-and-query-dsl.md`
+
 - `commands/commands.csproj` — main plugin project
 - `commands/RevitBallet.cs` — extension application entry point (initializes server)
 - `commands/Server.cs` — auto-started HTTPS server (routing, auth); `commands/Agent/` — job queue and `/v1` API; `agents/` — script engines
