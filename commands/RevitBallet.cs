@@ -72,6 +72,7 @@ namespace RevitBallet.Commands
             try
             {
                 RevitBalletServer.InitializeServer();
+                RevitBallet.Commands.Agent.AgentHost.AttachIdling(application);
             }
             catch (Exception ex)
             {
@@ -172,6 +173,7 @@ namespace RevitBallet.Commands
             // Terminate the server
             try
             {
+                RevitBallet.Commands.Agent.AgentHost.DetachIdling();
                 RevitBalletServer.TerminateServer();
             }
             catch (Exception ex)

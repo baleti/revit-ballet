@@ -200,6 +200,8 @@ namespace RevitBallet.Engines.CPython3
                     foreach (PyObject k in d.Keys()) using (k) using (var v = d[k]) dict[k.ToString()] = ToManaged(v, depth + 1);
                 return dict;
             }
+            // a .NET object wrapped by pythonnet (a Revit element, XYZ, ...): hand over the real object so the host can summarise it
+            try { var m = o.AsManagedObject(typeof(object)); if (m != null && !(m is PyObject)) return m; } catch { }
             return o.ToString();
         }
 

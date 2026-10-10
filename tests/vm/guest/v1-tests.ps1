@@ -6,8 +6,8 @@ $base = "https://127.0.0.1:$Port"
 $tmp = Join-Path $env:TEMP "v1-body.json"
 $script:fails = 0
 
-function Api($method, $path, $body, [bool]$auth = $true, [int]$max = 60) {
-  $args = @("-sk", "-m", "$max", "-X", $method, "-w", "`n%{http_code}")
+function Api($method, $path, $body, [bool]$auth = $true, [int]$max = 60, [string[]]$extra = @()) {
+  $args = @("-sk", "-m", "$max", "-X", $method, "-w", "`n%{http_code}") + $extra
   if ($auth) { $args += @("-H", "X-Auth-Token: $tok") }
   if ($null -ne $body) {
     $json = if ($body -is [string]) { $body } else { $body | ConvertTo-Json -Compress -Depth 6 }
@@ -122,6 +122,57 @@ Check "legacy-roslyn-shim" {
   $true
 }
 
+
+# ---- correctness batch: hardening, caps, audit log, idempotency, liveness fields ----
+Check "origin-and-host-rejected" {
+  $o = Api GET "/v1/info" $null $true 30 @("-H", "Origin: http://evil.example")
+  $h = Api GET "/v1/info" $null $true 30 @("-H", "Host: evil.example")
+  $ok = Api GET "/v1/info"
+  if ($o.Status -ne 403) { return "Origin header: status=$($o.Status)" }
+  if ($h.Status -ne 403) { return "foreign Host: status=$($h.Status)" }
+  if ($ok.Status -ne 200) { return "normal request: status=$($ok.Status)" }
+  $true
+}
+Check "ui-state-and-queue-age" {
+  $i = (Api GET "/v1/info").Body
+  if ($i.ui.state -ne "idle") { return "ui.state=$($i.ui.state)" }
+  if ($null -eq $i.queue.oldestQueuedMs -or $i.queue.oldestQueuedMs -ne 0) { return "oldestQueuedMs=$($i.queue.oldestQueuedMs)" }
+  $true
+}
+Check "output-cap-and-output-endpoint" {
+  $j = Run roslyn 'for (int i = 0; i < 40000; i++) Out.WriteLine(new string((char)120, 20)); return 1;'
+  if ($j.state -ne "done") { return "state=$($j.state) $($j.error.message)" }
+  if (-not $j.outputTruncated) { return "not truncated, length=$($j.outputLength)" }
+  if ($j.output.Length -gt 262144) { return "inline output too long: $($j.output.Length)" }
+  if ($j.outputLength -lt 800000) { return "outputLength=$($j.outputLength)" }
+  $s = (Api GET "/v1/jobs/$($j.id)/output?offset=600000&limit=50").Body
+  if ($s.length -ne 50 -or $s.total -ne $j.outputLength -or $s.text -notmatch "^x+") { return "slice: length=$($s.length) total=$($s.total)" }
+  $true
+}
+Check "value-revit-types-roslyn" {
+  $a = Run roslyn 'return new XYZ(1, 2, 3);'
+  if ($a.state -ne "done" -or $a.value.json.x -ne 1 -or $a.value.json.z -ne 3) { return "XYZ: $($a | ConvertTo-Json -Compress -Depth 5)" }
+  $b = Run roslyn 'return new ElementId(5);'
+  if ($b.state -ne "done" -or $b.value.json.id -ne 5) { return "ElementId: $($b.value | ConvertTo-Json -Compress)" }
+  $c = Run roslyn 'return new List<object> { 1, "a", new XYZ(0, 0, 1) };'
+  if ($c.state -ne "done" -or @($c.value.json).Count -ne 3) { return "list: $($c.value | ConvertTo-Json -Compress -Depth 5)" }
+  $true
+}
+Check "audit-log-client-and-request-id" {
+  $b = @{ engine = "roslyn"; code = 'return 11;'; wait = 20000; requestId = "ci-req-1" }
+  $r1 = Api POST "/v1/jobs" $b $true 60 @("-H", "X-Agent-Name: ci-test")
+  $r2 = Api POST "/v1/jobs" $b $true 60 @("-H", "X-Agent-Name: ci-test")
+  if ($r1.Body.id -ne $r2.Body.id) { return "retry created a second job: $($r1.Body.id) vs $($r2.Body.id)" }
+  if ($r1.Body.client -ne "ci-test") { return "client=$($r1.Body.client)" }
+  $dir = Join-Path $env:APPDATA "revit-ballet\runtime\agent\jobs"
+  $f = Get-ChildItem $dir -Filter "*-$($r1.Body.id).json" -ErrorAction SilentlyContinue | Select-Object -Last 1
+  if (-not $f) { return "no audit file for $($r1.Body.id) in $dir" }
+  $j = Get-Content $f.FullName -Raw | ConvertFrom-Json
+  if ($j.code -ne "return 11;" -or $j.client -ne "ci-test" -or $j.state -ne "done") { return "audit content: $($j | ConvertTo-Json -Compress)" }
+  if ((Get-Content $f.FullName -Raw) -match [regex]::Escape($tok)) { return "token leaked into the audit log" }
+  $true
+}
+
 # ---- Python engines (each only when installed); the same snippets are valid Python 2 and 3 ----
 $infoNow = (Api GET "/v1/info").Body
 foreach ($eng in "ironpython2", "cpython3") {
@@ -147,6 +198,11 @@ if ($avail) {
   Check "$eng-readme-example-documents" {
     $j = Run $eng "result = [d.Title for d in uiapp.Application.Documents]"
     if ($j.state -ne "done") { return "state=$($j.state) $($j.error.message)" }
+    $true
+  }
+  Check "$eng-value-revit-types" {
+    $j = Run $eng "import clr`nclr.AddReference('RevitAPI')`nfrom Autodesk.Revit.DB import XYZ`nresult = XYZ(1, 2, 3)"
+    if ($j.state -ne "done" -or $j.value.json.x -ne 1 -or $j.value.json.y -ne 2) { return "state=$($j.state) value=$($j.value | ConvertTo-Json -Compress -Depth 4) $($j.error.message)" }
     $true
   }
   Check "$eng-stdlib" {
