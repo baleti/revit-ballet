@@ -1,5 +1,5 @@
 # End-to-end checks of the /v1 agent API (docs/agent-protocol.md) against a running Revit. Prints PASS/FAIL lines; exit code = failures.
-param([Parameter(Mandatory)][int]$Port, [Parameter(Mandatory)][int]$Year)
+param([Parameter(Mandatory)][int]$Port, [Parameter(Mandatory)][int]$Year, [string]$Filter = "")
 $ErrorActionPreference = "Stop"
 $tok = (Get-Content (Join-Path $env:APPDATA "revit-ballet\runtime\network\token") -Raw).Trim()
 $base = "https://127.0.0.1:$Port"
@@ -22,6 +22,7 @@ function Api($method, $path, $body, [bool]$auth = $true, [int]$max = 60, [string
   [pscustomobject]@{ Status = $status; Body = $obj; Text = $text }
 }
 function Check($name, [scriptblock]$test) {
+  if ($Filter -and $name -notmatch $Filter) { return }   # quick tier: only the checks that match
   try { $r = & $test; if ($r -eq $true) { "PASS $name" } else { "FAIL ${name}: $r"; $script:fails++ } }
   catch { "FAIL ${name}: exception $($_.Exception.Message)"; $script:fails++ }
 }
