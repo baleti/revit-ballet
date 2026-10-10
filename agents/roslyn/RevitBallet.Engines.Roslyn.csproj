@@ -16,8 +16,8 @@
   <!-- Roslyn 3.x is the last line that works on .NET Framework; 4.x for .NET 8 (same choice as before the split) -->
   <ItemGroup Condition="'$(TargetFramework)' == 'net472' OR '$(TargetFramework)' == 'net48'">
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="3.11.0" />
-    <PackageReference Include="System.Collections.Immutable" Version="5.0.0" />
-    <PackageReference Include="System.Reflection.Metadata" Version="5.0.0" />
+    <PackageReference Include="System.Collections.Immutable" Version="10.0.12" />
+    <PackageReference Include="System.Reflection.Metadata" Version="10.0.12" />
   </ItemGroup>
   <!-- Revit 2020 ships none of these; Roslyn 3.x needs them at runtime -->
   <ItemGroup Condition="'$(TargetFramework)' == 'net472'">
@@ -25,8 +25,8 @@
   </ItemGroup>
   <ItemGroup Condition="$(TargetFramework.StartsWith('net8'))">
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="4.8.0" />
-    <PackageReference Include="System.Collections.Immutable" Version="7.0.0" />
-    <PackageReference Include="System.Reflection.Metadata" Version="7.0.0" />
+    <PackageReference Include="System.Collections.Immutable" Version="10.0.12" />
+    <PackageReference Include="System.Reflection.Metadata" Version="10.0.12" />
   </ItemGroup>
 
   <ItemGroup>
