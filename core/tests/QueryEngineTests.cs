@@ -379,5 +379,75 @@ namespace RevitBallet.Core.Tests
             Assert.Equal(new[] { 2, 0 }, r.RowIndices.ToArray());
             Assert.Equal(new[] { "D2", "D1" }, r.Rows.Select(row => row["Mark"].ToString()).ToArray());
         }
+
+        // ------------------------------------------------------------------ host extensions: virtual fields, name matching, ordering flag
+
+        private static QuerySchema SchemaWithSet(Func<IDictionary<string, object>, string> sets)
+        {
+            var schema = ElementSchema();
+            schema.AddVirtualField("Set", sets);
+            return schema;
+        }
+
+        [Fact]
+        public void VirtualFieldIsFilterableLikeAnyOtherField()
+        {
+            var schema = SchemaWithSet(row => row["Mark"].ToString() == "D1" || row["Mark"].ToString() == "W1" ? "doors and windows|fire" : (row["Mark"].ToString() == "D2" ? "doors and windows" : null));
+            var rows = QueryTestData.Elements();
+            Assert.Equal(new[] { "D1", "D2", "W1" }, Marks(QueryEngine.Run(rows, schema, "//set \"doors and\"")));
+            Assert.Equal(new[] { "D1", "W1" }, Marks(QueryEngine.Run(rows, schema, "//set fire")));
+            Assert.Equal(new[] { "D10", "D2", "W2" }, Marks(QueryEngine.Run(rows, schema, "!//set fire")));
+            Assert.Empty(Marks(QueryEngine.Run(rows, schema, "//set nonexistent")));
+        }
+
+        [Fact]
+        public void VirtualFieldIsNotPartOfTheFreeTextHaystackButIsAutoShownWhenFiltered()
+        {
+            var schema = SchemaWithSet(row => "secretset");
+            var rows = QueryTestData.Elements();
+            Assert.Empty(Marks(QueryEngine.Run(rows, schema, "secretset")));                      // free text never reaches it
+            var r = QueryEngine.Run(rows, schema, "//set secret");
+            Assert.Equal(5, r.Rows.Count);
+            Assert.Contains("Set", r.Columns);                                                       // ...but filtering on it shows it
+            Assert.DoesNotContain("Set", QueryEngine.Run(rows, schema, "").Columns);               // not a default column
+        }
+
+        [Fact]
+        public void VirtualFieldCanBeSortedAndShown()
+        {
+            var order = new Dictionary<string, string> { { "D1", "b" }, { "D10", "a" }, { "D2", "c" }, { "W1", "e" }, { "W2", "d" } };
+            var schema = SchemaWithSet(row => order[row["Mark"].ToString()]);
+            var r = QueryEngine.Run(QueryTestData.Elements(), schema, "/s set /at set");
+            Assert.Equal(new[] { "D10", "D1", "D2", "W2", "W1" }, Marks(r));
+            Assert.Contains("Set", r.Columns);
+        }
+
+        [Fact]
+        public void IgnoreSpacesLetsTypeNameReachTheKeyTypeNameAndViceVersa()
+        {
+            var rows = new List<IDictionary<string, object>> { Row("TypeName", "Single Flush", "Mark", "D1") };
+            var camel = QuerySchema.FromColumns(new[] { "TypeName", "Mark" });
+            camel.IgnoreSpacesInNames = true;
+            Assert.Single(QueryEngine.Run(rows, camel, "//\"type name\" flush").Rows);
+            Assert.Equal(new[] { "TypeName" }, QueryEngine.Run(rows, camel, "/ft \"type name\"").Columns.ToArray());
+
+            var spaced = new List<IDictionary<string, object>> { Row("Type Name", "Single Flush") };
+            var s2 = QuerySchema.FromColumns(new[] { "Type Name" });
+            s2.IgnoreSpacesInNames = true;
+            Assert.Single(QueryEngine.Run(spaced, s2, "//typename flush").Rows);                      // either spelling
+            Assert.Single(QueryEngine.Run(spaced, s2, "//\"type name\" flush").Rows);
+            // and without the flag, spaces matter (the canonical rule)
+            var strict = QuerySchema.FromColumns(new[] { "TypeName" });
+            Assert.Empty(QueryEngine.Run(rows, strict, "//\"type name\" flush").Rows);
+        }
+
+        [Fact]
+        public void OrdersRowsTellsAHostWhetherTheQueryOrderedThem()
+        {
+            Assert.False(Elements("single").OrdersRows);
+            Assert.False(Elements("/s zzz").OrdersRows);        // an unresolvable key is inert, the host's own order stands
+            Assert.True(Elements("/s count").OrdersRows);
+            Assert.True(Elements("/rv").OrdersRows);
+        }
     }
 }

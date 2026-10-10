@@ -266,6 +266,32 @@ class Invoke(unittest.TestCase):
         self.assertIsNone(rr.find_target(ts, "nope"))
 
 
+class Outcome(unittest.TestCase):
+    def test_outcomes(self):
+        self.assertEqual(rr.outcome({"state": "done", "output": "ok\n"}), ("done", "ok"))
+        self.assertEqual(rr.outcome({"state": "cancelled"}), ("cancelled", ""))
+        self.assertEqual(rr.outcome({"state": "failed", "error": {"kind": "cancelled", "message": "x"}}), ("cancelled", ""))
+        self.assertEqual(rr.outcome({"state": "running"})[0], "still running")
+        self.assertEqual(rr.outcome({"state": "failed", "error": {"kind": "runtime", "message": "No active document."}}), ("failed", "No active document."))
+        self.assertEqual(rr.outcome({"state": "failed", "error": {"kind": "blocked_by_dialog", "dialog": {"title": "T", "text": "stuck "}}}), ("blocked by a dialog", "T: stuck"))
+        self.assertEqual(rr.outcome({"error": {"kind": "transport", "message": "refused"}}), ("failed", "refused"))
+        self.assertEqual(rr.outcome({})[0], "failed")
+
+    def test_notify_builds_a_notify_send_call_and_truncates(self):
+        run = FakeRunner()
+        rr.notify("Export To PDF (h/cid20 \u00b7 2026 \u00b7 5)", {"state": "failed", "error": {"kind": "runtime", "message": "x" * 500}}, run)
+        argv = run.calls[0]["argv"]
+        self.assertEqual(argv[0], "notify-send")
+        self.assertIn("critical", argv)
+        self.assertIn("Export To PDF (h/cid20 \u00b7 2026 \u00b7 5): failed", argv)
+        self.assertEqual(len(argv[-1]), 300)
+        self.assertTrue(argv[-1].endswith("..."))
+        run = FakeRunner()
+        rr.notify("X", {"state": "done", "output": ""}, run)
+        self.assertEqual(run.calls[0]["argv"][-1], "X: done")        # nothing to say: no body
+        self.assertIn("normal", run.calls[0]["argv"])
+
+
 class Scripts(unittest.TestCase):
     """The PowerShell files are not run here (no PowerShell on the dev machine); these guard what is easy to break."""
     def read(self, name):

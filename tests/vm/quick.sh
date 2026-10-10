@@ -31,10 +31,11 @@ if [ "$BUILD" = 1 ]; then
   step "built revit-ballet.dll ($YEAR)"
 fi
 DLL="$REPO/commands/bin/$YEAR/revit-ballet.dll"; [ -f "$DLL" ] || { echo "missing $DLL"; exit 1; }
-cat "$DLL" | h2 "cat > $RD/rb.dll"
-cat "$HERE/guest/v1-tests.ps1" | h2 "cat > $RD/v1-tests.ps1"; cat "$HERE/guest/reload.ps1" | h2 "cat > $RD/reload.ps1"
-h2 "$RD/gcp $RD/rb.dll $RD/v1-tests.ps1 $RD/reload.ps1 GUEST:C:/ci/" || exit 1
-h2 "$RD/gssh \"New-Item -ItemType Directory -Force \\\$env:APPDATA/revit-ballet/hot-reload/$YEAR | Out-Null; Copy-Item C:/ci/rb.dll \\\$env:APPDATA/revit-ballet/hot-reload/$YEAR/revit-ballet.dll -Force\""
+cat "$DLL" | h2 "cat > $RD/rb.dll"; cat "$REPO/commands/bin/$YEAR/RevitBallet.Core.dll" | h2 "cat > $RD/RevitBallet.Core.dll"
+cat "$HERE/guest/v1-tests.ps1" | h2 "cat > $RD/v1-tests.ps1"; cat "$HERE/guest/datagrid-dsl.cs" | h2 "cat > $RD/datagrid-dsl.cs"; cat "$HERE/guest/reload.ps1" | h2 "cat > $RD/reload.ps1"
+h2 "$RD/gcp $RD/rb.dll $RD/v1-tests.ps1 $RD/datagrid-dsl.cs $RD/reload.ps1 GUEST:C:/ci/" || exit 1
+h2 "$RD/gcp $RD/RevitBallet.Core.dll GUEST:C:/ci/" || exit 1
+h2 "$RD/gssh \"New-Item -ItemType Directory -Force \\\$env:APPDATA/revit-ballet/hot-reload/$YEAR | Out-Null; Copy-Item C:/ci/rb.dll \\\$env:APPDATA/revit-ballet/hot-reload/$YEAR/revit-ballet.dll -Force; Copy-Item C:/ci/RevitBallet.Core.dll \\\$env:APPDATA/revit-ballet/hot-reload/$YEAR/RevitBallet.Core.dll -Force\""
 step "pushed"
 h2 "$RD/gssh powershell -NoProfile -ExecutionPolicy Bypass -File C:/ci/reload.ps1 -Port $PORT" || { echo "RELOAD FAILED (is Revit $YEAR running with this build's shell? see runtime\\server.log)"; exit 1; }
 step "reloaded"

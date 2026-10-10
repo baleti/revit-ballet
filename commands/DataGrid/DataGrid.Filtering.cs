@@ -2,202 +2,162 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using System.Text.RegularExpressions;
 using System.Windows.Forms;
 using RevitBallet.Core;
+using RevitBallet.Core.Query;
 
 namespace RevitBallet.Commands;
 
 public partial class CustomGUIs
 {
     // ──────────────────────────────────────────────────────────────
-    //  Filtering Logic (Optimized)
+    //  Search box -> rows, columns and order
+    //
+    //  The search box speaks the picker query DSL (~/.config/docs/query-dsl.md is the canonical definition,
+    //  docs/remote-commands-and-query-dsl.md has the migration table from the old `$col:value` syntax).
+    //  The engine lives in RevitBallet.Core.Query (no WinForms, unit-tested on Linux); this file only applies its result to the grid.
     // ──────────────────────────────────────────────────────────────
 
-    /// <summary>Applies all filters to the data and returns filtered result</summary>
+    /// <summary>The selection sets an element belongs to are a computed field of every grid that has a document.</summary>
+    private const string SelectionSetField = "Selection Set";
+
+    private static QuerySchema _querySchema;
+    private static string _lastColumnState = "";
+
+    /// <summary>Row -> lowercased text of all its cells, built once with the search index (reference-keyed: rows are dictionaries).</summary>
+    private static Dictionary<object, string> _haystackByRow;
+
+    private sealed class ReferenceComparer : IEqualityComparer<object>
+    {
+        public static readonly ReferenceComparer Instance = new ReferenceComparer();
+        public new bool Equals(object x, object y) { return ReferenceEquals(x, y); }
+        public int GetHashCode(object obj) { return System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj); }
+    }
+
+    /// <summary>Builds the query vocabulary for this grid: its columns (names matched ignoring spaces, so `type name` reaches "TypeName"),
+    /// the cached free-text haystack, and the computed selection-set field when a document is available.</summary>
+    private static QuerySchema BuildQuerySchema(List<string> propertyNames)
+    {
+        var schema = QuerySchema.FromColumns(propertyNames);
+        schema.IgnoreSpacesInNames = true;
+        var cache = _haystackByRow;
+        schema.Haystack = row =>
+        {
+            string text;
+            if (cache != null && cache.TryGetValue(row, out text)) return text;
+            var sb = new StringBuilder();
+            foreach (string prop in propertyNames)
+            {
+                object v;
+                if (row.TryGetValue(prop, out v) && v != null) sb.Append(v.ToString().ToLowerInvariant()).Append(' ');
+            }
+            return sb.ToString();
+        };
+        var uidoc = CurrentUIDoc as Autodesk.Revit.UI.UIDocument;
+        if (uidoc != null && uidoc.Document != null && !propertyNames.Contains(SelectionSetField))
+            schema.AddVirtualField(SelectionSetField, SelectionSetsOfRow);
+        return schema;
+    }
+
+    /// <summary>Applies the search text: returns the surviving rows (in the query's order when it has one) and shows/hides/reorders the grid's columns.</summary>
     private static List<Dictionary<string, object>> ApplyFilters(
         List<Dictionary<string, object>> entries,
         List<string> propertyNames,
         string searchText,
-        DataGridView grid)
+        DataGridView grid,
+        out bool queryOrdersRows)
     {
-        // Quick return for empty filter
+        queryOrdersRows = false;
         if (string.IsNullOrWhiteSpace(searchText))
         {
-            UpdateColumnVisibilityOptimized(grid, new HashSet<List<string>>(new ListStringComparer()), new List<ColumnOrderInfo>(), new List<bool>());
+            ApplyColumns(grid, null);
             return entries;
         }
 
-        // Parse filter groups once (parser lives in RevitBallet.Core)
-        List<FilterGroup> filterGroups = FilterQueryParser.Parse(searchText);
+        if (_querySchema == null) _querySchema = BuildQuerySchema(propertyNames);
+        QueryResult result = QueryEngine.Run(entries, _querySchema, searchText);
+        queryOrdersRows = result.OrdersRows;
 
-        // Update column visibility and ordering (optimized)
-        HashSet<List<string>> allColVisibilityFilters = new HashSet<List<string>>(
-            filterGroups.SelectMany(g => g.ColVisibilityFilters),
-            new ListStringComparer());
-
-        // Collect all column ordering from all groups
-        List<ColumnOrderInfo> allColumnOrdering = filterGroups.SelectMany(g => g.ColumnOrdering).ToList();
-        
-        // Collect exact match flags for visibility
-        List<bool> allColVisibilityExactMatch = filterGroups.SelectMany(g => g.ColVisibilityExactMatch).ToList();
-
-        UpdateColumnVisibilityOptimized(grid, allColVisibilityFilters, allColumnOrdering, allColVisibilityExactMatch);
-
-        // Row matching lives in RevitBallet.Core; Revit-specific lookups are injected
-        List<Dictionary<string, object>> filtered = RowFilter.Filter(entries, filterGroups, BuildRowMatchContext(propertyNames));
-
-        return filtered;
+        // a column name the grid does not have (the virtual selection-set field) has no column to show
+        ApplyColumns(grid, result.Columns);
+        return result.Rows.Cast<Dictionary<string, object>>().ToList();
     }
 
-    /// <summary>Optimized column visibility update - only updates when changed</summary>
-    private static void UpdateColumnVisibilityOptimized(DataGridView grid, HashSet<List<string>> filters, List<ColumnOrderInfo> columnOrdering, List<bool> exactMatchFlags)
+    /// <summary>Shows exactly these columns, in this order (null = every column in its original order). Does nothing when nothing changed.</summary>
+    private static void ApplyColumns(DataGridView grid, List<string> columns)
     {
-        // Create a key for the current filter state (including ordering)
-        string filterKey = string.Join("|", filters.Select(f => string.Join(",", f)));
-        string orderingKey = string.Join("|", columnOrdering.Select(o => o.Position + ":" + string.Join(",", o.ColumnParts) + ":" + o.IsExactMatch));
-        string exactMatchKey = string.Join("|", exactMatchFlags.Select(e => e ? "1" : "0"));
-        string combinedKey = filterKey + "||" + orderingKey + "||" + exactMatchKey;
+        string state = columns == null ? "*" : string.Join("\u0001", columns);
+        if (state == _lastColumnState) return;
+        _lastColumnState = state;
 
-        // Skip if nothing changed
-        if (combinedKey == _lastColumnVisibilityFilter + "||" + _lastColumnOrderingFilter)
-            return;
-
-        _lastColumnVisibilityFilter = filterKey + "||" + exactMatchKey;
-        _lastColumnOrderingFilter = orderingKey;
-        
-        var newVisible = new HashSet<string>();
-
-        // Update visibility
-        if (filters.Count > 0)
+        grid.SuspendLayout();
+        try
         {
-            var filterList = filters.ToList();
-            for (int i = 0; i < filterList.Count; i++)
-            {
-                var parts = filterList[i];
-                bool isExactMatch = i < exactMatchFlags.Count && exactMatchFlags[i];
-                
-                foreach (DataGridViewColumn col in grid.Columns)
-                {
-                    string colName = col.HeaderText.ToLowerInvariant();
-                    bool show = false;
-                    
-                    if (isExactMatch)
-                    {
-                        // For exact match, join parts with space and compare
-                        string exactPattern = string.Join(" ", parts);
-                        show = colName == exactPattern;
-                    }
-                    else
-                    {
-                        // Original behavior: all parts must be contained
-                        show = parts.All(p => colName.Contains(p));
-                    }
-                    
-                    if (show) newVisible.Add(col.Name);
-                }
-            }
+            var byName = new Dictionary<string, DataGridViewColumn>(StringComparer.Ordinal);
+            foreach (DataGridViewColumn col in grid.Columns) byName[col.Name] = col;
+
+            var visible = columns == null
+                ? grid.Columns.Cast<DataGridViewColumn>().OrderBy(c => c.Index).ToList()
+                : columns.Where(byName.ContainsKey).Select(n => byName[n]).ToList();
+
+            foreach (DataGridViewColumn col in grid.Columns) col.Visible = visible.Contains(col);
+            int display = 0;
+            foreach (DataGridViewColumn col in visible) col.DisplayIndex = display++;
+            _lastVisibleColumns = new HashSet<string>(visible.Select(c => c.Name));
         }
-        else
-        {
-            // No filters, show all columns
-            foreach (DataGridViewColumn col in grid.Columns)
-            {
-                newVisible.Add(col.Name);
-            }
-        }
-
-        // Apply column ordering if any
-        if (columnOrdering.Count > 0)
-        {
-            grid.SuspendLayout(); // Prevent flicker
-
-            // First, update visibility
-            foreach (DataGridViewColumn col in grid.Columns)
-            {
-                col.Visible = newVisible.Contains(col.Name);
-            }
-
-            // Create a list to track new display indices
-            var columnPositions = new List<Tuple<DataGridViewColumn, int>>();
-
-            // Process columns with explicit ordering
-            foreach (var orderInfo in columnOrdering.OrderBy(o => o.Position))
-            {
-                foreach (DataGridViewColumn col in grid.Columns)
-                {
-                    if (!col.Visible) continue;
-
-                    string colName = col.HeaderText.ToLowerInvariant();
-                    bool matches = false;
-                    
-                    if (orderInfo.IsExactMatch)
-                    {
-                        // For exact match, join parts with space and compare
-                        string exactPattern = string.Join(" ", orderInfo.ColumnParts);
-                        matches = colName == exactPattern;
-                    }
-                    else
-                    {
-                        // Original behavior: all parts must be contained
-                        matches = orderInfo.ColumnParts.All(part => colName.Contains(part));
-                    }
-                    
-                    if (matches)
-                    {
-                        // Check if this column is already in the list
-                        if (!columnPositions.Any(cp => cp.Item1 == col))
-                        {
-                            columnPositions.Add(Tuple.Create(col, orderInfo.Position));
-                        }
-                    }
-                }
-            }
-
-            // Add remaining visible columns that don't have explicit ordering
-            int nextPosition = columnPositions.Count > 0 ? columnPositions.Max(cp => cp.Item2) + 1 : 1;
-            foreach (DataGridViewColumn col in grid.Columns)
-            {
-                if (col.Visible && !columnPositions.Any(cp => cp.Item1 == col))
-                {
-                    columnPositions.Add(Tuple.Create(col, nextPosition++));
-                }
-            }
-
-            // Apply the new display order
-            int displayIndex = 0;
-            foreach (var colPos in columnPositions.OrderBy(cp => cp.Item2))
-            {
-                colPos.Item1.DisplayIndex = displayIndex++;
-            }
-
-            grid.ResumeLayout();
-            _lastVisibleColumns = newVisible;
-        }
-        else if (!_lastVisibleColumns.SetEquals(newVisible))
-        {
-            // Only update visibility if no ordering is specified and visibility changed
-            grid.SuspendLayout(); // Prevent flicker
-            foreach (DataGridViewColumn col in grid.Columns)
-            {
-                col.Visible = newVisible.Contains(col.Name);
-            }
-            grid.ResumeLayout();
-            _lastVisibleColumns = newVisible;
-        }
+        finally { grid.ResumeLayout(); }
     }
 
-    /// <summary>Builds the Core row-match context from the grid's cached state.</summary>
-    private static RowMatchContext BuildRowMatchContext(List<string> propertyNames)
+    // ──────────────────────────────────────────────────────────────
+    //  Selection sets as a computed field (replaces the old `#name` token: `//selection "my set"`)
+    // ──────────────────────────────────────────────────────────────
+
+    private static List<string> _selectionSetNamesCache;
+
+    private static List<string> GetAllSelectionSetNames()
     {
-        return new RowMatchContext
+        if (_selectionSetNamesCache != null) return _selectionSetNamesCache;
+        var names = new List<string>();
+        var uidoc = CurrentUIDoc as Autodesk.Revit.UI.UIDocument;
+        if (uidoc != null && uidoc.Document != null)
         {
-            PropertyNames = propertyNames,
-            SearchIndexByColumn = _searchIndexByColumn,
-            SearchIndexAllColumns = _searchIndexAllColumns,
-            SelectionSetLookup = GetSelectionSetElementIds,
-            ForeignIdConverter = obj => obj is Autodesk.Revit.DB.ElementId eid ? eid.AsLong() : 0
-        };
+            try
+            {
+                names = new Autodesk.Revit.DB.FilteredElementCollector(uidoc.Document)
+                    .OfClass(typeof(Autodesk.Revit.DB.SelectionFilterElement))
+                    .Cast<Autodesk.Revit.DB.SelectionFilterElement>()
+                    .Select(s => s.Name).Distinct().OrderBy(n => n, StringComparer.OrdinalIgnoreCase).ToList();
+            }
+            catch { /* a document that cannot be queried has no selection sets as far as the grid is concerned */ }
+        }
+        _selectionSetNamesCache = names;
+        return names;
     }
 
+    /// <summary>"set a|set b" for the sets that contain the row's element (or its viewport), null when it is in none.</summary>
+    private static string SelectionSetsOfRow(IDictionary<string, object> row)
+    {
+        long id = RowId(row, "ElementID");
+        if (id == 0) id = RowId(row, "Id");
+        long viewport = RowId(row, "ViewportID");
+        if (id == 0 && viewport == 0) return null;
+        var hits = new List<string>();
+        foreach (string name in GetAllSelectionSetNames())
+        {
+            HashSet<long> members = GetSelectionSetElementIds(name);
+            if ((id != 0 && members.Contains(id)) || (viewport != 0 && members.Contains(viewport))) hits.Add(name);
+        }
+        return hits.Count == 0 ? null : string.Join("|", hits);
+    }
+
+    private static long RowId(IDictionary<string, object> row, string column)
+    {
+        object o;
+        if (!row.TryGetValue(column, out o) || o == null) return 0;
+        if (o is long l) return l;
+        if (o is int i) return i;
+        if (o is Autodesk.Revit.DB.ElementId eid) return eid.AsLong();
+        long parsed;
+        return long.TryParse(o.ToString(), out parsed) ? parsed : 0;
+    }
 }

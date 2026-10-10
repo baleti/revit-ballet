@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using System.Linq;
 using RevitBallet.Core.Query;
 using Xunit;
@@ -7,71 +6,57 @@ using static RevitBallet.Core.Tests.QueryTestData;
 namespace RevitBallet.Core.Tests
 {
     /// <summary>
-    /// The old DataGrid language (FilterQueryParser/RowFilter) against its canonical replacement. Every old feature that has a
-    /// canonical spelling must keep returning exactly the same rows; the intentional differences are pinned down explicitly below.
+    /// The old DataGrid search language against its canonical replacement. The rows in the table are what the OLD engine
+    /// (FilterQueryParser/RowFilter, removed when the DataGrid moved to the canonical DSL) returned for each old spelling,
+    /// recorded before it was deleted; the new spelling must keep returning exactly them. The intentional differences follow below.
     /// </summary>
     public class QueryMigrationTests
     {
-        private static string[] OldRows(string oldQuery)
+        private static string[] NewRows(string query)
         {
-            var entries = Elements().Select(r => new Dictionary<string, object>(r)).ToList();
-            var ctx = new RowMatchContext { PropertyNames = ElementSchema().DefaultColumns };
-            return RowFilter.Filter(entries, FilterQueryParser.Parse(oldQuery), ctx).Select(r => r["Mark"].ToString()).ToArray();
-        }
-
-        private static string[] NewRows(string newQuery)
-        {
-            return Marks(QueryEngine.Run(Elements(), ElementSchema(), newQuery));
+            return Marks(QueryEngine.Run(Elements(), ElementSchema(), query));
         }
 
         [Theory]
-        // plain terms
-        [InlineData("single", "single")]
-        [InlineData("single 900", "single 900")]
-        [InlineData("SINGLE", "single")]
-        [InlineData("zzz", "zzz")]
-        // exclusion
-        [InlineData("!single", "!single")]
-        [InlineData("!door !glazed", "!door !glazed")]
-        [InlineData("fire !glass", "fire !glass")]
-        // quoted
-        [InlineData("\"single flush\"", "\"single flush\"")]
-        [InlineData("\"fire rated\"", "\"fire rated\"")]
-        // column-scoped value
-        [InlineData("$level:2", "//level 2")]
-        [InlineData("$level:2", "/fv level:2")]
-        [InlineData("$level:2", "/fv/level 2")]
-        [InlineData("$mark:d", "//mark d")]
-        [InlineData("$\"type name\":flush", "//\"type name\" flush")]
-        [InlineData("$comments:fire", "//comments fire")]
-        [InlineData("$comments::fire", "//comments fire")]
-        [InlineData("!$comments:fire", "!//comments fire")]
-        [InlineData("$level:2 single", "//level 2 single")]
-        [InlineData("$level:1 !$comments:fire", "//level 1 !//comments fire")]
-        // numeric comparison, column-scoped
-        [InlineData("$area:>1.8", "//area >1.8")]
-        [InlineData("$area:<2", "//area <2")]
-        [InlineData("$count:>5", "//count >5")]
-        [InlineData("$count:<10", "//count <10")]
-        [InlineData("!$count:>5", "!//count >5")]
-        public void RowsAreIdenticalForEveryOldFeatureWithACanonicalSpelling(string oldQuery, string newQuery)
+        [InlineData("single", "single", "D1,D2")]
+        [InlineData("single 900", "single 900", "D1,D2")]
+        [InlineData("SINGLE", "single", "D1,D2")]
+        [InlineData("zzz", "zzz", "")]
+        [InlineData("!single", "!single", "D10,W1,W2")]
+        [InlineData("!door !glazed", "!door !glazed", "D1,D2,W1,W2")]
+        [InlineData("fire !glass", "fire !glass", "D1")]
+        [InlineData("\"single flush\"", "\"single flush\"", "D1,D2")]
+        [InlineData("\"fire rated\"", "\"fire rated\"", "D1,W1")]
+        [InlineData("$level:2", "//level 2", "D2,W2")]
+        [InlineData("$level:2", "/fv level:2", "D2,W2")]
+        [InlineData("$level:2", "/fv/level 2", "D2,W2")]
+        [InlineData("$mark:d", "//mark d", "D1,D10,D2")]
+        [InlineData("$\"type name\":flush", "//\"type name\" flush", "D1,D2")]
+        [InlineData("$comments:fire", "//comments fire", "D1,W1")]
+        [InlineData("$comments::fire", "//comments fire", "D1,W1")]
+        [InlineData("!$comments:fire", "!//comments fire", "D10,D2,W2")]
+        [InlineData("$level:2 single", "//level 2 single", "D2")]
+        [InlineData("$level:1 !$comments:fire", "//level 1 !//comments fire", "D10")]
+        [InlineData("$area:>1.8", "//area >1.8", "D1,D10,D2")]
+        [InlineData("$area:<2", "//area <2", "D1,D2,W1,W2")]
+        [InlineData("$count:>5", "//count >5", "D10,W1,W2")]
+        [InlineData("$count:<10", "//count <10", "D1,D2,W2")]
+        [InlineData("!$count:>5", "!//count >5", "D1,D2")]
+        public void EveryOldFeatureWithACanonicalSpellingReturnsTheRowsItAlwaysDid(string oldSpelling, string newSpelling, string expectedRows)
         {
-            Assert.Equal(OldRows(oldQuery), NewRows(newQuery));
+            string[] expected = expectedRows.Length == 0 ? new string[0] : expectedRows.Split(',');
+            Assert.Equal(expected, NewRows(newSpelling));
         }
 
         [Theory]
-        [InlineData("$mark", "/ft mark")]
-        [InlineData("$mark $level", "/ft mark /at level")]
-        [InlineData("$\"type name\"", "/ft \"type name\"")]
-        [InlineData("$count $area $comments", "/ft count /at area /at comments")]
-        public void ColumnVisibilityIsTheSameSetOldAndNew(string oldQuery, string newQuery)
+        [InlineData("$mark", "/ft mark", "Mark")]
+        [InlineData("$mark $level", "/ft mark /at level", "Level,Mark")]
+        [InlineData("$\"type name\"", "/ft \"type name\"", "Type Name")]
+        [InlineData("$count $area $comments", "/ft count /at area /at comments", "Area,Comments,Count")]
+        public void ColumnVisibilityIsTheSameSetOldAndNew(string oldSpelling, string newSpelling, string visibleColumns)
         {
-            var groups = FilterQueryParser.Parse(oldQuery);
-            var oldVisible = ElementSchema().DefaultColumns
-                .Where(c => groups.SelectMany(g => g.ColVisibilityFilters).Any(parts => parts.All(p => c.ToLowerInvariant().Contains(p))))
-                .OrderBy(c => c).ToArray();
-            var newVisible = QueryEngine.Run(Elements(), ElementSchema(), newQuery).Columns.OrderBy(c => c).ToArray();
-            Assert.Equal(oldVisible, newVisible);
+            var cols = QueryEngine.Run(Elements(), ElementSchema(), newSpelling).Columns.OrderBy(c => c).ToArray();
+            Assert.Equal(visibleColumns.Split(','), cols);
         }
 
         [Fact]
@@ -82,46 +67,44 @@ namespace RevitBallet.Core.Tests
             Assert.Equal(new[] { "Mark", "Comments" }, r.Columns.ToArray());
         }
 
-        // ---- intentional differences -------------------------------------------------------------------------------------
+        // ---- intentional differences ----------------------------------------------------------------------------------
 
         [Fact]
         public void UnresolvedColumnNowNarrowsToNothingInsteadOfBeingIgnored()
         {
-            Assert.Equal(5, OldRows("$zzz:foo").Length);          // old: a column that matches nothing was skipped
-            Assert.Empty(NewRows("//zzz foo"));                    // canonical: a complete path that resolves to nothing is an honest empty result
+            // old: `$zzz:foo` matched all 5 rows (a column that matched nothing was skipped); canonical: an honest empty result
+            Assert.Empty(NewRows("//zzz foo"));
         }
 
         [Fact]
         public void NegatedQuotedFormsWorkNowTheOldTokenizerSplitThemIntoBrokenHalves()
         {
-            // old regex had no alternative for !"..." or !$col:"..." so `!"fire rated"` became two junk words and matched nothing
-            Assert.Empty(OldRows("!\"fire rated\""));
+            // old regex had no alternative for !"..." or !$col:"..." so `!"fire rated"` became two junk words and matched nothing at all
             Assert.Equal(new[] { "D10", "D2", "W2" }, NewRows("!\"fire rated\""));
-            Assert.Empty(OldRows("!$level:\"level 1\""));
             Assert.Equal(new[] { "D2", "W2" }, NewRows("!//level \"level 1\""));
         }
 
         [Fact]
         public void OrGroupsAreNotPartOfTheCanonicalGrammar()
         {
-            Assert.Equal(new[] { "D1", "D2", "W2" }.OrderBy(x => x).ToArray(), OldRows("single || casement").OrderBy(x => x).ToArray());
-            Assert.Empty(NewRows("single || casement"));           // now three ANDed words, one of them the literal "||"
+            // old: `single || casement` = D1,D2,W2; now three ANDed words, one of them the literal "||"
+            Assert.Empty(NewRows("single || casement"));
         }
 
         [Fact]
         public void ExactAndGlobSpellingsAreNotPartOfTheCanonicalGrammar()
         {
-            Assert.Equal(new[] { "D1", "D2" }, OldRows("e\"single flush 900\""));
-            Assert.Empty(NewRows("e\"single flush 900\""));            // no exact-match form exists: this is just the text esingle flush 900, which no row contains
-            Assert.Equal(new[] { "D1", "D2" }, NewRows("\"single flush 900\""));    // the canonical spelling of "contains this exact run"
+            // old: e"single flush 900" matched D1,D2 by exact cell value; there is no exact-match form, a quoted phrase is "contains this run"
+            Assert.Empty(NewRows("e\"single flush 900\""));
+            Assert.Equal(new[] { "D1", "D2" }, NewRows("\"single flush 900\""));
         }
 
         [Fact]
         public void BareNumericComparisonOverEveryColumnHasNoCanonicalForm()
         {
-            Assert.Equal(new[] { "D10", "W1", "W2" }, OldRows(">5"));
-            // new: `>5` is a plain word searched as text; the scoped spelling (`//count >5`) is the replacement
+            // old: `>5` = D10,W1,W2 (any numeric column above 5). New: a plain word searched as text; `//count >5` is the scoped replacement
             Assert.Empty(NewRows(">5"));
+            Assert.Equal(new[] { "D10", "W1", "W2" }, NewRows("//count >5"));
         }
 
         [Fact]

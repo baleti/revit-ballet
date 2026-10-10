@@ -30,6 +30,35 @@ namespace RevitBallet.Core.Query
         /// <summary>Free-text haystack for bare words. Default: every field value, space separated.</summary>
         public Func<IDictionary<string, object>, string> Haystack;
 
+        /// <summary>Match field names ignoring spaces, so `type name` reaches the key "TypeName" and "Type Name" alike (values are never affected).</summary>
+        public bool IgnoreSpacesInNames;
+
+        /// <summary>Fields whose value is computed by the host instead of read from the row (e.g. the selection sets an element belongs to).</summary>
+        public readonly Dictionary<string, Func<IDictionary<string, object>, string>> VirtualFields =
+            new Dictionary<string, Func<IDictionary<string, object>, string>>(StringComparer.Ordinal);
+
+        /// <summary>Adds a computed field. It is filterable, sortable and showable like any other, but not part of the free-text haystack.</summary>
+        public QuerySchema AddVirtualField(string name, Func<IDictionary<string, object>, string> provider, bool defaultColumn = false)
+        {
+            VirtualFields[name] = provider;
+            return AddField(name, defaultColumn);
+        }
+
+        /// <summary>The cell's text, or null when the row has no (or an empty) value for the field.</summary>
+        public string CellText(IDictionary<string, object> row, string field)
+        {
+            Func<IDictionary<string, object>, string> provider;
+            if (VirtualFields.TryGetValue(field, out provider))
+            {
+                string v = provider(row);
+                return string.IsNullOrEmpty(v) ? null : v;
+            }
+            object o;
+            if (row == null || !row.TryGetValue(field, out o) || o == null) return null;
+            string s = o.ToString();
+            return s.Length == 0 ? null : s;
+        }
+
         public static QuerySchema FromColumns(IEnumerable<string> columns)
         {
             var s = new QuerySchema();
@@ -93,11 +122,11 @@ namespace RevitBallet.Core.Query
             var fields = new List<string>();
 
             foreach (var f in Fields)
-                if (segs.Length == 1 && Contains(f, first)) fields.Add(f);
+                if (segs.Length == 1 && NameContains(f, first)) fields.Add(f);
 
             foreach (var g in Groups)
             {
-                if (!Contains(g.Key, first)) continue;
+                if (!NameContains(g.Key, first)) continue;
                 if (segs.Length == 1)
                 {
                     r.BareGroups.Add(g.Key);
@@ -106,7 +135,7 @@ namespace RevitBallet.Core.Query
                 else if (segs.Length == 2)
                 {
                     foreach (var sub in g.Value)
-                        if (segs[1] == "*" || Contains(sub, segs[1])) fields.Add(g.Key + "." + sub);
+                        if (segs[1] == "*" || NameContains(sub, segs[1])) fields.Add(g.Key + "." + sub);
                 }
             }
             // schema order, no duplicates
@@ -135,6 +164,17 @@ namespace RevitBallet.Core.Query
                 else if (!picks.Contains(f)) picks.Add(f);
             }
             return picks.Count == 1 ? picks[0] : null;
+        }
+
+        private bool NameContains(string name, string needle)
+        {
+            if (IgnoreSpacesInNames) { name = StripSpaces(name); needle = StripSpaces(needle); }
+            return Contains(name, needle);
+        }
+
+        private static string StripSpaces(string s)
+        {
+            return s == null ? null : s.Replace(" ", "");
         }
 
         internal static bool Contains(string haystack, string needle)

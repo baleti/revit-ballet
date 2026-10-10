@@ -154,6 +154,8 @@ public partial class CustomGUIs
         _lastVisibleColumns.Clear();
         _lastColumnVisibilityFilter = "";
         _selectionSetCache.Clear(); // Clear selection set cache
+        _selectionSetNamesCache = null;
+        _lastColumnState = "";
 
         // Reset sizing and edit mode state
         _initialSizingDone = false;
@@ -322,16 +324,17 @@ public partial class CustomGUIs
         {
             // Use optimized filtering
             var perfFilterWatch = System.Diagnostics.Stopwatch.StartNew();
-            var filteredData = ApplyFilters(_cachedOriginalData, propertyNames, searchBox.Text, grid);
+            bool queryOrdersRows;
+            var filteredData = ApplyFilters(_cachedOriginalData, propertyNames, searchBox.Text, grid, out queryOrdersRows);
             perfFilterWatch.Stop();
             perfFilterCount++;
             perfFilterTotalMs += perfFilterWatch.ElapsedMilliseconds;
             if (perfFilterWatch.ElapsedMilliseconds > perfFilterMaxMs)
                 perfFilterMaxMs = perfFilterWatch.ElapsedMilliseconds;
 
-            // Apply sorting
+            // Apply sorting: a /sort or /reverse in the query is the order; otherwise the column-header sort applies
             workingSet = filteredData;
-            if (sortCriteria.Count > 0)
+            if (sortCriteria.Count > 0 && !queryOrdersRows)
             {
                 workingSet = ApplySorting(workingSet, sortCriteria);
             }

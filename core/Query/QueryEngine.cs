@@ -7,17 +7,13 @@ namespace RevitBallet.Core.Query
     /// <summary>Runs a parsed query over rows: filter rows, then work out the columns, then order.</summary>
     public static class QueryEngine
     {
-        public static QueryResult Run(IList<IDictionary<string, object>> rows, QuerySchema schema, string query)
+        public static QueryResult Run(IReadOnlyList<IDictionary<string, object>> rows, QuerySchema schema, string query)
         {
             return Apply(rows, schema, QueryParser.Parse(query));
         }
 
-        public static QueryResult Run(IEnumerable<Dictionary<string, object>> rows, QuerySchema schema, string query)
-        {
-            return Apply(rows.Select(r => (IDictionary<string, object>)r).ToList(), schema, QueryParser.Parse(query));
-        }
-
-        public static QueryResult Apply(IList<IDictionary<string, object>> rows, QuerySchema schema, QueryPlan plan)
+        /// <summary>Filters, orders and works out the columns. `rows` may be any list of dictionaries (a List&lt;Dictionary&lt;string, object&gt;&gt; passes as is).</summary>
+        public static QueryResult Apply(IReadOnlyList<IDictionary<string, object>> rows, QuerySchema schema, QueryPlan plan)
         {
             var result = new QueryResult();
 
@@ -38,7 +34,7 @@ namespace RevitBallet.Core.Query
                 bool desc = plan.Sort.Descending;
                 var cache = new Dictionary<int, string[]>();
                 foreach (int idx in keep)
-                    cache[idx] = keys.Select(k => Cell(rows[idx], k)).ToArray();
+                    cache[idx] = keys.Select(k => schema.CellText(rows[idx], k)).ToArray();
                 var sorted = new List<int>(keep);
                 sorted.Sort((a, b) =>
                 {
@@ -52,6 +48,7 @@ namespace RevitBallet.Core.Query
                 keep = sorted;
             }
             if (plan.Reverse) keep.Reverse();
+            result.OrdersRows = keys != null || plan.Reverse;
 
             foreach (int idx in keep) { result.Rows.Add(rows[idx]); result.RowIndices.Add(idx); }
 
@@ -61,15 +58,6 @@ namespace RevitBallet.Core.Query
         }
 
         // ---------------------------------------------------------------- rows
-
-        /// <summary>The cell's text, or null when the row has no value for it.</summary>
-        public static string Cell(IDictionary<string, object> row, string field)
-        {
-            object v;
-            if (row == null || !row.TryGetValue(field, out v) || v == null) return null;
-            string s = v.ToString();
-            return s.Length == 0 ? null : s;
-        }
 
         private static string Haystack(IDictionary<string, object> row, QuerySchema schema)
         {
@@ -124,7 +112,7 @@ namespace RevitBallet.Core.Query
         {
             foreach (var g in groups)
                 foreach (var sub in schema.Groups[g])
-                    if (Cell(row, g + "." + sub) != null) return true;
+                    if (schema.CellText(row, g + "." + sub) != null) return true;
             return false;
         }
 
@@ -139,7 +127,7 @@ namespace RevitBallet.Core.Query
 
             foreach (var f in r.Fields)
             {
-                string cell = Cell(row, f);
+                string cell = schema.CellText(row, f);
                 if (op != null)
                 {
                     bool m;
@@ -177,7 +165,7 @@ namespace RevitBallet.Core.Query
                 if (op.Verb == Verb.FilterType && op.Via && !r.Any && !string.IsNullOrEmpty(op.Path))
                 {
                     // value pattern: show whichever columns actually hold a matching value in the current rows (a discovery reset)
-                    shown = schema.AllFields().Where(f => rows.Any(row => ValueMatchesPattern(Cell(row, f), op.Path))).ToList();
+                    shown = schema.AllFields().Where(f => rows.Any(row => ValueMatchesPattern(schema.CellText(row, f), op.Path))).ToList();
                     continue;
                 }
                 switch (op.Verb)

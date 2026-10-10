@@ -48,3 +48,5 @@ deploy
 .worktrees/
 
 agents/cpython3/python-embed/
+
+__pycache__/

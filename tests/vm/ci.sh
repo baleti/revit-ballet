@@ -119,7 +119,7 @@ log "guest is up"
 tar -C "$HERE" -cf - guest checks | h2 "mkdir -p $RD/stage && tar -C $RD/stage -xf -"
 h2 "cat > $RD/stage/installer.exe" < "$INSTALLER"
 h2 "$RD/gssh \"if (Test-Path C:/ci) { Remove-Item C:/ci -Recurse -Force }; New-Item -ItemType Directory C:/ci | Out-Null\""
-h2 "$RD/gcp $RD/stage/guest/*.ps1 $RD/stage/installer.exe GUEST:C:/ci/ && $RD/gcp -r $RD/stage/checks GUEST:C:/ci/" || { record "FAIL stage: copying files to the guest"; exit 1; }
+h2 "$RD/gcp $RD/stage/guest/*.ps1 $RD/stage/guest/*.cs $RD/stage/installer.exe GUEST:C:/ci/ && $RD/gcp -r $RD/stage/checks GUEST:C:/ci/" || { record "FAIL stage: copying files to the guest"; exit 1; }
 Y_CSV=${YEARS// /,}
 log "installing"
 out=$(gps "install.ps1 -Years $Y_CSV"); rc=$?; echo "$out" > "$ART/install.txt"
