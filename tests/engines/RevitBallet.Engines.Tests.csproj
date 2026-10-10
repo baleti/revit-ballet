@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Tests of the real script engines (Roslyn, IronPython 2, CPython 3) without Revit. The engines are built for Revit 2026 (net8) from agents/*,
+       loaded the way the add-in loads them (engines/<name>/ with its manifest), and bound to tiny stand-ins for RevitAPI/RevitAPIUI (stubs/)
+       because the real assemblies cannot be loaded outside Revit. CPython tests run only where the bundled Python runtime can load (Windows). -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>RevitBallet.Engines.Tests</RootNamespace>
+    <EngineYear>2026</EngineYear>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- the stand-in assemblies have their own projects; do not compile their sources into the tests as well -->
+    <Compile Remove="stubs\**;stubs-ui\**" />
+    <ProjectReference Include="..\..\agents\abstractions\RevitBallet.Agents.Abstractions.csproj" />
+    <ProjectReference Include="stubs\RevitAPI.csproj" />
+    <ProjectReference Include="stubs-ui\RevitAPIUI.csproj" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <PackageReference Include="Xunit.SkippableFact" Version="1.4.13" />
+  </ItemGroup>
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>RepoRoot</_Parameter1>
+      <_Parameter2>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '..', '..'))</_Parameter2>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>EngineYear</_Parameter1>
+      <_Parameter2>$(EngineYear)</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+  <!-- build the engines for the test year first (their output folders are what the tests load) -->
+  <Target Name="BuildEngines" BeforeTargets="BeforeBuild">
+    <Exec Command="dotnet build &quot;$(MSBuildThisFileDirectory)..\..\agents\roslyn&quot; -c Release -p:RevitYear=$(EngineYear) --nologo -v q" />
+    <Exec Command="dotnet build &quot;$(MSBuildThisFileDirectory)..\..\agents\ironpython2&quot; -c Release -p:RevitYear=$(EngineYear) --nologo -v q" />
+    <Exec Command="dotnet build &quot;$(MSBuildThisFileDirectory)..\..\agents\cpython3&quot; -c Release -p:RevitYear=$(EngineYear) --nologo -v q" />
+  </Target>
+</Project>

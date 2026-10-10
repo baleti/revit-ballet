@@ -8,14 +8,12 @@ using RevitBallet.Agents;
 
 namespace RevitBallet.Commands.Agent
 {
-    /// <summary>One engine found under engines/&lt;name&gt;/. Its assembly is loaded lazily, the first time a job asks for it.</summary>
-    internal sealed class EngineEntry
+    /// <summary>Adapter: engines discovered from engines/ next to the add-in, loaded on first use.</summary>
+    internal sealed class EngineLoaderSource : IEngineSource
     {
-        public EngineManifest Manifest;
-        public string Directory;
-        public IScriptEngine Instance;
-        public string LoadError;
-        public readonly object LoadLock = new object();
+        private readonly Dictionary<string, EngineEntry> engines = EngineLoader.Discover();
+        public IDictionary<string, EngineEntry> Engines { get { return engines; } }
+        public IScriptEngine Load(EngineEntry entry) { return EngineLoader.Load(entry); }
     }
 
     internal static class EngineLoader

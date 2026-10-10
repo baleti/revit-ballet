@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Tests of the agent host's queue, timeouts, cancellation, sessions, caps, audit log and HTTP routes WITHOUT Revit: the pure core
+       (commands/Agent/Core) is compiled straight into this project and driven with fake engines and a fake UI thread. Runs on any OS in seconds. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>RevitBallet.Agent.Tests</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\commands\Agent\Core\**\*.cs" LinkBase="Core" />
+    <ProjectReference Include="..\..\agents\abstractions\RevitBallet.Agents.Abstractions.csproj" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Test stand-in for RevitAPI.dll and RevitAPIUI.dll (one assembly named RevitAPI, one RevitAPIUI via the second project): the real ones are mixed-mode
+       and cannot even be loaded without Revit. The engines only need these few type names to bind and compile scripts. NOT shipped. -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <AssemblyName>RevitAPI</AssemblyName>
+    <RootNamespace>Autodesk.Revit.DB</RootNamespace>
+    <AssemblyVersion>99.0.0.0</AssemblyVersion>
+    <Nullable>disable</Nullable>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+  </PropertyGroup>
+</Project>
