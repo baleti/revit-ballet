@@ -14,6 +14,7 @@ namespace RevitBallet.Commands.Agent
         private readonly Dictionary<string, EngineEntry> engines = EngineLoader.Discover();
         public IDictionary<string, EngineEntry> Engines { get { return engines; } }
         public IScriptEngine Load(EngineEntry entry) { return EngineLoader.Load(entry); }
+        public void Reset(EngineEntry entry) { lock (entry.LoadLock) entry.Instance = null; }
     }
 
     internal static class EngineLoader

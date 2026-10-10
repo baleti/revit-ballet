@@ -41,6 +41,9 @@ namespace RevitBallet.Agent.Tests
             var r = new EngineCompileResult();
             var parts = code.Split(new[] { ' ' }, 2);
             if (parts[0] == "compile-slow") { var end = DateTime.UtcNow.AddMilliseconds(int.Parse(parts[1])); while (DateTime.UtcNow < end && !cancel.IsCancellationRequested) Thread.Sleep(10); }
+            if (parts[0] == "compile-hang") new ManualResetEvent(false).WaitOne();   // deadlock: ignores cancellation, uses no CPU
+            if (parts[0] == "compile-spin") { while (true) { } }                      // endless loop: ignores cancellation, burns CPU
+            if (parts[0] == "compile-work") { var until = DateTime.UtcNow.AddMilliseconds(int.Parse(parts[1])); while (DateTime.UtcNow < until && !cancel.IsCancellationRequested) { } }   // genuinely long compile: busy
             if (parts[0] == "compile-error")
             {
                 r.Diagnostics.Add(new EngineDiagnostic { Severity = "error", Id = "E1", Line = 1, Column = 2, Message = "bad code" });
@@ -157,7 +160,9 @@ namespace RevitBallet.Agent.Tests
             Map[name] = new EngineEntry { Manifest = new EngineManifest { Name = name, Language = "fake", Version = "1", Protocol = 1, Sessions = true }, Directory = "x", Instance = e };
             return e;
         }
+        public int Resets;
         public IScriptEngine Load(EngineEntry entry) { return entry.LoadError != null ? null : entry.Instance; }
+        public void Reset(EngineEntry entry) { Resets++; }
     }
 
     /// <summary>A core wired to a fake UI thread and fake engines "roslyn" and "ironpython2" (cpython3 is "not installed", "broken" fails to load).</summary>
