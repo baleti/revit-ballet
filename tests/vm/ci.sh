@@ -9,7 +9,7 @@
 #
 # usage: tests/vm/ci.sh [--years "2026 2024"] [--all] [--parallel N] [--serial] [--engines-flag] [--no-build] [--keep] [--gpu] [--installer FILE]
 #   --years   Revit years to test (default "2026 2024")        --all       2020..2026 (also checks the installer --engines flag)
-#   --parallel N  Revit years run side by side, N at a time (default 4: about 3 GB of RAM each in the 16 GB CI VM)   --serial = --parallel 1
+#   --parallel N  Revit years run side by side, N at a time (default 2: about 3 GB of RAM each in the 6 GB / 4 vCPU CI VM; set CI_MEM/CI_SMP/CI_PARALLEL for a bigger one)   --serial = --parallel 1
 #   --engines-flag  also exercise installer.exe --engines (about 20 s; implied by --all)
 #   --hold    prepare the VM (overlay, boot, install, sign, Revit.ini) and leave it running for manual work; prints how to reach and stop it
 #   --skip-unit  skip the no-Revit unit tests (tests/host, about 10 s; they run first so a broken core fails before a VM is booted)
@@ -27,7 +27,7 @@ CI_VM_DIR=${CI_VM_DIR:-/srv/vm/win}
 CI_BASELINE=${CI_BASELINE:-baseline-before-revit-ballet.qcow2}
 CI_GUEST_KEY=${CI_GUEST_KEY:-'~/.ssh/WinDev2407Eval-revit'}
 CI_CID=${CI_CID:-4}
-YEARS="2026 2024"; UNIT=1; HOLD=0; BUILD=1; KEEP=0; GPU=0; PAR=${CI_PARALLEL:-4}; ENGFLAG=0; STAGGER=${CI_STAGGER:-5}
+YEARS="2026 2024"; UNIT=1; HOLD=0; BUILD=1; KEEP=0; GPU=0; PAR=${CI_PARALLEL:-2}; ENGFLAG=0; STAGGER=${CI_STAGGER:-5}
 INSTALLER="$REPO/installer/bin/Release/installer.exe"
 while [ $# -gt 0 ]; do
   case $1 in
@@ -103,7 +103,7 @@ exec scp -q -i "$GKEY" -o ProxyCommand="socat - VSOCK-CONNECT:$CID:22" -o Strict
 EOF
 h2 "cat > $RD/start-vm.sh" < "$HERE/start-vm.sh"
 log "booting overlay VM"
-h2 "VM_DIR=$CI_VM_DIR NAME=ci-$ID CID=$CI_CID GPU=$GPU MEM=${CI_MEM:-16G} SMP=${CI_SMP:-8} IMG=runs/$ID/disk.qcow2 bash $RD/start-vm.sh" || { log "VM failed to start"; exit 1; }
+h2 "VM_DIR=$CI_VM_DIR NAME=ci-$ID CID=$CI_CID GPU=$GPU MEM=${CI_MEM:-6G} SMP=${CI_SMP:-4} IMG=runs/$ID/disk.qcow2 bash $RD/start-vm.sh" || { log "VM failed to start"; exit 1; }
 up=0; for _ in $(seq 1 60); do h2 "$RD/gssh echo up" 2>/dev/null | grep -q up && { up=1; break; }; sleep 5; done
 [ "$up" = 1 ] || { record "FAIL boot: guest ssh not reachable after 5 min"; exit 1; }
 log "guest is up"
@@ -121,6 +121,7 @@ log "trust + sign"
 out=$(gps "trust-and-sign.ps1 -Years $Y_CSV"); rc=$?; echo "$out" > "$ART/sign.txt"
 if [ $rc -ne 0 ]; then record "FAIL sign (exit $rc)"; echo "$out" | grep FAIL | sed 's/^/    /'; else record "PASS sign"; fi
 
+gps "blank-password.ps1" >/dev/null 2>&1   # blank account password: RDP into a held VM needs no prompt
 out=$(gps "revit-ini.ps1 -Years $Y_CSV $([ "$GPU" = 0 ] && echo -NoGpu)") || record "FAIL revit-ini setup: $out"
 
 # ---- 4. per-year Revit checks ---------------------------------------------------------------------------------
