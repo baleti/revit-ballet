@@ -68,6 +68,11 @@ if [ -n "${REVIT_BALLET_SIGN_PFX:-}" ]; then
 fi
 
 echo ""
+echo "Building the remote command picker (optional installer component)..."
+dotnet build "$REPO_ROOT/remote/RevitBalletRemote" -c Release 2>&1 | grep -E "error|Warn|Error\(s\)" | head -5
+if [ -n "${REVIT_BALLET_SIGN_PFX:-}" ]; then sign_file "$REPO_ROOT/remote/RevitBalletRemote/bin/Release/RevitBalletRemote.exe"; fi
+
+echo ""
 echo "Building installer..."
 # The installer project embeds installer/bin/resources/* picked up when the project is evaluated, i.e. BEFORE its own prepare step runs;
 # generate them first so a changed set of bundled DLLs does not fail the first build with a missing-resource error.

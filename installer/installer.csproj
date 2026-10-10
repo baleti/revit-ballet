@@ -27,6 +27,11 @@
     <EmbeddedResource Include="bin\keyboard-shortcuts-merged\KeyboardShortcuts-2025.xml"/>
     <EmbeddedResource Include="bin\keyboard-shortcuts-merged\KeyboardShortcuts-2026.xml"/>
 
+    <!-- The optional remote command picker (remote/RevitBalletRemote, built by Build.sh before the installer); offered as an opt-in component -->
+    <EmbeddedResource Include="..\remote\RevitBalletRemote\bin\Release\RevitBalletRemote.exe" LogicalName="remote/RevitBalletRemote.exe" Condition="Exists('..\remote\RevitBalletRemote\bin\Release\RevitBalletRemote.exe')"/>
+    <EmbeddedResource Include="..\remote\RevitBalletRemote\bin\Release\RevitBallet.Core.dll" LogicalName="remote/RevitBallet.Core.dll" Condition="Exists('..\remote\RevitBalletRemote\bin\Release\RevitBallet.Core.dll')"/>
+    <EmbeddedResource Include="..\remote\RevitBalletRemote\bin\Release\Newtonsoft.Json.dll" LogicalName="remote/Newtonsoft.Json.dll" Condition="Exists('..\remote\RevitBalletRemote\bin\Release\Newtonsoft.Json.dll')"/>
+
     <!-- Embed all deduplicated resources from bin/resources directory -->
     <!-- IMPORTANT: Use WithCulture=false to prevent MSBuild from stripping ".Metadata" from resource names -->
     <EmbeddedResource Include="bin\resources\*" Condition="Exists('bin\resources')" WithCulture="false"/>
