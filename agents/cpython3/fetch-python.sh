@@ -2,9 +2,10 @@
 # Downloads the official Windows embeddable CPython that the cpython3 engine ships (agents/cpython3/python-embed/, git-ignored).
 # Pinned by version and SHA-256 so builds are reproducible; run automatically by Build.sh when the folder is missing.
 set -euo pipefail
-PY_VERSION=3.12.8
-PY_SHA256=8d3f33be9eb810f23c102f08475af2854e50484b8e4e06275e937be61ce3d2fb
 HERE="$(cd "$(dirname "$0")" && pwd)"
+# PY_VERSION and PY_SHA256 live in python-embed.txt (shared with fetch-python.ps1)
+# shellcheck source=python-embed.txt
+. "$HERE/python-embed.txt"
 DEST="$HERE/python-embed"
 [ -f "$DEST/python312.dll" ] && exit 0
 URL="https://www.python.org/ftp/python/$PY_VERSION/python-$PY_VERSION-embed-amd64.zip"
