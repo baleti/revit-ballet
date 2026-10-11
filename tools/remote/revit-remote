@@ -106,11 +106,11 @@ def script_with_params(script_name, params):
 
 # ----------------------------------------------------------------------------------------------------- probing
 
-def probe_target(target, runner=None, timeout=30):
+def probe_target(target, runner=None, timeout=30, commands=True):
     runner = runner or run_local
     if target.get("unreachable"):
         return {"target": target["name"], "error": target["unreachable"], "instances": [], "commands": {}}
-    rc, stdout, stderr = runner(transport_command(target), script_with_params("probe.ps1", {}), timeout)
+    rc, stdout, stderr = runner(transport_command(target), script_with_params("probe.ps1", {"commands": commands}), timeout)
     lines = [l for l in stdout.splitlines() if l.strip().startswith("{")]
     if rc != 0 or not lines:
         why = (stderr.strip().splitlines() or ["no answer"])[-1] if rc != 124 else "timed out"
@@ -133,10 +133,10 @@ def _as_list(v):
     return v if isinstance(v, list) else [v]
 
 
-def probe_all(targets, runner=None, only=None):
+def probe_all(targets, runner=None, only=None, commands=True):
     selected = [t for t in targets if not only or only in t["name"]]
     with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, len(selected))) as ex:
-        return list(ex.map(lambda t: probe_target(t, runner), selected))
+        return list(ex.map(lambda t: probe_target(t, runner, commands=commands), selected))
 
 
 # ----------------------------------------------------------------------------------------------------- rows
@@ -174,6 +174,23 @@ def build_rows(probes):
                     "target": pr["target"], "port": inst["port"], "command": c["name"],
                     "fields": fields,
                 })
+    return rows
+
+
+def build_status_rows(probes, targets):
+    """One NDJSON row per Revit instance for the bar's status panel; a target that is down or has no Revit running gets one row of its own."""
+    by_name = {t["name"]: t for t in targets}
+    rows = []
+    for pr in probes:
+        t = by_name.get(pr["target"], {})
+        base = {"target": pr["target"], "vm": t.get("vm") or "", "cid": t.get("cid"), "host": t.get("ssh") or "", "machine": pr.get("hostname") or ""}
+        if pr.get("error") or not pr["instances"]:
+            rows.append(dict(base, instance=False, state="unreachable" if pr.get("error") else "no revit", detail=pr.get("error") or ""))
+        for i in pr["instances"]:
+            rows.append(dict(base, instance=True, port=i["port"], pid=i["pid"], year=i["year"], version=i.get("version") or "",
+                             state=i.get("state") or "", dialog=i.get("dialog"), responsive=i.get("responsive", True), queued=i.get("queued", 0),
+                             running=bool(i.get("running")), build=i.get("build") or "", agent=i.get("loadedFrom") or "",
+                             protocol=i.get("protocol"), hung_compiles=i.get("hungCompiles", 0), engines=_as_list(i.get("engines"))))
     return rows
 
 
@@ -260,6 +277,7 @@ def main(argv=None):
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("targets")
     p = sub.add_parser("instances"); p.add_argument("--json", action="store_true"); p.add_argument("--target")
+    sub.add_parser("status", help="one NDJSON row per Revit instance, without the command lists: what the bar panel shows")
     p = sub.add_parser("rows"); p.add_argument("--cached", action="store_true"); p.add_argument("--target")
     p = sub.add_parser("invoke")
     p.add_argument("--target", required=True); p.add_argument("--port", required=True, type=int); p.add_argument("--command", required=True)
@@ -277,6 +295,10 @@ def main(argv=None):
     if a.cmd == "targets":
         for t in targets:
             print("%-28s %s%s" % (t["name"], t["kind"], "  UNREACHABLE: " + t["unreachable"] if t.get("unreachable") else ""))
+        return 0
+    if a.cmd == "status":
+        for row in build_status_rows(probe_all(targets, commands=False), targets):
+            print(json.dumps(row, ensure_ascii=False))
         return 0
     if a.cmd in ("instances", "rows"):
         probes = probe_all(targets, only=a.target)

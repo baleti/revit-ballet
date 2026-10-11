@@ -1,5 +1,5 @@
 # Runs ON a target machine (sent over ssh, nothing is installed there): finds every Revit Ballet agent on this machine and lists its commands.
-# Prints ONE line of JSON: { hostname, error, instances: [ {port,pid,year,version,build,state,responsive,dialog,queued,running} ], commands: { "<year>": [ {name,displayName,input,output} ] } }
+# Prints ONE line of JSON: { hostname, error, instances: [ {port,pid,year,version,build,state,responsive,dialog,queued,running,loadedFrom,protocol,hungCompiles,engines} ], commands: { "<year>": [ {name,displayName,input,output} ] } }
 $ErrorActionPreference = 'Stop'
 $out = [ordered]@{ hostname = $env:COMPUTERNAME; error = $null; instances = @(); commands = [ordered]@{} }
 function Emit { $out | ConvertTo-Json -Depth 8 -Compress; exit 0 }
@@ -16,7 +16,7 @@ foreach ($p in $ports) {
   $i = Api $p '/v1/info'
   if (-not $i -or -not $i.revit) { continue }
   $year = [string]$i.revit.year
-  if (-not $out.commands.Contains($year)) {
+  if ($P.commands -ne $false -and -not $out.commands.Contains($year)) {
     $c = Api $p '/v1/commands'
     $out.commands[$year] = if ($c -and $c.commands) { @($c.commands | ForEach-Object { [ordered]@{ name = $_.name; displayName = $_.displayName; input = $_.input; output = $_.output } }) } else { @() }
   }
@@ -25,6 +25,8 @@ foreach ($p in $ports) {
     port = [int]$p; pid = [int]$i.session.pid; year = [int]$i.revit.year; version = [string]$i.revit.version
     build = [string]$i.agent.build; state = [string]$i.ui.state; responsive = [bool]$i.ui.responsive; dialog = $dlg
     queued = [int]$i.queue.queued; running = $i.queue.running
+    loadedFrom = [string]$i.agent.loadedFrom; protocol = [int]$i.protocol; hungCompiles = [int]$i.hungCompiles
+    engines = @($i.engines | Where-Object { $_.available } | ForEach-Object { [string]$_.name })
   }
 }
 $out.instances = $instances
