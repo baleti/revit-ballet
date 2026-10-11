@@ -154,7 +154,15 @@ def build_rows(probes):
             state = inst.get("state") or ""
             if inst.get("dialog"):
                 state = "dialog: " + str(inst["dialog"])
-            for c in pr["commands"].get(str(inst["year"]), []):
+            cmds = pr["commands"].get(str(inst["year"]), [])
+            if not cmds:
+                # an agent without /v1/commands (older build): say so instead of leaving the picker silently empty
+                msg = "no command list from this Revit (its Revit Ballet agent is too old: update it)"
+                rows.append({"id": "%s|%s|" % (pr["target"], inst["port"]), "preview": msg, "haystack": " ".join([msg, pr["target"], str(inst["year"])]).lower(),
+                             "target": pr["target"], "port": inst["port"], "command": "",
+                             "fields": {"command": msg, "class": "", "input": "", "output": "", "target": pr["target"], "instance": label,
+                                        "year": str(inst["year"]), "pid": str(inst["pid"]), "state": state}})
+            for c in cmds:
                 fields = {
                     "command": c["displayName"], "class": c["name"], "input": c.get("input") or "", "output": c.get("output") or "",
                     "target": pr["target"], "instance": label, "year": str(inst["year"]), "pid": str(inst["pid"]), "state": state,
