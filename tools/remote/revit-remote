@@ -111,7 +111,7 @@ def probe_target(target, runner=None, timeout=30, commands=True):
     runner = runner or run_local
     if target.get("unreachable"):
         return {"target": target["name"], "error": target["unreachable"], "instances": [], "commands": {}}
-    rc, stdout, stderr = runner(transport_command(target), script_with_params("probe.ps1", {"commands": commands}), timeout)
+    rc, stdout, stderr = runner(transport_command(target), script_with_params("probe.ps1", {"commands": commands, "gpu": target.get("display") == "gpu"}), timeout)
     lines = [l for l in stdout.splitlines() if l.strip().startswith("{")]
     if rc != 0 or not lines:
         why = (stderr.strip().splitlines() or ["no answer"])[-1] if rc != 124 else "timed out"
