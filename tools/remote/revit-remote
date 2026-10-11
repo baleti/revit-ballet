@@ -45,14 +45,15 @@ def parse_vm_listing(text):
     vms = []
     for line in text.splitlines():
         parts = line.split()
-        if len(parts) == 2 and parts[1].isdigit():
-            vms.append({"name": parts[0], "cid": int(parts[1])})
+        if len(parts) in (2, 3) and parts[1].isdigit():
+            # third word (optional): the VM's display hardware, "gpu" = a passed-through GPU (vfio-pci) on top of the qxl console, "qxl" = qxl only
+            vms.append({"name": parts[0], "cid": int(parts[1]), "display": parts[2] if len(parts) == 3 else ""})
     return vms
 
 
 QEMU_LIST = ("for p in $(pgrep -f '^qemu-system-x86_64 -name'); do c=$(tr '\\0' ' ' < /proc/$p/cmdline); "
              "n=$(echo \"$c\" | grep -o -- '-name [^ ]*' | cut -d' ' -f2); cid=$(echo \"$c\" | grep -o 'guest-cid=[0-9]*' | cut -d= -f2); "
-             "[ -n \"$cid\" ] && echo \"$n $cid\"; done")
+             "[ -n \"$cid\" ] && { d=qxl; echo \"$c\" | grep -q -- 'vfio-pci' && d=gpu; echo \"$n $cid $d\"; }; done")
 
 
 def expand_targets(cfg, runner=None):
@@ -69,7 +70,7 @@ def expand_targets(cfg, runner=None):
             for vm in parse_vm_listing(stdout):
                 label = "cid%d" % vm["cid"] if vm["name"].startswith("ci-") else vm["name"]
                 out.append({"name": "%s/%s" % (t["name"], label), "kind": "qemu-vsock-guest", "ssh": t["ssh"], "cid": vm["cid"],
-                            "guest_key": t.get("guest_key", "~/.ssh/id_rsa"), "guest_user": t.get("guest_user", "user"), "vm": vm["name"]})
+                            "guest_key": t.get("guest_key", "~/.ssh/id_rsa"), "guest_user": t.get("guest_user", "user"), "vm": vm["name"], "display": vm.get("display", "")})
         else:
             out.append(dict(t, kind=kind))
     return out
@@ -183,14 +184,14 @@ def build_status_rows(probes, targets):
     rows = []
     for pr in probes:
         t = by_name.get(pr["target"], {})
-        base = {"target": pr["target"], "vm": t.get("vm") or "", "cid": t.get("cid"), "host": t.get("ssh") or "", "machine": pr.get("hostname") or ""}
+        base = {"target": pr["target"], "vm": t.get("vm") or "", "cid": t.get("cid"), "host": t.get("ssh") or "", "machine": pr.get("hostname") or "", "display": t.get("display") or ""}
         if pr.get("error") or not pr["instances"]:
             rows.append(dict(base, instance=False, state="unreachable" if pr.get("error") else "no revit", detail=pr.get("error") or ""))
         for i in pr["instances"]:
             rows.append(dict(base, instance=True, port=i["port"], pid=i["pid"], year=i["year"], version=i.get("version") or "",
                              state=i.get("state") or "", dialog=i.get("dialog"), responsive=i.get("responsive", True), queued=i.get("queued", 0),
                              running=bool(i.get("running")), build=i.get("build") or "", agent=i.get("loadedFrom") or "",
-                             protocol=i.get("protocol"), hung_compiles=i.get("hungCompiles", 0), engines=_as_list(i.get("engines"))))
+                             protocol=i.get("protocol"), hung_compiles=i.get("hungCompiles", 0), engines=_as_list(i.get("engines")), active_engine=i.get("activeEngine") or ""))
     return rows
 
 

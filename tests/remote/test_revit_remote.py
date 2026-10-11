@@ -48,7 +48,11 @@ class TargetExpansion(unittest.TestCase):
     def test_parse_vm_listing_ignores_junk(self):
         text = "revit-win 3\nci-20261010-222858 20\n\nnot a vm\nfoo bar\nlast 7\n"
         self.assertEqual(rr.parse_vm_listing(text), [
-            {"name": "revit-win", "cid": 3}, {"name": "ci-20261010-222858", "cid": 20}, {"name": "last", "cid": 7}])
+            {"name": "revit-win", "cid": 3, "display": ""}, {"name": "ci-20261010-222858", "cid": 20, "display": ""}, {"name": "last", "cid": 7, "display": ""}])
+
+    def test_parse_vm_listing_reads_the_display_word(self):
+        self.assertEqual(rr.parse_vm_listing("revit-win 3 gpu\nci-1 20 qxl\n"), [
+            {"name": "revit-win", "cid": 3, "display": "gpu"}, {"name": "ci-1", "cid": 20, "display": "qxl"}])
 
     def test_qemu_vsock_target_expands_to_one_target_per_running_vm(self):
         run = FakeRunner([("pgrep", (0, "revit-win 3\nci-1 20\nci-2 21\n", ""))])
