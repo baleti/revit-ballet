@@ -1,8 +1,15 @@
 # Runs ON a target machine (sent over ssh, nothing is installed there): finds every Revit Ballet agent on this machine and lists its commands.
 # Prints ONE line of JSON: { hostname, error, instances: [ {port,pid,year,version,build,state,responsive,dialog,queued,running,loadedFrom,protocol,hungCompiles,activeEngine,engines} ], commands: { "<year>": [ {name,displayName,input,output} ] } }
 $ErrorActionPreference = 'Stop'
-$out = [ordered]@{ hostname = $env:COMPUTERNAME; error = $null; instances = @(); commands = [ordered]@{} }
+$out = [ordered]@{ hostname = $env:COMPUTERNAME; error = $null; gpu = $null; instances = @(); commands = [ordered]@{} }
 function Emit { $out | ConvertTo-Json -Depth 8 -Compress; exit 0 }
+# GPU of a passed-through-GPU VM (only asked for on that VM): nvidia-smi ships with the NVIDIA driver, nothing extra is installed
+if ($P.gpu -eq $true) {
+  try {
+    $g = (& nvidia-smi --query-gpu=name,utilization.gpu,memory.used,memory.total,temperature.gpu --format=csv,noheader,nounits 2>$null) -split ','
+    if ($g.Count -ge 5) { $out.gpu = [ordered]@{ name = $g[0].Trim(); util = [int]$g[1]; mem_used_mb = [int]$g[2]; mem_total_mb = [int]$g[3]; temp_c = [int]$g[4] } }
+  } catch { }
+}
 $tokFile = Join-Path $env:APPDATA 'revit-ballet\runtime\network\token'
 if (-not (Test-Path $tokFile)) { $out.error = 'no agent token on this machine (Revit Ballet has not run here)'; Emit }
 $tok = (Get-Content $tokFile -Raw).Trim()
