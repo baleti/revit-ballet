@@ -130,7 +130,10 @@ class Probing(unittest.TestCase):
         out = json.dumps({"hostname": "H", "error": None, "instances": [inst()], "commands": {"2026": [{"name": None, "displayName": None}]}})
         pr = rr.probe_target(self.T, FakeRunner(default=(0, out, "")))
         self.assertEqual(pr["commands"]["2026"], [])
-        self.assertEqual(rr.build_rows([pr]), [])
+        rows = rr.build_rows([pr])   # one placeholder row that says why, never a runnable broken entry
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["command"], "")
+        self.assertIn("too old", rows[0]["preview"])
 
     def test_transport_failure_is_reported_per_target(self):
         pr = rr.probe_target(self.T, FakeRunner(default=(255, "", "ssh: connect to host t port 22: Connection refused\n")))
