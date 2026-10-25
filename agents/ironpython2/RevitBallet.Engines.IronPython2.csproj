@@ -11,9 +11,9 @@
   <ItemGroup>
     <ProjectReference Include="..\abstractions\RevitBallet.Agents.Abstractions.csproj" />
     <PackageReference Include="Revit_All_Main_Versions_API_x64" Version="$(RevitAPIVersion)" ExcludeAssets="runtime" />
-    <PackageReference Include="IronPython" Version="2.7.12" />
+    <PackageReference Include="IronPython" Version="3.4.0" />
     <!-- The pure-Python standard library: not copied as loose files; a trimmed Lib.zip is built from it below -->
-    <PackageReference Include="IronPython.StdLib" Version="2.7.12" GeneratePathProperty="true" ExcludeAssets="all" />
+    <PackageReference Include="IronPython.StdLib" Version="3.4.2" GeneratePathProperty="true" ExcludeAssets="all" />
   </ItemGroup>
 
   <ItemGroup>
