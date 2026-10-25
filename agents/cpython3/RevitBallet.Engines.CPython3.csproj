@@ -11,7 +11,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\abstractions\RevitBallet.Agents.Abstractions.csproj" />
-    <PackageReference Include="pythonnet" Version="3.0.5" />
+    <PackageReference Include="pythonnet" Version="3.2.1" />
   </ItemGroup>
 
   <ItemGroup>
